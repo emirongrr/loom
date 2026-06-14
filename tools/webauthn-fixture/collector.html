@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Loom anonymous WebAuthn fixture collector</title>
+<button id="capture">Create local credential and capture assertion</button>
+<pre id="output"></pre>
+<script>
+const output = document.querySelector("#output");
+const bytesToHex = bytes => "0x" + [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, "0")).join("");
+const bytesToBase64Url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
+  .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+const sha256Hex = async bytes => bytesToHex(await crypto.subtle.digest("SHA-256", bytes));
+
+function parseDerSignature(buffer) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] !== 0x30 || bytes[2] !== 0x02) throw new Error("unexpected DER signature");
+  let cursor = 3;
+  const rLength = bytes[cursor++];
+  const r = bytes.slice(cursor, cursor + rLength);
+  cursor += rLength;
+  if (bytes[cursor++] !== 0x02) throw new Error("unexpected DER signature");
+  const sLength = bytes[cursor++];
+  const s = bytes.slice(cursor, cursor + sLength);
+  const pad32 = value => {
+    while (value.length > 32 && value[0] === 0) value = value.slice(1);
+    const padded = new Uint8Array(32);
+    padded.set(value, 32 - value.length);
+    return padded;
+  };
+  return {r: bytesToHex(pad32(r)), s: bytesToHex(pad32(s))};
+}
+
+document.querySelector("#capture").onclick = async () => {
+  if (!window.isSecureContext || !PublicKeyCredential) throw new Error("secure context and WebAuthn required");
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const userId = crypto.getRandomValues(new Uint8Array(32));
+  const created = await navigator.credentials.create({publicKey: {
+    challenge,
+    rp: {name: "Loom Fixture", id: location.hostname},
+    user: {id: userId, name: "anonymous-fixture", displayName: "Anonymous Fixture"},
+    pubKeyCredParams: [{type: "public-key", alg: -7}],
+    authenticatorSelection: {userVerification: "required"},
+    attestation: "none"
+  }});
+  const spki = new Uint8Array(created.response.getPublicKey());
+  if (spki.length < 65 || spki[spki.length - 65] !== 4) throw new Error("unexpected P-256 public key");
+  const point = spki.slice(spki.length - 64);
+  const assertion = await navigator.credentials.get({publicKey: {
+    challenge,
+    rpId: location.hostname,
+    allowCredentials: [{type: "public-key", id: created.rawId}],
+    userVerification: "required"
+  }});
+  const signature = parseDerSignature(assertion.response.signature);
+  const clientDataJSON = new TextDecoder().decode(assertion.response.clientDataJSON);
+  const fixture = {
+    version: 1,
+    platform: navigator.platform.slice(0, 80),
+    browser: navigator.userAgent.slice(0, 80),
+    authenticatorClass: "platform",
+    rpId: location.hostname,
+    origin: location.origin,
+    publicKeyX: bytesToHex(point.slice(0, 32)),
+    publicKeyY: bytesToHex(point.slice(32, 64)),
+    credentialIdHash: await sha256Hex(created.rawId),
+    challenge: bytesToHex(challenge),
+    authenticatorData: bytesToHex(assertion.response.authenticatorData),
+    clientDataJSON,
+    r: signature.r,
+    s: signature.s,
+    expected: true,
+    notes: "Generated locally; inspect and remove unnecessary metadata before committing."
+  };
+  output.textContent = JSON.stringify(fixture, null, 2);
+};
+</script>

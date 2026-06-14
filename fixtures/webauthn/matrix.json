@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "required": [
+    { "id": "chrome-android-passkey", "browser": "Chrome", "authenticator": "Android passkey", "status": "missing" },
+    { "id": "chrome-windows-hello", "browser": "Chrome", "authenticator": "Windows Hello", "status": "missing" },
+    { "id": "firefox-yubikey", "browser": "Firefox", "authenticator": "YubiKey", "status": "missing" },
+    { "id": "safari-apple-passkey", "browser": "Safari", "authenticator": "Apple passkey", "status": "missing" }
+  ]
+}

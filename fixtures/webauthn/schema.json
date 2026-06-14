@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Loom anonymous WebAuthn assertion fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "platform",
+    "browser",
+    "authenticatorClass",
+    "rpId",
+    "origin",
+    "publicKeyX",
+    "publicKeyY",
+    "credentialIdHash",
+    "challenge",
+    "authenticatorData",
+    "clientDataJSON",
+    "r",
+    "s",
+    "expected"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "platform": { "type": "string", "maxLength": 80 },
+    "browser": { "type": "string", "maxLength": 80 },
+    "authenticatorClass": { "enum": ["platform", "roaming"] },
+    "rpId": { "type": "string", "maxLength": 253 },
+    "origin": { "type": "string", "maxLength": 256 },
+    "publicKeyX": { "$ref": "#/$defs/hex32" },
+    "publicKeyY": { "$ref": "#/$defs/hex32" },
+    "credentialIdHash": { "$ref": "#/$defs/hex32" },
+    "challenge": { "$ref": "#/$defs/hex32" },
+    "authenticatorData": { "type": "string", "pattern": "^0x[0-9a-fA-F]+$", "maxLength": 2050 },
+    "clientDataJSON": { "type": "string", "maxLength": 1024 },
+    "r": { "$ref": "#/$defs/hex32" },
+    "s": { "$ref": "#/$defs/hex32" },
+    "expected": { "type": "boolean" },
+    "notes": { "type": "string", "maxLength": 500 }
+  },
+  "$defs": {
+    "hex32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{64}$"
+    }
+  }
+}
