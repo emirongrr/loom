@@ -1,6 +1,6 @@
 # Production Readiness Gates
 
-Loom Contracts remain pre-audit. Passing repository checks is necessary but
+Loom remains pre-audit. Passing repository checks is necessary but
 does not make a deployment production-ready.
 
 ## Automated release gates

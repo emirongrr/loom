@@ -35,16 +35,16 @@ jobs:
         run: forge build --skip "test/**" "script/**"
       - name: Package release evidence
         run: |
-          tar -czf "loom-contracts-${GITHUB_REF_NAME}.tar.gz" \
+          tar -czf "loom-${GITHUB_REF_NAME}.tar.gz" \
             src script docs out README.md CONTRIBUTING.md SECURITY.md LICENSE \
             foundry.toml package.json package-lock.json .gas-snapshot
-          sha256sum "loom-contracts-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+          sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: loom-contracts-${{ github.ref_name }}
+          name: loom-${{ github.ref_name }}
           path: |
-            loom-contracts-${{ github.ref_name }}.tar.gz
+            loom-${{ github.ref_name }}.tar.gz
             SHA256SUMS
           if-no-files-found: error
       - name: Publish prerelease
@@ -55,5 +55,5 @@ jobs:
             --prerelease \
             --generate-notes \
             --title "$GITHUB_REF_NAME" \
-            "loom-contracts-${GITHUB_REF_NAME}.tar.gz" \
+            "loom-${GITHUB_REF_NAME}.tar.gz" \
             SHA256SUMS

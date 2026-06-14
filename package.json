@@ -1,5 +1,5 @@
 {
-  "name": "loom-contracts",
+  "name": "loom",
   "private": true,
   "scripts": {
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",

@@ -1,6 +1,6 @@
 # Audit Scope
 
-Loom Contracts are immutable smart-account contracts. The audit must evaluate
+Loom consists of immutable smart-account contracts. The audit must evaluate
 the complete interaction between the account core, validators, hooks, factory,
 and the official ERC-4337 v0.9 EntryPoint.
 

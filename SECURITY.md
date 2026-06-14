@@ -1,13 +1,13 @@
 # Security Policy
 
-Loom Contracts are pre-audit and not ready for production funds.
+Loom is pre-audit and not ready for production funds.
 
 ## Reporting A Vulnerability
 
 Do not open a public issue for a suspected vulnerability. Report it through a
 private GitHub security advisory:
 
-https://github.com/emirongrr/loom-contracts/security/advisories/new
+https://github.com/emirongrr/loom/security/advisories/new
 
 Include the affected revision, impact, prerequisites, reproduction steps, and
 any proposed mitigation. Reports are acknowledged as soon as practical, but

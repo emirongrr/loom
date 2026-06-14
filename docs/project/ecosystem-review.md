@@ -2,7 +2,7 @@
 
 Research date: 2026-06-14
 
-This document compares Loom Contracts with open-source smart-account systems
+This document compares Loom with open-source smart-account systems
 that are relevant to passkeys, modular permissions, recovery, and Ethereum L2
 deployment. It is a design comparison, not an audit of the referenced
 projects.

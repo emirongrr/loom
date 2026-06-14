@@ -1,4 +1,4 @@
-# Loom Contracts
+# Loom
 
 Loom is an immutable, passkey-first ERC-4337 smart account designed around
 graded access, constrained session permissions, guardian recovery, and account
