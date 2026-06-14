@@ -1,0 +1,17 @@
+cache/
+out/
+broadcast/
+node_modules/
+out-solc/
+out-solc-opt/
+coverage/
+lcov.info
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,21 @@
+{
+  "name": "loom-contracts",
+  "private": true,
+  "scripts": {
+    "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",
+    "docs:check": "node tools/validate-doc-links.mjs",
+    "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
+    "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
+    "verify:quick": "node tools/verify.mjs",
+    "verify": "node tools/verify.mjs --full"
+  },
+  "devDependencies": {
+    "solc": "0.8.35"
+  },
+  "optionalDependencies": {
+    "@foundry-rs/forge-win32-amd64": "1.7.1"
+  },
+  "overrides": {
+    "tmp": "0.2.6"
+  }
+}
