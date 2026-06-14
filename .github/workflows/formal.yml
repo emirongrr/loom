@@ -1,0 +1,39 @@
+name: formal-properties
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: formal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  halmos:
+    name: Symbolic properties
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Halmos
+        run: uv tool install --python 3.12 halmos==0.3.3
+      - name: Verify authority properties
+        run: halmos --contract LoomAccountAuthorityFormal
+      - name: Verify execution properties
+        run: halmos --contract LoomAccountExecutionFormal
+      - name: Verify recovery properties
+        run: halmos --contract LoomAccountRecoveryFormal

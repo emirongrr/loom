@@ -1,0 +1,34 @@
+name: Design proposal
+description: Propose a narrowly scoped protocol or engineering change.
+title: "proposal: "
+labels:
+  - proposal
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete user, security, or interoperability problem exists?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and acceptance criteria
+      description: Include measurements, references, and a testable success condition.
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed design
+      description: Describe authority changes, alternatives, and compatibility impact.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Residual risks
+      description: What remains trusted, unproven, unavailable, or irreversible?
+    validations:
+      required: true

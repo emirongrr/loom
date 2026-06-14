@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible contract, tooling, or documentation defect.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose security vulnerabilities here. Use the private security advisory link instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: State the observed behavior and why it is incorrect.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest deterministic reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Revision
+      description: Commit hash or release tag.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Foundry version, operating system, chain, and relevant configuration.
+    validations:
+      required: true

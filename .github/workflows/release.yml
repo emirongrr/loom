@@ -1,0 +1,59 @@
+name: release-artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Verify and publish artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify release candidate
+        run: npm run verify
+      - name: Build production artifacts
+        run: forge build --skip "test/**" "script/**"
+      - name: Package release evidence
+        run: |
+          tar -czf "loom-contracts-${GITHUB_REF_NAME}.tar.gz" \
+            src script docs out README.md CONTRIBUTING.md SECURITY.md LICENSE \
+            foundry.toml package.json package-lock.json .gas-snapshot
+          sha256sum "loom-contracts-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: loom-contracts-${{ github.ref_name }}
+          path: |
+            loom-contracts-${{ github.ref_name }}.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --prerelease \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            "loom-contracts-${GITHUB_REF_NAME}.tar.gz" \
+            SHA256SUMS

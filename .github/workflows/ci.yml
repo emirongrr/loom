@@ -1,0 +1,83 @@
+name: contracts
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundry:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Audit dependencies
+        run: npm audit --audit-level=low
+      - name: Validate documentation
+        run: npm run docs:check
+      - name: Validate WebAuthn fixtures
+        run: npm run fixtures:check
+      - name: Check formatting
+        run: forge fmt --check
+      - name: Lint Solidity
+        run: forge lint --deny warnings
+      - name: Check production bytecode sizes
+        run: forge build --sizes --skip "test/**" "script/**"
+      - name: Check gas snapshot
+        run: forge snapshot --check
+      - name: Run contract tests
+        run: forge test -vvv
+      - name: Run extended fuzz tests
+        run: forge test --match-test testFuzz --fuzz-runs 10000
+      - name: Run CI fuzz and invariants
+        run: FOUNDRY_PROFILE=ci forge test -vvv
+      - name: Generate coverage summary
+        run: forge coverage --ir-minimum --report summary --skip "test/formal/**"
+      - name: Assert no excluded cryptography
+        run: |
+          ! grep -RniE --exclude=verify.mjs 'post.?quantum|quantum|ML.?DSA|SLH.?DSA|\bPQ\b' src test docs formal fixtures tools script
+
+  slither:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Slither
+        run: python -m pip install slither-analyzer==0.11.5
+      - name: Run Slither
+        run: slither . --fail-high

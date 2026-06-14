@@ -1,0 +1,36 @@
+name: live-bundler-preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-bundlers:
+    name: Independent bundler preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BUNDLER_A_URL: ${{ secrets.BUNDLER_A_URL }}
+      BUNDLER_B_URL: ${{ secrets.BUNDLER_B_URL }}
+      ENTRYPOINT_ADDRESS: ${{ secrets.ENTRYPOINT_ADDRESS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Require independent endpoints
+        run: |
+          test -n "$BUNDLER_A_URL"
+          test -n "$BUNDLER_B_URL"
+          test -n "$ENTRYPOINT_ADDRESS"
+          test "$BUNDLER_A_URL" != "$BUNDLER_B_URL"
+      - name: Check first bundler
+        run: node tools/bundler-smoke.mjs "$BUNDLER_A_URL" "$ENTRYPOINT_ADDRESS"
+      - name: Check second bundler
+        run: node tools/bundler-smoke.mjs "$BUNDLER_B_URL" "$ENTRYPOINT_ADDRESS"
