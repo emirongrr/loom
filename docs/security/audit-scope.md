@@ -1,0 +1,98 @@
+# Audit Scope
+
+Loom Contracts are immutable smart-account contracts. The audit must evaluate
+the complete interaction between the account core, validators, hooks, factory,
+and the official ERC-4337 v0.9 EntryPoint.
+
+## In-scope production contracts
+
+- `src/account/LoomAccount.sol`
+- `src/account/LoomAccountFactory.sol`
+- `src/hooks/PolicyHook.sol`
+- `src/recovery/RecoveryManager.sol`
+- `src/recovery/ECDSAGuardianVerifier.sol`
+- `src/validators/ECDSAValidator.sol`
+- `src/validators/P256Validator.sol`
+- `src/validators/MultiP256Validator.sol`
+- `src/validators/SessionKeyValidator.sol`
+- `src/validators/GranularSessionValidator.sol`
+- All interfaces and libraries under `src/`
+- Deployment scripts and constructor configuration under `script/`
+
+Vendored dependencies are in scope where Loom relies on their behavior,
+especially EntryPoint validation, nonce handling, and sender creation.
+
+## Required security invariants
+
+1. No Loom-controlled address, factory, deployer, or privileged administrator
+   can execute from or reconfigure an account.
+2. An account always retains at least one installed validator.
+3. Configuration changes cannot execute before the required delay.
+4. A config change invalidates operations committed to an older
+   `configVersion`.
+5. Unsupported execution modes and all delegatecall execution revert.
+6. Batch execution is atomic.
+7. Frozen accounts cannot perform normal execution.
+8. A single guardian can freeze but cannot transfer assets.
+9. Guardian thresholds cannot be satisfied by duplicate or invalid proofs.
+10. Session permissions cannot authorize a different call, exceed their use
+    count, or remain valid after revocation.
+11. Policy spending cannot exceed per-call or per-period limits, including
+    through reentrancy or a reverting inner call.
+12. A broken hook can delay normal execution but cannot permanently prevent
+    its own delayed removal.
+13. Primary validators cannot authorize arbitrary ERC-1271 messages.
+14. Account deployment addresses are deterministic and factory deployment
+    cannot introduce authority.
+15. Duplicate credential identifiers or duplicate public keys cannot satisfy
+    a multi-passkey threshold.
+16. Multi-passkey credential and threshold changes cannot bypass the
+    configuration timelock.
+17. Recovery cannot execute before its delay, after expiry, after
+   cancellation, after configuration changes, or more than once.
+18. Only an installed recovery module can use the narrow complete-validator-set
+   plus guardian-root replacement entry point, and recovery cannot grant
+   arbitrary execution authority.
+19. Recovery rejects partial, duplicate, unsorted, or stale validator sets.
+20. Guardian approvals are unique, committed to verifier code hash, and cannot
+   use an uncommitted signer or verifier.
+21. Scheduled execution cannot bypass an active policy, except that the exact
+   delayed removal of an installed hook bypasses hooks for liveness.
+22. A hook-set change during scheduled lifecycle execution cannot alter the
+   pre-check/post-check hook snapshot.
+
+## Reviewer focus areas
+
+- Hook bypass recognition for delayed removal of an installed hook.
+- Scheduled operation identity and invalidation across config changes.
+- External module initialization and de-initialization calls.
+- Hook ordering, revert behavior, and spending-accounting rollback.
+- Hook snapshot behavior when a scheduled lifecycle operation changes the
+  installed hook set between pre-check and post-check.
+- WebAuthn client-data canonicalization, origin binding, flags, and signature
+  malleability checks.
+- Multi-passkey credential uniqueness, ordering, threshold bounds, and
+  lifecycle behavior.
+- Guardian Merkle proofs, signature ordering, domains, and config-version
+  binding.
+- Recovery proposal identity, cancellation, expiry, replay protection,
+  validator replacement, and recovery-module authority.
+- ERC-4337 validation behavior, malformed signatures, prefunding, and nonce
+  semantics.
+- Non-standard ERC-20 return values and policy calldata parsing.
+
+## Out of scope
+
+- Wallet user interface and transaction interpretation.
+- Bundler, paymaster, RPC provider, and chain infrastructure implementations.
+- Private transfer systems.
+- Cross-chain state proof verification.
+
+These components may affect the safety of a future wallet but do not belong to
+this contracts-only repository.
+
+## Audit build
+
+The audit commit must be frozen before review. Record the commit hash, compiler
+version, optimizer settings, dependency revisions, bytecode hashes, full test
+output, gas snapshot, coverage summary, and static-analysis output.
