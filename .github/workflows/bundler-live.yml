@@ -17,7 +17,7 @@ jobs:
       ENTRYPOINT_ADDRESS: ${{ secrets.ENTRYPOINT_ADDRESS }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Install Node.js

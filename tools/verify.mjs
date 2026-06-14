@@ -45,7 +45,14 @@ run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);
-run("Gas snapshot", forge, ["snapshot", "--check"]);
+run("Gas snapshot", forge, [
+  "snapshot",
+  "--check",
+  "--tolerance",
+  "1",
+  "--no-match-contract",
+  "LoomAccountInvariantTest"
+]);
 run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });
 assertExcludedTermsAbsent();

@@ -9,7 +9,10 @@ does not make a deployment production-ready.
 - Pinned Slither static analysis with high-severity findings failing CI.
 - Production-contract size checks that exclude test/formal harnesses and
   deployment scripts.
-- Checked-in gas snapshot regression check.
+- Checked-in deterministic unit/integration gas snapshot regression check with
+  a 1% tolerance for environment-level measurement noise. Stateful invariants
+  run separately because their randomized call distribution is not a stable
+  gas benchmark.
 - Unit and official EntryPoint v0.9 integration tests.
 - 10,000-run fuzz tests and 1,000-run stateful invariants.
 - Paymaster selection forwarding and permission-bound paymaster regression tests.

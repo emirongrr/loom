@@ -16,7 +16,6 @@ GranularSessionValidatorTest:testMalformedAndUnsupportedCallsFailClosed() (gas: 
 GranularSessionValidatorTest:testNativePermissionAndImmediateRevoke() (gas: 386422)
 GranularSessionValidatorTest:testPermissionGrantRequiresTimelockAndRejectsInvalidShape() (gas: 101180)
 LoomAccountFactoryTest:testFactoryAddressIsDeterministic() (gas: 7127800)
-LoomAccountInvariantTest:invariantCoreAuthorityAndConfigRemainValid() (runs: 256, calls: 128000, reverts: 32055)
 LoomAccountTest:testBatchCanFundAndExecuteInOneCall() (gas: 61008)
 LoomAccountTest:testBatchExecutesInOrder() (gas: 51028)
 LoomAccountTest:testBatchIsAtomic() (gas: 73542)
