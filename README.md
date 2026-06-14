@@ -1,19 +1,66 @@
 # Loom
 
-Loom is an immutable, passkey-first ERC-4337 smart account designed around
-graded access, constrained session permissions, guardian recovery, and account
-portability. Loom is a tool for users, not a service users must continue
-trusting.
+**Self-sovereign wallet infrastructure**
 
-The repository contains contracts only. It has no privileged Loom admin, no
-upgrade proxy, no arbitrary delegatecall execution, and no dependency on a
-specific bundler, paymaster, recovery provider, or wallet client.
+Loom is building a wallet experience where users should not need to manage
+seed phrases, trust a single RPC provider, expose their complete financial
+graph, or remain dependent on one company.
+
+The goal is not another wallet-shaped service. Loom is intended to become a
+self-sovereign financial operating system built on Ethereum: simple during
+normal use, independently verifiable when it matters, and replaceable without
+permission.
+
+## Principles
+
+- User ownership over platform ownership.
+- Privacy by default.
+- Recovery without custodians.
+- Verification without trust.
+- Interoperability without capture.
+- Security without sacrificing usability.
+
+## Vision
+
+A Loom user should be able to:
+
+- create an account with a passkey;
+- recover access through independently chosen guardians;
+- verify chain state without trusting a hosted RPC;
+- maintain separate identities across applications;
+- transact without unnecessarily exposing their financial graph;
+- move across compatible chains with clearly disclosed trust assumptions;
+- switch clients and infrastructure providers without permission;
+- walk away from Loom without losing control of their account.
+
+No seed phrases as the default. No mandatory intermediary. No developer
+backdoor. No lock-in.
+
+## The walkaway test
+
+If Loom's developers, frontend, bundler, paymaster, RPC, indexer, notification
+service, and recovery coordinator disappear, users must still be able to
+discover account state, verify it, recover access, and publish authorized
+operations using independent software.
+
+Features that cannot pass this test may exist only as optional conveniences
+with documented provider-independent alternatives.
+
+## This repository
+
+This repository contains the immutable on-chain account and authorization
+layer for that vision. It does not contain the future wallet client, private
+transfer system, local chain verifier, or cross-chain routing layer.
+
+The contracts have no privileged Loom administrator, upgrade proxy, arbitrary
+delegatecall execution, or mandatory dependency on a specific bundler,
+paymaster, recovery provider, RPC, or wallet client.
 
 ## Security status
 
 This is pre-audit software. Do not use it to secure production assets.
 
-## Design properties
+## Implemented contracts
 
 - Immutable account core with no developer or factory authority.
 - ERC-4337 v0.9 validation and atomic single or batch execution.
