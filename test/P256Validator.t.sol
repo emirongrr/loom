@@ -8,6 +8,7 @@ import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
 import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
+import {MockTarget} from "./mocks/MockTarget.sol";
 
 interface VmP256 {
     function warp(uint256) external;
@@ -175,6 +176,54 @@ contract P256ValidatorTest {
         (bytes32 x, bytes32 y,,) = validator.publicKeys(address(account));
         require(x == bytes32(uint256(3)) && y == bytes32(uint256(4)), "key did not rotate");
         require(account.configVersion() == 2, "key rotation did not advance config");
+    }
+
+    function testP256DirectExecutionUsesTypedDigestAndPolicy() public {
+        MockP256Verifier verifier = new MockP256Verifier();
+        P256Validator validator = new P256Validator(address(verifier));
+        MockPolicyHook hook = new MockPolicyHook();
+        bytes memory origin = bytes("https://wallet.example");
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (
+                    bytes32(uint256(1)),
+                    bytes32(uint256(2)),
+                    keccak256("wallet.example"),
+                    keccak256(origin),
+                    address(hook)
+                )
+            )
+        );
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        MockTarget target = new MockTarget();
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (51))));
+        uint48 validUntil = type(uint48).max;
+        bytes32 digest = account.directExecutionDigest(address(validator), mode, executionCalldata, 0, validUntil);
+        P256Validator.WebAuthnSignature memory signature = P256Validator.WebAuthnSignature({
+            authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
+            clientDataJSON: bytes.concat(
+                bytes('{"type":"webauthn.get","challenge":"'),
+                _base64Url(digest),
+                bytes('","origin":"'),
+                origin,
+                bytes('","crossOrigin":false}')
+            ),
+            origin: origin,
+            r: bytes32(uint256(1)),
+            s: bytes32(uint256(1))
+        });
+
+        account.executeDirect(address(validator), mode, executionCalldata, validUntil, abi.encode(signature));
+
+        require(target.value() == 51, "P-256 direct execution failed");
+        require(account.directExecutionNonces(address(validator)) == 1, "P-256 direct nonce missing");
     }
 
     function _base64Url(bytes32 input) internal pure returns (bytes memory) {

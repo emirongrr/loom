@@ -11,6 +11,8 @@ The current properties prove, within their harness assumptions:
 - unsupported execution modes cannot execute.
 - a reverting item rolls back an entire atomic batch;
 - a frozen account cannot execute an ordinary call;
+- a frozen account cannot execute an ordinary direct call;
+- a reverting direct batch rolls back every item and its validator nonce;
 - the final validator cannot be removed;
 - a successful guardian configuration update advances configuration and
   invalidates a stale scheduled operation;
@@ -51,6 +53,8 @@ possible compositions of installed modules.
   dimension;
 - guardian proofs cannot count a leaf twice;
 - every successful module/config transition preserves module count bounds.
+- rejected and reverting direct execution cannot consume a validator nonce;
+- one direct-capable validator cannot advance another validator's nonce.
 
 Safe's Certora program and OpenZeppelin's formal specifications are process
 references. Loom properties must remain specific to Loom's narrower authority

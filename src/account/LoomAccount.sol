@@ -72,7 +72,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 public guardianRoot;
     uint8 public guardianThreshold;
     uint48 public frozenUntil;
-    uint256 public directExecutionNonce;
+    mapping(address validator => uint256 nonce) public directExecutionNonces;
 
     mapping(uint256 moduleTypeId => mapping(address module => bool)) private _modules;
     address[] private _validators;
@@ -224,7 +224,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (validUntil < block.timestamp || !_modules[ModuleType.VALIDATOR][validator]) {
             revert InvalidDirectExecution();
         }
-        uint256 nonce = directExecutionNonce++;
+        uint256 nonce = directExecutionNonces[validator]++;
         bytes32 executionHash = directExecutionDigest(validator, mode, executionCalldata, nonce, validUntil);
         bytes memory accountCall = abi.encodeCall(this.execute, (mode, executionCalldata));
         try ILoomDirectValidator(validator)

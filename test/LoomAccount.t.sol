@@ -17,6 +17,7 @@ import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
 import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {IGuardianVerifier} from "../src/interfaces/IGuardianVerifier.sol";
+import {RejectingDirectValidator} from "./mocks/RejectingDirectValidator.sol";
 
 interface Vm {
     function warp(uint256) external;
@@ -341,12 +342,13 @@ contract LoomDirectExecutionTest {
         bytes memory executionCalldata =
             abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (41))));
         uint48 validUntil = type(uint48).max;
-        bytes memory signature = _sign(mode, executionCalldata, account.directExecutionNonce(), validUntil);
+        bytes memory signature =
+            _sign(mode, executionCalldata, account.directExecutionNonces(address(validator)), validUntil);
 
         account.executeDirect(address(validator), mode, executionCalldata, validUntil, signature);
 
         require(target.value() == 41, "direct execution failed");
-        require(account.directExecutionNonce() == 1, "direct nonce did not advance");
+        require(account.directExecutionNonces(address(validator)) == 1, "direct nonce did not advance");
         (bool replayed,) = address(account)
             .call(
                 abi.encodeCall(
@@ -361,7 +363,8 @@ contract LoomDirectExecutionTest {
         bytes memory executionCalldata =
             abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (42))));
         uint48 expiredAt = 1;
-        bytes memory signature = _sign(mode, executionCalldata, account.directExecutionNonce(), expiredAt);
+        bytes memory signature =
+            _sign(mode, executionCalldata, account.directExecutionNonces(address(validator)), expiredAt);
 
         vm.warp(2);
         (bool expired,) = address(account)
@@ -446,6 +449,92 @@ contract LoomDirectExecutionTest {
             );
         require(!executed, "stale-config direct execution succeeded");
         require(target.value() == 0, "stale-config direct execution changed state");
+    }
+
+    function testDirectNoncesAreIsolatedByValidator() public {
+        ECDSAValidator secondValidator = new ECDSAValidator();
+        bytes memory install = abi.encodeCall(
+            LoomAccount.installModule,
+            (
+                ModuleType.VALIDATOR,
+                address(secondValidator),
+                abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(hook)))
+            )
+        );
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, install, account.MIN_CONFIG_DELAY()));
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory scheduleExecution = abi.encode(ExecutionLib.Execution(address(account), 0, schedule));
+        uint48 validUntil = type(uint48).max;
+        account.executeDirect(
+            address(validator), mode, scheduleExecution, validUntil, _sign(mode, scheduleExecution, 0, validUntil)
+        );
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, install);
+
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (46))));
+        bytes32 secondDigest =
+            account.directExecutionDigest(address(secondValidator), mode, executionCalldata, 0, validUntil);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, secondDigest);
+        account.executeDirect(address(secondValidator), mode, executionCalldata, validUntil, abi.encodePacked(r, s, v));
+
+        require(account.directExecutionNonces(address(validator)) == 1, "first validator nonce changed");
+        require(account.directExecutionNonces(address(secondValidator)) == 1, "second validator nonce missing");
+    }
+
+    function testRejectedAndRevertingDirectExecutionDoNotConsumeNonce() public {
+        RejectingDirectValidator rejecting = new RejectingDirectValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(rejecting), "");
+        LoomAccount rejectingAccount = new LoomAccount(
+            address(new MockEntryPoint()), keccak256("rejecting-guardians"), 1, keccak256("rejecting-config"), modules
+        );
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (47))));
+        (bool rejected,) = address(rejectingAccount)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (address(rejecting), bytes32(0), executionCalldata, type(uint48).max, bytes(""))
+                )
+            );
+        require(!rejected, "rejecting validator accepted direct execution");
+        require(rejectingAccount.directExecutionNonces(address(rejecting)) == 0, "rejected signature consumed nonce");
+
+        bytes memory revertingExecution =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.fail, ())));
+        uint48 validUntil = type(uint48).max;
+        bytes memory signature = _sign(bytes32(0), revertingExecution, 0, validUntil);
+        (bool executed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (address(validator), bytes32(0), revertingExecution, validUntil, signature)
+                )
+            );
+        require(!executed, "reverting direct execution succeeded");
+        require(account.directExecutionNonces(address(validator)) == 0, "reverting execution consumed nonce");
+    }
+
+    function testDirectBatchIsAtomic() public {
+        ExecutionLib.Execution[] memory executions = new ExecutionLib.Execution[](2);
+        executions[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (48)));
+        executions[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.fail, ()));
+        bytes32 mode = account.BATCH_EXECUTION_MODE();
+        bytes memory executionCalldata = abi.encode(executions);
+        uint48 validUntil = type(uint48).max;
+        bytes memory signature = _sign(mode, executionCalldata, 0, validUntil);
+
+        (bool executed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect, (address(validator), mode, executionCalldata, validUntil, signature)
+                )
+            );
+        require(!executed, "reverting direct batch succeeded");
+        require(target.value() == 0, "direct batch was not atomic");
+        require(account.directExecutionNonces(address(validator)) == 0, "reverting direct batch consumed nonce");
     }
 
     function testFrozenAccountRejectsOrdinaryDirectExecution() public {

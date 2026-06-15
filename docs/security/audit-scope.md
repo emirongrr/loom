@@ -63,6 +63,8 @@ especially EntryPoint validation, nonce handling, and sender creation.
 23. Direct execution cannot replay, use an uninstalled or non-direct validator,
     bypass validator policy, bypass freeze, bypass hooks, or survive expiry or
     a configuration change.
+24. Direct nonces are isolated per validator and rejected or reverting direct
+    executions cannot consume a nonce.
 
 ## Reviewer focus areas
 

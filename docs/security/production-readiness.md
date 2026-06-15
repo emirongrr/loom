@@ -26,7 +26,8 @@ does not make a deployment production-ready.
 - Official EntryPoint counterfactual single, atomic batch, and sponsored
   paymaster validation/post-operation lifecycle tests.
 - Provider-independent direct execution replay, expiry, policy, freeze, hook,
-  configuration-invalidation, and atomicity tests.
+  configuration-invalidation, validator nonce isolation, rollback, P-256/MFA,
+  and atomicity tests.
 - Halmos symbolic property workflow for core authority invariants.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
