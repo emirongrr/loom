@@ -2,16 +2,18 @@
 
 Describe the concrete user, security, or interoperability problem.
 
-## Change
+## Scope
 
-Describe the smallest behavior change that resolves the problem.
+Describe the smallest behavior change that resolves the problem. Keep unrelated
+refactors and documentation changes in separate pull requests.
 
 ## Evidence
 
 - [ ] Added or updated tests
 - [ ] `npm run verify` passes
 - [ ] Gas or bytecode changes are explained
-- [ ] Threat model, architecture, or decision record updated when required
+- [ ] This pull request has one reviewable purpose
+- [ ] Documentation is unchanged or tracked in a separate `docs:` pull request
 
 ## Security review
 

@@ -1,0 +1,34 @@
+name: pull-request-policy
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: Validate title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a conventional title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|refactor|perf|test|build|ci|chore|docs|security)(\([a-z0-9][a-z0-9._/-]*\))?!?: [a-z0-9].+$'
+          if ! printf '%s' "$PR_TITLE" | grep -Eq "$pattern"; then
+            echo "::error::PR title must use: type(optional-scope): lowercase description"
+            echo "::error::Allowed types: feat, fix, refactor, perf, test, build, ci, chore, docs, security"
+            echo "::error::Example: fix(account): isolate direct execution nonces"
+            exit 1
+          fi
