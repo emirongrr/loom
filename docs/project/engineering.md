@@ -5,6 +5,12 @@ iteration, simplicity, dogfooding, and process appropriate to the project's
 maturity. Process exists to shorten feedback and expose risk, not to create
 the appearance of certainty.
 
+The repository is past the unconstrained prototype phase: the account core
+works, and failures now have a meaningful security cost. Production paths
+therefore require small changes, review, tests, and measured evidence.
+Uncertain research may still move quickly, but it must remain clearly isolated
+from production claims and immutable authority.
+
 ## Working principles
 
 | Principle | Loom practice | Evidence |
@@ -16,6 +22,38 @@ the appearance of certainty.
 | Dogfood | One-command local core verification; CI adds coverage, static analysis, and formal checks | `npm run verify:quick`, `npm run verify`, `.github/workflows` |
 | Generalize last | Add profiles and adapters only after a concrete repeated need | limited ERC-7579 profile and bounded validators |
 | Add process when mature | Use release gates and dependency-ordered slices now that the prototype works | `release-plan.md` |
+
+## Feedback Loops
+
+- Begin with observation: reproduce the behavior and choose a metric or
+  security property before changing code.
+- Prefer the smallest end-to-end vertical slice that can be executed and
+  evaluated over a large horizontal foundation.
+- Merge frequently, but never use speed to bypass review or evidence for an
+  authority change.
+- Use small proofs of concept to reduce uncertainty. Keep them outside the
+  production authority path until their assumptions and failure modes are
+  understood.
+- Keep pipelines readable and debuggable. A failed check must explain what
+  evidence is missing.
+- Dogfood independent build, deployment, recovery, direct execution, and
+  walkaway procedures.
+
+## Complexity Budget
+
+Complexity is a security cost. A new abstraction must remove demonstrated
+repeated complexity or establish a required interoperability boundary.
+
+Repeating a small explicit pattern can be safer than introducing a general
+mechanism with broader authority. Optimize only after measuring a real
+requirement, and measure again after the change.
+
+## Process By Uncertainty
+
+Use experiments when the problem is not understood. Use milestones, dependency
+ordering, release gates, and thorough review when the behavior and target are
+understood. A new research problem may temporarily return to experimentation,
+but experimental assumptions must not silently enter production contracts.
 
 ## Product quality scorecard
 

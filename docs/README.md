@@ -1,15 +1,21 @@
 # Documentation
 
 Loom's documentation is organized by responsibility. Start with the product
-principles and architecture before reviewing implementation details.
+principles, design foundations, and architecture before reviewing
+implementation details.
 
 ## Project
 
 - [Product principles](project/principles.md)
+- [Design foundations](project/foundations.md)
 - [Engineering practices](project/engineering.md)
 - [Release plan](project/release-plan.md)
 - [Roadmap](project/roadmap.md)
 - [Ecosystem review](project/ecosystem-review.md)
+
+The project documents define what Loom is trying to preserve: user ownership,
+privacy, walkaway operation, recovery without custodians, and modular
+extension without hidden upgrade authority.
 
 ## Design
 

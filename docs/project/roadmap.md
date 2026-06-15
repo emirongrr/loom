@@ -39,7 +39,10 @@ pressure.
 | Granular sessions | Enforce target/action/value/time/use/paymaster bounds | Translate permission requests and display exact authority |
 | Multiple credentials | Enforce independent credentials and thresholds | Credential creation, backup, health checks, and rotation UX |
 | Recovery | Enforce delayed, cancelable, visible recovery state | Notify users and provide provider-independent recovery tools |
+| Sovereign migration | Enforce delayed, cancelable, destination-bound exit batches | Build safe asset migration plans and publish through independent paths |
+| Vault policy | Enforce stricter delayed movement for long-term storage modules | Separate daily spending from savings and explain withdrawal latency |
 | Token-fee paymaster | Bind limited permissions to an explicitly selected paymaster | Quote fees, compare providers, protect privacy, and keep native fallback |
+| L1-rooted cross-chain authority | Expose local config roots until proof sync exists | Verify L1 roots, finality, and L2 state without leaking the user's global graph |
 
 ## Token-fee paymaster policy
 
@@ -72,8 +75,17 @@ native gas asset.
 4. Visible, delayed, cancelable recovery state machine. Implemented; requires
    independent audit and wallet monitoring UX.
 5. Limited ERC-7579 adapters only where they preserve Loom's authority model.
-6. Privacy-preserving client, independent infrastructure paths, and WalletBeat
+6. Sovereign migration rehearsals, vault policy design, and asset-migration
+   atomicity tests.
+7. Privacy-preserving client, independent infrastructure paths, and WalletBeat
    Stage 2 validation.
-7. Trustless cross-chain configuration after a separately audited proof
+8. Trustless cross-chain configuration after a separately audited proof
    protocol; no multisig bridge or Loom-operated signer may become account
    authority.
+
+## Core boundary
+
+Privacy adapters, viewing keys, cross-chain config synchronization, L1
+keystore proof verification, and ZK guardian setup proofs are roadmap items,
+not current core dependencies. They must remain optional until their verifier,
+metadata, liveness, and failure assumptions are independently reviewed.
