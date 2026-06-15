@@ -21,6 +21,16 @@ The core can receive ETH and accepts safe ERC-721 and ERC-1155 transfers
 through stateless receiver callbacks. These callbacks do not grant execution
 authority.
 
+The account also exposes a delayed sovereign migration state machine. A user
+can schedule an exact atomic batch that moves assets or authority toward a
+specific destination account after the configuration delay. The commitment binds
+the destination address, destination runtime code hash, destination
+`configHash`, call batch hash, current `configVersion`, account-local migration
+nonce, and chain ID. Migration execution is permissionless after the delay, but
+still passes through freeze checks, active hooks, and policy accounting. The
+account can cancel the pending migration through a self-call, including while
+frozen.
+
 ## Authorization
 
 UserOperation signatures encode `(validator, validatorSignature)`. The account
@@ -96,6 +106,12 @@ and recovery-module configuration calls require at least 72 hours. Scheduled
 calls are public to execute after their delay and can be cancelled before
 execution. Guardians never receive general UserOperation or ERC-1271
 authority.
+
+Sovereign migration is treated as a high-risk delayed account action, not as an
+upgrade path. It does not grant Loom, a factory, or a module registry any
+authority over the source account. It also does not implement cross-chain
+configuration synchronization: each chain remains locally configured until a
+separate trustless proof protocol is specified and audited.
 
 ## Cross-chain readiness
 

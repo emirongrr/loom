@@ -15,6 +15,7 @@ Security claims are valid only under the assumptions listed here and in
 | Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
+| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code/config binding, calls hash, config-version invalidation, cancellation, expiry, atomic batch, installed hooks |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
 | Factory and deployment | Select immutable account inputs | Wrong EntryPoint, module, guardian root, or verifier | Reproducible manifests and independent verification |
 | Wallet client | Constructs and explains authority | Clear-signing failure, metadata leakage, unsafe defaults | Open-source independent clients and the walkaway test |
@@ -24,8 +25,8 @@ Security claims are valid only under the assumptions listed here and in
 - The account permanently binds one EntryPoint for ERC-4337. Direct signed
   execution preserves provider-independent publication. Immediate direct
   execution remains policy-limited; arbitrary high-risk calls retain their
-  visible delay. An exact atomic migration-intent protocol remains to be
-  implemented and audited.
+  visible delay. The migration state machine provides delayed account exit but
+  does not change the EntryPoint for the source account.
 - Installed validators, hooks, recovery modules, and guardian verifiers are
   trusted code selected by the user. Timelocks make changes visible; they do
   not make malicious code safe.
@@ -42,6 +43,9 @@ Security claims are valid only under the assumptions listed here and in
 - Contracts cannot provide transaction interpretation, private RPC access,
   private transfers, chain verification, force withdrawals, or censorship-
   resistant publication UX by themselves.
+- Migration cannot guarantee that every asset has a safe or standard transfer
+  interface. A migration batch is atomic, but users and clients must still
+  construct asset-specific calls correctly.
 
 ## Release-blocking residual risks
 
@@ -52,8 +56,9 @@ Security claims are valid only under the assumptions listed here and in
 4. Formal proofs cover selected safety properties, not full functional
    correctness, liveness, cryptography, compiler correctness, or every
    external-contract behavior.
-5. Direct signed execution exists, but the exact atomic sovereign migration
-   protocol is designed and not implemented.
+5. Sovereign migration is implemented but unaudited and has no live migration
+   rehearsal across deployed accounts, token portfolios, and independent
+   publishers.
 6. Guardian-tree construction, proof-of-possession, encrypted backup, and
    verifier deployment correctness remain client/deployment responsibilities.
 

@@ -77,6 +77,41 @@ ERC-5792 remains a wallet-client RPC responsibility. A future client must
 report only capabilities that have corresponding conformance and integration
 tests.
 
+## Sovereign migration
+
+`scheduleMigration` creates a visible, delayed, cancellable exit intent. The
+intent commits to:
+
+- destination account;
+- destination runtime code hash;
+- destination `configHash`;
+- exact atomic call batch hash;
+- current source `configVersion`;
+- source migration nonce;
+- execution delay and expiry;
+- current chain ID through `migrationIdFor`.
+
+The account itself must schedule and cancel migrations through `execute`, so a
+normal validator cannot silently bypass graded access. Once ready, anyone can
+publish `executeMigration`; this supports the walkaway test when the original
+wallet client, bundler, or frontend is unavailable.
+
+Execution remains conservative:
+
+- migration cannot run while the account is frozen;
+- migration cannot run before `readyAt`, after `expiresAt`, or after a source
+  config change;
+- destination code and destination config must still match the commitment;
+- the call batch must match the committed hash exactly;
+- the batch is atomic;
+- active hooks receive a synthetic batch `execute` call and can enforce policy;
+- cancellation increments the migration nonce and clears the pending intent.
+
+Loom deliberately does not use chain-ID-less replayable migration in the core.
+Cross-chain key and config updates can create account-linkage metadata and
+require finality and proof assumptions that do not belong in the local account
+until a separately reviewed L1-rooted protocol exists.
+
 ## Limited ERC-7579 module adapter
 
 `ERC7579ModuleAdapter` provides the standard `onInstall(bytes)`,

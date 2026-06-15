@@ -65,6 +65,14 @@ especially EntryPoint validation, nonce handling, and sender creation.
     a configuration change.
 24. Direct nonces are isolated per validator and rejected or reverting direct
     executions cannot consume a nonce.
+25. Sovereign migration cannot execute before its delay, after expiry, after
+    cancellation, after source configuration changes, or against a destination
+    whose code hash or `configHash` differs from the committed values.
+26. Sovereign migration executes only the exact committed atomic batch, remains
+    blocked while frozen, and cannot bypass installed hooks or policy
+    accounting.
+27. Failed or reverting migration execution preserves the pending migration and
+    cannot consume the migration nonce.
 
 ## Reviewer focus areas
 
@@ -87,6 +95,8 @@ especially EntryPoint validation, nonce handling, and sender creation.
 - Direct-execution domain separation, nonce/config invalidation, explicit
   validator capability, and hook behavior when the caller is an arbitrary
   transaction publisher rather than the EntryPoint.
+- Sovereign migration identity, cancellation, expiry, source-config
+  invalidation, destination binding, hook enforcement, and atomic rollback.
 - Non-standard ERC-20 return values and policy calldata parsing.
 
 ## Out of scope

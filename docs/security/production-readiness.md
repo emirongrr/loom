@@ -28,6 +28,9 @@ does not make a deployment production-ready.
 - Provider-independent direct execution replay, expiry, policy, freeze, hook,
   configuration-invalidation, validator nonce isolation, rollback, P-256/MFA,
   and atomicity tests.
+- Sovereign migration delay, destination code/config binding, call commitment,
+  expiry, cancellation, freeze behavior, hook enforcement, atomic rollback, and
+  stale-config invalidation tests.
 - Halmos symbolic property workflow for core authority invariants.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
@@ -40,8 +43,8 @@ does not make a deployment production-ready.
 
 Coverage gates exclude symbolic formal harnesses because Halmos, not Forge
 coverage, executes them. The current unfiltered report excluding formal
-harnesses is approximately 84.9% lines and 57.3% branches. `LoomAccount`
-coverage is approximately 85.9% lines and 60.0% branches. `RecoveryManager`
+harnesses is approximately 86.4% lines and 60.5% branches. `LoomAccount`
+coverage is approximately 86.8% lines and 59.6% branches. `RecoveryManager`
 coverage is approximately 97.7% lines and 75.0% branches. Before audit freeze,
 every security-critical production module should reach at least 80% lines and
 60% branches and the production-source target must become an enforced CI
@@ -79,6 +82,9 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
 - Public testnet deployment with bundler interoperability tests.
 - Optional token-fee paymaster interoperability tests proving native-gas
   fallback and rejection of unapproved paymasters.
+- Live migration rehearsal between independently deployed source and
+  destination accounts, including ERC-20 portfolios, cancellation, expiry, and
+  permissionless execution through a non-Loom publisher.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.

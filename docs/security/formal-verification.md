@@ -18,6 +18,11 @@ The current properties prove, within their harness assumptions:
   invalidates a stale scheduled operation;
 - recovery cannot execute before its delay and successful recovery replaces
   the complete committed validator set and guardian root.
+- migration cannot execute before its delay;
+- migration rejects a non-committed call batch without consuming the pending
+  migration;
+- a reverting migration batch rolls back earlier calls and preserves the
+  pending migration.
 
 These are selected safety proofs, not a proof that the wallet is "completely
 correct." They do not prove liveness, cryptographic assumptions, compiler
@@ -55,6 +60,8 @@ possible compositions of installed modules.
 - every successful module/config transition preserves module count bounds.
 - rejected and reverting direct execution cannot consume a validator nonce;
 - one direct-capable validator cannot advance another validator's nonce.
+- migration cancellation, expiry, stale-config rejection, and destination
+  binding need additional symbolic coverage beyond the current unit tests.
 
 Safe's Certora program and OpenZeppelin's formal specifications are process
 references. Loom properties must remain specific to Loom's narrower authority
