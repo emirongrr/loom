@@ -11,6 +11,7 @@ interface ILoomAccount {
     function frozenUntil() external view returns (uint48);
     function isExecutingScheduled() external view returns (bool);
     function isModuleInstalled(uint256 moduleTypeId, address module) external view returns (bool);
+    function execute(bytes32 mode, bytes calldata executionCalldata) external payable;
     function notifyConfigChange(bytes32 changeHash) external;
     function recoverConfiguration(
         address[] calldata oldValidators,

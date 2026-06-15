@@ -33,11 +33,25 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error EmptyBatch();
     error FreezeActive();
     error InvalidDirectExecution();
+    error MigrationAlreadyPending();
+    error MigrationNotPending();
+    error InvalidMigration();
 
     struct ModuleInit {
         uint256 moduleTypeId;
         address module;
         bytes initData;
+    }
+
+    struct PendingMigration {
+        address destination;
+        bytes32 destinationCodeHash;
+        bytes32 destinationConfigHash;
+        bytes32 callsHash;
+        uint48 readyAt;
+        uint48 expiresAt;
+        uint64 configVersion;
+        uint64 nonce;
     }
 
     uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
@@ -82,6 +96,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     mapping(bytes32 operationId => uint48 readyAt) public scheduledOperations;
     mapping(bytes32 guardianLeaf => uint256) public freezeNonces;
     mapping(bytes32 guardianLeaf => uint64) public lastFreezeConfigVersion;
+    PendingMigration public pendingMigration;
+    uint64 public migrationNonce;
     bool private _executingScheduled;
     bool private _executionLocked;
 
@@ -95,6 +111,17 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event OperationExecuted(bytes32 indexed operationId);
     event AllowanceRevoked(address indexed token, address indexed spender);
     event DirectExecution(address indexed validator, uint256 indexed nonce, bytes32 indexed executionHash);
+    event MigrationScheduled(
+        bytes32 indexed migrationId,
+        address indexed destination,
+        bytes32 indexed destinationCodeHash,
+        bytes32 destinationConfigHash,
+        bytes32 callsHash,
+        uint48 readyAt,
+        uint48 expiresAt
+    );
+    event MigrationCancelled(bytes32 indexed migrationId);
+    event MigrationExecuted(bytes32 indexed migrationId, address indexed destination);
 
     constructor(
         address entryPoint_,
@@ -495,6 +522,99 @@ contract LoomAccount is IERC1271, ILoomAccount {
         emit OperationCancelled(operationId);
     }
 
+    function scheduleMigration(
+        address destination,
+        bytes32 destinationCodeHash,
+        bytes32 destinationConfigHash,
+        bytes32 callsHash,
+        uint48 delay,
+        uint48 executionWindow
+    ) external onlySelf returns (bytes32 migrationId) {
+        if (pendingMigration.readyAt != 0) revert MigrationAlreadyPending();
+        if (
+            destination == address(0) || destination == address(this) || destinationCodeHash == bytes32(0)
+                || destinationConfigHash == bytes32(0) || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY
+                || executionWindow == 0
+        ) revert InvalidMigration();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint48 readyAt = uint48(block.timestamp) + delay;
+        uint48 expiresAt = readyAt + executionWindow;
+        pendingMigration = PendingMigration({
+            destination: destination,
+            destinationCodeHash: destinationCodeHash,
+            destinationConfigHash: destinationConfigHash,
+            callsHash: callsHash,
+            readyAt: readyAt,
+            expiresAt: expiresAt,
+            configVersion: configVersion,
+            nonce: migrationNonce
+        });
+        migrationId = migrationIdFor(pendingMigration);
+        emit MigrationScheduled(
+            migrationId, destination, destinationCodeHash, destinationConfigHash, callsHash, readyAt, expiresAt
+        );
+    }
+
+    function cancelMigration() external onlySelf {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0) revert MigrationNotPending();
+        bytes32 migrationId = migrationIdFor(migration);
+        delete pendingMigration;
+        ++migrationNonce;
+        emit MigrationCancelled(migrationId);
+    }
+
+    function executeMigration(ExecutionLib.Execution[] calldata calls) external nonReentrantExecution {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0 || keccak256(abi.encode(calls)) != migration.callsHash) {
+            revert InvalidMigration();
+        }
+        // Timestamp drift is negligible relative to the multi-day security delay.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < frozenUntil) revert AccountFrozen();
+        // Timestamp drift is negligible relative to the multi-day security delay.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < migration.readyAt) revert OperationNotReady();
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > migration.expiresAt || configVersion != migration.configVersion) {
+            revert InvalidMigration();
+        }
+        if (migration.destination.codehash != migration.destinationCodeHash) revert InvalidMigration();
+        if (ILoomAccount(migration.destination).configHash() != migration.destinationConfigHash) {
+            revert InvalidMigration();
+        }
+        bytes32 migrationId = migrationIdFor(migration);
+        delete pendingMigration;
+        ++migrationNonce;
+
+        bytes memory executionCalldata = abi.encode(calls);
+        bytes memory accountCall = abi.encodeCall(this.execute, (BATCH_EXECUTION_MODE, executionCalldata));
+        (address[] memory checkedHooks, bytes[] memory hookData) = _preCheck(msg.sender, accountCall);
+        if (calls.length == 0) revert EmptyBatch();
+        for (uint256 i; i < calls.length; ++i) {
+            _execute(calls[i]);
+        }
+        _postCheck(checkedHooks, hookData);
+        emit MigrationExecuted(migrationId, migration.destination);
+    }
+
+    function migrationIdFor(PendingMigration memory migration) public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                address(this),
+                migration.destination,
+                migration.destinationCodeHash,
+                migration.destinationConfigHash,
+                migration.callsHash,
+                migration.readyAt,
+                migration.expiresAt,
+                migration.configVersion,
+                migration.nonce,
+                block.chainid
+            )
+        );
+    }
+
     function executeScheduled(address target, uint256 value, bytes calldata data) external nonReentrantExecution {
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -650,7 +770,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
         if (execution.target != address(this)) return false;
         return selector == this.setGuardianConfig.selector || selector == this.installModule.selector
-            || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector;
+            || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector
+            || selector == this.cancelMigration.selector;
     }
 
     function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {

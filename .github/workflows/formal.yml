@@ -37,3 +37,5 @@ jobs:
         run: halmos --contract LoomAccountExecutionFormal
       - name: Verify recovery properties
         run: halmos --contract LoomAccountRecoveryFormal
+      - name: Verify migration properties
+        run: halmos --contract LoomAccountMigrationFormal
