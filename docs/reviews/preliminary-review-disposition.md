@@ -7,7 +7,7 @@ provided before audit. It is not an audit report.
 |---|---|
 | HIGH-01 Policy destination restrictions | Fixed for standard ERC-20 calls with optional exact recipient/spender binding. Rich allowlists remain future audited work. |
 | HIGH-02 WebAuthn user-supplied offsets | Fixed by removing signer-supplied offsets and requiring Loom's exact canonical same-origin `clientDataJSON` encoding. Browser compatibility remains release-test scope. |
-| HIGH-03 Session `policyRoot` naming | Fixed: renamed to `callHash`; V1 intentionally authorizes one exact account call. |
+| HIGH-03 Session `policyRoot` naming | Fixed: renamed to `callHash`; the exact-call session intentionally authorizes one complete account call. |
 | HIGH-04 Immediate session grants | Fixed: grants require scheduled config execution and advance `configVersion`; revocation remains immediate. |
 | HIGH-05 Guardian ERC-1271 scope | Fixed by removing the general guardian validator. Guardians now have only emergency freeze and visible delayed recovery authority. |
 | MEDIUM-01 P-256 malleability | Fixed: zero and high-s signatures are rejected before precompile or fallback verification. |

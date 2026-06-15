@@ -21,6 +21,9 @@
   trigger an emergency freeze.
 - A Loom-operated service, default infrastructure provider, or module registry
   becoming a permanent account-liveness dependency.
+- Loss of the configured EntryPoint permanently preventing authorized account
+  publication; installed direct-capable validators can use the same policies
+  and hooks without it.
 
 ## Assumptions
 
@@ -61,7 +64,7 @@
   runs before account runtime code exists; scheduled installation runs under
   the account execution reentrancy guard. Every module init path still belongs
   in audit scope.
-- V1 does not implement cross-chain state proof verification.
+- The current account does not implement cross-chain state proof verification.
 - Multiple passkeys improve authentication availability and compromise
   resistance but do not replace guardian recovery.
 - Recovery replaces every validator committed in the visible proposal and
@@ -70,7 +73,7 @@
 - A committed guardian verifier becoming unavailable can impair recovery.
   Production configurations should use multiple independent guardians and
   immutable verifier deployments.
-- V1 does not itself provide private transfers, light-client verification, or
+- The contracts do not themselves provide private transfers, light-client verification, or
   L2 force-withdrawal construction; those belong to the future wallet client.
 - Contracts are unaudited and must not secure production assets.
 - The current contract repository cannot itself provide private chain queries,

@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {IERC1271} from "../interfaces/IERC1271.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
+import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {ILoomHook} from "../interfaces/ILoomHook.sol";
 import {ILoomModule} from "../interfaces/ILoomModule.sol";
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
@@ -31,6 +32,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error InvalidTokenAllowance();
     error EmptyBatch();
     error FreezeActive();
+    error InvalidDirectExecution();
 
     struct ModuleInit {
         uint256 moduleTypeId;
@@ -57,6 +59,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant FREEZE_TYPEHASH =
         keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)");
+    bytes32 public constant DIRECT_EXECUTION_TYPEHASH = keccak256(
+        "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
+    );
     bytes32 private constant NAME_HASH = keccak256("LoomAccount");
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
@@ -67,6 +72,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 public guardianRoot;
     uint8 public guardianThreshold;
     uint48 public frozenUntil;
+    uint256 public directExecutionNonce;
 
     mapping(uint256 moduleTypeId => mapping(address module => bool)) private _modules;
     address[] private _validators;
@@ -88,6 +94,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event OperationCancelled(bytes32 indexed operationId);
     event OperationExecuted(bytes32 indexed operationId);
     event AllowanceRevoked(address indexed token, address indexed spender);
+    event DirectExecution(address indexed validator, uint256 indexed nonce, bytes32 indexed executionHash);
 
     constructor(
         address entryPoint_,
@@ -203,7 +210,65 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function execute(bytes32 mode, bytes calldata executionCalldata) external payable nonReentrantExecution {
         if (msg.sender != entryPoint && msg.sender != address(this)) revert OnlyEntryPoint();
-        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) revert UnsupportedExecutionMode();
+        _executeAuthorized(mode, executionCalldata, msg.sender, msg.data);
+    }
+
+    function executeDirect(
+        address validator,
+        bytes32 mode,
+        bytes calldata executionCalldata,
+        uint48 validUntil,
+        bytes calldata signature
+    ) external payable nonReentrantExecution {
+        // forge-lint: disable-next-line(block-timestamp)
+        if (validUntil < block.timestamp || !_modules[ModuleType.VALIDATOR][validator]) {
+            revert InvalidDirectExecution();
+        }
+        uint256 nonce = directExecutionNonce++;
+        bytes32 executionHash = directExecutionDigest(validator, mode, executionCalldata, nonce, validUntil);
+        bytes memory accountCall = abi.encodeCall(this.execute, (mode, executionCalldata));
+        try ILoomDirectValidator(validator)
+            .validateDirectExecution(address(this), executionHash, signature, accountCall) returns (
+            bool valid
+        ) {
+            if (!valid) revert InvalidDirectExecution();
+        } catch {
+            revert InvalidDirectExecution();
+        }
+        _executeAuthorized(mode, executionCalldata, msg.sender, accountCall);
+        emit DirectExecution(validator, nonce, executionHash);
+    }
+
+    function directExecutionDigest(
+        address validator,
+        bytes32 mode,
+        bytes calldata executionCalldata,
+        uint256 nonce,
+        uint48 validUntil
+    ) public view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                DIRECT_EXECUTION_TYPEHASH,
+                validator,
+                mode,
+                keccak256(executionCalldata),
+                nonce,
+                configVersion,
+                validUntil
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+    }
+
+    function _executeAuthorized(
+        bytes32 mode,
+        bytes calldata executionCalldata,
+        address caller,
+        bytes memory accountCall
+    ) internal {
+        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) {
+            revert UnsupportedExecutionMode();
+        }
         (bytes1 callType,) = ExecutionLib.mode(mode);
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -212,7 +277,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bool bypassHooks = _isHookRecoverySchedule(callType, executionCalldata);
         address[] memory checkedHooks = new address[](0);
         bytes[] memory hookData = new bytes[](0);
-        if (!bypassHooks) (checkedHooks, hookData) = _preCheck(msg.sender, msg.data);
+        if (!bypassHooks) (checkedHooks, hookData) = _preCheck(caller, accountCall);
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             _execute(abi.decode(executionCalldata, (ExecutionLib.Execution)));
         } else if (callType == ExecutionLib.CALLTYPE_BATCH) {
@@ -232,7 +297,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     function accountId() external pure returns (string memory) {
-        return "loom.contracts.1.0.0";
+        return "loom.account";
     }
 
     function supportsModule(uint256 moduleTypeId) external pure returns (bool) {
@@ -525,7 +590,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
-    function _preCheck(address caller, bytes calldata accountCall)
+    function _preCheck(address caller, bytes memory accountCall)
         internal
         returns (address[] memory checkedHooks, bytes[] memory hookData)
     {

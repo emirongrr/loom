@@ -1,12 +1,25 @@
-# Loom V1 Execution Profile
+# Loom Execution Profile
 
-Loom V1 exposes one execution entry point:
+Loom exposes the canonical execution entry point:
 
 ```solidity
 execute(bytes32 mode, bytes executionCalldata)
 ```
 
-Only the EntryPoint or the account itself may call it.
+Only the EntryPoint or the account itself may call it. The account also
+exposes `executeDirect`, a provider-independent publication path. Any caller
+may relay a direct execution, but it succeeds only with an installed validator
+that explicitly implements `ILoomDirectValidator`.
+
+Direct signatures bind the account, chain, validator, mode, execution calldata,
+monotonic direct nonce, current `configVersion`, and expiry. Direct execution
+then enters the same `execute` authorization body, freeze checks, hooks, policy
+accounting, and atomic execution behavior as EntryPoint execution. Session
+validators deliberately do not implement the direct-validator interface.
+
+Hooks receive the external transaction publisher as `caller` on the direct
+path. A hook must treat this value as transport context, not account authority;
+authorization comes from the direct validator and signed digest.
 
 ## Supported modes
 
@@ -68,6 +81,6 @@ encode the lifecycle callback as the `initData` or `deInitData` passed to the
 account. An adapter must also implement Loom's narrower validator, hook, or
 recovery runtime interface.
 
-This adapter does not make Loom V1 a generally conformant ERC-7579 account.
+This adapter does not make Loom a generally conformant ERC-7579 account.
 Executor and fallback modules remain unsupported, `executeFromExecutor`
 always reverts, and the single-call encoding remains Loom-specific.

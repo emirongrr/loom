@@ -2,13 +2,14 @@
 pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
+import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {WebAuthnP256} from "../libraries/WebAuthnP256.sol";
 
-contract MultiP256Validator is ILoomValidator {
+contract MultiP256Validator is ILoomValidator, ILoomDirectValidator {
     error AlreadyInitialized();
     error InvalidCredential();
     error DuplicateCredential();
@@ -137,6 +138,18 @@ contract MultiP256Validator is ILoomValidator {
 
     function isValidSignature(address, bytes32, bytes calldata) external pure returns (bool) {
         return false;
+    }
+
+    function validateDirectExecution(
+        address account,
+        bytes32 executionHash,
+        bytes calldata encodedSignatures,
+        bytes calldata accountCall
+    ) external view returns (bool) {
+        address hook = policyHooks[account];
+        return hook != address(0) && ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)
+            && IPolicyHook(hook).isLowRisk(account, accountCall)
+            && _verifyThreshold(account, executionHash, encodedSignatures);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {

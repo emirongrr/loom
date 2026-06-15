@@ -7,9 +7,10 @@ proxy, admin key, developer recovery path, or privileged factory operation.
 Every authority must be installed by the account and exercised through an
 installed validator.
 
-The account implements the ERC-4337 validation entry point, ERC-1271 signature
-validation, and Loom-specific single and atomic batch execution using the
-ERC-7579 mode-byte layout. V1 is not a conformant ERC-7579 account: its
+The account implements the ERC-4337 validation entry point, provider-independent
+direct signed execution, ERC-1271 signature validation, and Loom-specific
+single and atomic batch execution using the ERC-7579 mode-byte layout. Loom is
+not a conformant ERC-7579 account: its
 single-call encoding and module interfaces are intentionally narrower and are
 not plug-and-play compatible with standard ERC-7579 modules. Only validator
 and hook modules plus one narrowly scoped recovery module are supported.
@@ -47,6 +48,12 @@ will invoke the validator only when it is installed.
   immediate.
 - `ECDSAValidator` exists for testing, migration, and hardware-wallet
   integrations. It is not the preferred primary validator.
+
+`P256Validator`, `MultiP256Validator`, and `ECDSAValidator` explicitly support
+direct signed execution for EntryPoint-independent publication. Direct calls
+remain limited by the validator's low-risk policy, current configuration,
+expiry, freeze state, installed hooks, and account-wide replay nonce. Session
+validators do not receive this authority.
 
 Primary and session validators reject arbitrary ERC-1271 hashes because a hash
 alone cannot be classified by the policy hook. This prevents Permit-style
@@ -93,6 +100,6 @@ authority.
 ## Cross-chain readiness
 
 Every account exposes a locally maintained `configHash` and monotonically
-increasing `configVersion`. V1 uses local configuration and exposes no remote
+increasing `configVersion`. The current account uses local configuration and exposes no remote
 configuration application path. A future trustless synchronization mechanism
-requires a separately audited protocol and a new immutable account version.
+requires a separately audited protocol.

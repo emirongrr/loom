@@ -2,13 +2,14 @@
 pragma solidity 0.8.35;
 
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
+import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {WebAuthnP256} from "../libraries/WebAuthnP256.sol";
 
-contract P256Validator is ILoomValidator {
+contract P256Validator is ILoomValidator, ILoomDirectValidator {
     error InvalidPublicKey();
     error KeyAlreadyInitialized();
     error ConfigTimelockRequired();
@@ -90,6 +91,17 @@ contract P256Validator is ILoomValidator {
     function isValidSignature(address, bytes32, bytes calldata) external pure returns (bool) {
         // A hash alone cannot be classified by PolicyHook.
         return false;
+    }
+
+    function validateDirectExecution(
+        address account,
+        bytes32 executionHash,
+        bytes calldata signature,
+        bytes calldata accountCall
+    ) external view returns (bool) {
+        address hook = policyHooks[account];
+        return hook != address(0) && ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)
+            && IPolicyHook(hook).isLowRisk(account, accountCall) && _verify(account, executionHash, signature);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {

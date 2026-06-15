@@ -41,4 +41,30 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         assert(!ok);
         assert(target.value() == 0);
     }
+
+    function check_frozenAccountCannotExecuteDirectOrdinaryCall(uint256 newValue) public {
+        FormalGuardianVerifier verifier = new FormalGuardianVerifier();
+        bytes32 keyCommitment = keccak256("key");
+        bytes32 salt = keccak256("salt");
+        bytes32 leaf = keccak256(abi.encode(address(verifier), address(verifier).codehash, keyCommitment, salt));
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount account = new LoomAccount(address(this), leaf, 1, keccak256("config"), modules);
+        account.freeze(address(verifier), keyCommitment, salt, new bytes32[](0), "");
+        FormalTarget target = new FormalTarget();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue))));
+
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (address(validator), bytes32(0), executionCalldata, type(uint48).max, bytes(""))
+                )
+            );
+
+        assert(!ok);
+        assert(target.value() == 0);
+    }
 }

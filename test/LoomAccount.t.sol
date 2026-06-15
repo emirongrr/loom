@@ -8,6 +8,7 @@ import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
+import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 import {Base64Url} from "../src/libraries/Base64Url.sol";
 import {SessionKeyValidator} from "../src/validators/SessionKeyValidator.sol";
@@ -15,6 +16,7 @@ import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
 import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
+import {IGuardianVerifier} from "../src/interfaces/IGuardianVerifier.sol";
 
 interface Vm {
     function warp(uint256) external;
@@ -301,6 +303,192 @@ contract LoomAccountFactoryTest {
                 == predicted,
             "not idempotent"
         );
+    }
+}
+
+contract DirectExecutionGuardianVerifier is IGuardianVerifier {
+    function verify(bytes32, bytes32, bytes calldata) external pure returns (bool) {
+        return true;
+    }
+}
+
+contract LoomDirectExecutionTest {
+    Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    uint256 internal constant OWNER_KEY = 0xA11CE;
+    ECDSAValidator internal validator;
+    MockPolicyHook internal hook;
+    MockTarget internal target;
+    LoomAccount internal account;
+
+    function setUp() public {
+        validator = new ECDSAValidator();
+        hook = new MockPolicyHook();
+        target = new MockTarget();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(hook)))
+        );
+        account =
+            new LoomAccount(address(new MockEntryPoint()), keccak256("guardians"), 1, keccak256("config"), modules);
+    }
+
+    function testDirectExecutionIsPermissionlessAndReplayProtected() public {
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (41))));
+        uint48 validUntil = type(uint48).max;
+        bytes memory signature = _sign(mode, executionCalldata, account.directExecutionNonce(), validUntil);
+
+        account.executeDirect(address(validator), mode, executionCalldata, validUntil, signature);
+
+        require(target.value() == 41, "direct execution failed");
+        require(account.directExecutionNonce() == 1, "direct nonce did not advance");
+        (bool replayed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect, (address(validator), mode, executionCalldata, validUntil, signature)
+                )
+            );
+        require(!replayed, "direct signature replayed");
+    }
+
+    function testDirectExecutionRejectsExpiredAndNonDirectValidator() public {
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (42))));
+        uint48 expiredAt = 1;
+        bytes memory signature = _sign(mode, executionCalldata, account.directExecutionNonce(), expiredAt);
+
+        vm.warp(2);
+        (bool expired,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect, (address(validator), mode, executionCalldata, expiredAt, signature)
+                )
+            );
+        require(!expired, "expired direct execution accepted");
+
+        SessionKeyValidator session = new SessionKeyValidator();
+        LoomAccount.ModuleInit[] memory sessionModules = new LoomAccount.ModuleInit[](1);
+        sessionModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(session), "");
+        LoomAccount sessionAccount = new LoomAccount(
+            address(new MockEntryPoint()),
+            keccak256("session-guardians"),
+            1,
+            keccak256("session-config"),
+            sessionModules
+        );
+        (bool unsupported,) = address(sessionAccount)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect, (address(session), mode, executionCalldata, type(uint48).max, bytes(""))
+                )
+            );
+        require(!unsupported, "installed session validator gained direct authority");
+    }
+
+    function testDirectExecutionCannotBypassPrimaryPolicy() public {
+        ECDSAValidator restrictedValidator = new ECDSAValidator();
+        DenyPolicyHook denyHook = new DenyPolicyHook();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(denyHook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(restrictedValidator),
+            abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(denyHook)))
+        );
+        LoomAccount restricted =
+            new LoomAccount(address(new MockEntryPoint()), keccak256("guardians"), 1, keccak256("restricted"), modules);
+        bytes32 mode = restricted.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (44))));
+        uint48 validUntil = type(uint48).max;
+        bytes32 digest =
+            restricted.directExecutionDigest(address(restrictedValidator), mode, executionCalldata, 0, validUntil);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, digest);
+
+        (bool executed,) = address(restricted)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (address(restrictedValidator), mode, executionCalldata, validUntil, abi.encodePacked(r, s, v))
+                )
+            );
+        require(!executed, "direct execution bypassed primary policy");
+        require(target.value() == 0, "rejected direct execution changed state");
+    }
+
+    function testConfigChangeInvalidatesSignedDirectExecution() public {
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory oldExecution =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (45))));
+        uint48 validUntil = type(uint48).max;
+        bytes memory staleSignature = _sign(mode, oldExecution, 1, validUntil);
+
+        bytes memory update = abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("rotated-guardians"), uint8(1)));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, update, account.MIN_CONFIG_DELAY()));
+        bytes memory scheduleExecution = abi.encode(ExecutionLib.Execution(address(account), 0, schedule));
+        bytes memory scheduleSignature = _sign(mode, scheduleExecution, 0, validUntil);
+        account.executeDirect(address(validator), mode, scheduleExecution, validUntil, scheduleSignature);
+
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, update);
+        (bool executed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect, (address(validator), mode, oldExecution, validUntil, staleSignature)
+                )
+            );
+        require(!executed, "stale-config direct execution succeeded");
+        require(target.value() == 0, "stale-config direct execution changed state");
+    }
+
+    function testFrozenAccountRejectsOrdinaryDirectExecution() public {
+        DirectExecutionGuardianVerifier guardianVerifier = new DirectExecutionGuardianVerifier();
+        bytes32 keyCommitment = keccak256("key");
+        bytes32 salt = keccak256("salt");
+        bytes32 leaf =
+            keccak256(abi.encode(address(guardianVerifier), address(guardianVerifier).codehash, keyCommitment, salt));
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(hook)))
+        );
+        LoomAccount frozenAccount =
+            new LoomAccount(address(new MockEntryPoint()), leaf, 1, keccak256("frozen-config"), modules);
+        frozenAccount.freeze(address(guardianVerifier), keyCommitment, salt, new bytes32[](0), "");
+
+        bytes32 mode = frozenAccount.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (43))));
+        uint48 validUntil = type(uint48).max;
+        bytes32 digest = frozenAccount.directExecutionDigest(address(validator), mode, executionCalldata, 0, validUntil);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, digest);
+        (bool executed,) = address(frozenAccount)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (address(validator), mode, executionCalldata, validUntil, abi.encodePacked(r, s, v))
+                )
+            );
+        require(!executed, "frozen direct execution succeeded");
+        require(target.value() == 0, "frozen direct execution changed state");
+    }
+
+    function _sign(bytes32 mode, bytes memory executionCalldata, uint256 nonce, uint48 validUntil)
+        internal
+        returns (bytes memory)
+    {
+        bytes32 digest = account.directExecutionDigest(address(validator), mode, executionCalldata, nonce, validUntil);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, digest);
+        return abi.encodePacked(r, s, v);
     }
 }
 

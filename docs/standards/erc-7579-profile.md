@@ -1,9 +1,9 @@
 # ERC-7579 Limited Profile Conformance
 
-Loom V1 intentionally implements a constrained subset and does not claim full
+Loom intentionally implements a constrained subset and does not claim full
 ERC-7579 conformance.
 
-| Surface | Loom V1 result |
+| Surface | Loom result |
 |---|---|
 | Validator modules | Supported through the Loom validator runtime interface |
 | Hook modules | Supported through the Loom hook runtime interface |

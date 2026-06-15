@@ -70,7 +70,7 @@ compatible until conformance tests prove the exact supported surface.
 | Module safety | Timelocked install/remove, bounded counts, broken-hook removal path | Rhinestone registry hook and audited module catalogs | Add module-codehash allowlisting/attestation as optional policy |
 | Token receivers | ETH plus stateless ERC-721/ERC-1155 safe-transfer receivers | Common in mature smart accounts | Add integration vectors for major token implementations |
 | Contract creation | Can call an external factory | Alchemy can CREATE/CREATE2 directly | Optional; avoid unless a concrete wallet workflow needs it |
-| EIP-7702 | Not supported | Openfort, Porto, delegation frameworks | Deliberate non-goal for V1; monitor without coupling immutable core |
+| EIP-7702 | Not supported | Openfort, Porto, delegation frameworks | Deliberate non-goal; monitor without coupling immutable core |
 | Upgradeability | No proxy or admin | Many modular accounts are upgradeable | Loom advantage for unruggability; migrations require new modules/account version |
 | Audits/deployments | Pre-audit, no public deployments | Safe, Coinbase, Nexus, Kernel have stronger deployment history | Independent audit, testnet soak, reproducible deployment manifests |
 | SDK/tooling | Contracts only | Kernel, Safe, Coinbase, Rhinestone have SDK ecosystems | Add reference encoder, account client and compatibility test vectors later |
@@ -104,7 +104,7 @@ supported browsers and platforms are mandatory before release.
 - One guardian may freeze without gaining asset-transfer authority.
 - A reverting hook cannot permanently prevent its own delayed removal.
 - Arbitrary delegatecall, executor authority, and fallback modules are
-  intentionally excluded from V1.
+  intentionally excluded from the immutable account.
 
 These are meaningful security advantages. They should not be discarded merely
 to match feature-rich accounts.
