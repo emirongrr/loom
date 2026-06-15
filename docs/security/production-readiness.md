@@ -29,6 +29,7 @@ does not make a deployment production-ready.
   configuration-invalidation, validator nonce isolation, rollback, P-256/MFA,
   and atomicity tests.
 - Sovereign migration delay, destination code/config binding, call commitment,
+  optional codehash-only destination binding, guardian-threshold cancellation,
   expiry, cancellation, freeze behavior, hook enforcement, atomic rollback, and
   stale-config invalidation tests.
 - Halmos symbolic property workflow for core authority invariants.
@@ -83,8 +84,10 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
 - Optional token-fee paymaster interoperability tests proving native-gas
   fallback and rejection of unapproved paymasters.
 - Live migration rehearsal between independently deployed source and
-  destination accounts, including ERC-20 portfolios, cancellation, expiry, and
-  permissionless execution through a non-Loom publisher.
+  destination accounts, including ERC-20 portfolios, guardian cancellation,
+  cancellation, expiry, alternative EntryPoint destinations, codehash-only
+  future-standard destinations, and permissionless execution through a non-Loom
+  publisher.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.

@@ -7,6 +7,7 @@ import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
 import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 
@@ -20,6 +21,7 @@ contract SovereignMigrationTest {
     VmMigration internal constant vm = VmMigration(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     uint256 internal constant GUARDIAN_KEY = 0xA11CE;
+    uint256 internal constant SECOND_GUARDIAN_KEY = 0xB0B;
     ECDSAGuardianVerifier internal guardianVerifier = new ECDSAGuardianVerifier();
 
     function testMigrationIsDelayedPermissionlessAndDestinationBound() public {
@@ -50,6 +52,115 @@ contract SovereignMigrationTest {
         require(source.migrationNonce() == 1, "migration nonce did not advance");
         (,,, bytes32 clearedHash,,,,) = source.pendingMigration();
         require(clearedHash == bytes32(0), "pending migration not cleared");
+    }
+
+    function testMigrationCanTargetDifferentEntryPointAccount() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _accountWithEntryPoint(address(new MockEntryPoint()));
+        MockERC20 token = new MockERC20();
+        token.mint(address(source), 100);
+        require(destination.entryPoint() != source.entryPoint(), "destination did not use another EntryPoint");
+
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(destination), 25)));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeMigration(calls);
+
+        require(token.balanceOf(address(destination)) == 25, "different EntryPoint migration failed");
+    }
+
+    function testMigrationCanTargetCodehashOnlyFutureAccount() public {
+        LoomAccount source = _account(false);
+        FutureNativeAccountLike destination = new FutureNativeAccountLike();
+        MockERC20 token = new MockERC20();
+        token.mint(address(source), 100);
+        payable(address(source)).transfer(1 ether);
+
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](2);
+        calls[0] =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(destination), 15)));
+        calls[1] = ExecutionLib.Execution(address(destination), 1 ether, bytes(""));
+        _scheduleMigrationTo(
+            source,
+            address(destination),
+            address(destination).codehash,
+            bytes32(0),
+            calls,
+            source.MIN_CONFIG_DELAY(),
+            1 days
+        );
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeMigration(calls);
+
+        require(token.balanceOf(address(destination)) == 15, "future account token migration failed");
+        require(address(destination).balance == 1 ether, "future account eth migration failed");
+    }
+
+    function testMigrationRejectsUndeployedAndWrongCodehashDestination() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        MockTarget target = new MockTarget();
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
+
+        address undeployed = address(0xBEEF);
+        (bool acceptedUndeployed,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(source),
+                                0,
+                                abi.encodeCall(
+                                    LoomAccount.scheduleMigration,
+                                    (
+                                        undeployed,
+                                        keccak256("fake-codehash"),
+                                        bytes32(0),
+                                        keccak256(abi.encode(calls)),
+                                        source.MIN_CONFIG_DELAY(),
+                                        1 days
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedUndeployed, "undeployed migration destination accepted");
+
+        (bool acceptedWrongCodehash,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(source),
+                                0,
+                                abi.encodeCall(
+                                    LoomAccount.scheduleMigration,
+                                    (
+                                        address(destination),
+                                        keccak256("wrong-codehash"),
+                                        destination.configHash(),
+                                        keccak256(abi.encode(calls)),
+                                        source.MIN_CONFIG_DELAY(),
+                                        1 days
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedWrongCodehash, "wrong destination codehash accepted");
     }
 
     function testMigrationRejectsWrongCallsDestinationConfigExpiryAndStaleConfig() public {
@@ -124,6 +235,64 @@ contract SovereignMigrationTest {
         require(!executedAfterCancel, "cancelled migration accepted");
     }
 
+    function testGuardianThresholdCanCancelMigrationWithoutExecutionAuthority() public {
+        LoomAccount source = _accountWithGuardianThreshold(2);
+        LoomAccount destination = _account(false);
+        MockTarget target = new MockTarget();
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+
+        LoomAccount.PendingMigration memory pending = _pending(source);
+        bytes32 migrationId = source.migrationIdFor(pending);
+        bytes32 digest = source.migrationCancelDigest(migrationId, pending.configVersion, pending.nonce);
+        source.cancelMigrationWithGuardians(_guardianApprovals(source, digest));
+
+        require(source.migrationNonce() == 1, "guardian cancel did not advance nonce");
+        (,,, bytes32 callsHash,,,,) = source.pendingMigration();
+        require(callsHash == bytes32(0), "guardian cancel did not clear pending migration");
+        vm.warp(pending.readyAt);
+        (bool executed,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
+        require(!executed, "guardian-cancelled migration executed");
+        require(target.value() == 0, "guardian cancellation executed calls");
+    }
+
+    function testGuardianMigrationCancellationRejectsDuplicateMissingAndWrongDigest() public {
+        LoomAccount source = _accountWithGuardianThreshold(2);
+        LoomAccount destination = _account(false);
+        MockTarget target = new MockTarget();
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+
+        LoomAccount.PendingMigration memory pending = _pending(source);
+        bytes32 migrationId = source.migrationIdFor(pending);
+        bytes32 digest = source.migrationCancelDigest(migrationId, pending.configVersion, pending.nonce);
+
+        LoomAccount.GuardianApproval[] memory missing = new LoomAccount.GuardianApproval[](1);
+        LoomAccount.GuardianApproval[] memory approvals = _guardianApprovals(source, digest);
+        missing[0] = approvals[0];
+        (bool acceptedMissing,) =
+            address(source).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (missing)));
+        require(!acceptedMissing, "missing guardian threshold accepted");
+
+        LoomAccount.GuardianApproval[] memory duplicate = new LoomAccount.GuardianApproval[](2);
+        duplicate[0] = approvals[0];
+        duplicate[1] = approvals[0];
+        (bool acceptedDuplicate,) =
+            address(source).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (duplicate)));
+        require(!acceptedDuplicate, "duplicate guardian accepted");
+
+        bytes32 wrongDigest = source.migrationCancelDigest(migrationId, pending.configVersion + 1, pending.nonce);
+        (bool acceptedWrongDigest,) = address(source)
+            .call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (_guardianApprovals(source, wrongDigest))));
+        require(!acceptedWrongDigest, "wrong guardian digest accepted");
+
+        (,,, bytes32 callsHash,,,,) = source.pendingMigration();
+        require(callsHash == keccak256(abi.encode(calls)), "failed guardian cancel mutated pending migration");
+        require(source.migrationNonce() == 0, "failed guardian cancel consumed nonce");
+    }
+
     function testMigrationIsAtomicAndPreservesPendingStateOnRevert() public {
         LoomAccount source = _account(false);
         LoomAccount destination = _account(false);
@@ -185,6 +354,15 @@ contract SovereignMigrationTest {
         );
     }
 
+    function _accountWithEntryPoint(address entryPoint) internal returns (LoomAccount) {
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        return new LoomAccount(
+            entryPoint, _guardianLeaf(), 1, keccak256(abi.encode("config", entryPoint, address(validator))), modules
+        );
+    }
+
     function _accountWithPolicyHook() internal returns (LoomAccount account, PolicyHook hook) {
         MockValidator validator = new MockValidator();
         hook = new PolicyHook();
@@ -196,6 +374,19 @@ contract SovereignMigrationTest {
         );
     }
 
+    function _accountWithGuardianThreshold(uint8 threshold) internal returns (LoomAccount) {
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        return new LoomAccount(
+            address(this),
+            _guardianRoot(),
+            threshold,
+            keccak256(abi.encode("config", address(validator), threshold)),
+            modules
+        );
+    }
+
     function _scheduleMigration(
         LoomAccount source,
         LoomAccount destination,
@@ -203,16 +394,23 @@ contract SovereignMigrationTest {
         uint48 delay,
         uint48 window
     ) internal {
+        _scheduleMigrationTo(
+            source, address(destination), address(destination).codehash, destination.configHash(), calls, delay, window
+        );
+    }
+
+    function _scheduleMigrationTo(
+        LoomAccount source,
+        address destination,
+        bytes32 destinationCodeHash,
+        bytes32 destinationConfigHash,
+        ExecutionLib.Execution[] memory calls,
+        uint48 delay,
+        uint48 window
+    ) internal {
         bytes memory schedule = abi.encodeCall(
             LoomAccount.scheduleMigration,
-            (
-                address(destination),
-                address(destination).codehash,
-                destination.configHash(),
-                keccak256(abi.encode(calls)),
-                delay,
-                window
-            )
+            (destination, destinationCodeHash, destinationConfigHash, keccak256(abi.encode(calls)), delay, window)
         );
         source.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(source), 0, schedule)));
     }
@@ -252,5 +450,72 @@ contract SovereignMigrationTest {
         return keccak256(abi.encode(address(guardianVerifier), address(guardianVerifier).codehash, keyCommitment, salt));
     }
 
+    function _secondGuardianLeaf() internal returns (bytes32) {
+        address guardian = vm.addr(SECOND_GUARDIAN_KEY);
+        bytes32 keyCommitment = keccak256(abi.encode(guardian));
+        bytes32 salt = keccak256("second-guardian-salt");
+        return keccak256(abi.encode(address(guardianVerifier), address(guardianVerifier).codehash, keyCommitment, salt));
+    }
+
+    function _guardianRoot() internal returns (bytes32) {
+        bytes32 first = _guardianLeaf();
+        bytes32 second = _secondGuardianLeaf();
+        return first <= second ? keccak256(abi.encodePacked(first, second)) : keccak256(abi.encodePacked(second, first));
+    }
+
+    function _guardianApprovals(LoomAccount account, bytes32 digest)
+        internal
+        returns (LoomAccount.GuardianApproval[] memory approvals)
+    {
+        bytes32 first = _guardianLeaf();
+        bytes32 second = _secondGuardianLeaf();
+        approvals = new LoomAccount.GuardianApproval[](2);
+        if (first <= second) {
+            approvals[0] = _approval(account, GUARDIAN_KEY, "guardian-salt", second, digest);
+            approvals[1] = _approval(account, SECOND_GUARDIAN_KEY, "second-guardian-salt", first, digest);
+        } else {
+            approvals[0] = _approval(account, SECOND_GUARDIAN_KEY, "second-guardian-salt", first, digest);
+            approvals[1] = _approval(account, GUARDIAN_KEY, "guardian-salt", second, digest);
+        }
+    }
+
+    function _approval(LoomAccount, uint256 privateKey, string memory saltText, bytes32 sibling, bytes32 digest)
+        internal
+        returns (LoomAccount.GuardianApproval memory approval)
+    {
+        address guardian = vm.addr(privateKey);
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = sibling;
+        approval = LoomAccount.GuardianApproval({
+            verifier: address(guardianVerifier),
+            keyCommitment: keccak256(abi.encode(guardian)),
+            salt: keccak256(bytes(saltText)),
+            signature: _signature(privateKey, digest),
+            proof: proof
+        });
+    }
+
+    function _signature(uint256 privateKey, bytes32 digest) internal returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _pending(LoomAccount account) internal view returns (LoomAccount.PendingMigration memory pending) {
+        (
+            pending.destination,
+            pending.destinationCodeHash,
+            pending.destinationConfigHash,
+            pending.callsHash,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.configVersion,
+            pending.nonce
+        ) = account.pendingMigration();
+    }
+
+    receive() external payable {}
+}
+
+contract FutureNativeAccountLike {
     receive() external payable {}
 }

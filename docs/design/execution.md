@@ -84,28 +84,40 @@ intent commits to:
 
 - destination account;
 - destination runtime code hash;
-- destination `configHash`;
+- optional destination `configHash`;
 - exact atomic call batch hash;
 - current source `configVersion`;
 - source migration nonce;
 - execution delay and expiry;
 - current chain ID through `migrationIdFor`.
 
-The account itself must schedule and cancel migrations through `execute`, so a
-normal validator cannot silently bypass graded access. Once ready, anyone can
-publish `executeMigration`; this supports the walkaway test when the original
-wallet client, bundler, or frontend is unavailable.
+The account itself can schedule and cancel migrations through `execute`, so a
+normal validator cannot silently bypass graded access. The guardian threshold
+can also cancel the pending migration with `cancelMigrationWithGuardians`.
+Guardians cannot execute the migration, change its destination, change its
+calls, or move funds. Once ready, anyone can publish `executeMigration`; this
+supports the walkaway test when the original wallet client, bundler, or
+frontend is unavailable.
 
 Execution remains conservative:
 
 - migration cannot run while the account is frozen;
 - migration cannot run before `readyAt`, after `expiresAt`, or after a source
   config change;
-- destination code and destination config must still match the commitment;
+- destination code must match the commitment;
+- Loom-compatible destinations can additionally bind destination `configHash`;
 - the call batch must match the committed hash exactly;
 - the batch is atomic;
 - active hooks receive a synthetic batch `execute` call and can enforce policy;
-- cancellation increments the migration nonce and clears the pending intent.
+- account or guardian-threshold cancellation increments the migration nonce
+  and clears the pending intent.
+
+`destinationConfigHash == bytes32(0)` is reserved for future standards that do
+not expose Loom's `configHash()` interface, such as a future native account
+model. This path is intentionally weaker than a Loom-to-Loom migration because
+it commits only the destination runtime code hash. Wallets should prefer
+non-zero destination config binding whenever the destination exposes a reviewed
+configuration commitment.
 
 Loom deliberately does not use chain-ID-less replayable migration in the core.
 Cross-chain key and config updates can create account-linkage metadata and

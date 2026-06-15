@@ -25,11 +25,12 @@ The account also exposes a delayed sovereign migration state machine. A user
 can schedule an exact atomic batch that moves assets or authority toward a
 specific destination account after the configuration delay. The commitment binds
 the destination address, destination runtime code hash, destination
-`configHash`, call batch hash, current `configVersion`, account-local migration
-nonce, and chain ID. Migration execution is permissionless after the delay, but
-still passes through freeze checks, active hooks, and policy accounting. The
-account can cancel the pending migration through a self-call, including while
-frozen.
+`configHash` when available, call batch hash, current `configVersion`,
+account-local migration nonce, and chain ID. Migration execution is
+permissionless after the delay, but still passes through freeze checks, active
+hooks, and policy accounting. The account can cancel the pending migration
+through a self-call, including while frozen; the guardian threshold can also
+cancel without receiving spending or execution authority.
 
 ## Authorization
 

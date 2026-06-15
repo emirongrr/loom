@@ -15,7 +15,7 @@ Security claims are valid only under the assumptions listed here and in
 | Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
-| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code/config binding, calls hash, config-version invalidation, cancellation, expiry, atomic batch, installed hooks |
+| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, account or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
 | Factory and deployment | Select immutable account inputs | Wrong EntryPoint, module, guardian root, or verifier | Reproducible manifests and independent verification |
 | Wallet client | Constructs and explains authority | Clear-signing failure, metadata leakage, unsafe defaults | Open-source independent clients and the walkaway test |
@@ -46,6 +46,9 @@ Security claims are valid only under the assumptions listed here and in
 - Migration cannot guarantee that every asset has a safe or standard transfer
   interface. A migration batch is atomic, but users and clients must still
   construct asset-specific calls correctly.
+- Codehash-only migration destinations are supported for future account
+  standards and EntryPoint transitions, but they provide weaker assurance than
+  Loom destinations with a non-zero `configHash` commitment.
 
 ## Release-blocking residual risks
 
@@ -57,8 +60,9 @@ Security claims are valid only under the assumptions listed here and in
    correctness, liveness, cryptography, compiler correctness, or every
    external-contract behavior.
 5. Sovereign migration is implemented but unaudited and has no live migration
-   rehearsal across deployed accounts, token portfolios, and independent
-   publishers.
+   rehearsal across deployed accounts, token portfolios, independent
+   publishers, alternative EntryPoints, and codehash-only future-standard
+   destinations.
 6. Guardian-tree construction, proof-of-possession, encrypted backup, and
    verifier deployment correctness remain client/deployment responsibilities.
 

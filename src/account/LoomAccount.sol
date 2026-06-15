@@ -54,6 +54,14 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint64 nonce;
     }
 
+    struct GuardianApproval {
+        address verifier;
+        bytes32 keyCommitment;
+        bytes32 salt;
+        bytes signature;
+        bytes32[] proof;
+    }
+
     uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
     uint48 public constant FREEZE_DURATION = 2 days;
@@ -73,6 +81,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant FREEZE_TYPEHASH =
         keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)");
+    bytes32 public constant CANCEL_MIGRATION_TYPEHASH =
+        keccak256("CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)");
     bytes32 public constant DIRECT_EXECUTION_TYPEHASH = keccak256(
         "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
     );
@@ -533,8 +543,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (pendingMigration.readyAt != 0) revert MigrationAlreadyPending();
         if (
             destination == address(0) || destination == address(this) || destinationCodeHash == bytes32(0)
-                || destinationConfigHash == bytes32(0) || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY
-                || executionWindow == 0
+                || destination.code.length == 0 || destination.codehash != destinationCodeHash
+                || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY || executionWindow == 0
         ) revert InvalidMigration();
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 readyAt = uint48(block.timestamp) + delay;
@@ -558,6 +568,24 @@ contract LoomAccount is IERC1271, ILoomAccount {
     function cancelMigration() external onlySelf {
         PendingMigration memory migration = pendingMigration;
         if (migration.readyAt == 0) revert MigrationNotPending();
+        _cancelMigration(migration);
+    }
+
+    function cancelMigrationWithGuardians(GuardianApproval[] calldata guardianApprovals) external {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0) revert MigrationNotPending();
+        bytes32 migrationId = migrationIdFor(migration);
+        bytes32 digest = migrationCancelDigest(migrationId, migration.configVersion, migration.nonce);
+        if (!_guardianApproved(digest, guardianApprovals)) revert InvalidModule();
+        _cancelMigration(migration);
+    }
+
+    function migrationCancelDigest(bytes32 migrationId, uint64 version, uint64 nonce) public view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, version, nonce));
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+    }
+
+    function _cancelMigration(PendingMigration memory migration) internal {
         bytes32 migrationId = migrationIdFor(migration);
         delete pendingMigration;
         ++migrationNonce;
@@ -580,7 +608,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
             revert InvalidMigration();
         }
         if (migration.destination.codehash != migration.destinationCodeHash) revert InvalidMigration();
-        if (ILoomAccount(migration.destination).configHash() != migration.destinationConfigHash) {
+        if (
+            migration.destinationConfigHash != bytes32(0)
+                && ILoomAccount(migration.destination).configHash() != migration.destinationConfigHash
+        ) {
             revert InvalidMigration();
         }
         bytes32 migrationId = migrationIdFor(migration);
@@ -772,6 +803,29 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return selector == this.setGuardianConfig.selector || selector == this.installModule.selector
             || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector
             || selector == this.cancelMigration.selector;
+    }
+
+    function _guardianApproved(bytes32 digest, GuardianApproval[] calldata approvals) internal view returns (bool) {
+        uint256 threshold = guardianThreshold;
+        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_GUARDIAN_THRESHOLD) return false;
+
+        bytes32 previous = bytes32(0);
+        for (uint256 i; i < approvals.length; ++i) {
+            GuardianApproval calldata item = approvals[i];
+            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
+            bytes32 leaf = guardianLeaf(item.verifier, item.keyCommitment, item.salt);
+            if (leaf <= previous || item.proof.length > MAX_GUARDIAN_PROOF_LENGTH) return false;
+            previous = leaf;
+            if (!MerkleProof.verify(item.proof, guardianRoot, leaf)) return false;
+            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
+                bool valid
+            ) {
+                if (!valid) return false;
+            } catch {
+                return false;
+            }
+        }
+        return true;
     }
 
     function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {

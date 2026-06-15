@@ -73,6 +73,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
     accounting.
 27. Failed or reverting migration execution preserves the pending migration and
     cannot consume the migration nonce.
+28. Guardian-threshold migration cancellation cannot execute calls, cannot move
+    assets, rejects duplicate or invalid guardian approvals, and consumes the
+    migration nonce only on success.
 
 ## Reviewer focus areas
 
@@ -97,6 +100,8 @@ especially EntryPoint validation, nonce handling, and sender creation.
   transaction publisher rather than the EntryPoint.
 - Sovereign migration identity, cancellation, expiry, source-config
   invalidation, destination binding, hook enforcement, and atomic rollback.
+- Codehash-only migration destinations for future account standards, including
+  the weaker assurance compared with Loom `configHash` binding.
 - Non-standard ERC-20 return values and policy calldata parsing.
 
 ## Out of scope

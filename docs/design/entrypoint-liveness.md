@@ -44,18 +44,19 @@ The account includes a sovereign liveness path with:
    nonces, explicit direct-capable validators, current policy checks, and the
    same hooks;
 2. a delayed exact migration intent committing the destination account,
-   destination code hash, destination configuration hash, asset calls, nonce,
-   chain ID, and expiry;
+   destination code hash, optional destination configuration hash, asset calls,
+   nonce, chain ID, and expiry;
 3. permissionless execution after the delay and cancellation by current
-   authority or recovery;
+   authority or guardian threshold;
 4. no mutable EntryPoint allowlist, Loom-operated registry, upgrade key,
    privileged migrator, or mandatory relayer.
 
 Direct signed execution removes the EntryPoint as a permanent publication
-dependency, but the exact atomic migration-intent protocol remains unimplemented
-and release-blocking. Deployment manifests must still verify official
-EntryPoint bytecode, and clients must support independent bundlers, direct
-`handleOps`, and direct signed account execution.
+dependency. Sovereign migration lets the user move assets or authority to a new
+Loom account with a different EntryPoint or to a future account standard whose
+runtime code hash is explicitly committed. Deployment manifests must still
+verify official EntryPoint bytecode, and clients must support independent
+bundlers, direct `handleOps`, and direct signed account execution.
 
 Direct execution preserves graded access: a primary or MFA validator may
 publish low-risk calls immediately, while arbitrary high-risk calls must first
