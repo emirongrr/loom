@@ -32,3 +32,32 @@ The quick verification command must pass before starting work. Use
   a decision record and threat-model update.
 - Security claims must name their assumptions and evidence.
 - Generated artifacts and local secrets must not be committed.
+
+## Pull requests
+
+Each pull request must have one reviewable purpose. Keep behavior changes,
+refactors, performance work, tests, CI changes, and documentation changes in
+separate pull requests unless they cannot be reviewed safely in isolation.
+
+Use a conventional pull request title:
+
+```text
+type(optional-scope): lowercase description
+```
+
+Allowed types are `feat`, `fix`, `refactor`, `perf`, `test`, `build`, `ci`,
+`chore`, `docs`, and `security`.
+
+Examples:
+
+```text
+feat(account): add direct execution fallback
+fix(recovery): reject duplicate guardian approvals
+docs: document pull request conventions
+```
+
+Contract pull requests should contain the smallest implementation and test
+change that proves the intended behavior. Follow-up documentation work should
+use a separate `docs:` pull request. When a contract change alters an authority
+boundary or security assumption, identify the required documentation follow-up
+in the original pull request before merging.
