@@ -59,7 +59,10 @@ especially EntryPoint validation, nonce handling, and sender creation.
 21. Scheduled execution cannot bypass an active policy, except that the exact
    delayed removal of an installed hook bypasses hooks for liveness.
 22. A hook-set change during scheduled lifecycle execution cannot alter the
-   pre-check/post-check hook snapshot.
+    pre-check/post-check hook snapshot.
+23. Direct execution cannot replay, use an uninstalled or non-direct validator,
+    bypass validator policy, bypass freeze, bypass hooks, or survive expiry or
+    a configuration change.
 
 ## Reviewer focus areas
 
@@ -79,6 +82,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
   validator replacement, and recovery-module authority.
 - ERC-4337 validation behavior, malformed signatures, prefunding, and nonce
   semantics.
+- Direct-execution domain separation, nonce/config invalidation, explicit
+  validator capability, and hook behavior when the caller is an arbitrary
+  transaction publisher rather than the EntryPoint.
 - Non-standard ERC-20 return values and policy calldata parsing.
 
 ## Out of scope

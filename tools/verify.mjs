@@ -47,6 +47,7 @@ run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);
 run("Gas snapshot", forge, [
   "snapshot",
+  "--force",
   "--check",
   "--tolerance",
   "1",

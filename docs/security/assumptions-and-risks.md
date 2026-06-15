@@ -9,7 +9,7 @@ Security claims are valid only under the assumptions listed here and in
 
 | Surface | Authority | Primary failure mode | Required control |
 |---|---|---|---|
-| EntryPoint | Calls validation and account execution | Permanent liveness loss or malicious official deployment | Per-chain bytecode verification, independent bundlers, future sovereign migration path |
+| EntryPoint | Calls ERC-4337 validation and account execution | ERC-4337 path loss or malicious official deployment | Per-chain bytecode verification, independent bundlers, direct signed execution, exact migration path |
 | Validators | Approve UserOperations within their profile | Key compromise or validator implementation bug | Timelocked lifecycle, narrow validators, complete-set recovery |
 | Hooks | Inspect and block execution | Policy bypass or temporary denial of service | Hook snapshot semantics, fail-closed behavior, exact delayed-removal bypass |
 | Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
@@ -21,9 +21,9 @@ Security claims are valid only under the assumptions listed here and in
 
 ## Contract limitations
 
-- V1 permanently binds one EntryPoint. This removes an admin switch but leaves
-  a liveness dependency until a separately audited sovereign migration path
-  exists.
+- The account permanently binds one EntryPoint for ERC-4337. Direct signed
+  execution preserves provider-independent publication, but an exact atomic
+  migration-intent protocol remains to be implemented and audited.
 - Installed validators, hooks, recovery modules, and guardian verifiers are
   trusted code selected by the user. Timelocks make changes visible; they do
   not make malicious code safe.
@@ -50,8 +50,8 @@ Security claims are valid only under the assumptions listed here and in
 4. Formal proofs cover selected safety properties, not full functional
    correctness, liveness, cryptography, compiler correctness, or every
    external-contract behavior.
-5. The sovereign exit path for an unusable immutable EntryPoint is designed
-   but not implemented.
+5. Direct signed execution exists, but the exact atomic sovereign migration
+   protocol is designed and not implemented.
 6. Guardian-tree construction, proof-of-possession, encrypted backup, and
    verifier deployment correctness remain client/deployment responsibilities.
 
