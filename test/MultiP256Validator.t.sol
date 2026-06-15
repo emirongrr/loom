@@ -10,6 +10,7 @@ import {WebAuthnP256} from "../src/libraries/WebAuthnP256.sol";
 import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
+import {MockTarget} from "./mocks/MockTarget.sol";
 
 interface VmMultiP256 {
     function warp(uint256) external;
@@ -185,6 +186,23 @@ contract MultiP256ValidatorTest {
             ) == ValidationDataLib.SIG_VALIDATION_FAILED,
             "MFA bypassed low-risk policy"
         );
+    }
+
+    function testMfaDirectExecutionRequiresThreshold() public {
+        MockTarget target = new MockTarget();
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (52))));
+        uint48 validUntil = type(uint48).max;
+        bytes32 digest = account.directExecutionDigest(address(validator), mode, executionCalldata, 0, validUntil);
+        MultiP256Validator.CredentialSignature[] memory signatures = new MultiP256Validator.CredentialSignature[](2);
+        signatures[0] = MultiP256Validator.CredentialSignature(ID_ONE, _signature(digest, 1));
+        signatures[1] = MultiP256Validator.CredentialSignature(ID_TWO, _signature(digest, 2));
+
+        account.executeDirect(address(validator), mode, executionCalldata, validUntil, abi.encode(signatures));
+
+        require(target.value() == 52, "MFA direct execution failed");
+        require(account.directExecutionNonces(address(validator)) == 1, "MFA direct nonce missing");
     }
 
     function _validate(bytes32 hash, MultiP256Validator.CredentialSignature[] memory signatures)

@@ -67,4 +67,30 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         assert(!ok);
         assert(target.value() == 0);
     }
+
+    function check_directBatchExecutionIsAtomic(uint256 newValue) public {
+        (LoomAccount account, MockValidator validator) = _account();
+        FormalTarget target = new FormalTarget();
+        ExecutionLib.Execution[] memory executions = new ExecutionLib.Execution[](2);
+        executions[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue)));
+        executions[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.fail, ()));
+
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.executeDirect,
+                    (
+                        address(validator),
+                        account.BATCH_EXECUTION_MODE(),
+                        abi.encode(executions),
+                        type(uint48).max,
+                        bytes("")
+                    )
+                )
+            );
+
+        assert(!ok);
+        assert(target.value() == 0);
+        assert(account.directExecutionNonces(address(validator)) == 0);
+    }
 }

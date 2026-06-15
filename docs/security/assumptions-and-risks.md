@@ -22,8 +22,10 @@ Security claims are valid only under the assumptions listed here and in
 ## Contract limitations
 
 - The account permanently binds one EntryPoint for ERC-4337. Direct signed
-  execution preserves provider-independent publication, but an exact atomic
-  migration-intent protocol remains to be implemented and audited.
+  execution preserves provider-independent publication. Immediate direct
+  execution remains policy-limited; arbitrary high-risk calls retain their
+  visible delay. An exact atomic migration-intent protocol remains to be
+  implemented and audited.
 - Installed validators, hooks, recovery modules, and guardian verifiers are
   trusted code selected by the user. Timelocks make changes visible; they do
   not make malicious code safe.

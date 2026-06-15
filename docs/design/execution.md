@@ -12,7 +12,7 @@ may relay a direct execution, but it succeeds only with an installed validator
 that explicitly implements `ILoomDirectValidator`.
 
 Direct signatures bind the account, chain, validator, mode, execution calldata,
-monotonic direct nonce, current `configVersion`, and expiry. Direct execution
+validator-scoped monotonic direct nonce, current `configVersion`, and expiry. Direct execution
 then enters the same `execute` authorization body, freeze checks, hooks, policy
 accounting, and atomic execution behavior as EntryPoint execution. Session
 validators deliberately do not implement the direct-validator interface.
@@ -20,6 +20,11 @@ validators deliberately do not implement the direct-validator interface.
 Hooks receive the external transaction publisher as `caller` on the direct
 path. A hook must treat this value as transport context, not account authority;
 authorization comes from the direct validator and signed digest.
+
+Each direct-capable validator has an independent nonce sequence. One installed
+credential profile therefore cannot invalidate another profile's pre-signed
+fallback operation merely by publishing its own direct execution. A failed
+validation, hook, or inner call rolls back the nonce increment.
 
 ## Supported modes
 
