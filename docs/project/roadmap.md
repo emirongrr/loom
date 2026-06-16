@@ -43,6 +43,8 @@ pressure.
 | Vault policy | Enforce stricter delayed movement for long-term storage modules | Separate daily spending from savings and explain withdrawal latency |
 | Token-fee paymaster | Bind limited permissions to an explicitly selected paymaster | Quote fees, compare providers, protect privacy, and keep native fallback |
 | L1-rooted cross-chain authority | Store canonical identity roots on L1 and apply them only through proof-gated recovery modules | Verify L1 roots, finality, and L2 state without leaking the user's global graph |
+| Verified wallet state | Expose deterministic contract state that can be proven from storage | Run light clients, verify proofs, label unknown state, and avoid RPC trust |
+| Kohaku SDK stack | Expose bounded account surfaces that Kohaku-backed privacy and account-security tooling can use | Build the Loom SDK layer on Kohaku with local-first scanning, provider profiles, metadata budgets, Railgun, privacy pools, Tornado compatibility, account-security source tracking, and later Aztec wrapping |
 
 ## Token-fee paymaster policy
 
@@ -83,10 +85,32 @@ native gas asset.
 9. L1-rooted keystore. Initial L1 registry and proof-gated sync module are
    implemented; production requires independently audited L1 storage proof
    verifiers per target network.
+10. Verified wallet client. Architecture is specified; implementation belongs
+    in the future SDK/client and must verify balances, nonces, recovery,
+    guardian, vault, validator, and L1 keystore state without making a Loom RPC
+    or indexer mandatory.
+11. Kohaku SDK stack. Initial architecture and package seed bind Loom's future
+    SDK boundary to upstream Kohaku packages as direct dependencies where they
+    are published, and as source-level tracked capabilities where they are not.
+    Concrete Railgun, privacy-pools, Tornado compatibility, hybrid
+    ECDSA-plus-post-quantum account-security, and Aztec flows require separate
+    dependency review, provider profiles, protocol threat models, metadata
+    budgets, live rehearsal, and audit before production use.
 
 ## Core boundary
 
 Privacy adapters, viewing keys, production L1 proof verifiers, and ZK guardian
-setup proofs are roadmap items, not current core dependencies. They must remain
-optional until their verifier, metadata, liveness, and failure assumptions are
-independently reviewed.
+setup proofs are roadmap items, not current core dependencies. Light clients,
+scanning engines, recovery coordinators, and SDK verification layers are also
+client-side infrastructure. They must remain optional and replaceable until
+their verifier, metadata, liveness, and failure assumptions are independently
+reviewed.
+
+The Kohaku SDK stack boundary is documented in
+`docs/design/privacy-adapters.md`. Railgun is the default EVM shielded-pool
+backend for the SDK through Kohaku. Kohaku account-security tooling is tracked
+as a source-level compatibility and migration target for hybrid two-signature
+ERC-4337 accounts, not imported into Loom core by default. Aztec is treated as
+a separate private-execution environment with separate state, bridge, and
+finality assumptions. No protocol or account profile may become a hidden Loom
+account authority.

@@ -45,11 +45,25 @@ does not make a deployment production-ready.
   app-account membership, stale L1 version rejection, local config
   invalidation, guardian cancellation, delay, expiry, and complete-validator-set
   replacement tests.
+- Privacy adapter permission-binding, metadata-budget, local-scanning,
+  relayer/indexer/prover degraded-mode, vault interaction, cancellation,
+  expiry, and native-exit fallback tests before any concrete adapter is
+  accepted.
+- Kohaku provider-profile tests for user RPC, local node, Helios-verified RPC,
+  Colibri-compatible provider, unavailable provider, stale indexer sync,
+  locally persisted sync state, and no pre-consent default RPC queries.
+- Hybrid account-security tests proving two-signature ERC-4337 verification,
+  ECDSA compatibility, post-quantum signature failure rejection, no
+  single-signature fallback, delayed migration, guardian cancellation, native
+  exit fallback, and destination codehash binding before any Kohaku account
+  profile is accepted.
 - Halmos symbolic property workflow for core authority invariants.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
 - Coverage report generation.
-- Source scan confirming excluded cryptography is absent.
+- Source scan confirming experimental account cryptography is absent from
+  production contract scope unless an explicit audit-candidate decision has
+  moved it into scope.
 - Reproducible build from a clean checkout with pinned dependencies.
 - Solidity compiler version must not be affected by a published
   security-relevant compiler bug under the repository's optimizer, IR, and EVM
@@ -111,6 +125,19 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
 - Independent audit and per-network testnet rehearsal for each production L1
   storage proof verifier used by keystore sync. Test-only verifier contracts
   are not acceptable for production.
+- Verified wallet client release evidence showing light-client backed reads
+  for balances, nonces, recovery state, guardian roots, vault state, validator
+  state, and L1 keystore roots, plus explicit degraded-mode UX when a chain is
+  only partially verified.
+- Privacy adapter release evidence for each supported protocol, including
+  dependency and license review, protocol threat model, metadata-leakage
+  review, local-first scanning, relayer/prover/indexer failure behavior,
+  bridge or finality assumptions, vault interaction rehearsal, and clear user
+  warnings for degraded modes.
+- Kohaku SDK dependency audit must pass at low severity, or each remaining
+  finding must have a documented upstream issue, pinned override, exploitability
+  analysis, and isolation test proving it is unreachable from untrusted wallet
+  input.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.
