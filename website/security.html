@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Security | Loom</title>
+    <meta name="description" content="Loom security status, trust boundaries, and production readiness requirements.">
+    <link rel="stylesheet" href="assets/styles.css">
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="index.html">Loom <small>Security</small></a>
+        <nav class="nav-links" aria-label="Primary navigation">
+          <a href="index.html">Home</a>
+          <a href="getting-started.html">Start</a>
+          <a href="sdk.html">SDK</a>
+          <a href="comparisons.html">Compare</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="eyebrow">Pre-audit security posture</span>
+          <h1>Security claims must be evidence-backed.</h1>
+          <p class="lead">
+            Loom is security-critical wallet infrastructure. The project is
+            pre-audit and should not secure production funds. The goal of this
+            page is to make assumptions and missing evidence visible.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card">
+            <h3>Protected</h3>
+            <p>Developer rug paths, factory authority, unsupported execution modes, duplicate guardians, stale config replays, and unbounded sessions.</p>
+          </article>
+          <article class="card">
+            <h3>Still required</h3>
+            <p>Independent audit, live multi-bundler tests, browser WebAuthn fixtures, testnet rehearsals, production proof verifiers, and bug bounty.</p>
+          </article>
+          <article class="card">
+            <h3>Never allowed</h3>
+            <p>Mandatory Loom RPC, mandatory paymaster, admin upgrade key, global public identity registry, or privacy provider as account authority.</p>
+          </article>
+        </div>
+
+        <section class="section">
+          <h2>Production gates</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Gate</th>
+                  <th>Status</th>
+                  <th>Why it matters</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Independent audit</td>
+                  <td>Missing</td>
+                  <td>Immutable accounts cannot be patched after deployment.</td>
+                </tr>
+                <tr>
+                  <td>Browser/device WebAuthn fixtures</td>
+                  <td>Missing</td>
+                  <td>Passkey compatibility must be proven across real authenticators.</td>
+                </tr>
+                <tr>
+                  <td>Live bundler qualification</td>
+                  <td>Missing</td>
+                  <td>ERC-4337 liveness must not depend on one hosted path.</td>
+                </tr>
+                <tr>
+                  <td>Privacy adapter review</td>
+                  <td>Pending</td>
+                  <td>Zero-knowledge protocols still leak metadata through providers, relayers, timing, and scanning choices.</td>
+                </tr>
+                <tr>
+                  <td>L1 proof verifier audit</td>
+                  <td>Pending</td>
+                  <td>Cross-chain authority must be proven, not trusted through a service.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

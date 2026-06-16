@@ -191,6 +191,7 @@ runs the CI fuzz and invariant profile.
 
 ## Documentation
 
+- [Website source](website/index.html)
 - [Documentation index](docs/README.md)
 - [Product principles](docs/project/principles.md)
 - [Design foundations](docs/project/foundations.md)
