@@ -24,6 +24,8 @@ extension without hidden upgrade authority.
 - [Authentication](design/authentication.md)
 - [Permissions](design/permissions.md)
 - [Recovery](design/recovery.md)
+- [Vaults](design/vaults.md)
+- [Global keystore](design/keystore.md)
 - [EntryPoint liveness](design/entrypoint-liveness.md)
 
 ## Security

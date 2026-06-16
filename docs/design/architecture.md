@@ -114,9 +114,38 @@ authority over the source account. It also does not implement cross-chain
 configuration synchronization: each chain remains locally configured until a
 separate trustless proof protocol is specified and audited.
 
+## Vaults
+
+Long-term storage is enforced through an optional hook, not through extra
+account-core authority. `VaultHook` protects configured ERC-20 assets and
+native ETH with a daily spending path plus an exact delayed withdrawal path.
+Large withdrawals bind the target, value, calldata hash, current
+`configVersion`, vault delay, expiry window, and the account's own scheduled
+execution commitment. Guardian-threshold cancellation can clear a pending
+withdrawal without granting guardians asset-transfer authority.
+
+The initial hook deliberately understands only canonical token transfer,
+transfer-from, approve, and native-value movement. Asset valuation, rebasing
+tokens, bridge exits, private transfers, and DeFi position accounting require
+separate audited modules or client-side construction.
+
+Vault behavior is documented in `docs/design/vaults.md`.
+
 ## Cross-chain readiness
 
 Every account exposes a locally maintained `configHash` and monotonically
-increasing `configVersion`. The current account uses local configuration and exposes no remote
-configuration application path. A future trustless synchronization mechanism
-requires a separately audited protocol.
+increasing `configVersion`.
+
+Loom now includes the first L1-rooted keystore surface:
+
+- `LoomKeystore` stores canonical identity configuration on Ethereum L1.
+- `KeystoreSyncRecoveryModule` can apply a newer L1 configuration to an L2
+  account only through an audited proof verifier, app-account Merkle
+  membership, a local delay, expiry, and stale-config invalidation.
+
+The sync module is optional and recovery-scoped. It does not make a bridge,
+oracle, relayer, RPC provider, or Loom service authoritative. A production
+deployment must provide a real `IKeystoreProofVerifier` for the target network;
+test-only verifier contracts do not belong to production source.
+
+The design is documented in `docs/design/keystore.md`.
