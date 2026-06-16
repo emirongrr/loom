@@ -46,6 +46,28 @@ export interface KohakuProviderProfile {
   metadataBudget: MetadataBudget;
 }
 
+export interface ConsentStore {
+  grant(key: string): void;
+  revoke(key: string): void;
+  has(key: string): boolean;
+  grantProvider(profile: KohakuProviderProfile): void;
+  hasProvider(profile: KohakuProviderProfile): boolean;
+}
+
+export interface MetadataPolicy {
+  allowedSurfaces?: readonly MetadataSurface[];
+  requireKnownMitigation?: boolean;
+}
+
+export interface KohakuHostOptions {
+  providerProfile: KohakuProviderProfile;
+  fetch?: typeof fetch;
+  storage?: KohakuHost["storage"];
+  keystore?: KohakuHost["keystore"];
+  consentStore?: ConsentStore;
+  metadataPolicy?: MetadataPolicy;
+}
+
 export interface KohakuHost {
   network: {
     fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
@@ -57,9 +79,34 @@ export interface KohakuHost {
   keystore: {
     deriveAt(path: string): Hex;
   };
-  provider: unknown;
+  provider: {
+    profile: KohakuProviderProfile;
+    request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  };
   metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
 }
+
+export class ConsentRequiredError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export class MetadataBudgetExceededError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export function providerConsentKey(profile: KohakuProviderProfile): string;
+
+export function createConsentStore(initialKeys?: readonly string[]): ConsentStore;
+
+export function createMemoryStorage(initial?: Record<string, string>): KohakuHost["storage"];
+
+export function createMetadataBudget(input: MetadataBudget): MetadataBudget;
+
+export function createProviderProfile(input: KohakuProviderProfile): KohakuProviderProfile;
+
+export function assertMetadataBudgetAllowed(budget: MetadataBudget, policy?: MetadataPolicy): void;
+
+export function createKohakuHost(options: KohakuHostOptions): KohakuHost;
 
 export interface PrivateBalance {
   protocol: PrivacyProtocol;

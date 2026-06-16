@@ -6,6 +6,7 @@
     "docs:check": "node tools/validate-doc-links.mjs",
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
+    "privacy:test": "npm --prefix packages/privacy test",
     "verify:quick": "node tools/verify.mjs",
     "verify": "node tools/verify.mjs --full"
   },

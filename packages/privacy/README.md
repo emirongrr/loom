@@ -22,8 +22,8 @@ wallet client built through the Loom SDK receives the Kohaku runtime boundary
 as part of the SDK.
 
 This package does not yet implement the concrete Loom Railgun, Aztec,
-stealth-address, or privacy-pool flows. The first milestone is the stable
-Kohaku host boundary that wallet clients and third-party builders can use
+stealth-address, or privacy-pool flows. It now includes the initial Kohaku
+host runtime boundary that wallet clients and third-party builders can use
 without changing Loom core contracts.
 
 ## Design rules
@@ -60,10 +60,10 @@ without changing Loom core contracts.
   security tooling that may become a migration or compatibility target after
   audit.
 
-The first code artifact is `src/index.d.ts`. It is intentionally types-only
-while the repo remains contract-first, but the package manifest already binds
-the Loom privacy SDK to upstream Kohaku packages. Concrete implementation
-packages should import Kohaku directly.
+The first runtime artifact is `src/index.js`, with TypeScript declarations in
+`src/index.d.ts`. The runtime enforces explicit provider consent and metadata
+budget checks before any network call reaches a Kohaku adapter. Concrete
+implementation packages should import Kohaku directly.
 
 ## Protocol profiles
 
