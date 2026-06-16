@@ -21,6 +21,13 @@ The core can receive ETH and accepts safe ERC-721 and ERC-1155 transfers
 through stateless receiver callbacks. These callbacks do not grant execution
 authority.
 
+The same account runtime can also be used as an EIP-7702 delegation target for
+EOAs that need to preserve an existing address. A delegated EOA must perform a
+self-call to `initializeDelegatedAccount(...)` before it has Loom authority.
+Constructor-deployed accounts cannot use this initializer because their
+`configVersion` is already non-zero. EIP-7702 behavior is documented in
+`docs/design/eip-7702.md`.
+
 The account also exposes a delayed sovereign migration state machine. A user
 can schedule an exact atomic batch that moves assets or authority toward a
 specific destination account after the configuration delay. The commitment binds

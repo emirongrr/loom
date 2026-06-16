@@ -24,6 +24,9 @@
 - Loss of the configured EntryPoint permanently preventing authorized account
   publication; installed direct-capable validators can use the same policies
   and hooks without it.
+- External callers initializing an EIP-7702 delegated EOA before the user. The
+  delegated initializer requires a self-call from the EOA and cannot run on
+  constructor-initialized accounts.
 - A wallet client, frontend, or bundler disappearing after a user has scheduled
   a delayed exit; any publisher can execute the exact committed migration once
   ready.
@@ -83,6 +86,9 @@
   the account execution reentrancy guard. Every module init path still belongs
   in audit scope.
 - The current account does not implement cross-chain state proof verification.
+- EIP-7702 preserves address and assets but introduces persistent delegation
+  phishing risk. Users must verify the template address, bytecode, EntryPoint
+  binding, and chain before signing a delegation authorization.
 - Multiple passkeys improve authentication availability and compromise
   resistance but do not replace guardian recovery.
 - Recovery replaces every validator committed in the visible proposal and

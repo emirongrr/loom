@@ -21,6 +21,7 @@ Security claims are valid only under the assumptions listed here and in
 | Keystore proof verifier | Authenticates L1 keystore state on another chain | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
 | Factory and deployment | Select immutable account inputs | Wrong EntryPoint, module, guardian root, or verifier | Reproducible manifests and independent verification |
+| EIP-7702 delegation | Lets an EOA preserve its address while using Loom runtime code | Malicious persistent delegation, wrong template, uninitialized delegated storage, cross-chain authorization blast radius | Self-only one-time initialization, template bytecode verification, chain-specific authorization, explicit client warnings |
 | Wallet client | Constructs and explains authority | Clear-signing failure, metadata leakage, unsafe defaults | Open-source independent clients and the walkaway test |
 
 ## Contract limitations
@@ -30,6 +31,12 @@ Security claims are valid only under the assumptions listed here and in
   execution remains policy-limited; arbitrary high-risk calls retain their
   visible delay. The migration state machine provides delayed account exit but
   does not change the EntryPoint for the source account.
+- EIP-7702 delegated accounts inherit the EntryPoint immutable embedded in the
+  delegated Loom template. Selecting the wrong template is equivalent to
+  selecting the wrong account implementation for that EOA.
+- EIP-7702 authorization is persistent and can be phished. Loom contracts can
+  require self-only initialization and normal account policy after setup, but
+  they cannot make a user-signed delegation to malicious code safe.
 - Installed validators, hooks, recovery modules, and guardian verifiers are
   trusted code selected by the user. Timelocks make changes visible; they do
   not make malicious code safe.
