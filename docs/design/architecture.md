@@ -80,7 +80,9 @@ three-day delay and seven-day execution window, supports account or guardian
 cancellation, and atomically replaces the complete committed validator set
 and guardian root through the account's narrow recovery entry point. Guardian
 leaves bind salted key commitments to immutable verifier code hashes. The
-manager has no arbitrary execution authority.
+manager has no arbitrary execution authority. Loom includes guardian verifiers
+for ECDSA address commitments, WebAuthn P-256 passkeys, and ERC-1271 contract
+wallets such as multisigs.
 Recovery behavior is documented in `docs/design/recovery.md`.
 
 ## Graded access

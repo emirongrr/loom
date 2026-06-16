@@ -36,6 +36,10 @@ Security claims are valid only under the assumptions listed here and in
 - Guardian commitments hide initial addresses, but a guardian reveals its
   verifier, commitment, salt, proof, and signature when acting. Successful
   recovery atomically rotates to a fresh root; freeze does not.
+- Passkey and ERC-1271 guardian verifiers expand signer choice, but each
+  configured guardian remains trusted to sign only after authentic user intent.
+  Safe, Loom, institutional, HSM, or other ERC-1271 guardians inherit their own
+  threshold, policy, hardware, custody, and operational risks.
 - One valid guardian can intentionally freeze ordinary execution for 48 hours.
 - Token limits constrain canonical calldata amounts. They do not model
   fee-on-transfer behavior, rebasing, callbacks, token valuation, bridge
@@ -107,7 +111,10 @@ Security claims are valid only under the assumptions listed here and in
    prevents identity squatting, stores encrypted recovery material, and lets
    users choose separate identities for privacy-sensitive contexts.
 11. Guardian-tree construction, proof-of-possession, encrypted backup, and
-   verifier deployment correctness remain client/deployment responsibilities.
+    verifier deployment correctness remain client/deployment responsibilities.
+12. zkEmail guardian recovery is not production-supported until a concrete
+    circuit, verifier, DKIM/root trust model, nullifier policy, replay rules,
+    and independent audit are selected and documented.
 
 ## Cypherpunk acceptance rule
 

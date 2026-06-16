@@ -35,13 +35,15 @@ a salted key commitment, verifier address, and verifier code hash. This avoids
 publishing guardian addresses in the initial configuration and keeps signer
 verification outside the account core without introducing a registry.
 
-The included ECDSA verifier commits to an address without publishing it until
-use. An acting guardian necessarily reveals its verifier, commitment, salt,
-Merkle proof, and signature. Recovery therefore requires a fresh guardian root
-and atomically invalidates the revealed old tree. Other verifier
+The included ECDSA, WebAuthn P-256, and ERC-1271 verifiers commit to address,
+passkey, and contract-wallet guardians without publishing their key material
+until use. An acting guardian necessarily reveals its verifier, commitment,
+salt, Merkle proof, and signature. Recovery therefore requires a fresh guardian
+root and atomically invalidates the revealed old tree. Other verifier
 implementations require independent review and a timelocked guardian-root
 change. Proxy or mutable verifier implementations are not acceptable
-production guardians.
+production guardians. Guardian verifier classes are documented in
+`docs/design/guardians.md`.
 
 The constructor cannot prove that an opaque Merkle root contains enough live,
 independent guardians without revealing them or verifying a dedicated
