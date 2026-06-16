@@ -23,6 +23,9 @@ does not make a deployment production-ready.
 - Recovery proposal visibility, delay, expiry, account/guardian cancellation,
   frozen cancellation, stale-config invalidation, replay protection, and
   atomic complete-validator-set plus guardian-root replacement tests.
+- Guardian verifier tests for ECDSA, WebAuthn P-256, ERC-1271 contract
+  wallets, malformed commitments, verifier reverts, and non-contract signer
+  rejection.
 - Official EntryPoint counterfactual single, atomic batch, and sponsored
   paymaster validation/post-operation lifecycle tests.
 - Provider-independent direct execution replay, expiry, policy, freeze, hook,
