@@ -1,0 +1,39 @@
+# Security
+
+Loom is security-critical, pre-audit wallet infrastructure.
+
+Passing CI is useful evidence. It is not production readiness.
+
+## Current evidence
+
+- unit tests;
+- EntryPoint integration tests;
+- fuzz tests;
+- stateful invariants;
+- gas snapshots;
+- static checks;
+- selected Halmos symbolic properties;
+- website and documentation validation.
+
+## Production gates
+
+| Gate | Status | Why it matters |
+| --- | --- | --- |
+| Independent audit | Missing | Immutable accounts cannot be patched after deployment. |
+| Browser/device WebAuthn fixtures | Missing | Passkey compatibility must be proven across real authenticators. |
+| Live bundler qualification | Missing | ERC-4337 liveness must not depend on one hosted path. |
+| Privacy adapter review | Pending | ZK systems still leak metadata through providers, relayers, timing, and scanning choices. |
+| L1 proof verifier audit | Pending | Cross-chain authority must be proven, not trusted through a service. |
+
+## Never allowed
+
+- mandatory Loom RPC;
+- mandatory paymaster;
+- admin upgrade key;
+- global public identity registry;
+- privacy provider as account authority;
+- hidden recovery provider;
+- permanent external veto over legitimate account operation.
+
+When safety and convenience conflict, Loom prefers the narrow,
+independently executable path and documents its limitations.

@@ -1,18 +1,22 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const siteRoot = join(root, "website");
+const siteRoot = join(root, "docs", "site");
 const requiredFiles = [
-  "index.html",
-  "getting-started.html",
-  "sdk.html",
-  "comparisons.html",
-  "security.html",
-  "llms.txt",
-  "llms-full.txt",
-  "assets/styles.css"
+  "package.json",
+  "package-lock.json",
+  "README.md",
+  "tsconfig.json",
+  "vocs.config.ts",
+  "pages/index.mdx",
+  "pages/getting-started.mdx",
+  "pages/sdk.mdx",
+  "pages/comparisons.mdx",
+  "pages/security.mdx",
+  "public/llms.txt",
+  "public/llms-full.txt"
 ];
 
 for (const file of requiredFiles) {
@@ -20,22 +24,11 @@ for (const file of requiredFiles) {
   if (!existsSync(path)) throw new Error(`missing website file: ${file}`);
 }
 
-const htmlFiles = walk(siteRoot).filter(path => extname(path) === ".html");
-for (const file of htmlFiles) {
-  const html = readFileSync(file, "utf8");
-  assertIncludes(html, "<!doctype html>", file);
-  assertIncludes(html, "<meta name=\"viewport\"", file);
-  assertIncludes(html, "Loom", file);
-  for (const href of [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1])) {
-    if (href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("#")) continue;
-    const [target] = href.split("#");
-    if (target === "") continue;
-    const resolved = join(siteRoot, target);
-    if (!existsSync(resolved)) throw new Error(`broken website link in ${file}: ${href}`);
-  }
-}
+const config = readFileSync(join(siteRoot, "vocs.config.ts"), "utf8");
+assertIncludes(config, "basePath: '/loom'", "docs/site/vocs.config.ts");
+assertIncludes(config, "title: 'Loom'", "docs/site/vocs.config.ts");
 
-const index = readFileSync(join(siteRoot, "index.html"), "utf8");
+const index = readFileSync(join(siteRoot, "pages", "index.mdx"), "utf8");
 for (const phrase of [
   "Self-sovereign wallet infrastructure",
   "No admin keys",
@@ -44,17 +37,10 @@ for (const phrase of [
   "Kohaku",
   "pre-audit"
 ]) {
-  assertIncludes(index, phrase, "website/index.html");
+  assertIncludes(index, phrase, "docs/site/pages/index.mdx");
 }
 
-console.log(`validated ${htmlFiles.length} website page(s)`);
-
-function walk(directory) {
-  return readdirSync(directory).flatMap(name => {
-    const path = join(directory, name);
-    return statSync(path).isDirectory() ? walk(path) : [path];
-  });
-}
+console.log("validated Vocs website structure");
 
 function assertIncludes(content, needle, file) {
   if (!content.includes(needle)) throw new Error(`${file} must include ${needle}`);

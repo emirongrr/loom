@@ -1,0 +1,35 @@
+# Comparisons
+
+Loom should be compared against Safe, Kernel, Nexus, Coinbase Smart Wallet,
+Clave, ZeroDev, Biconomy, and other account stacks. Comparisons must stay
+evidence-based.
+
+## Feature comparison
+
+| Capability | Loom | Typical ecosystem pattern |
+| --- | --- | --- |
+| Upgrade authority | No proxy admin, no factory authority, delayed migration instead. | Varies between immutable accounts, modular accounts, and upgradeable systems. |
+| Passkey auth | P-256/WebAuthn and multi-passkey threshold validator. | Increasingly common in passkey-first wallets. |
+| Social recovery | Guardian threshold, visible delay, expiry, cancellation, fresh guardian root. | Common in recovery wallets, with different trust and timing assumptions. |
+| Permissions | Granular target, selector, token, amount, time, use count, and paymaster bounds. | Session keys and smart sessions are common, often with broader surfaces. |
+| Privacy | Kohaku-backed SDK boundary with provider consent and metadata budgets; concrete adapters pending. | Usually wallet-side or protocol-specific, rarely account-core logic. |
+| Cross-chain authority | L1 keystore surface and proof-gated sync module; production proof verifiers pending. | Often service, bridge, or chain-specific. Trust assumptions vary. |
+
+## Gas comparison framework
+
+:::info
+Cross-wallet gas numbers are not published here until the same benchmark
+harness runs against the same compiler settings, networks, EntryPoint version,
+bundler path, and operation shape.
+:::
+
+| Operation | Loom source of truth | Competitor benchmark status |
+| --- | --- | --- |
+| Counterfactual UserOperation | `forge snapshot` and EntryPoint integration tests. | Pending shared harness. |
+| Atomic batch | `LoomAccount` batch tests and gas snapshot. | Pending shared harness. |
+| Passkey validation | `P256Validator` and `MultiP256Validator` tests. | Pending shared browser/device fixture set. |
+| Recovery proposal and execution | `RecoveryManager` tests and formal harnesses. | Pending shared scenario definitions. |
+| Vault withdrawal | `VaultHook` tests and gas snapshot. | Not directly comparable without matching vault semantics. |
+
+The comparison page should not claim gas superiority until the repository
+contains reproducible benchmark evidence.

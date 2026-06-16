@@ -1,0 +1,45 @@
+# Getting Started
+
+Start with the contracts, then add SDK and client layers.
+
+```sh
+git clone https://github.com/emirongrr/loom.git
+cd loom
+npm ci
+npm run verify:quick
+```
+
+Node.js 22 and Foundry v1.7.1 are the supported development baseline.
+
+## Build the docs site
+
+Loom uses a Vocs docs app under `docs/site`, matching the same shape used by
+Kohaku.
+
+```sh
+npm --prefix docs/site ci
+npm run site:dev
+npm run site:build
+```
+
+## Launching a wallet on Loom
+
+| Step | Engine responsibility | Client responsibility |
+| --- | --- | --- |
+| Account creation | Deploy immutable `LoomAccount` with selected validators and guardian root. | Create passkeys, explain recovery, verify bytecode, and store local metadata. |
+| Daily access | Validate passkey or MFA operations under policy and hook constraints. | Build clear calls, simulate risk, and route through user-selected infrastructure. |
+| Permissions | Enforce bounded session authority and immediate revocation. | Translate app requests into exact permissions the user can understand. |
+| Recovery | Require guardian threshold, visibility, delay, expiry, and cancellation. | Coordinate guardian ceremony without becoming a recovery custodian. |
+| Privacy | Keep core usable without privacy providers. | Use Kohaku-backed adapters, local scanning, and metadata budgets. |
+
+## Repository checks
+
+```sh
+npm run site:check
+npm run privacy:test
+npm run verify:quick
+```
+
+`verify:quick` runs documentation checks, website checks, privacy SDK tests,
+formatting, Solidity lint, production size checks, gas snapshot checks,
+contract tests, invariants, and source-policy checks.

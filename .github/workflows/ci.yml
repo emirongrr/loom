@@ -40,6 +40,10 @@ jobs:
         run: npm run docs:check
       - name: Validate website
         run: npm run site:check
+      - name: Install website dependencies
+        run: npm --prefix docs/site ci
+      - name: Build website
+        run: npm run site:build
       - name: Validate WebAuthn fixtures
         run: npm run fixtures:check
       - name: Test privacy SDK boundary

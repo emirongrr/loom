@@ -1,0 +1,68 @@
+# SDK
+
+The first SDK package is `@loom/privacy`. It is a Kohaku-backed runtime
+boundary, not a production privacy adapter.
+
+The runtime gives wallet builders a place to host Kohaku plugins behind:
+
+- explicit provider consent;
+- metadata-budget checks;
+- local storage boundaries;
+- no default RPC query before user consent;
+- future Railgun, privacy-pools, stealth, and Aztec adapter surfaces.
+
+## Provider profile
+
+```ts
+import {
+  createConsentStore,
+  createKohakuHost,
+  createProviderProfile,
+} from '@loom/privacy'
+
+const profile = createProviderProfile({
+  mode: 'user-rpc',
+  chainId: 1,
+  endpoint: 'https://rpc.example',
+  verified: false,
+  metadataBudget: {
+    protocol: 'railgun',
+    chainId: 1,
+    items: [
+      {
+        surface: 'rpc',
+        reveals: 'target chain and request timing',
+        required: true,
+        mitigation: 'user-selected endpoint',
+      },
+    ],
+  },
+})
+```
+
+## Consent before network access
+
+```ts
+const consent = createConsentStore()
+const host = createKohakuHost({
+  providerProfile: profile,
+  consentStore: consent,
+  metadataPolicy: {
+    allowedSurfaces: ['rpc'],
+    requireKnownMitigation: true,
+  },
+})
+
+// Throws until the wallet grants consent.
+await host.network.fetch(profile.endpoint)
+```
+
+## SDK package roadmap
+
+| Package | Purpose | Status |
+| --- | --- | --- |
+| `@loom/privacy` | Kohaku host, provider profiles, metadata budgets, future Railgun and privacy-pools adapters. | Runtime skeleton |
+| `@loom/account` | Account deploy, validator setup, session grant/revoke, recovery proposal, migration, vault builders. | Planned |
+| `@loom/client` | Wallet engine for mobile apps and partner wallets with verified state and clear signing. | Planned |
+
+SDKs should improve UX without becoming account authority.
