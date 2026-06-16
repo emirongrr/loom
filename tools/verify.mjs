@@ -28,16 +28,18 @@ function sourceFiles(directory) {
   });
 }
 
-function assertExcludedTermsAbsent() {
-  const roots = ["src", "test", "docs", "formal", "fixtures", "tools", "script"];
+function assertExperimentalAccountCryptoAbsentFromContracts() {
+  const roots = ["src", "test", "formal", "fixtures", "script"];
   const pattern = /post.?quantum|quantum|ML.?DSA|SLH.?DSA|\bPQ\b/i;
   const violations = roots.flatMap(name =>
     sourceFiles(join(root, name))
       .filter(path => !path.endsWith("verify.mjs"))
       .filter(path => pattern.test(readFileSync(path, "utf8")))
   );
-  if (violations.length !== 0) throw new Error(`excluded terms found:\n${violations.join("\n")}`);
-  console.log("\n==> Source policy\n<== Source policy passed");
+  if (violations.length !== 0) {
+    throw new Error(`experimental account crypto found in contract scope:\n${violations.join("\n")}`);
+  }
+  console.log("\n==> Contract source policy\n<== Contract source policy passed");
 }
 
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
@@ -56,4 +58,4 @@ run("Gas snapshot", forge, [
 ]);
 run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });
-assertExcludedTermsAbsent();
+assertExperimentalAccountCryptoAbsentFromContracts();

@@ -1,0 +1,66 @@
+{
+  "upstream": "https://github.com/ethereum/kohaku",
+  "revision": "master",
+  "packages": [
+    {
+      "name": "@kohaku-eth/plugins",
+      "kind": "npm",
+      "version": "0.0.1-alpha.9",
+      "required": true,
+      "loomSurface": "Private transaction plugin interface"
+    },
+    {
+      "name": "@kohaku-eth/provider",
+      "kind": "npm",
+      "version": "0.1.0-alpha.8",
+      "required": true,
+      "loomSurface": "Provider abstraction for verified and replaceable transports"
+    },
+    {
+      "name": "@kohaku-eth/railgun",
+      "kind": "npm",
+      "version": "0.0.1-alpha.26",
+      "required": true,
+      "loomSurface": "Default EVM shielded-pool backend"
+    },
+    {
+      "name": "@kohaku-eth/privacy-pools",
+      "kind": "npm",
+      "version": "0.0.1",
+      "required": true,
+      "loomSurface": "Privacy-pools backend and private withdrawal research path"
+    },
+    {
+      "name": "@kohaku-eth/tornado-cash",
+      "kind": "npm",
+      "version": "0.0.1",
+      "required": true,
+      "loomSurface": "Kohaku shielded-pool compatibility surface",
+      "productionGate": "Do not expose as default UX until dependency graph, jurisdictional risk, relayer assumptions, and withdrawal safety are reviewed."
+    },
+    {
+      "name": "packages/pq-account",
+      "kind": "kohaku-source",
+      "version": "master",
+      "required": true,
+      "loomSurface": "Hybrid ECDSA plus post-quantum ERC-4337 account compatibility and migration research",
+      "productionGate": "Do not import into Loom core until independently audited, gas-reviewed, tested for two-signature verification semantics, and wrapped behind a delayed migration path."
+    },
+    {
+      "name": "@a16z/helios",
+      "kind": "external-light-client",
+      "version": "review-per-release",
+      "required": true,
+      "loomSurface": "Verified RPC and private state reads for wallet clients",
+      "productionGate": "Require per-chain support review, checkpoint-source policy, fallback behavior, and mobile/WASM integration tests."
+    },
+    {
+      "name": "colibri-stateless",
+      "kind": "external-provider",
+      "version": "review-per-release",
+      "required": false,
+      "loomSurface": "Optional stateless RPC/provider path for Kohaku Railgun indexers",
+      "productionGate": "Require prover endpoint review, availability assumptions, and metadata-leakage analysis before enabling."
+    }
+  ]
+}
