@@ -40,6 +40,8 @@ jobs:
         run: npm run docs:check
       - name: Validate WebAuthn fixtures
         run: npm run fixtures:check
+      - name: Test privacy SDK boundary
+        run: npm run privacy:test
       - name: Check formatting
         run: forge fmt --check
       - name: Lint Solidity

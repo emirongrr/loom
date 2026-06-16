@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const localForge = join(root, "node_modules", "@foundry-rs", "forge-win32-amd64", "bin", "forge.exe");
 const forge = existsSync(localForge) ? localForge : "forge";
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const full = process.argv.includes("--full");
 
 function run(name, command, args, env = {}) {
@@ -14,6 +15,7 @@ function run(name, command, args, env = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
     env: { ...process.env, ...env },
+    shell: process.platform === "win32" && command.endsWith(".cmd"),
     stdio: "inherit"
   });
   const seconds = ((performance.now() - started) / 1000).toFixed(2);
@@ -44,6 +46,7 @@ function assertExperimentalAccountCryptoAbsentFromContracts() {
 
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
 run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
+run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);
