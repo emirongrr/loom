@@ -161,6 +161,30 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     receive() external payable {}
 
+    function initializeDelegatedAccount(
+        bytes32 guardianRoot_,
+        uint8 guardianThreshold_,
+        bytes32 configHash_,
+        ModuleInit[] calldata modules
+    ) external payable {
+        if (msg.sender != address(this) || configVersion != 0 || configHash_ == bytes32(0) || modules.length == 0) {
+            revert InvalidInitialization();
+        }
+        if (guardianRoot_ == bytes32(0) || guardianThreshold_ == 0 || guardianThreshold_ > MAX_GUARDIAN_THRESHOLD) {
+            revert InvalidGuardianConfig();
+        }
+        guardianRoot = guardianRoot_;
+        guardianThreshold = guardianThreshold_;
+        configHash = configHash_;
+        configVersion = 1;
+        for (uint256 i; i < modules.length; ++i) {
+            _installModule(modules[i].moduleTypeId, modules[i].module, modules[i].initData);
+        }
+        if (_validatorCount == 0) revert InvalidGuardianConfig();
+        emit ConfigUpdated(configHash_, 1);
+        emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
+    }
+
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return interfaceId == ERC165_INTERFACE_ID || interfaceId == ERC721_RECEIVER_INTERFACE_ID
             || interfaceId == ERC1155_RECEIVER_INTERFACE_ID;

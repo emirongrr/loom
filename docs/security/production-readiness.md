@@ -31,6 +31,9 @@ does not make a deployment production-ready.
 - Provider-independent direct execution replay, expiry, policy, freeze, hook,
   configuration-invalidation, validator nonce isolation, rollback, P-256/MFA,
   and atomicity tests.
+- EIP-7702 delegated initialization tests proving external initialization
+  rejection, self-only initialization, constructor-account reinitialization
+  rejection, template EntryPoint binding, and post-initialization execution.
 - Sovereign migration delay, destination code/config binding, call commitment,
   optional codehash-only destination binding, guardian-threshold cancellation,
   expiry, cancellation, freeze behavior, hook enforcement, atomic rollback, and
