@@ -1,0 +1,18 @@
+{
+  "name": "@loom/privacy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Kohaku-backed privacy runtime boundary for Loom wallet clients.",
+  "types": "src/index.d.ts",
+  "sideEffects": false,
+  "dependencies": {
+    "@kohaku-eth/plugins": "0.0.1-alpha.9",
+    "@kohaku-eth/privacy-pools": "0.0.1",
+    "@kohaku-eth/provider": "0.1.0-alpha.8",
+    "@kohaku-eth/railgun": "0.0.1-alpha.26",
+    "@kohaku-eth/tornado-cash": "0.0.1"
+  },
+  "kohakuStack": {
+    "manifest": "./kohaku-stack.json"
+  }
+}

@@ -474,6 +474,33 @@ contract SecurityRegressionTest {
         require(token.balanceOf(address(0xBEEF)) == 0, "scheduled execution transferred tokens");
     }
 
+    function testScheduleCallCannotOverwriteReadyAt() public {
+        LoomAccount account = _accountWithValidator(address(new MockValidator()));
+        MockTarget target = new MockTarget();
+        bytes memory data = abi.encodeCall(MockTarget.setValue, (1));
+
+        bytes memory firstSchedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MIN_HIGH_RISK_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, firstSchedule)));
+
+        bytes32 operationId = keccak256(abi.encode(address(target), uint256(0), data, account.configVersion()));
+        uint48 readyAt = account.scheduledOperations(operationId);
+        require(readyAt != 0, "operation not scheduled");
+
+        bytes memory overwriteSchedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MIN_CONFIG_DELAY()));
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, overwriteSchedule)))
+                )
+            );
+
+        require(!ok, "duplicate schedule overwrote readyAt");
+        require(account.scheduledOperations(operationId) == readyAt, "readyAt changed");
+    }
+
     function testRevertingHookCannotPermanentlyBrickAccount() public {
         RevertingHook hook = new RevertingHook();
         MockValidator validator = new MockValidator();

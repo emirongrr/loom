@@ -19,10 +19,13 @@ Security claims are valid only under the assumptions listed here and in
 | Vault hook | Separates daily spending from delayed long-term storage withdrawals | Misconfigured policy, non-standard token semantics, public withdrawal metadata | Exact withdrawal commitments, account delay plus vault delay, guardian-threshold cancellation, config-version invalidation |
 | L1 keystore | Stores canonical cross-chain identity roots | L1 controller compromise, identity correlation, unsupported proof system | User-controlled L1 controller, monotonic versioning, app-account root, proof-gated delayed L2 sync |
 | Keystore proof verifier | Authenticates L1 keystore state on another chain | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
+| Privacy adapters | Build private receive, transfer, shielded-pool, or private-execution flows | Account graph leakage, relayer/indexer/prover dependency, hardcoded RPC leakage, wrong bridge/finality assumption, false privacy claim, legally sensitive protocol exposure | Kohaku SDK stack, local-first scanning, provider profiles, metadata budgets, protocol-specific threat models, native exit fallback, adapter-specific release gates |
+| Kohaku account-security tooling | Provides a future hybrid two-signature ERC-4337 account compatibility or migration target through the SDK stack | Unaudited verifier import, excessive gas, large public keys, wrong migration destination, hidden account replacement, single-signature fallback by mistake | Source-level tracking only, no core import, delayed migration, guardian cancellation, independent audit gate, explicit hybrid verification tests |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
 | Factory and deployment | Select immutable account inputs | Wrong EntryPoint, module, guardian root, or verifier | Reproducible manifests and independent verification |
 | EIP-7702 delegation | Lets an EOA preserve its address while using Loom runtime code | Malicious persistent delegation, wrong template, uninitialized delegated storage, cross-chain authorization blast radius | Self-only one-time initialization, template bytecode verification, chain-specific authorization, explicit client warnings |
 | Wallet client | Constructs and explains authority | Clear-signing failure, metadata leakage, unsafe defaults | Open-source independent clients and the walkaway test |
+| Verified wallet client | Displays and constructs operations from chain state | False balances, stale nonces, hidden recovery, wrong roots, account graph leakage | Light-client verification, explicit unknown states, user-selected endpoints, privacy-preserving scanning |
 
 ## Contract limitations
 
@@ -55,6 +58,26 @@ Security claims are valid only under the assumptions listed here and in
   transfer-from, and approve calldata. It does not understand LP tokens,
   bridge receipts, private-note systems, ERC-4626 shares, lending positions,
   or arbitrary DeFi accounting.
+- Privacy adapters are not core account security. A Railgun, Aztec, stealth
+  address, or privacy-pool adapter can improve confidentiality only under its
+  own protocol, relayer, prover, bridge, scanner, and metadata assumptions.
+  Adapter failure must not prevent ordinary account control, recovery,
+  migration, or native-gas operation.
+- Kohaku provider selection is privacy-sensitive. A wallet must not silently
+  query a hardcoded RPC, default indexer, or relayer before the user has a
+  configured provider profile or a clearly labeled degraded mode.
+- Kohaku SDK dependencies currently resolve to an npm audit finding set that
+  includes high-severity `ws` advisories through `ethers`/`viem` and
+  high-severity `underscore` recursion risk through `jsonpath`/`bfj`. These
+  are client/SDK supply-chain risks, not LoomAccount bytecode risks, but they
+  block production SDK release until upstream versions, overrides, or audited
+  compatibility shims remove or explicitly contain them.
+- Kohaku account-security tooling is not currently Loom account logic. It is
+  tracked as SDK stack capability and future migration target. Importing its
+  verifier contracts into production scope requires a separate decision record,
+  independent audit, gas review, deployment verification, and tests proving
+  delayed migration, guardian cancellation, native exit fallback, and
+  two-signature verification semantics.
 - Large vault withdrawals require two visible delays when scheduled through
   the account: the account's configuration delay for creating the pending
   withdrawal, then the vault withdrawal delay for executing the protected
@@ -65,6 +88,9 @@ Security claims are valid only under the assumptions listed here and in
 - Contracts cannot provide transaction interpretation, private RPC access,
   private transfers, chain verification, force withdrawals, or censorship-
   resistant publication UX by themselves.
+- Verified wallet state is a client responsibility. Until a light-client based
+  wallet exists, UI state can still depend on RPC correctness even when account
+  authority does not.
 - Migration cannot guarantee that every asset has a safe or standard transfer
   interface. A migration batch is atomic, but users and clients must still
   construct asset-specific calls correctly.
@@ -122,6 +148,23 @@ Security claims are valid only under the assumptions listed here and in
 12. zkEmail guardian recovery is not production-supported until a concrete
     circuit, verifier, DKIM/root trust model, nullifier policy, replay rules,
     and independent audit are selected and documented.
+13. Verified wallet client implementation is missing. Production UX must not
+    claim RPC-independent balances, nonces, recovery state, guardian roots,
+    vault state, validator state, or cross-chain identity state until those
+    reads are verified or clearly labeled unverified.
+14. Privacy adapter implementation is missing. Railgun and Aztec integration
+    require protocol-specific SDK review, metadata-leakage analysis, local
+    scanning evidence, permission-binding tests, vault interaction tests,
+    bridge/finality assumptions, and independent audit before production use.
+15. Kohaku account-security tooling is source-tracked but not production
+    integrated. Production use requires reviewed verifier contracts, migration
+    rehearsals, dependency review, updated audit scope, and tests proving the
+    ECDSA-compatible signature path and post-quantum signature path are both
+    required where the account profile claims hybrid security.
+16. Kohaku SDK dependency graph currently has unresolved npm audit findings.
+    Production SDK work must either wait for upstream fixes, pin reviewed safe
+    overrides, or isolate vulnerable packages away from untrusted input and
+    network-facing runtime paths.
 
 ## Cypherpunk acceptance rule
 

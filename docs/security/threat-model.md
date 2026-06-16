@@ -21,6 +21,9 @@
   trigger an emergency freeze.
 - A Loom-operated service, default infrastructure provider, or module registry
   becoming a permanent account-liveness dependency.
+- A default RPC or indexer becoming the wallet's hidden source of truth for
+  balances, nonces, recovery status, guardian roots, vault state, validator
+  state, or cross-chain identity.
 - Loss of the configured EntryPoint permanently preventing authorized account
   publication; installed direct-capable validators can use the same policies
   and hooks without it.
@@ -34,6 +37,9 @@
   wrong-call migration attempts.
 - A malicious or compromised primary credential scheduling a dangerous
   migration that the guardian threshold needs to cancel before execution.
+- A privacy protocol, scanner, relayer, indexer, prover, or bridge becoming a
+  mandatory dependency for ordinary Loom account control, recovery, migration,
+  or native-gas operation.
 
 ## Assumptions
 
@@ -56,6 +62,9 @@
 - The underlying chain continues to provide a permissionless transaction
   publication and exit path. Loom cannot compensate for a chain that has
   permanently lost those properties.
+- Privacy adapters preserve the account's native control path and accurately
+  report their protocol, relayer, indexer, prover, bridge, timing, and metadata
+  assumptions.
 
 ## Known limitations
 
@@ -104,3 +113,9 @@
   private transfers, transaction interpretation, or independent transaction
   publication UX. The future client must satisfy the walkaway and privacy
   requirements in `docs/project/principles.md`.
+- The current repository does not implement a verified wallet client. Light
+  client verification, privacy-preserving scanning, recovery coordination, and
+  SDK state types belong to future client work.
+- The current repository does not implement Railgun, Aztec, stealth-address,
+  or privacy-pool adapters. `docs/design/privacy-adapters.md` defines the
+  boundary, not a production privacy guarantee.

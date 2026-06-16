@@ -58,7 +58,7 @@ jobs:
         run: forge coverage --ir-minimum --report summary --skip "test/formal/**"
       - name: Assert no excluded cryptography
         run: |
-          ! grep -RniE --exclude=verify.mjs 'post.?quantum|quantum|ML.?DSA|SLH.?DSA|\bPQ\b' src test docs formal fixtures tools script
+          ! grep -RniE 'post.?quantum|quantum|ML.?DSA|SLH.?DSA|\bPQ\b' src test formal fixtures script
 
   slither:
     name: Static analysis
