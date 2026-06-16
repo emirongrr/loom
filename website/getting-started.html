@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Getting Started | Loom</title>
+    <meta name="description" content="How to run, test, and start building with Loom wallet infrastructure.">
+    <link rel="stylesheet" href="assets/styles.css">
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="index.html">Loom <small>Getting started</small></a>
+        <nav class="nav-links" aria-label="Primary navigation">
+          <a href="index.html">Home</a>
+          <a href="sdk.html">SDK</a>
+          <a href="comparisons.html">Compare</a>
+          <a href="security.html">Security</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="eyebrow">Build from source</span>
+          <h1>Start with the contracts, then add client layers.</h1>
+          <p class="lead">
+            Loom is currently a pre-audit contract and SDK-boundary repository.
+            The first integration step is to understand account authority,
+            validators, recovery, sessions, and the privacy host boundary.
+          </p>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>Install and verify</h3>
+            <pre><code>git clone https://github.com/emirongrr/loom.git
+cd loom
+npm ci
+npm run verify:quick</code></pre>
+            <p>Use Node.js 22 and Foundry v1.7.1. The quick verification path includes docs, website checks, privacy SDK tests, formatting, linting, size checks, gas snapshots, contract tests, and source-policy checks.</p>
+          </article>
+
+          <article class="card">
+            <h3>Run privacy SDK boundary tests</h3>
+            <pre><code>npm run privacy:test</code></pre>
+            <p>This validates that the Kohaku host runtime does not query any provider before explicit user consent and metadata-budget approval.</p>
+          </article>
+        </div>
+
+        <section class="section">
+          <h2>How to launch a wallet on Loom</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Step</th>
+                  <th>Engine responsibility</th>
+                  <th>Client responsibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1. Account creation</td>
+                  <td>Deploy immutable LoomAccount with selected validators and guardian root.</td>
+                  <td>Create passkeys, explain recovery, verify deployment bytecode, and store local metadata.</td>
+                </tr>
+                <tr>
+                  <td>2. Daily access</td>
+                  <td>Validate passkey or MFA operations under policy and hook constraints.</td>
+                  <td>Build clear calls, simulate risk, route through user-selected infrastructure.</td>
+                </tr>
+                <tr>
+                  <td>3. Permissions</td>
+                  <td>Enforce bounded session authority and immediate revocation.</td>
+                  <td>Translate app requests into exact permissions the user can understand.</td>
+                </tr>
+                <tr>
+                  <td>4. Recovery</td>
+                  <td>Require guardian threshold, visibility, delay, expiry, and cancellation.</td>
+                  <td>Coordinate guardian ceremony without becoming a recovery custodian.</td>
+                </tr>
+                <tr>
+                  <td>5. Privacy</td>
+                  <td>Keep core usable without privacy providers.</td>
+                  <td>Use Kohaku-backed adapters, local scanning, and metadata budgets.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

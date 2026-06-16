@@ -1,0 +1,19 @@
+# Loom
+
+Loom is self-sovereign Ethereum wallet infrastructure.
+
+Important pages:
+
+- Overview: ./index.html
+- Getting started: ./getting-started.html
+- SDK: ./sdk.html
+- Comparisons: ./comparisons.html
+- Security: ./security.html
+- Full LLM context: ./llms-full.txt
+
+Key constraints:
+
+- Loom is pre-audit.
+- Loom has no admin key, proxy upgrade path, or factory authority over accounts.
+- Privacy protocols and Kohaku adapters are SDK/client boundaries, not mandatory account-core dependencies.
+- Do not claim production readiness, audited security, or measured competitor gas benchmarks unless the repository contains evidence.

@@ -1,0 +1,41 @@
+# Loom LLM Context
+
+Loom is contracts-first wallet infrastructure for Ethereum. It aims to let
+wallet builders deliver mainstream UX while preserving user sovereignty,
+privacy, recovery, verification, and permissionless exit.
+
+## Current implemented surfaces
+
+- Immutable LoomAccount with no developer admin, proxy upgrade path, or
+  privileged factory operation.
+- ERC-4337 v0.9 validation, ERC-1271, direct signed execution, and atomic
+  single/batch execution.
+- P-256/WebAuthn validator, multi-passkey threshold validator, ECDSA validator,
+  bounded session validator, and granular session validator.
+- PolicyHook for low-risk call classification, token limits, and paymaster
+  restrictions.
+- RecoveryManager with guardian threshold, visible delay, expiry, cancellation,
+  complete validator-set replacement, and fresh guardian-root rotation.
+- VaultHook for daily spending limits and delayed long-term asset withdrawals.
+- Sovereign migration with destination code/config binding, delay, expiry,
+  cancellation, hook enforcement, and atomic execution.
+- L1 keystore surface and proof-gated sync module; production proof verifiers
+  remain pending.
+- @loom/privacy host runtime skeleton for Kohaku-backed clients. The runtime
+  requires explicit provider consent and metadata-budget checks before network
+  access.
+
+## Non-goals and warnings
+
+- Loom is pre-audit and not production-ready.
+- Do not describe Loom as a finished wallet app.
+- Do not claim live cross-wallet gas superiority. Use the repository gas
+  snapshot for Loom-only measurements and mark cross-wallet benchmarks as
+  pending until the shared harness exists.
+- Do not make Kohaku, Railgun, Aztec, privacy pools, RPC providers, relayers,
+  indexers, paymasters, or recovery coordinators mandatory account authority.
+- Do not add a global identity registry that publicly links all user accounts.
+
+## Website source
+
+The static website lives in ./website and is deployed by .github/workflows/pages.yml.
