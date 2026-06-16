@@ -6,6 +6,7 @@ out-solc/
 out-solc-opt/
 coverage/
 lcov.info
+docs/site/dist/
 .env
 .env.*
 !.env.example

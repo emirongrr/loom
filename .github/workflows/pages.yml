@@ -27,6 +27,16 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/site/package-lock.json
+      - name: Install website dependencies
+        run: npm --prefix docs/site ci
+      - name: Build website
+        run: npm run site:build
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
@@ -34,7 +44,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: website
+          path: docs/site/dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

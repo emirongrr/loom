@@ -1,0 +1,45 @@
+# Loom
+
+**Self-sovereign wallet infrastructure for Ethereum.**
+
+Loom is a contracts-first account stack for teams that want fintech-grade user
+experience without giving a company, recovery provider, RPC, bundler,
+paymaster, or module registry permanent authority over user funds.
+
+Loom is not another closed wallet application. It is an open wallet engine:
+immutable accounts, passkeys, social recovery, bounded permissions, vault
+safety, L1-rooted identity direction, and a Kohaku-backed privacy SDK boundary.
+
+:::warning
+Loom is pre-audit software. Do not use it to secure production assets.
+:::
+
+## What Loom provides
+
+| Layer | Status | Purpose |
+| --- | --- | --- |
+| Immutable account core | Implemented | ERC-4337 validation, ERC-1271, direct execution, atomic calls, timelocks, and migration. |
+| Authentication | Implemented | Passkeys, P-256/WebAuthn, multi-passkey threshold/MFA, and ECDSA onboarding. |
+| Permissions | Implemented | Sessions bounded by target, selector, token, amount, time, use count, and paymaster. |
+| Recovery | Implemented, pre-audit | Guardian threshold, visible delay, expiry, cancellation, and complete validator-set replacement. |
+| Vault safety | Implemented, pre-audit | Daily spending path plus delayed long-term withdrawal path. |
+| Kohaku privacy SDK | Runtime skeleton | Provider consent, metadata budgets, local storage boundary, and future private adapters. |
+| Verified wallet client | Designed | Future light-client backed reads for balances, nonces, recovery, vaults, validators, and keystore state. |
+
+## Principles
+
+- **No admin keys:** no proxy upgrade path, factory authority, or developer recovery path.
+- **Passkeys first:** hardware-backed credentials instead of seed phrases for daily use.
+- **Recovery without custody:** guardians can recover or cancel but cannot spend.
+- **Privacy as security:** only the user's local wallet should need the global account graph.
+- **Permissionless exit:** users can migrate clients, validators, guardians, infrastructure, and future account systems.
+- **Verification over trust:** RPCs, indexers, relayers, and paymasters are convenience layers, not authority roots.
+
+## The walkaway test
+
+If Loom's frontend, RPC, bundler, paymaster, indexer, notification service, and
+recovery coordinator disappear, users should still be able to discover account
+state, verify it, recover access, publish authorized operations, and migrate
+away with independent software.
+
+That test is the product.

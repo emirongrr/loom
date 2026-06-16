@@ -38,4 +38,5 @@ privacy, recovery, verification, and permissionless exit.
 
 ## Website source
 
-The static website lives in ./website and is deployed by .github/workflows/pages.yml.
+The Vocs website lives in ./docs/site and is deployed by
+.github/workflows/pages.yml.

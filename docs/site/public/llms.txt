@@ -4,12 +4,12 @@ Loom is self-sovereign Ethereum wallet infrastructure.
 
 Important pages:
 
-- Overview: ./index.html
-- Getting started: ./getting-started.html
-- SDK: ./sdk.html
-- Comparisons: ./comparisons.html
-- Security: ./security.html
-- Full LLM context: ./llms-full.txt
+- Overview: /loom/
+- Getting started: /loom/getting-started
+- SDK: /loom/sdk
+- Comparisons: /loom/comparisons
+- Security: /loom/security
+- Full LLM context: /loom/llms-full.txt
 
 Key constraints:
 

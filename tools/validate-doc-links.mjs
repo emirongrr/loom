@@ -4,15 +4,14 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const topLevel = ["README.md", "CONTRIBUTING.md", "SECURITY.md"];
+const ignoredDirectories = new Set(["node_modules", "dist"]);
 
 function markdownFiles(directory) {
   return readdirSync(directory).flatMap(name => {
     const path = join(directory, name);
-    return statSync(path).isDirectory()
-      ? markdownFiles(path)
-      : path.endsWith(".md")
-        ? [path]
-        : [];
+    const stat = statSync(path);
+    if (stat.isDirectory()) return ignoredDirectories.has(name) ? [] : markdownFiles(path);
+    return path.endsWith(".md") ? [path] : [];
   });
 }
 
