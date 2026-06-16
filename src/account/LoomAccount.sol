@@ -36,6 +36,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error MigrationAlreadyPending();
     error MigrationNotPending();
     error InvalidMigration();
+    error OperationAlreadyScheduled();
 
     struct ModuleInit {
         uint256 moduleTypeId;
@@ -89,6 +90,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 private constant NAME_HASH = keccak256("LoomAccount");
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
+    uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
     address public immutable entryPoint;
     bytes32 public configHash;
@@ -544,6 +546,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
             : MIN_HIGH_RISK_DELAY;
         if (delay < minimum) revert InvalidDelay();
         operationId = keccak256(abi.encode(target, value, data, configVersion));
+        if (scheduledOperations[operationId] != 0) revert OperationAlreadyScheduled();
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 readyAt = uint48(block.timestamp) + delay;
         scheduledOperations[operationId] = readyAt;
@@ -874,7 +877,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         returns (bool)
     {
         if (
-            target != address(this) || value != 0 || callData.length < 100
+            target != address(this) || value != 0
+                || callData.length < UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE
                 || _selector(callData) != this.uninstallModule.selector
         ) return false;
         uint256 moduleTypeId;
