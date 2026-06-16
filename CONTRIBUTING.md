@@ -5,8 +5,9 @@ measured outcomes are preferred over broad abstractions.
 
 ## First hour
 
-1. Read `docs/README.md`, `docs/project/principles.md`, and
-   `docs/design/architecture.md`.
+1. Read `docs/README.md`, `docs/project/principles.md`,
+   `docs/project/foundations.md`, and the relevant design and security
+   documents.
 2. Install Node.js 22 and Foundry v1.7.1.
 3. Run `npm ci`.
 4. Run `npm run verify:quick`.
@@ -32,6 +33,8 @@ The quick verification command must pass before starting work. Use
   a decision record and threat-model update.
 - Security claims must name their assumptions and evidence.
 - Generated artifacts and local secrets must not be committed.
+- Automated contributions must follow the same public architecture, security,
+  testing, and review requirements as human contributions.
 
 ## Pull requests
 

@@ -42,6 +42,9 @@ fallback.
   security assumptions are independently reproducible and auditable.
 - **Narrow authority:** convenience modules receive the minimum explicit,
   bounded, queryable, and revocable authority needed for their task.
+- **Rooted portability:** long-term cross-chain authority should anchor in
+  Ethereum L1 or another explicitly verified root, never in a Loom-operated
+  signer, sequencer promise, or opaque bridge.
 
 ## Security and unstoppable operation
 
@@ -56,6 +59,8 @@ Loom separates:
   expiry;
 - emergency freeze, which temporarily blocks ordinary execution but leaves
   exact recovery and cancellation paths available.
+- vault-like storage, which should use stricter withdrawal policies than daily
+  spending accounts once vault modules are introduced.
 
 These restrictions are acceptable only because no external operator controls
 them and every path is defined by immutable on-chain rules.
@@ -77,6 +82,9 @@ preserving a portable expert path.
   impose a centralized censorship policy.
 - Account and application activity should use separated identities where
   practical; only the user's local wallet should hold the global view.
+- L1/L2 routing may be abstracted in the normal user experience, but the
+  account authority root, proof assumptions, fees, and escape paths must remain
+  inspectable.
 
 ## Contract review questions
 

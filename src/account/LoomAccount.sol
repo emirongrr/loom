@@ -33,11 +33,33 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error EmptyBatch();
     error FreezeActive();
     error InvalidDirectExecution();
+    error MigrationAlreadyPending();
+    error MigrationNotPending();
+    error InvalidMigration();
 
     struct ModuleInit {
         uint256 moduleTypeId;
         address module;
         bytes initData;
+    }
+
+    struct PendingMigration {
+        address destination;
+        bytes32 destinationCodeHash;
+        bytes32 destinationConfigHash;
+        bytes32 callsHash;
+        uint48 readyAt;
+        uint48 expiresAt;
+        uint64 configVersion;
+        uint64 nonce;
+    }
+
+    struct GuardianApproval {
+        address verifier;
+        bytes32 keyCommitment;
+        bytes32 salt;
+        bytes signature;
+        bytes32[] proof;
     }
 
     uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
@@ -59,6 +81,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant FREEZE_TYPEHASH =
         keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)");
+    bytes32 public constant CANCEL_MIGRATION_TYPEHASH =
+        keccak256("CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)");
     bytes32 public constant DIRECT_EXECUTION_TYPEHASH = keccak256(
         "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
     );
@@ -82,6 +106,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     mapping(bytes32 operationId => uint48 readyAt) public scheduledOperations;
     mapping(bytes32 guardianLeaf => uint256) public freezeNonces;
     mapping(bytes32 guardianLeaf => uint64) public lastFreezeConfigVersion;
+    PendingMigration public pendingMigration;
+    uint64 public migrationNonce;
     bool private _executingScheduled;
     bool private _executionLocked;
 
@@ -95,6 +121,17 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event OperationExecuted(bytes32 indexed operationId);
     event AllowanceRevoked(address indexed token, address indexed spender);
     event DirectExecution(address indexed validator, uint256 indexed nonce, bytes32 indexed executionHash);
+    event MigrationScheduled(
+        bytes32 indexed migrationId,
+        address indexed destination,
+        bytes32 indexed destinationCodeHash,
+        bytes32 destinationConfigHash,
+        bytes32 callsHash,
+        uint48 readyAt,
+        uint48 expiresAt
+    );
+    event MigrationCancelled(bytes32 indexed migrationId);
+    event MigrationExecuted(bytes32 indexed migrationId, address indexed destination);
 
     constructor(
         address entryPoint_,
@@ -495,6 +532,120 @@ contract LoomAccount is IERC1271, ILoomAccount {
         emit OperationCancelled(operationId);
     }
 
+    function scheduleMigration(
+        address destination,
+        bytes32 destinationCodeHash,
+        bytes32 destinationConfigHash,
+        bytes32 callsHash,
+        uint48 delay,
+        uint48 executionWindow
+    ) external onlySelf returns (bytes32 migrationId) {
+        if (pendingMigration.readyAt != 0) revert MigrationAlreadyPending();
+        if (
+            destination == address(0) || destination == address(this) || destinationCodeHash == bytes32(0)
+                || destination.code.length == 0 || destination.codehash != destinationCodeHash
+                || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY || executionWindow == 0
+        ) revert InvalidMigration();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint48 readyAt = uint48(block.timestamp) + delay;
+        uint48 expiresAt = readyAt + executionWindow;
+        pendingMigration = PendingMigration({
+            destination: destination,
+            destinationCodeHash: destinationCodeHash,
+            destinationConfigHash: destinationConfigHash,
+            callsHash: callsHash,
+            readyAt: readyAt,
+            expiresAt: expiresAt,
+            configVersion: configVersion,
+            nonce: migrationNonce
+        });
+        migrationId = migrationIdFor(pendingMigration);
+        emit MigrationScheduled(
+            migrationId, destination, destinationCodeHash, destinationConfigHash, callsHash, readyAt, expiresAt
+        );
+    }
+
+    function cancelMigration() external onlySelf {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0) revert MigrationNotPending();
+        _cancelMigration(migration);
+    }
+
+    function cancelMigrationWithGuardians(GuardianApproval[] calldata guardianApprovals) external {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0) revert MigrationNotPending();
+        bytes32 migrationId = migrationIdFor(migration);
+        bytes32 digest = migrationCancelDigest(migrationId, migration.configVersion, migration.nonce);
+        if (!_guardianApproved(digest, guardianApprovals)) revert InvalidModule();
+        _cancelMigration(migration);
+    }
+
+    function migrationCancelDigest(bytes32 migrationId, uint64 version, uint64 nonce) public view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, version, nonce));
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+    }
+
+    function _cancelMigration(PendingMigration memory migration) internal {
+        bytes32 migrationId = migrationIdFor(migration);
+        delete pendingMigration;
+        ++migrationNonce;
+        emit MigrationCancelled(migrationId);
+    }
+
+    function executeMigration(ExecutionLib.Execution[] calldata calls) external nonReentrantExecution {
+        PendingMigration memory migration = pendingMigration;
+        if (migration.readyAt == 0 || keccak256(abi.encode(calls)) != migration.callsHash) {
+            revert InvalidMigration();
+        }
+        // Timestamp drift is negligible relative to the multi-day security delay.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < frozenUntil) revert AccountFrozen();
+        // Timestamp drift is negligible relative to the multi-day security delay.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp < migration.readyAt) revert OperationNotReady();
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > migration.expiresAt || configVersion != migration.configVersion) {
+            revert InvalidMigration();
+        }
+        if (migration.destination.codehash != migration.destinationCodeHash) revert InvalidMigration();
+        if (
+            migration.destinationConfigHash != bytes32(0)
+                && ILoomAccount(migration.destination).configHash() != migration.destinationConfigHash
+        ) {
+            revert InvalidMigration();
+        }
+        bytes32 migrationId = migrationIdFor(migration);
+        delete pendingMigration;
+        ++migrationNonce;
+
+        bytes memory executionCalldata = abi.encode(calls);
+        bytes memory accountCall = abi.encodeCall(this.execute, (BATCH_EXECUTION_MODE, executionCalldata));
+        (address[] memory checkedHooks, bytes[] memory hookData) = _preCheck(msg.sender, accountCall);
+        if (calls.length == 0) revert EmptyBatch();
+        for (uint256 i; i < calls.length; ++i) {
+            _execute(calls[i]);
+        }
+        _postCheck(checkedHooks, hookData);
+        emit MigrationExecuted(migrationId, migration.destination);
+    }
+
+    function migrationIdFor(PendingMigration memory migration) public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                address(this),
+                migration.destination,
+                migration.destinationCodeHash,
+                migration.destinationConfigHash,
+                migration.callsHash,
+                migration.readyAt,
+                migration.expiresAt,
+                migration.configVersion,
+                migration.nonce,
+                block.chainid
+            )
+        );
+    }
+
     function executeScheduled(address target, uint256 value, bytes calldata data) external nonReentrantExecution {
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -650,7 +801,31 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
         if (execution.target != address(this)) return false;
         return selector == this.setGuardianConfig.selector || selector == this.installModule.selector
-            || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector;
+            || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector
+            || selector == this.cancelMigration.selector;
+    }
+
+    function _guardianApproved(bytes32 digest, GuardianApproval[] calldata approvals) internal view returns (bool) {
+        uint256 threshold = guardianThreshold;
+        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_GUARDIAN_THRESHOLD) return false;
+
+        bytes32 previous = bytes32(0);
+        for (uint256 i; i < approvals.length; ++i) {
+            GuardianApproval calldata item = approvals[i];
+            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
+            bytes32 leaf = guardianLeaf(item.verifier, item.keyCommitment, item.salt);
+            if (leaf <= previous || item.proof.length > MAX_GUARDIAN_PROOF_LENGTH) return false;
+            previous = leaf;
+            if (!MerkleProof.verify(item.proof, guardianRoot, leaf)) return false;
+            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
+                bool valid
+            ) {
+                if (!valid) return false;
+            } catch {
+                return false;
+            }
+        }
+        return true;
     }
 
     function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {

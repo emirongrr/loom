@@ -99,6 +99,31 @@ contract ERC7579LimitedProfileTest {
         require(adapter.uninstallDataHashes(address(account)) == keccak256(uninstallData), "uninstall data changed");
     }
 
+    function testStandardLifecycleAdapterRejectsDuplicateAndInvalidLifecycleCalls() public {
+        MockERC7579HookAdapter adapter = new MockERC7579HookAdapter();
+        (bool directInstall,) = address(adapter).call(abi.encodeCall(adapter.onInstall, (bytes(""))));
+        require(!directInstall, "non-account lifecycle install accepted");
+
+        bytes memory lifecycle = abi.encodeCall(adapter.onInstall, (bytes("install")));
+        bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(adapter), lifecycle));
+        _scheduleAndExecute(address(account), install, account.MIN_CONFIG_DELAY());
+
+        ExecutionLib.Execution memory duplicate =
+            ExecutionLib.Execution(address(adapter), 0, abi.encodeCall(adapter.onInstall, (bytes(""))));
+        (bool duplicateInstall,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(duplicate))));
+        require(!duplicateInstall, "duplicate lifecycle install accepted");
+
+        ExecutionLib.Execution memory prematureUninstall =
+            ExecutionLib.Execution(address(adapter), 0, abi.encodeCall(adapter.onUninstall, (bytes(""))));
+        (bool invalidUninstall,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(prematureUninstall))));
+        require(!invalidUninstall, "lifecycle uninstall accepted while module installed");
+
+        require(adapter.isModuleType(ModuleType.HOOK), "adapter hook type rejected");
+        require(!adapter.isModuleType(ModuleType.VALIDATOR), "adapter validator type accepted");
+    }
+
     function testRecoveryModuleTargetsUseConfigDelay() public {
         RecoveryManager recovery = new RecoveryManager();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);

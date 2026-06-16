@@ -10,13 +10,23 @@ import {StdInvariant} from "../lib/openzeppelin-contracts/lib/forge-std/src/StdI
 
 contract LoomAccountInvariantHandler {
     LoomAccount public account;
+    LoomAccount public migrationDestination;
     MockTarget public target;
+    MockTarget public migrationTarget;
+    uint256 public migrationValue;
     bool public violated;
 
-    function configure(LoomAccount account_, MockTarget target_) external {
+    function configure(
+        LoomAccount account_,
+        LoomAccount migrationDestination_,
+        MockTarget target_,
+        MockTarget migrationTarget_
+    ) external {
         if (address(account) != address(0)) revert();
         account = account_;
+        migrationDestination = migrationDestination_;
         target = target_;
+        migrationTarget = migrationTarget_;
     }
 
     function executeValue(uint256 value) external {
@@ -45,13 +55,51 @@ contract LoomAccountInvariantHandler {
         _checkVersion(versionBefore);
     }
 
+    function scheduleMigration(uint256 value) external {
+        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        if (pendingCallsHash != bytes32(0)) return;
+        uint64 versionBefore = account.configVersion();
+        migrationValue = value;
+        ExecutionLib.Execution[] memory calls = _migrationCalls();
+        bytes memory schedule = abi.encodeCall(
+            LoomAccount.scheduleMigration,
+            (
+                address(migrationDestination),
+                address(migrationDestination).codehash,
+                migrationDestination.configHash(),
+                keccak256(abi.encode(calls)),
+                account.MIN_CONFIG_DELAY(),
+                1 days
+            )
+        );
+        try account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule))) {} catch {}
+        _checkVersion(versionBefore);
+    }
+
+    function executeMigrationBeforeDelay() external {
+        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        if (pendingCallsHash == bytes32(0)) return;
+        uint64 versionBefore = account.configVersion();
+        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeMigration, (_migrationCalls())));
+        if (ok) violated = true;
+        if (migrationTarget.value() != 0) violated = true;
+        _checkVersion(versionBefore);
+    }
+
     function _checkVersion(uint64 versionBefore) internal {
         if (account.configVersion() < versionBefore) violated = true;
+    }
+
+    function _migrationCalls() internal view returns (ExecutionLib.Execution[] memory calls) {
+        calls = new ExecutionLib.Execution[](1);
+        calls[0] =
+            ExecutionLib.Execution(address(migrationTarget), 0, abi.encodeCall(MockTarget.setValue, (migrationValue)));
     }
 }
 
 contract LoomAccountInvariantTest is StdInvariant {
     LoomAccount internal account;
+    LoomAccount internal migrationDestination;
     MockValidator internal validator;
     LoomAccountInvariantHandler internal handler;
 
@@ -61,7 +109,13 @@ contract LoomAccountInvariantTest is StdInvariant {
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         account = new LoomAccount(address(handler), keccak256("guardians"), 1, keccak256("config"), modules);
-        handler.configure(account, new MockTarget());
+        MockValidator destinationValidator = new MockValidator();
+        LoomAccount.ModuleInit[] memory destinationModules = new LoomAccount.ModuleInit[](1);
+        destinationModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(destinationValidator), "");
+        migrationDestination = new LoomAccount(
+            address(handler), keccak256("guardians"), 1, keccak256("destination-config"), destinationModules
+        );
+        handler.configure(account, migrationDestination, new MockTarget(), new MockTarget());
         targetContract(address(handler));
     }
 

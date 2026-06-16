@@ -28,6 +28,17 @@ does not make a deployment production-ready.
 - Provider-independent direct execution replay, expiry, policy, freeze, hook,
   configuration-invalidation, validator nonce isolation, rollback, P-256/MFA,
   and atomicity tests.
+- Sovereign migration delay, destination code/config binding, call commitment,
+  optional codehash-only destination binding, guardian-threshold cancellation,
+  expiry, cancellation, freeze behavior, hook enforcement, atomic rollback, and
+  stale-config invalidation tests.
+- Vault daily spending, delayed exact withdrawal, native ETH path,
+  guardian-threshold cancellation, duplicate-guardian rejection, expiry,
+  stale-config invalidation, and revert rollback tests.
+- L1 keystore registration, controller-only updates, proof-gated sync,
+  app-account membership, stale L1 version rejection, local config
+  invalidation, guardian cancellation, delay, expiry, and complete-validator-set
+  replacement tests.
 - Halmos symbolic property workflow for core authority invariants.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
@@ -40,9 +51,13 @@ does not make a deployment production-ready.
 
 Coverage gates exclude symbolic formal harnesses because Halmos, not Forge
 coverage, executes them. The current unfiltered report excluding formal
-harnesses is approximately 84.9% lines and 57.3% branches. `LoomAccount`
-coverage is approximately 85.9% lines and 60.0% branches. `RecoveryManager`
-coverage is approximately 97.7% lines and 75.0% branches. Before audit freeze,
+harnesses is approximately 86.4% lines and 60.5% branches. `LoomAccount`
+coverage is approximately 86.8% lines and 59.6% branches. `RecoveryManager`
+coverage is approximately 97.7% lines and 75.0% branches. `VaultHook`
+coverage is approximately 93.0% lines and 63.2% branches. `LoomKeystore`
+coverage is approximately 92.5% lines and 60.0% branches.
+`KeystoreSyncRecoveryModule` coverage is approximately 96.8% lines and 60.0%
+branches. Before audit freeze,
 every security-critical production module should reach at least 80% lines and
 60% branches and the production-source target must become an enforced CI
 gate.
@@ -79,6 +94,17 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
 - Public testnet deployment with bundler interoperability tests.
 - Optional token-fee paymaster interoperability tests proving native-gas
   fallback and rejection of unapproved paymasters.
+- Live migration rehearsal between independently deployed source and
+  destination accounts, including ERC-20 portfolios, guardian cancellation,
+  cancellation, expiry, alternative EntryPoint destinations, codehash-only
+  future-standard destinations, and permissionless execution through a non-Loom
+  publisher.
+- Live vault rehearsal across native ETH, canonical ERC-20s, non-standard
+  ERC-20 behavior, guardian cancellation, monitoring notifications, and
+  delayed private-withdrawal adapter assumptions.
+- Independent audit and per-network testnet rehearsal for each production L1
+  storage proof verifier used by keystore sync. Test-only verifier contracts
+  are not acceptable for production.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.

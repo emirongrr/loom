@@ -9,7 +9,10 @@ and the official ERC-4337 v0.9 EntryPoint.
 - `src/account/LoomAccount.sol`
 - `src/account/LoomAccountFactory.sol`
 - `src/hooks/PolicyHook.sol`
+- `src/hooks/VaultHook.sol`
+- `src/keystore/LoomKeystore.sol`
 - `src/recovery/RecoveryManager.sol`
+- `src/recovery/KeystoreSyncRecoveryModule.sol`
 - `src/recovery/ECDSAGuardianVerifier.sol`
 - `src/validators/ECDSAValidator.sol`
 - `src/validators/P256Validator.sol`
@@ -65,6 +68,32 @@ especially EntryPoint validation, nonce handling, and sender creation.
     a configuration change.
 24. Direct nonces are isolated per validator and rejected or reverting direct
     executions cannot consume a nonce.
+25. Sovereign migration cannot execute before its delay, after expiry, after
+    cancellation, after source configuration changes, or against a destination
+    whose code hash or `configHash` differs from the committed values.
+26. Sovereign migration executes only the exact committed atomic batch, remains
+    blocked while frozen, and cannot bypass installed hooks or policy
+    accounting.
+27. Failed or reverting migration execution preserves the pending migration and
+    cannot consume the migration nonce.
+28. Guardian-threshold migration cancellation cannot execute calls, cannot move
+    assets, rejects duplicate or invalid guardian approvals, and consumes the
+    migration nonce only on success.
+29. Vault daily spending cannot exceed configured per-period limits and must
+    roll back when the protected inner execution reverts.
+30. Vault withdrawals above the daily limit require the exact pending
+    withdrawal, account scheduled operation, vault delay, current
+    `configVersion`, and unexpired execution window.
+31. Guardian-threshold vault cancellation cannot execute calls, cannot move
+    assets, and rejects duplicate, missing, stale, or invalid guardian
+    approvals.
+32. L1 keystore updates cannot be made by non-controllers and versions must
+    advance monotonically.
+33. Keystore sync cannot apply without a valid proof verifier response,
+    app-account membership, newer L1 version, complete old validator set,
+    local delay, unexpired window, and unchanged local `configVersion`.
+34. Keystore sync cancellation cannot execute calls, cannot move assets, and
+    rejects duplicate or invalid guardian approvals.
 
 ## Reviewer focus areas
 
@@ -87,6 +116,16 @@ especially EntryPoint validation, nonce handling, and sender creation.
 - Direct-execution domain separation, nonce/config invalidation, explicit
   validator capability, and hook behavior when the caller is an arbitrary
   transaction publisher rather than the EntryPoint.
+- Sovereign migration identity, cancellation, expiry, source-config
+  invalidation, destination binding, hook enforcement, and atomic rollback.
+- Codehash-only migration destinations for future account standards, including
+  the weaker assurance compared with Loom `configHash` binding.
+- Vault policy lifecycle, exact withdrawal identity, guardian cancellation,
+  expiry, config-version invalidation, and rollback after reverting protected
+  calls.
+- L1 keystore controller authority, identity registration, config versioning,
+  app-account root binding, proof-verifier boundary, stale L1 version
+  rejection, sync cancellation, expiry, and local config invalidation.
 - Non-standard ERC-20 return values and policy calldata parsing.
 
 ## Out of scope
@@ -94,7 +133,8 @@ especially EntryPoint validation, nonce handling, and sender creation.
 - Wallet user interface and transaction interpretation.
 - Bundler, paymaster, RPC provider, and chain infrastructure implementations.
 - Private transfer systems.
-- Cross-chain state proof verification.
+- Concrete production L1 storage proof verifier implementations until they are
+  added to audit scope.
 
 These components may affect the safety of a future wallet but do not belong to
 this contracts-only repository.

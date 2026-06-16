@@ -13,8 +13,8 @@ every Loom release because the methodology evolves.
 | Account portability | ERC-1271 and ERC-4337; Loom-specific limited module profile | Public interfaces |
 | Account recovery | Visible guardian-threshold proposal, delay, cancellation, expiry, and atomic validator/guardian rotation | `RecoveryManager`, account recovery module |
 | Permissions management | Exact-call and granular enumerable revocable session permissions plus allowance revoke | `SessionKeyValidator`, `GranularSessionValidator`, `revokeTokenAllowance` |
-| Impact mitigation | Low-risk policy limits, timelocks, and freeze | `PolicyHook`, scheduled calls, `freeze` |
-| Cross-chain readiness | Versioned local config commitment; no unverified remote mutation path | `configHash`, `configVersion` |
+| Impact mitigation | Low-risk policy limits, vault delays, timelocks, and freeze | `PolicyHook`, `VaultHook`, scheduled calls, `freeze` |
+| Cross-chain readiness | L1-rooted identity config plus proof-gated optional sync; no bridge or service authority | `LoomKeystore`, `KeystoreSyncRecoveryModule`, `configHash`, `configVersion` |
 
 ## Required wallet/client work
 

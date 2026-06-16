@@ -2,6 +2,8 @@
 
 Research date: 2026-06-14
 
+Updated: 2026-06-16 for vault/security-module comparison.
+
 This document compares Loom with open-source smart-account systems
 that are relevant to passkeys, modular permissions, recovery, and Ethereum L2
 deployment. It is a design comparison, not an audit of the referenced
@@ -41,7 +43,7 @@ compatible until conformance tests prove the exact supported surface.
 |---|---|---|
 | Coinbase Smart Wallet | Multiple concurrent EOA/passkey owners, compact owner indexing, cross-chain replayable owner updates | Less emphasis on guardian recovery, graded access, and immutable policy guardrails |
 | Clave | Production passkey wallet experience on ZKsync, native P-256 usage, recovery-oriented wallet design | More chain-specific; older contracts are not a general ERC-7579 account core |
-| Safe + Safe Modules | Mature multisig, passkey signer contracts, recovery/allowance/4337 modules, long deployment history | Proxy/module architecture and broad module authority create a larger trust and audit surface |
+| Safe + Safe Modules | Mature multisig, passkey signer contracts, recovery/allowance/4337 modules, long deployment history, formal-verification and audit culture | Proxy/module architecture and broad module authority create a larger trust and audit surface |
 | Kernel / ZeroDev | ERC-7579 plugin ecosystem, validators/executors/hooks/fallbacks, composable signer-plus-policy permissions | Greater complexity and more powerful modules than Loom intentionally permits |
 | Biconomy Nexus | ERC-7579 account base, extensive audits, deployment and tooling maturity | Upgradeability and broad modular surface increase governance and module risks |
 | Alchemy Modular Account | ERC-4337 v0.9, ERC-6900, WebAuthn module, spend/allowlist/paymaster/time hooks, ERC-1271 and token receivers | Upgradeable and maximally modular rather than minimal and immutable |
@@ -66,6 +68,7 @@ compatible until conformance tests prove the exact supported surface.
 | ERC-1271 | Primary and session validators deliberately reject arbitrary hashes | Safe/Alchemy broad support; SmartSession uses ERC-7739 | Add a narrowly scoped safe typed-data strategy and counterfactual signatures |
 | Cross-chain config | Local `configHash` and monotonic version only | Coinbase cross-chain replayable updates | No trustless cross-chain update or replay-safe migration protocol |
 | Batch execution | ERC-7821-style minimal simple batch plus ERC-4337 integration test | Common across modern accounts; some support recursive batches | Add conformance vectors and ERC-5792 client capability reporting |
+| Vault separation | Optional `VaultHook` separates daily spend from delayed long-term withdrawals for ETH and canonical ERC-20 movement | Safe allowance module provides delegate/token allowances with reset periods; Argent has guarded/lockable modules | Audit vault hook; add production token rehearsal and private-withdrawal adapter review |
 | Executors/fallbacks | Deliberately unsupported | Kernel/Nexus/Rhinestone ecosystems | Limits automation and ecosystem modules, but reduces attack surface |
 | Module safety | Timelocked install/remove, bounded counts, broken-hook removal path | Rhinestone registry hook and audited module catalogs | Add module-codehash allowlisting/attestation as optional policy |
 | Token receivers | ETH plus stateless ERC-721/ERC-1155 safe-transfer receivers | Common in mature smart accounts | Add integration vectors for major token implementations |
@@ -132,6 +135,18 @@ to match feature-rich accounts.
 4. Decide whether policy hooks must restrict guardian recovery execution;
    document and test the liveness consequences.
 
+### P0: Vault and large-balance safety
+
+1. Independently audit `VaultHook` before treating it as a savings-layer
+   control.
+2. Test vault policies against canonical ERC-20s, non-standard ERC-20 return
+   values, fee-on-transfer tokens, rebasing tokens, ERC-4626 shares, and bridge
+   receipt assets. Keep unsupported classes explicitly out of scope.
+3. Add stale-config invalidation, expiry, batch interaction, and policy-removal
+   tests around pending withdrawals.
+4. Design a private-withdrawal adapter separately. Do not make privacy
+   protocols part of the immutable account core.
+
 ### P1: Permissions and application compatibility
 
 1. Audit the granular session permission format and add gas limits only if
@@ -171,10 +186,12 @@ audited adapters and validators.
 
 The next engineering milestone should be:
 
-1. Visible, delayed, cancelable recovery state machine.
+1. Audit and expand vault policy tests, including stale config, expiry, batch,
+   and non-standard token behavior.
 2. Independent audit and browser fixtures for multi-passkey/MFA validation.
 3. ERC-7579 limited-profile conformance and honest adapters.
 4. Browser/chain P-256 compatibility suite.
+5. Live bundler and migration rehearsals with independent publishers.
 
 ## Primary references
 
