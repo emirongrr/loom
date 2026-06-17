@@ -41,6 +41,14 @@ export class InvalidPrivateOperationError extends Error {
   }
 }
 
+export class PrivateScanStateError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = "PrivateScanStateError";
+    this.details = details;
+  }
+}
+
 export function providerConsentKey(profile) {
   const endpoint = profile.endpoint ?? "no-endpoint";
   return `provider:${profile.chainId}:${profile.mode}:${endpoint}`;
@@ -77,6 +85,10 @@ export function createMemoryStorage(initial = {}) {
     get(key) {
       assertNonEmptyString(key, "storage key");
       return values.has(key) ? values.get(key) : null;
+    },
+    delete(key) {
+      assertNonEmptyString(key, "storage key");
+      values.delete(key);
     }
   };
 }
@@ -273,10 +285,69 @@ export function createPrivateScanStateStore(storage = createMemoryStorage()) {
         fromBlock: state.fromBlock === undefined ? undefined : normalizeBigIntString(state.fromBlock, "fromBlock"),
         toBlock: normalizeBigIntString(state.toBlock, "toBlock"),
         latestMerkleRoot:
-          state.latestMerkleRoot === undefined ? undefined : normalizeHex(state.latestMerkleRoot, "latest merkle root")
+          state.latestMerkleRoot === undefined ? undefined : normalizeHex(state.latestMerkleRoot, "latest merkle root"),
+        updatedAt: state.updatedAt === undefined ? undefined : normalizePositiveInteger(state.updatedAt, "updated at")
       };
       storage.set(privateScanStateKey(context, protocol), JSON.stringify(normalized));
       return Object.freeze(normalized);
+    },
+    reset(context, protocol) {
+      const key = privateScanStateKey(context, protocol);
+      if (typeof storage.delete !== "function") {
+        throw new PrivateScanStateError("scan state reset requires storage delete support", { key });
+      }
+      storage.delete(key);
+    }
+  });
+}
+
+export function createPrivateScanLifecycle(options = {}) {
+  const protocol = normalizeProtocol(options.protocol ?? "railgun");
+  const store = options.store ?? createPrivateScanStateStore(options.storage);
+  const staleAfterMs = normalizePositiveInteger(options.staleAfterMs ?? 300000, "stale after ms");
+  const now = typeof options.now === "function" ? options.now : () => Date.now();
+
+  return Object.freeze({
+    protocol,
+    checkpoint(context, state) {
+      return store.set(context, protocol, {
+        ...state,
+        updatedAt: state.updatedAt ?? now()
+      });
+    },
+    read(context) {
+      const state = store.get(context, protocol);
+      if (state === null) {
+        return Object.freeze({
+          status: "missing",
+          state: null,
+          ageMs: null,
+          staleAfterMs
+        });
+      }
+      const ageMs = state.updatedAt === undefined ? null : Math.max(0, now() - Number(state.updatedAt));
+      const status = ageMs === null || ageMs > staleAfterMs ? "stale" : "fresh";
+      return Object.freeze({
+        status,
+        state,
+        ageMs,
+        staleAfterMs
+      });
+    },
+    requireFresh(context) {
+      const result = this.read(context);
+      if (result.status !== "fresh") {
+        throw new PrivateScanStateError("private scan state is not fresh", {
+          protocol,
+          status: result.status,
+          ageMs: result.ageMs,
+          staleAfterMs
+        });
+      }
+      return result.state;
+    },
+    reset(context) {
+      store.reset(context, protocol);
     }
   });
 }
@@ -535,6 +606,11 @@ function normalizeProtocol(protocol) {
 function normalizeChainId(chainId) {
   if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new TypeError("chainId must be a positive safe integer");
   return chainId;
+}
+
+function normalizePositiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`${label} must be a positive safe integer`);
+  return value;
 }
 
 function normalizeAddress(value, label) {

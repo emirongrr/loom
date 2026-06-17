@@ -78,6 +78,7 @@ export interface KohakuHost {
   storage: {
     set(key: string, value: string): void;
     get(key: string): string | null;
+    delete?(key: string): void;
   };
   keystore: {
     deriveAt(path: string): Hex;
@@ -102,6 +103,10 @@ export class PrivacyAdapterUnavailableError extends Error {
 }
 
 export class InvalidPrivateOperationError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export class PrivateScanStateError extends Error {
   readonly details: Record<string, unknown>;
 }
 
@@ -157,15 +162,38 @@ export interface PrivateScanState {
   fromBlock?: string;
   toBlock: string;
   latestMerkleRoot?: Hex;
+  updatedAt?: number;
 }
 
 export interface PrivateScanStateStore {
   key(context: PrivacyContext, protocol: PrivacyProtocol): string;
   get(context: PrivacyContext, protocol: PrivacyProtocol): PrivateScanState | null;
   set(context: PrivacyContext, protocol: PrivacyProtocol, state: Partial<PrivateScanState> & { toBlock: bigint | string | number }): PrivateScanState;
+  reset(context: PrivacyContext, protocol: PrivacyProtocol): void;
 }
 
 export function createPrivateScanStateStore(storage?: KohakuHost["storage"]): PrivateScanStateStore;
+
+export interface PrivateScanLifecycle {
+  readonly protocol: PrivacyProtocol;
+  checkpoint(context: PrivacyContext, state: Partial<PrivateScanState> & { toBlock: bigint | string | number }): PrivateScanState;
+  read(context: PrivacyContext): {
+    status: "missing" | "fresh" | "stale";
+    state: PrivateScanState | null;
+    ageMs: number | null;
+    staleAfterMs: number;
+  };
+  requireFresh(context: PrivacyContext): PrivateScanState;
+  reset(context: PrivacyContext): void;
+}
+
+export function createPrivateScanLifecycle(options?: {
+  protocol?: PrivacyProtocol;
+  store?: PrivateScanStateStore;
+  storage?: KohakuHost["storage"];
+  staleAfterMs?: number;
+  now?: () => number;
+}): PrivateScanLifecycle;
 
 export interface PrivateBalance {
   protocol: PrivacyProtocol;
