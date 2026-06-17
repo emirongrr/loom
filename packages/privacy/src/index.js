@@ -1,5 +1,13 @@
 const DISCLOSING_SURFACES = new Set(["rpc", "indexer", "relayer", "prover", "bridge", "timing"]);
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
+const DEFAULT_FORBIDDEN_REVEAL_PATTERNS = [
+  /private key/i,
+  /viewing key/i,
+  /scanning key/i,
+  /seed phrase/i,
+  /guardian salt/i,
+  /account graph/i
+];
 
 export class ConsentRequiredError extends Error {
   constructor(message, details = {}) {
@@ -102,24 +110,96 @@ export function createProviderProfile(input) {
 }
 
 export function assertMetadataBudgetAllowed(budget, policy = {}) {
-  const allowedSurfaces = new Set(policy.allowedSurfaces ?? []);
-  const requireKnownMitigation = Boolean(policy.requireKnownMitigation);
-
-  for (const item of budget.items) {
-    if (item.required && allowedSurfaces.size !== 0 && !allowedSurfaces.has(item.surface)) {
-      throw new MetadataBudgetExceededError("metadata surface is outside the allowed budget", {
-        surface: item.surface,
-        reveals: item.reveals
-      });
-    }
-
-    if (requireKnownMitigation && DISCLOSING_SURFACES.has(item.surface) && !item.mitigation) {
-      throw new MetadataBudgetExceededError("disclosing metadata surface requires a mitigation", {
-        surface: item.surface,
-        reveals: item.reveals
-      });
-    }
+  const review = createMetadataLeakageHarness(policy).reviewBudget(budget);
+  if (!review.approved) {
+    throw new MetadataBudgetExceededError("metadata budget violates privacy policy", {
+      violations: review.violations
+    });
   }
+}
+
+export function createMetadataLeakageHarness(policy = {}) {
+  const allowedSurfaces = new Set(policy.allowedSurfaces ?? []);
+  const forbiddenSurfaces = new Set(policy.forbiddenSurfaces ?? []);
+  const requireKnownMitigation = Boolean(policy.requireKnownMitigation);
+  const maxRequiredSurfaces = policy.maxRequiredSurfaces;
+  const forbiddenRevealPatterns = [
+    ...DEFAULT_FORBIDDEN_REVEAL_PATTERNS,
+    ...(policy.forbiddenRevealPatterns ?? [])
+  ];
+
+  return Object.freeze({
+    reviewBudget(input) {
+      const budget = createMetadataBudget(input);
+      const violations = [];
+      let requiredSurfaceCount = 0;
+
+      for (const item of budget.items) {
+        if (item.required) requiredSurfaceCount += 1;
+
+        if (forbiddenSurfaces.has(item.surface)) {
+          violations.push({
+            code: "forbidden-surface",
+            surface: item.surface,
+            reveals: item.reveals
+          });
+        }
+
+        if (item.required && allowedSurfaces.size !== 0 && !allowedSurfaces.has(item.surface)) {
+          violations.push({
+            code: "unapproved-required-surface",
+            surface: item.surface,
+            reveals: item.reveals
+          });
+        }
+
+        if (requireKnownMitigation && DISCLOSING_SURFACES.has(item.surface) && !item.mitigation) {
+          violations.push({
+            code: "missing-mitigation",
+            surface: item.surface,
+            reveals: item.reveals
+          });
+        }
+
+        for (const pattern of forbiddenRevealPatterns) {
+          if (pattern.test(item.reveals)) {
+            violations.push({
+              code: "secret-reveal-description",
+              surface: item.surface,
+              reveals: item.reveals
+            });
+            break;
+          }
+        }
+      }
+
+      if (maxRequiredSurfaces !== undefined && requiredSurfaceCount > maxRequiredSurfaces) {
+        violations.push({
+          code: "too-many-required-surfaces",
+          requiredSurfaceCount,
+          maxRequiredSurfaces
+        });
+      }
+
+      return Object.freeze({
+        protocol: budget.protocol,
+        chainId: budget.chainId,
+        approved: violations.length === 0,
+        requiredSurfaceCount,
+        surfaces: Object.freeze([...new Set(budget.items.map(item => item.surface))]),
+        violations: Object.freeze(violations.map(violation => Object.freeze(violation)))
+      });
+    },
+    assertBudget(budget) {
+      const review = this.reviewBudget(budget);
+      if (!review.approved) {
+        throw new MetadataBudgetExceededError("metadata budget violates privacy policy", {
+          violations: review.violations
+        });
+      }
+      return review;
+    }
+  });
 }
 
 export function createKohakuHost(options) {
