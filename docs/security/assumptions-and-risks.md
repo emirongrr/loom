@@ -66,12 +66,12 @@ Security claims are valid only under the assumptions listed here and in
 - Kohaku provider selection is privacy-sensitive. A wallet must not silently
   query a hardcoded RPC, default indexer, or relayer before the user has a
   configured provider profile or a clearly labeled degraded mode.
-- Kohaku SDK dependencies currently resolve to an npm audit finding set that
-  includes high-severity `ws` advisories through `ethers`/`viem` and
-  high-severity `underscore` recursion risk through `jsonpath`/`bfj`. These
-  are client/SDK supply-chain risks, not LoomAccount bytecode risks, but they
-  block production SDK release until upstream versions, overrides, or audited
-  compatibility shims remove or explicitly contain them.
+- Kohaku SDK dependencies rely on local npm overrides for `ws` and
+  `underscore` to avoid known transitive advisories through `ethers`, `viem`,
+  `jsonpath`, and `bfj`. These are client/SDK supply-chain controls, not
+  LoomAccount bytecode controls. Production SDK release still requires
+  re-running audit, checking upstream package releases, and proving the
+  overrides remain compatible with the Kohaku packages in use.
 - Kohaku account-security tooling is not currently Loom account logic. It is
   tracked as SDK stack capability and future migration target. Importing its
   verifier contracts into production scope requires a separate decision record,
@@ -164,10 +164,11 @@ Security claims are valid only under the assumptions listed here and in
     rehearsals, dependency review, updated audit scope, and tests proving the
     ECDSA-compatible signature path and post-quantum signature path are both
     required where the account profile claims hybrid security.
-16. Kohaku SDK dependency graph currently has unresolved npm audit findings.
-    Production SDK work must either wait for upstream fixes, pin reviewed safe
-    overrides, or isolate vulnerable packages away from untrusted input and
-    network-facing runtime paths.
+16. Kohaku SDK dependency graph currently passes npm audit only with pinned
+    local overrides for vulnerable transitive packages. Production SDK release
+    must revalidate those overrides against upstream Kohaku releases and keep
+    isolation tests for untrusted wallet input and network-facing runtime
+    paths.
 
 ## Cypherpunk acceptance rule
 

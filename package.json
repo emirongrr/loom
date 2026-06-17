@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",
+    "deps:audit": "node tools/audit-dependencies.mjs",
     "docs:check": "node tools/validate-doc-links.mjs",
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",

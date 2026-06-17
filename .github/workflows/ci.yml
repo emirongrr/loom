@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Audit dependencies
-        run: npm audit --audit-level=low
+        run: npm run deps:audit
       - name: Validate documentation
         run: npm run docs:check
       - name: Validate website
