@@ -221,6 +221,34 @@ export function createKohakuShieldedPoolAdapter(options: {
   plugin: KohakuShieldedPoolPlugin;
 }): ShieldedPoolAdapter;
 
+export interface RailgunAdapterProfile {
+  readonly protocol: "railgun";
+  readonly adapter: ShieldedPoolAdapter;
+  readonly scanState: PrivateScanStateStore;
+  metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
+  createAccount: ShieldedPoolAdapter["createAccount"];
+  shield: ShieldedPoolAdapter["shield"];
+  privateTransfer: ShieldedPoolAdapter["privateTransfer"];
+  unshield: ShieldedPoolAdapter["unshield"];
+  broadcastPrivateOperation: ShieldedPoolAdapter["broadcastPrivateOperation"];
+  balance(context: PrivacyContext, assets?: readonly unknown[]): Promise<readonly PrivateBalance[]>;
+  sync(context: PrivacyContext, state?: unknown): Promise<PrivateScanState & { metadataBudget: MetadataBudget }>;
+}
+
+export function createRailgunAdapterProfile(options: {
+  host: KohakuHost;
+  config?: Record<string, unknown>;
+  storage?: KohakuHost["storage"];
+  createPlugin?: (host: KohakuHost, config: Record<string, unknown>) => Promise<KohakuShieldedPoolPlugin & {
+    balance?: (assets?: readonly unknown[]) => Promise<readonly unknown[]>;
+    sync?: (request: { context: PrivacyContext; state?: unknown }, host: KohakuHost) => Promise<{
+      fromBlock?: bigint | string | number;
+      toBlock: bigint | string | number;
+      latestMerkleRoot?: Hex;
+    }>;
+  }>;
+}): Promise<RailgunAdapterProfile>;
+
 export interface StealthReceiveAdapter {
   readonly protocol: PrivacyProtocol;
 
