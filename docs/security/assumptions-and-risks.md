@@ -154,10 +154,11 @@ Security claims are valid only under the assumptions listed here and in
     claim RPC-independent balances, nonces, recovery state, guardian roots,
     vault state, validator state, or cross-chain identity state until those
     reads are verified or clearly labeled unverified.
-14. Privacy adapter implementation is missing. Railgun and Aztec integration
-    require protocol-specific SDK review, metadata-leakage analysis, local
-    scanning evidence, permission-binding tests, vault interaction tests,
-    bridge/finality assumptions, and independent audit before production use.
+14. Privacy adapter implementation is limited to the generic SDK boundary.
+    Railgun and Aztec production profiles still require protocol-specific SDK
+    review, metadata-leakage analysis, local scanning evidence,
+    permission-binding tests, vault interaction tests, bridge/finality
+    assumptions, and independent audit before production use.
 15. Kohaku account-security tooling is source-tracked but not production
     integrated. Production use requires reviewed verifier contracts, migration
     rehearsals, dependency review, updated audit scope, and tests proving the

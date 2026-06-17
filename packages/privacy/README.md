@@ -21,9 +21,10 @@ These are package dependencies, not optional peer suggestions. A third-party
 wallet client built through the Loom SDK receives the Kohaku runtime boundary
 as part of the SDK.
 
-This package does not yet implement the concrete Loom Railgun, Aztec,
-stealth-address, or privacy-pool flows. It now includes the initial Kohaku
-host runtime boundary that wallet clients and third-party builders can use
+This package does not yet ship a production Railgun, Aztec, stealth-address,
+or privacy-pool release profile. It includes the Kohaku host runtime boundary,
+an executable Kohaku-style shielded-pool adapter wrapper, and scoped local
+scan-state storage that wallet clients and third-party builders can use
 without changing Loom core contracts.
 
 ## Design rules
@@ -46,6 +47,11 @@ without changing Loom core contracts.
 
 - `KohakuHost`: Loom's host boundary for Kohaku plugin storage, network,
   keystore, and provider access.
+- `createKohakuShieldedPoolAdapter`: executable wrapper for Kohaku-style
+  shield, unshield, private transfer, account creation, and private broadcast
+  plugin methods.
+- `createPrivateScanStateStore`: local scan checkpoint storage scoped by
+  protocol, chain, account, application, and scan scope.
 - `PrivateScanner`: local-first discovery of private notes, stealth payments,
   commitments, nullifiers, and recovery alerts.
 - `PrivateExecutionAdapter`: construction of protocol-specific private
@@ -62,8 +68,9 @@ without changing Loom core contracts.
 
 The first runtime artifact is `src/index.js`, with TypeScript declarations in
 `src/index.d.ts`. The runtime enforces explicit provider consent and metadata
-budget checks before any network call reaches a Kohaku adapter. Concrete
-implementation packages should import Kohaku directly.
+budget checks before any network call reaches a Kohaku adapter and before any
+privacy plugin operation executes. Concrete implementation packages should
+import Kohaku directly.
 
 ## Protocol profiles
 

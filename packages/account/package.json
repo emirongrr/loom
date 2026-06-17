@@ -1,0 +1,19 @@
+{
+  "name": "@loom/account",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local account lifecycle builders for Loom wallet clients.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test"
+  }
+}
