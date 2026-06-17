@@ -134,10 +134,11 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
   review, local-first scanning, relayer/prover/indexer failure behavior,
   bridge or finality assumptions, vault interaction rehearsal, and clear user
   warnings for degraded modes.
-- Kohaku SDK dependency audit must pass at low severity, or each remaining
-  finding must have a documented upstream issue, pinned override, exploitability
-  analysis, and isolation test proving it is unreachable from untrusted wallet
-  input.
+- Root, documentation-site, and Kohaku SDK dependency audits must pass at low
+  severity or better. Any override used to keep audit clean must have a
+  compatibility check, upstream-release review, exploitability analysis, and
+  isolation test proving vulnerable behavior is unreachable from untrusted
+  wallet input.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.

@@ -23,6 +23,10 @@
     "@kohaku-eth/railgun": "0.0.1-alpha.26",
     "@kohaku-eth/tornado-cash": "0.0.1"
   },
+  "overrides": {
+    "underscore": "1.13.8",
+    "ws": "8.21.0"
+  },
   "kohakuStack": {
     "manifest": "./kohaku-stack.json"
   }
