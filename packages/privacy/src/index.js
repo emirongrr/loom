@@ -280,6 +280,72 @@ export function createKohakuShieldedPoolAdapter(options) {
   });
 }
 
+export async function createRailgunAdapterProfile(options) {
+  if (!options || typeof options !== "object") throw new TypeError("railgun profile options are required");
+  const host = options.host;
+  if (!host || typeof host.metadataBudget !== "function") throw new TypeError("railgun profile host is required");
+  const createPlugin = options.createPlugin ?? (await loadRailgunPluginFactory());
+  if (typeof createPlugin !== "function") throw new TypeError("railgun plugin factory is required");
+
+  const plugin = await createPlugin(host, options.config ?? {});
+  const adapter = createKohakuShieldedPoolAdapter({
+    protocol: "railgun",
+    host,
+    plugin: normalizeRailgunPlugin(plugin)
+  });
+  const scanState = createPrivateScanStateStore(options.storage ?? host.storage);
+
+  async function metadataBudget(context) {
+    return host.metadataBudget(normalizeContext(context));
+  }
+
+  return Object.freeze({
+    protocol: "railgun",
+    adapter,
+    scanState,
+    metadataBudget,
+    createAccount: adapter.createAccount,
+    shield: adapter.shield,
+    privateTransfer: adapter.privateTransfer,
+    unshield: adapter.unshield,
+    broadcastPrivateOperation: adapter.broadcastPrivateOperation,
+    async balance(context, assets) {
+      const normalizedContext = normalizeContext(context);
+      const budget = await metadataBudget(normalizedContext);
+      if (typeof plugin.balance !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement balance", {
+          protocol: "railgun",
+          method: "balance"
+        });
+      }
+      const balances = await plugin.balance(assets);
+      return Object.freeze(
+        balances.map(balance => normalizePrivateBalance("railgun", normalizedContext.chainId, budget, balance))
+      );
+    },
+    async sync(context, state) {
+      const normalizedContext = normalizeContext(context);
+      const budget = await metadataBudget(normalizedContext);
+      if (typeof plugin.sync !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement sync", {
+          protocol: "railgun",
+          method: "sync"
+        });
+      }
+      const result = await plugin.sync({ context: normalizedContext, state }, host);
+      const normalizedState = scanState.set(normalizedContext, "railgun", {
+        fromBlock: result.fromBlock,
+        toBlock: result.toBlock,
+        latestMerkleRoot: result.latestMerkleRoot
+      });
+      return Object.freeze({
+        ...normalizedState,
+        metadataBudget: budget
+      });
+    }
+  });
+}
+
 function normalizeBudgetItem(item) {
   if (!item || typeof item !== "object") throw new TypeError("metadata budget item must be an object");
   assertNonEmptyString(item.surface, "metadata surface");
@@ -289,6 +355,47 @@ function normalizeBudgetItem(item) {
     reveals: item.reveals,
     required: Boolean(item.required),
     mitigation: item.mitigation
+  });
+}
+
+async function loadRailgunPluginFactory() {
+  try {
+    const railgun = await import("@kohaku-eth/railgun");
+    return railgun.createRailgunPlugin;
+  } catch (error) {
+    throw new PrivacyAdapterUnavailableError("railgun package is unavailable", {
+      package: "@kohaku-eth/railgun",
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+function normalizeRailgunPlugin(plugin) {
+  if (!plugin || typeof plugin !== "object") throw new TypeError("railgun plugin is required");
+  return Object.freeze({
+    ...plugin,
+    createAccount: plugin.createAccount,
+    prepareShield: plugin.prepareShield,
+    prepareTransfer: plugin.prepareTransfer,
+    prepareUnshield: plugin.prepareUnshield,
+    broadcastPrivateOperation: plugin.broadcastPrivateOperation
+  });
+}
+
+function normalizePrivateBalance(protocol, chainId, metadataBudget, balance) {
+  if (!balance || typeof balance !== "object") {
+    throw new InvalidPrivateOperationError("privacy plugin returned an invalid balance", { protocol });
+  }
+  const asset = typeof balance.asset === "string" && balance.asset.startsWith("erc20:")
+    ? normalizeAddress(balance.asset.slice("erc20:".length), "balance asset")
+    : normalizeAddress(balance.asset, "balance asset");
+  return Object.freeze({
+    protocol,
+    chainId,
+    asset,
+    amount: normalizeBigInt(balance.amount ?? 0n, "balance amount"),
+    verified: Boolean(balance.verified),
+    metadataBudget
   });
 }
 
