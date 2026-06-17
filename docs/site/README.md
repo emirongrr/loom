@@ -1,7 +1,6 @@
 # Loom Docs Site
 
-Loom's public website is a Vocs docs app under `docs/site`, matching the
-structure used by Kohaku.
+Loom's public website is a Vocs docs app under `docs/site`.
 
 ```sh
 npm --prefix docs/site ci
