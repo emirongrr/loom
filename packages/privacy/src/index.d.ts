@@ -56,7 +56,10 @@ export interface ConsentStore {
 
 export interface MetadataPolicy {
   allowedSurfaces?: readonly MetadataSurface[];
+  forbiddenSurfaces?: readonly MetadataSurface[];
   requireKnownMitigation?: boolean;
+  maxRequiredSurfaces?: number;
+  forbiddenRevealPatterns?: readonly RegExp[];
 }
 
 export interface KohakuHostOptions {
@@ -113,6 +116,35 @@ export function createMetadataBudget(input: MetadataBudget): MetadataBudget;
 export function createProviderProfile(input: KohakuProviderProfile): KohakuProviderProfile;
 
 export function assertMetadataBudgetAllowed(budget: MetadataBudget, policy?: MetadataPolicy): void;
+
+export interface MetadataLeakageViolation {
+  code:
+    | "forbidden-surface"
+    | "unapproved-required-surface"
+    | "missing-mitigation"
+    | "secret-reveal-description"
+    | "too-many-required-surfaces";
+  surface?: MetadataSurface;
+  reveals?: string;
+  requiredSurfaceCount?: number;
+  maxRequiredSurfaces?: number;
+}
+
+export interface MetadataLeakageReview {
+  protocol: PrivacyProtocol;
+  chainId: ChainId;
+  approved: boolean;
+  requiredSurfaceCount: number;
+  surfaces: readonly MetadataSurface[];
+  violations: readonly MetadataLeakageViolation[];
+}
+
+export interface MetadataLeakageHarness {
+  reviewBudget(budget: MetadataBudget): MetadataLeakageReview;
+  assertBudget(budget: MetadataBudget): MetadataLeakageReview;
+}
+
+export function createMetadataLeakageHarness(policy?: MetadataPolicy): MetadataLeakageHarness;
 
 export function createKohakuHost(options: KohakuHostOptions): KohakuHost;
 
