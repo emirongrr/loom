@@ -140,6 +140,59 @@ test("vault withdrawal intent requires amount recipient delay and cancellation v
   assert.equal(intent.authority.cancellable, true);
 });
 
+test("private vault withdrawal binds protocol operation and metadata budget hashes", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  const intent = client.buildPrivateVaultWithdrawal({
+    token,
+    recipient: other,
+    amount: "1000000",
+    executeAfter: 100n,
+    privacyProtocol: "railgun",
+    privateOperationHash: codeHash,
+    metadataBudgetHash: salt
+  });
+
+  assert.equal(intent.kind, "vault.privateWithdrawal.schedule");
+  assert.equal(intent.privacyProtocol, "railgun");
+  assert.equal(intent.privateOperationHash, codeHash);
+  assert.equal(intent.metadataBudgetHash, salt);
+  assert.equal(intent.authority.risk, "vault-private-withdrawal");
+  assert.equal(intent.authority.delayRequired, true);
+  assert.equal(intent.authority.metadataBudgetRequired, true);
+});
+
+test("private vault withdrawal rejects missing private operation binding", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+
+  assert.throws(
+    () =>
+      client.buildPrivateVaultWithdrawal({
+        token,
+        recipient: other,
+        amount: 1n,
+        executeAfter: 100n,
+        privacyProtocol: "railgun",
+        privateOperationHash: "0x1234",
+        metadataBudgetHash: salt
+      }),
+    InvalidLifecycleRequestError
+  );
+
+  assert.throws(
+    () =>
+      client.buildPrivateVaultWithdrawal({
+        token,
+        recipient: other,
+        amount: 1n,
+        executeAfter: 100n,
+        privacyProtocol: "",
+        privateOperationHash: codeHash,
+        metadataBudgetHash: salt
+      }),
+    InvalidLifecycleRequestError
+  );
+});
+
 test("paymaster policy requires explicit paymaster token cap and expiry", () => {
   const client = createAccountLifecycleClient({ chainId: 1, account });
   const intent = client.buildPaymasterPolicy({

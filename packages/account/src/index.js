@@ -123,6 +123,29 @@ export function createAccountLifecycleClient(defaults = {}) {
         })
       });
     },
+    buildPrivateVaultWithdrawal(input) {
+      return freezeIntent({
+        kind: "vault.privateWithdrawal.schedule",
+        ...base(input),
+        token: normalizeAddress(input.token, "token"),
+        recipient: normalizeAddress(input.recipient, "recipient"),
+        amount: normalizePositiveBigInt(input.amount, "amount"),
+        executeAfter: normalizePositiveBigInt(input.executeAfter, "execute after"),
+        expiry: input.expiry === undefined ? undefined : normalizePositiveBigInt(input.expiry, "expiry"),
+        privacyProtocol: normalizeNonEmptyString(input.privacyProtocol, "privacy protocol"),
+        privateOperationHash: normalizeBytes32(input.privateOperationHash, "private operation hash"),
+        metadataBudgetHash: normalizeBytes32(input.metadataBudgetHash, "metadata budget hash"),
+        callData: normalizeHex(input.callData ?? "0x", "callData"),
+        authority: Object.freeze({
+          risk: "vault-private-withdrawal",
+          requiresUserSignature: true,
+          requiresGuardianApproval: false,
+          delayRequired: true,
+          cancellable: true,
+          metadataBudgetRequired: true
+        })
+      });
+    },
     buildPaymasterPolicy(input) {
       return freezeIntent({
         kind: "paymaster.policy",
@@ -214,6 +237,13 @@ function normalizeSelector(value, label) {
   const hex = normalizeHex(value, label);
   if (hex.length !== 10) throw new InvalidLifecycleRequestError(`${label} must be 4 bytes`);
   return hex;
+}
+
+function normalizeNonEmptyString(value, label) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new InvalidLifecycleRequestError(`${label} must be a non-empty string`);
+  }
+  return value;
 }
 
 function normalizeHex(value, label) {

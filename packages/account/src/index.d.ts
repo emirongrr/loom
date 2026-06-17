@@ -7,6 +7,7 @@ export type AccountLifecycleKind =
   | "recovery.propose"
   | "migration.schedule"
   | "vault.withdrawal.schedule"
+  | "vault.privateWithdrawal.schedule"
   | "paymaster.policy";
 
 export interface LifecycleAuthority {
@@ -17,6 +18,7 @@ export interface LifecycleAuthority {
     | "account-recovery"
     | "account-migration"
     | "vault-withdrawal"
+    | "vault-private-withdrawal"
     | "fee-policy";
   requiresUserSignature: boolean;
   requiresGuardianApproval: boolean;
@@ -24,6 +26,7 @@ export interface LifecycleAuthority {
   cancellable?: boolean;
   cancellableByGuardian?: boolean;
   optionalInfrastructure?: boolean;
+  metadataBudgetRequired?: boolean;
 }
 
 export interface SessionScope {
@@ -102,6 +105,20 @@ export interface AccountLifecycleClient {
     amount: bigint | string | number;
     executeAfter: bigint | string | number;
     expiry?: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildPrivateVaultWithdrawal(input: {
+    chainId?: number;
+    account?: Hex;
+    token: Hex;
+    recipient: Hex;
+    amount: bigint | string | number;
+    executeAfter: bigint | string | number;
+    expiry?: bigint | string | number;
+    privacyProtocol: string;
+    privateOperationHash: Hex;
+    metadataBudgetHash: Hex;
     callData?: Hex;
   }): LifecycleIntent;
 
