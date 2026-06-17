@@ -41,13 +41,34 @@ This keeps L1 as the source of truth without adding bridge trust. The module
 does not accept cross-chain messages, multisig attestations, oracle answers, or
 relayer claims as authority.
 
+### `EthereumL1KeystoreVerifier`
+
+`EthereumL1KeystoreVerifier` is the same-chain verifier for Ethereum L1. It is
+used when the account and `LoomKeystore` are both on Ethereum L1, so no
+cross-chain state-root proof is needed. The verifier:
+
+- is immutably bound to one `LoomKeystore` deployment;
+- rejects non-empty proof bytes;
+- rejects unknown identities, mismatched versions, and mismatched config
+  fields;
+- reads `LoomKeystore.getConfig(identityId)` directly.
+
+This verifier is not an L2 verifier and must not be deployed as a Base,
+Optimism, or Arbitrum proof adapter. It exists to remove mock-verifier
+dependency from the L1 keystore path while keeping L2 support explicitly
+chain-specific.
+
 ## Proof Verifier Boundary
 
 `IKeystoreProofVerifier` is an interface, not a placeholder verifier. A
-production verifier must prove Ethereum L1 keystore state against the target
-chain's accepted L1 state root mechanism. Until that verifier is independently
-designed, implemented, audited, and deployed, a production account should not
-install keystore sync as an active recovery path.
+production L2 verifier must prove Ethereum L1 keystore state against the
+target chain's accepted L1 state root mechanism. Until that verifier is
+independently designed, implemented, audited, and deployed for a target L2, a
+production L2 account should not install keystore sync as an active recovery
+path.
+
+The same-chain Ethereum L1 verifier is intentionally simpler: it performs a
+direct keystore read and accepts no proof bytes.
 
 Test-only verifier contracts may exist under `test/`; no mock verifier belongs
 under `src/`.
@@ -60,12 +81,15 @@ The intended network set is:
 - Base
 - Arbitrum
 - Optimism
-- Scroll
 - future rollups with a verifiable L1 state-root path
 
 Support for a network is not a branding list. A network is supported only when
 the verifier can validate the relevant L1 state root and storage proof under
 that network's security model.
+
+L1-to-L2 messaging is not a keystore authority path. Wallets, scripts, or
+watchers may carry proofs, but a message bridge, relayer, or Loom-operated
+service must never be treated as proof that an L1 config is valid.
 
 ## Privacy Notes
 

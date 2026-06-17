@@ -10,6 +10,7 @@ and the official ERC-4337 v0.9 EntryPoint.
 - `src/account/LoomAccountFactory.sol`
 - `src/hooks/PolicyHook.sol`
 - `src/hooks/VaultHook.sol`
+- `src/keystore/EthereumL1KeystoreVerifier.sol`
 - `src/keystore/LoomKeystore.sol`
 - `src/recovery/RecoveryManager.sol`
 - `src/recovery/KeystoreSyncRecoveryModule.sol`
