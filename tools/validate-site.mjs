@@ -34,10 +34,15 @@ for (const phrase of [
   "No admin keys",
   "Passkeys",
   "Recovery",
-  "Kohaku",
+  "Provider consent",
   "pre-audit"
 ]) {
   assertIncludes(index, phrase, "docs/site/pages/index.mdx");
+}
+
+for (const file of ["public/llms.txt", "public/llms-full.txt"]) {
+  const content = readFileSync(join(siteRoot, file), "utf8");
+  assertIncludes(content, "Loom", `docs/site/${file}`);
 }
 
 console.log("validated Vocs website structure");

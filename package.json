@@ -7,7 +7,7 @@
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
     "privacy:test": "npm --prefix packages/privacy test",
-    "site:build": "npm --prefix docs/site run build",
+    "site:build": "npm --prefix docs/site run build && node tools/copy-site-public.mjs",
     "site:check": "node tools/validate-site.mjs",
     "site:dev": "npm --prefix docs/site run dev",
     "verify:quick": "node tools/verify.mjs",
