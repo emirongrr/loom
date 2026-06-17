@@ -18,7 +18,7 @@ Security claims are valid only under the assumptions listed here and in
 | Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, account or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
 | Vault hook | Separates daily spending from delayed long-term storage withdrawals | Misconfigured policy, non-standard token semantics, public withdrawal metadata | Exact withdrawal commitments, account delay plus vault delay, guardian-threshold cancellation, config-version invalidation |
 | L1 keystore | Stores canonical cross-chain identity roots | L1 controller compromise, identity correlation, unsupported proof system | User-controlled L1 controller, monotonic versioning, app-account root, proof-gated delayed L2 sync |
-| Keystore proof verifier | Authenticates L1 keystore state on another chain | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
+| Keystore proof verifier | Authenticates keystore state for same-chain L1 sync or future L2 proof-pull sync | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Immutable verifier binding, independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
 | Privacy adapters | Build private receive, transfer, shielded-pool, or private-execution flows | Account graph leakage, relayer/indexer/prover dependency, hardcoded RPC leakage, wrong bridge/finality assumption, false privacy claim, legally sensitive protocol exposure | Kohaku SDK stack, local-first scanning, provider profiles, metadata budgets, protocol-specific threat models, native exit fallback, adapter-specific release gates |
 | Kohaku account-security tooling | Provides a future hybrid two-signature ERC-4337 account compatibility or migration target through the SDK stack | Unaudited verifier import, excessive gas, large public keys, wrong migration destination, hidden account replacement, single-signature fallback by mistake | Source-level tracking only, no core import, delayed migration, guardian cancellation, independent audit gate, explicit hybrid verification tests |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
@@ -97,13 +97,15 @@ Security claims are valid only under the assumptions listed here and in
 - Codehash-only migration destinations are supported for future account
   standards and EntryPoint transitions, but they provide weaker assurance than
   Loom destinations with a non-zero `configHash` commitment.
-- L1 keystore sync is only as strong as the L1 controller and the target
-  network's proof verifier. A test verifier is not production infrastructure.
-- The repository defines `IKeystoreProofVerifier` but does not yet implement a
-  production Ethereum L1 storage proof verifier. A production verifier must
-  specify its trusted L1 state root source, finality delay, reorg handling,
-  storage-slot derivation, account-proof validation, and chain-specific failure
-  behavior.
+- L1 keystore sync is only as strong as the L1 controller and the installed
+  proof verifier. A test verifier is not production infrastructure.
+- The repository implements a same-chain Ethereum L1 direct verifier that reads
+  `LoomKeystore` directly and rejects proof bytes. It does not prove L1 state
+  to Base, Optimism, Arbitrum, or any other L2.
+- The repository does not yet implement production L2 storage proof verifiers.
+  A production L2 verifier must specify its trusted L1 state root source,
+  finality delay, reorg handling, storage-slot derivation, account-proof
+  validation, and chain-specific failure behavior.
 - Keystore sync currently maps `validatorRoot` to one replacement validator and
   initialization payload. This matches the current account recovery entry point
   but does not yet support applying an arbitrary multi-validator root from L1.
@@ -134,9 +136,9 @@ Security claims are valid only under the assumptions listed here and in
 7. Vault policy does not yet include asset-specific adapters for ERC-4626
    vaults, bridge receipts, LP positions, privacy pools, or private withdrawal
    protocols.
-8. L1 keystore sync is implemented at the registry/module boundary but lacks a
-   production L1 storage proof verifier for Base, Arbitrum, Optimism, Scroll,
-   and future rollups.
+8. L1 keystore sync is implemented at the registry/module boundary and has a
+   same-chain Ethereum L1 verifier, but lacks production L2 storage proof
+   verifiers for Base, Arbitrum, Optimism, and future supported rollups.
 9. Keystore sync has no live cross-chain rehearsal proving L1 update, proof
    generation, L2 proposal, cancellation, expiry, and execution on each target
    rollup.

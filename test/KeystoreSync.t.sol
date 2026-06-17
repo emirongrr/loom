@@ -2,6 +2,7 @@
 pragma solidity 0.8.35;
 
 import {LoomAccount} from "../src/account/LoomAccount.sol";
+import {EthereumL1KeystoreVerifier} from "../src/keystore/EthereumL1KeystoreVerifier.sol";
 import {LoomKeystore} from "../src/keystore/LoomKeystore.sol";
 import {KeystoreSyncRecoveryModule} from "../src/recovery/KeystoreSyncRecoveryModule.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
@@ -128,6 +129,46 @@ contract KeystoreSyncTest {
         (,,,,,,, uint48 readyAt,,,) = sync.pendingSyncs(address(account));
         require(readyAt == 0, "pending sync not cleared");
         syncId;
+    }
+
+    function testKeystoreSyncAcceptsDirectL1VerifierWithoutCrossChainMessage() public {
+        (LoomAccount account, KeystoreSyncRecoveryModule sync, LoomKeystore keystore, MockValidator oldValidator) =
+            _accountWithDirectL1VerifierSync();
+        MockValidator newValidator = new MockValidator();
+        bytes memory initData = "";
+
+        _registerConfig(keystore, sync, address(account), address(newValidator), keccak256(initData), 1);
+        ILoomKeystore.KeystoreConfig memory config = keystore.getConfig(IDENTITY_ID);
+
+        (bool rejectedMessageBytes,) = address(sync)
+            .call(
+                abi.encodeCall(
+                    KeystoreSyncRecoveryModule.proposeSync,
+                    (
+                        address(account),
+                        IDENTITY_ID,
+                        config,
+                        hex"01",
+                        new bytes32[](0),
+                        _old(oldValidator),
+                        address(newValidator),
+                        keccak256(initData)
+                    )
+                )
+            );
+        require(!rejectedMessageBytes, "message bytes accepted as l1 proof");
+
+        bytes32 syncId = sync.proposeSync(
+            address(account),
+            IDENTITY_ID,
+            config,
+            "",
+            new bytes32[](0),
+            _old(oldValidator),
+            address(newValidator),
+            keccak256(initData)
+        );
+        require(syncId != bytes32(0), "l1 verifier sync not proposed");
     }
 
     function testSyncRejectsMissingProofWrongAppAccountAndStaleVersion() public {
@@ -362,6 +403,31 @@ contract KeystoreSyncTest {
     {
         keystore = new LoomKeystore();
         MockKeystoreProofVerifier verifier = new MockKeystoreProofVerifier();
+        sync = new KeystoreSyncRecoveryModule(address(keystore), verifier);
+        oldValidator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(oldValidator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(sync), "");
+        account = new LoomAccount(
+            address(this),
+            _guardianRoot(),
+            2,
+            keccak256(abi.encode("keystore-sync-config", address(oldValidator), address(sync))),
+            modules
+        );
+    }
+
+    function _accountWithDirectL1VerifierSync()
+        internal
+        returns (
+            LoomAccount account,
+            KeystoreSyncRecoveryModule sync,
+            LoomKeystore keystore,
+            MockValidator oldValidator
+        )
+    {
+        keystore = new LoomKeystore();
+        EthereumL1KeystoreVerifier verifier = new EthereumL1KeystoreVerifier(address(keystore));
         sync = new KeystoreSyncRecoveryModule(address(keystore), verifier);
         oldValidator = new MockValidator();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
