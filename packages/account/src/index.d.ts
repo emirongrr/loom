@@ -1,0 +1,126 @@
+export type Hex = `0x${string}`;
+
+export type AccountLifecycleKind =
+  | "account.deploy"
+  | "session.grant"
+  | "session.revoke"
+  | "recovery.propose"
+  | "migration.schedule"
+  | "vault.withdrawal.schedule"
+  | "paymaster.policy";
+
+export interface LifecycleAuthority {
+  risk:
+    | "deployment"
+    | "bounded-session"
+    | "permission-revocation"
+    | "account-recovery"
+    | "account-migration"
+    | "vault-withdrawal"
+    | "fee-policy";
+  requiresUserSignature: boolean;
+  requiresGuardianApproval: boolean;
+  delayRequired: boolean;
+  cancellable?: boolean;
+  cancellableByGuardian?: boolean;
+  optionalInfrastructure?: boolean;
+}
+
+export interface SessionScope {
+  target: Hex;
+  selector: Hex;
+  token: Hex;
+  maxAmount: bigint;
+  validAfter: bigint;
+  validUntil: bigint;
+  maxUses: number;
+}
+
+export interface LifecycleIntent {
+  kind: AccountLifecycleKind;
+  chainId: number;
+  account?: Hex;
+  callData?: Hex;
+  authority: LifecycleAuthority;
+  [key: string]: unknown;
+}
+
+export interface AccountLifecycleClient {
+  buildAccountDeployment(input: {
+    chainId?: number;
+    factory: Hex;
+    salt: Hex;
+    initCode?: Hex;
+  }): LifecycleIntent;
+
+  buildSessionGrant(input: {
+    chainId?: number;
+    account?: Hex;
+    sessionKey: Hex;
+    target: Hex;
+    selector: Hex;
+    token: Hex;
+    maxAmount: bigint | string | number;
+    validAfter?: bigint | string | number;
+    validUntil: bigint | string | number;
+    maxUses: number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildSessionRevoke(input: {
+    chainId?: number;
+    account?: Hex;
+    sessionKey: Hex;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildRecoveryProposal(input: {
+    chainId?: number;
+    account?: Hex;
+    newConfigHash: Hex;
+    configVersion: bigint | string | number;
+    executeAfter: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildMigration(input: {
+    chainId?: number;
+    account?: Hex;
+    destination: Hex;
+    destinationCodeHash: Hex;
+    entryPoint?: Hex;
+    delaySeconds: number;
+    expiry?: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildVaultWithdrawal(input: {
+    chainId?: number;
+    account?: Hex;
+    token: Hex;
+    recipient: Hex;
+    amount: bigint | string | number;
+    executeAfter: bigint | string | number;
+    expiry?: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildPaymasterPolicy(input: {
+    chainId?: number;
+    account?: Hex;
+    paymaster: Hex;
+    token: Hex;
+    maxTokenAmount: bigint | string | number;
+    validUntil: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+}
+
+export class InvalidLifecycleRequestError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export function createAccountLifecycleClient(defaults?: {
+  chainId?: number;
+  account?: Hex;
+}): AccountLifecycleClient;

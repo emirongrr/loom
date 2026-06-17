@@ -94,6 +94,14 @@ export class MetadataBudgetExceededError extends Error {
   readonly details: Record<string, unknown>;
 }
 
+export class PrivacyAdapterUnavailableError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export class InvalidPrivateOperationError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
 export function providerConsentKey(profile: KohakuProviderProfile): string;
 
 export function createConsentStore(initialKeys?: readonly string[]): ConsentStore;
@@ -107,6 +115,25 @@ export function createProviderProfile(input: KohakuProviderProfile): KohakuProvi
 export function assertMetadataBudgetAllowed(budget: MetadataBudget, policy?: MetadataPolicy): void;
 
 export function createKohakuHost(options: KohakuHostOptions): KohakuHost;
+
+export interface PrivateScanState {
+  protocol: PrivacyProtocol;
+  chainId: ChainId;
+  account: Hex;
+  applicationId?: string;
+  scanScope?: string;
+  fromBlock?: string;
+  toBlock: string;
+  latestMerkleRoot?: Hex;
+}
+
+export interface PrivateScanStateStore {
+  key(context: PrivacyContext, protocol: PrivacyProtocol): string;
+  get(context: PrivacyContext, protocol: PrivacyProtocol): PrivateScanState | null;
+  set(context: PrivacyContext, protocol: PrivacyProtocol, state: Partial<PrivateScanState> & { toBlock: bigint | string | number }): PrivateScanState;
+}
+
+export function createPrivateScanStateStore(storage?: KohakuHost["storage"]): PrivateScanStateStore;
 
 export interface PrivateBalance {
   protocol: PrivacyProtocol;
@@ -149,6 +176,7 @@ export interface BuiltPrivateOperation {
     data: Hex;
   }[];
   metadataBudget: MetadataBudget;
+  operation: unknown;
   requiresVaultDelay: boolean;
   requiresBridgeFinality?: string;
 }
@@ -170,7 +198,28 @@ export interface ShieldedPoolAdapter extends PrivateExecutionAdapter {
   unshield(request: PrivateOperationRequest): Promise<BuiltPrivateOperation>;
 
   privateTransfer(request: PrivateOperationRequest): Promise<BuiltPrivateOperation>;
+
+  broadcastPrivateOperation(context: PrivacyContext, operation: unknown): Promise<{
+    protocol: PrivacyProtocol;
+    chainId: ChainId;
+    metadataBudget: MetadataBudget;
+    result: unknown;
+  }>;
 }
+
+export interface KohakuShieldedPoolPlugin {
+  createAccount?(context: PrivacyContext, host: KohakuHost): Promise<{ shieldedAddress: string }>;
+  prepareShield?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
+  prepareUnshield?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
+  prepareTransfer?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
+  broadcastPrivateOperation?(operation: unknown, host: KohakuHost): Promise<unknown>;
+}
+
+export function createKohakuShieldedPoolAdapter(options: {
+  protocol?: PrivacyProtocol;
+  host: KohakuHost;
+  plugin: KohakuShieldedPoolPlugin;
+}): ShieldedPoolAdapter;
 
 export interface StealthReceiveAdapter {
   readonly protocol: PrivacyProtocol;
