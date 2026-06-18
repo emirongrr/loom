@@ -43,6 +43,7 @@ extension without hidden upgrade authority.
 
 - [Deployment and verification](operations/deployment.md)
 - [Bundler qualification](operations/bundler-qualification.md)
+- [Local lifecycle rehearsal](operations/local-rehearsal.md)
 - [ERC-7579 limited profile](standards/erc-7579-profile.md)
 - [WalletBeat Stage 2 matrix](standards/walletbeat-stage-2.md)
 
