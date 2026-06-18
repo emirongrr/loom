@@ -110,6 +110,16 @@ export class PrivateScanStateError extends Error {
   readonly details: Record<string, unknown>;
 }
 
+export class PrivacyAdapterFailureError extends Error {
+  readonly details: {
+    protocol?: PrivacyProtocol;
+    method?: string;
+    surface?: MetadataSurface;
+    recoverable?: boolean;
+    cause?: string;
+  };
+}
+
 export function providerConsentKey(profile: KohakuProviderProfile): string;
 
 export function createConsentStore(initialKeys?: readonly string[]): ConsentStore;
@@ -334,6 +344,32 @@ export function createPrivacyPoolsAdapterProfile(options: {
     }>;
   }>;
 }): Promise<PrivacyPoolsAdapterProfile>;
+
+export interface AztecAdapterProfile {
+  readonly protocol: "aztec";
+  readonly adapter: ShieldedPoolAdapter;
+  readonly scanState: PrivateScanStateStore;
+  metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
+  createAccount: ShieldedPoolAdapter["createAccount"];
+  shield: ShieldedPoolAdapter["shield"];
+  privateTransfer: ShieldedPoolAdapter["privateTransfer"];
+  unshield: ShieldedPoolAdapter["unshield"];
+  broadcastPrivateOperation: ShieldedPoolAdapter["broadcastPrivateOperation"];
+  sync(context: PrivacyContext, state?: unknown): Promise<PrivateScanState & { metadataBudget: MetadataBudget }>;
+}
+
+export function createAztecAdapterProfile(options: {
+  host: KohakuHost;
+  config?: Record<string, unknown>;
+  storage?: KohakuHost["storage"];
+  createPlugin?: (host: KohakuHost, config: Record<string, unknown>) => Promise<KohakuShieldedPoolPlugin & {
+    sync?: (request: { context: PrivacyContext; state?: unknown }, host: KohakuHost) => Promise<{
+      fromBlock?: bigint | string | number;
+      toBlock: bigint | string | number;
+      latestMerkleRoot?: Hex;
+    }>;
+  }>;
+}): Promise<AztecAdapterProfile>;
 
 export interface StealthReceiveAdapter {
   readonly protocol: PrivacyProtocol;

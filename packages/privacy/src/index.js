@@ -49,6 +49,14 @@ export class PrivateScanStateError extends Error {
   }
 }
 
+export class PrivacyAdapterFailureError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = "PrivacyAdapterFailureError";
+    this.details = details;
+  }
+}
+
 export function providerConsentKey(profile) {
   const endpoint = profile.endpoint ?? "no-endpoint";
   return `provider:${profile.chainId}:${profile.mode}:${endpoint}`;
@@ -374,8 +382,12 @@ export function createKohakuShieldedPoolAdapter(options) {
         method
       });
     }
-    const result = await fn.call(plugin, { ...request, context }, host);
-    return normalizePrivateOperationResult(protocol, context.chainId, budget, result);
+    try {
+      const result = await fn.call(plugin, { ...request, context }, host);
+      return normalizePrivateOperationResult(protocol, context.chainId, budget, result);
+    } catch (error) {
+      throw classifyPrivacyAdapterFailure(protocol, method, error);
+    }
   }
 
   return Object.freeze({
@@ -420,7 +432,12 @@ export function createKohakuShieldedPoolAdapter(options) {
           method: "broadcastPrivateOperation"
         });
       }
-      const result = await plugin.broadcastPrivateOperation(operation, host);
+      let result;
+      try {
+        result = await plugin.broadcastPrivateOperation(operation, host);
+      } catch (error) {
+        throw classifyPrivacyAdapterFailure(protocol, "broadcastPrivateOperation", error);
+      }
       return Object.freeze({
         protocol,
         chainId: normalizedContext.chainId,
@@ -483,7 +500,12 @@ export async function createRailgunAdapterProfile(options) {
           method: "sync"
         });
       }
-      const result = await plugin.sync({ context: normalizedContext, state }, host);
+      let result;
+      try {
+        result = await plugin.sync({ context: normalizedContext, state }, host);
+      } catch (error) {
+        throw classifyPrivacyAdapterFailure("railgun", "sync", error);
+      }
       const normalizedState = scanState.set(normalizedContext, "railgun", {
         fromBlock: result.fromBlock,
         toBlock: result.toBlock,
@@ -537,8 +559,70 @@ export async function createPrivacyPoolsAdapterProfile(options) {
           method: "sync"
         });
       }
-      const result = await plugin.sync({ context: normalizedContext, state }, host);
+      let result;
+      try {
+        result = await plugin.sync({ context: normalizedContext, state }, host);
+      } catch (error) {
+        throw classifyPrivacyAdapterFailure("privacy-pool", "sync", error);
+      }
       const normalizedState = scanState.set(normalizedContext, "privacy-pool", {
+        fromBlock: result.fromBlock,
+        toBlock: result.toBlock,
+        latestMerkleRoot: result.latestMerkleRoot
+      });
+      return Object.freeze({
+        ...normalizedState,
+        metadataBudget: budget
+      });
+    }
+  });
+}
+
+export async function createAztecAdapterProfile(options) {
+  if (!options || typeof options !== "object") throw new TypeError("aztec profile options are required");
+  const host = options.host;
+  if (!host || typeof host.metadataBudget !== "function") throw new TypeError("aztec profile host is required");
+  const createPlugin = options.createPlugin ?? (await loadAztecPluginFactory());
+  if (typeof createPlugin !== "function") throw new TypeError("aztec plugin factory is required");
+
+  const plugin = await createPlugin(host, options.config ?? {});
+  const adapter = createKohakuShieldedPoolAdapter({
+    protocol: "aztec",
+    host,
+    plugin: normalizeAztecPlugin(plugin)
+  });
+  const scanState = createPrivateScanStateStore(options.storage ?? host.storage);
+
+  async function metadataBudget(context) {
+    return host.metadataBudget(normalizeContext(context));
+  }
+
+  return Object.freeze({
+    protocol: "aztec",
+    adapter,
+    scanState,
+    metadataBudget,
+    createAccount: adapter.createAccount,
+    shield: adapter.shield,
+    privateTransfer: adapter.privateTransfer,
+    unshield: adapter.unshield,
+    broadcastPrivateOperation: adapter.broadcastPrivateOperation,
+    async sync(context, state) {
+      const normalizedContext = normalizeContext(context);
+      const budget = await metadataBudget(normalizedContext);
+      if (typeof plugin.sync !== "function") {
+        throw new PrivacyAdapterUnavailableError("aztec plugin does not implement sync", {
+          protocol: "aztec",
+          method: "sync"
+        });
+      }
+      let result;
+      try {
+        result = await plugin.sync({ context: normalizedContext, state }, host);
+      } catch (error) {
+        throw classifyPrivacyAdapterFailure("aztec", "sync", error);
+      }
+      const normalizedState = scanState.set(normalizedContext, "aztec", {
         fromBlock: result.fromBlock,
         toBlock: result.toBlock,
         latestMerkleRoot: result.latestMerkleRoot
@@ -591,6 +675,18 @@ async function loadPrivacyPoolsPluginFactory() {
   }
 }
 
+async function loadAztecPluginFactory() {
+  try {
+    const aztec = await import("@aztec/aztec.js");
+    return aztec.createAztecPlugin ?? aztec.createPlugin;
+  } catch (error) {
+    throw new PrivacyAdapterUnavailableError("aztec package is unavailable", {
+      package: "@aztec/aztec.js",
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 function normalizeRailgunPlugin(plugin) {
   if (!plugin || typeof plugin !== "object") throw new TypeError("railgun plugin is required");
   return Object.freeze({
@@ -613,6 +709,41 @@ function normalizePrivacyPoolsPlugin(plugin) {
     prepareUnshield: plugin.prepareUnshield,
     broadcastPrivateOperation: plugin.broadcastPrivateOperation
   });
+}
+
+function normalizeAztecPlugin(plugin) {
+  if (!plugin || typeof plugin !== "object") throw new TypeError("aztec plugin is required");
+  return Object.freeze({
+    ...plugin,
+    createAccount: plugin.createAccount,
+    prepareShield: plugin.prepareShield,
+    prepareTransfer: plugin.prepareTransfer,
+    prepareUnshield: plugin.prepareUnshield,
+    broadcastPrivateOperation: plugin.broadcastPrivateOperation
+  });
+}
+
+function classifyPrivacyAdapterFailure(protocol, method, error) {
+  if (error instanceof PrivacyAdapterUnavailableError || error instanceof MetadataBudgetExceededError) throw error;
+  const message = error instanceof Error ? error.message : String(error);
+  const surface = inferFailureSurface(method, message);
+  return new PrivacyAdapterFailureError("privacy adapter operation failed", {
+    protocol,
+    method,
+    surface,
+    recoverable: surface !== "prover",
+    cause: message
+  });
+}
+
+function inferFailureSurface(method, message) {
+  const value = `${method} ${message}`.toLowerCase();
+  if (value.includes("relayer") || value.includes("broadcast")) return "relayer";
+  if (value.includes("prover") || value.includes("proof")) return "prover";
+  if (value.includes("bridge") || value.includes("finality")) return "bridge";
+  if (value.includes("indexer") || value.includes("sync")) return "indexer";
+  if (value.includes("rpc") || value.includes("provider")) return "rpc";
+  return "timing";
 }
 
 function normalizePrivateBalance(protocol, chainId, metadataBudget, balance) {
