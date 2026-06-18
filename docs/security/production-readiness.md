@@ -60,7 +60,8 @@ does not make a deployment production-ready.
 - Halmos symbolic property workflow for core authority invariants.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
-- Coverage report generation.
+- Enforced aggregate production-source coverage gate with at least 80% line
+  coverage and 60% branch coverage across `src/**`.
 - Source scan confirming experimental account cryptography is absent from
   production contract scope unless an explicit audit-candidate decision has
   moved it into scope.
@@ -77,10 +78,9 @@ coverage is approximately 97.7% lines and 75.0% branches. `VaultHook`
 coverage is approximately 93.0% lines and 63.2% branches. `LoomKeystore`
 coverage is approximately 92.5% lines and 60.0% branches.
 `KeystoreSyncRecoveryModule` coverage is approximately 96.8% lines and 60.0%
-branches. Before audit freeze,
-every security-critical production module should reach at least 80% lines and
-60% branches and the production-source target must become an enforced CI
-gate.
+branches. CI now enforces the aggregate production-source gate. Before audit
+freeze, every security-critical production module should also reach at least
+80% lines and 60% branches.
 
 Slither's `arbitrary-send-eth` warning is locally suppressed only on the
 account execution call because arbitrary authorized execution is the core
