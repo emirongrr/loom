@@ -12,15 +12,19 @@ clear signing, signing, and publication.
 
 - Account deployment intent.
 - Granular session grant and revoke intent.
-- Visible delayed recovery proposal intent.
-- Visible delayed migration intent with destination code hash binding.
-- Visible delayed vault withdrawal intent.
+- Visible delayed recovery proposal, cancellation, and execution intent.
+- Visible delayed migration schedule, cancellation, and execution intent with
+  destination code hash binding.
+- Visible delayed vault withdrawal schedule, cancellation, and execution
+  intent.
 - Explicit optional paymaster policy intent.
 
 ## Design rules
 
 - No default RPC, bundler, paymaster, relayer, indexer, or recovery service.
 - High-risk lifecycle actions carry delay and cancellation metadata.
+- Completion intents bind the exact pending operation ID, version, nonce, hash,
+  or validator set needed to avoid ambiguous finalization.
 - Paymaster use is always explicit and bounded by token, amount, and expiry.
 - Builders return data. Wallet clients remain responsible for simulation,
   signing, publishing, and user explanation.

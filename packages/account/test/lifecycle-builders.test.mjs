@@ -109,6 +109,43 @@ test("recovery proposal is visible delayed and guardian-approved", () => {
   assert.equal(intent.authority.cancellable, true);
 });
 
+test("recovery cancellation binds id version nonce and route", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  const intent = client.buildRecoveryCancellation({
+    recoveryId: codeHash,
+    configVersion: 2n,
+    nonce: 0n,
+    route: "guardian"
+  });
+
+  assert.equal(intent.kind, "recovery.cancel");
+  assert.equal(intent.recoveryId, codeHash);
+  assert.equal(intent.nonce, 0n);
+  assert.equal(intent.route, "guardian");
+  assert.equal(intent.authority.requiresUserSignature, false);
+  assert.equal(intent.authority.requiresGuardianApproval, true);
+});
+
+test("recovery execution binds old validator set and init data hash", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  const intent = client.buildRecoveryExecution({
+    recoveryId: codeHash,
+    oldValidators: [account, other],
+    newValidator: paymaster,
+    initDataHash: salt,
+    newGuardianRoot: codeHash,
+    newGuardianThreshold: 2,
+    executeAfter: 100n,
+    expiresAt: 200n
+  });
+
+  assert.equal(intent.kind, "recovery.execute");
+  assert.deepEqual(intent.oldValidators, [account, other]);
+  assert.equal(intent.newGuardianThreshold, 2);
+  assert.equal(intent.authority.requiresUserSignature, false);
+  assert.equal(intent.authority.delayRequired, true);
+});
+
 test("migration intent binds destination codehash entry point delay and guardian cancellation", () => {
   const client = createAccountLifecycleClient({ chainId: 1, account });
   const intent = client.buildMigration({
@@ -125,6 +162,32 @@ test("migration intent binds destination codehash entry point delay and guardian
   assert.equal(intent.authority.cancellableByGuardian, true);
 });
 
+test("migration cancellation and execution bind exact pending migration", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  const cancel = client.buildMigrationCancellation({
+    migrationId: codeHash,
+    configVersion: 3n,
+    nonce: 1n,
+    route: "account"
+  });
+  const execute = client.buildMigrationExecution({
+    migrationId: codeHash,
+    destination: other,
+    destinationCodeHash: codeHash,
+    destinationConfigHash: salt,
+    callsHash: codeHash,
+    executeAfter: 100n,
+    expiresAt: 200n
+  });
+
+  assert.equal(cancel.kind, "migration.cancel");
+  assert.equal(cancel.authority.requiresUserSignature, true);
+  assert.equal(cancel.authority.requiresGuardianApproval, false);
+  assert.equal(execute.kind, "migration.execute");
+  assert.equal(execute.destinationConfigHash, salt);
+  assert.equal(execute.authority.delayRequired, true);
+});
+
 test("vault withdrawal intent requires amount recipient delay and cancellation visibility", () => {
   const client = createAccountLifecycleClient({ chainId: 1, account });
   const intent = client.buildVaultWithdrawal({
@@ -138,6 +201,30 @@ test("vault withdrawal intent requires amount recipient delay and cancellation v
   assert.equal(intent.amount, 1000000n);
   assert.equal(intent.authority.delayRequired, true);
   assert.equal(intent.authority.cancellable, true);
+});
+
+test("vault withdrawal cancellation and execution bind exact withdrawal id", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  const cancel = client.buildVaultWithdrawalCancellation({
+    withdrawalId: codeHash,
+    configVersion: 4n,
+    route: "guardian"
+  });
+  const execute = client.buildVaultWithdrawalExecution({
+    withdrawalId: codeHash,
+    token,
+    recipient: other,
+    amount: 1000n,
+    executeAfter: 100n,
+    expiresAt: 200n,
+    callDataHash: salt
+  });
+
+  assert.equal(cancel.kind, "vault.withdrawal.cancel");
+  assert.equal(cancel.authority.requiresGuardianApproval, true);
+  assert.equal(execute.kind, "vault.withdrawal.execute");
+  assert.equal(execute.callDataHash, salt);
+  assert.equal(execute.authority.delayRequired, true);
 });
 
 test("private vault withdrawal binds protocol operation and metadata budget hashes", () => {
@@ -205,4 +292,34 @@ test("paymaster policy requires explicit paymaster token cap and expiry", () => 
   assert.equal(intent.kind, "paymaster.policy");
   assert.equal(intent.paymaster, paymaster);
   assert.equal(intent.authority.optionalInfrastructure, true);
+});
+
+test("completion builders reject ambiguous cancellation routes and unordered validator sets", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+
+  assert.throws(
+    () =>
+      client.buildRecoveryCancellation({
+        recoveryId: codeHash,
+        configVersion: 1n,
+        nonce: 0n,
+        route: "operator"
+      }),
+    InvalidLifecycleRequestError
+  );
+
+  assert.throws(
+    () =>
+      client.buildRecoveryExecution({
+        recoveryId: codeHash,
+        oldValidators: [other, account],
+        newValidator: paymaster,
+        initDataHash: salt,
+        newGuardianRoot: codeHash,
+        newGuardianThreshold: 2,
+        executeAfter: 100n,
+        expiresAt: 200n
+      }),
+    InvalidLifecycleRequestError
+  );
 });
