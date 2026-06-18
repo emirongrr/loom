@@ -21,12 +21,12 @@ These are package dependencies, not optional peer suggestions. A third-party
 wallet client built through the Loom SDK receives the Kohaku runtime boundary
 as part of the SDK.
 
-This package does not yet ship a production Aztec, stealth-address, Railgun,
-or privacy-pool release adapter. It includes the Kohaku host runtime boundary,
-an executable Kohaku-style shielded-pool adapter wrapper, Railgun and
-privacy-pool profile boundaries, and scoped local scan-state storage that
-wallet clients and third-party builders can use without changing Loom core
-contracts.
+This package does not yet claim production private-transfer readiness. It
+includes the Kohaku host runtime boundary, an executable Kohaku-style
+shielded-pool adapter wrapper, Railgun and privacy-pool profile boundaries,
+an optional Aztec private-execution profile boundary, failure-mode
+classification, and scoped local scan-state storage that wallet clients and
+third-party builders can use without changing Loom core contracts.
 
 ## Design rules
 
@@ -57,6 +57,12 @@ contracts.
 - `createPrivacyPoolsAdapterProfile`: privacy-pool profile that initializes a
   Kohaku-compatible plugin, exposes shield/unshield/private-transfer/sync
   methods, and persists local scan checkpoints after metadata-budget approval.
+- `createAztecAdapterProfile`: optional private-execution profile that wraps
+  an Aztec-compatible plugin, carries bridge/finality assumptions in the
+  built operation, and persists scoped local sync checkpoints.
+- `PrivacyAdapterFailureError`: classified protocol failures for indexer,
+  relayer, prover, bridge, RPC, and timing surfaces. Failed sync does not
+  mutate local scan checkpoints.
 - `createPrivateScanStateStore`: local scan checkpoint storage scoped by
   protocol, chain, account, application, and scan scope.
 - `PrivateScanner`: local-first discovery of private notes, stealth payments,
@@ -84,19 +90,18 @@ import Kohaku directly.
 Railgun is integrated through `@kohaku-eth/railgun` as the default EVM
 shielded-pool profile boundary. Privacy pools are integrated through a
 separate `@kohaku-eth/privacy-pools` profile boundary with the same metadata
-and local-scan rules. Production release still requires live network
-rehearsal, dependency audit remediation, relayer/indexer/prover failure
-evidence, vault interaction tests, and protocol-specific review. The Kohaku
+and local-scan rules. Aztec remains an optional adapter profile because it has
+separate private state, proving, bridge/finality, and wallet-account
+assumptions. Production release still requires live network rehearsal,
+dependency audit remediation, relayer/indexer/prover failure evidence, vault
+interaction tests, and protocol-specific review. The Kohaku
 docs currently refer to
 `@kohaku-eth/tornado`, but the repository and npm registry expose
 `@kohaku-eth/tornado-cash`; Loom tracks the published package name. That
 package is part of the SDK-accessible stack because it exists upstream, but it
 must remain behind explicit protocol, dependency, jurisdictional, relayer, and
-withdrawal-safety review before any production UX exposes it. Aztec should be
-integrated as an optional private-execution environment with its own state,
-finality, and bridge assumptions because it is not part of the current Kohaku
-package set Loom binds to. No protocol becomes mandatory Loom account
-infrastructure.
+withdrawal-safety review before any production UX exposes it. No protocol
+becomes mandatory Loom account infrastructure.
 
 Kohaku `packages/pq-account` should be treated as an account compatibility and
 migration research target, not as a silent replacement for LoomAccount. Any
