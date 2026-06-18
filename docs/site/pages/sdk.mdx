@@ -1,7 +1,32 @@
 # SDK
 
-The first SDK package is `@loom/privacy`. It is a Kohaku-backed runtime
-boundary, not a production privacy adapter.
+Loom currently ships two early SDK packages: `@loom/account` for account
+lifecycle intent builders and `@loom/privacy` for a Kohaku-compatible privacy
+runtime boundary.
+
+These packages are wallet-engine primitives, not a finished wallet client.
+They must not hide trust assumptions, select default infrastructure, or claim
+production privacy before protocol-specific review and live rehearsal.
+
+## Account lifecycle
+
+`@loom/account` builds explicit intents for account deployment, session grant
+and revoke, recovery proposal, migration, vault withdrawal, private vault
+withdrawal binding, and optional paymaster policy.
+
+The package deliberately avoids side effects:
+
+- no default RPC;
+- no default bundler;
+- no default paymaster;
+- no transaction sending;
+- no Loom-operated recovery coordinator.
+
+Wallets remain responsible for explaining the intent, collecting signatures,
+simulating where appropriate, and publishing through user-selected
+infrastructure.
+
+## Privacy runtime
 
 The runtime gives wallet builders a place to host Kohaku plugins behind:
 
@@ -9,7 +34,10 @@ The runtime gives wallet builders a place to host Kohaku plugins behind:
 - metadata-budget checks;
 - local storage boundaries;
 - no default RPC query before user consent;
-- future Railgun, privacy-pools, stealth, and Aztec adapter surfaces.
+- local private scan lifecycle state;
+- a shielded-pool adapter wrapper;
+- a Railgun profile boundary;
+- future privacy-pools, stealth, and Aztec adapter surfaces.
 
 ## Provider profile
 
@@ -61,8 +89,8 @@ await host.network.fetch(profile.endpoint)
 
 | Package | Purpose | Status |
 | --- | --- | --- |
-| `@loom/privacy` | Kohaku host, provider profiles, metadata budgets, future Railgun and privacy-pools adapters. | Runtime skeleton |
-| `@loom/account` | Account deploy, validator setup, session grant/revoke, recovery proposal, migration, vault builders. | Planned |
+| `@loom/account` | Account deploy, session grant/revoke, recovery proposal, migration, vault withdrawal, private vault binding, and paymaster policy builders. | Implemented boundary |
+| `@loom/privacy` | Kohaku host, provider profiles, metadata budgets, local scan lifecycle, shielded-pool wrapper, and Railgun profile boundary. | Implemented boundary |
 | `@loom/client` | Wallet engine for mobile apps and partner wallets with verified state and clear signing. | Planned |
 
 SDKs should improve UX without becoming account authority.
