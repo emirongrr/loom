@@ -62,8 +62,8 @@ jobs:
         run: forge test --match-test testFuzz --fuzz-runs 10000
       - name: Run CI fuzz and invariants
         run: FOUNDRY_PROFILE=ci forge test -vvv
-      - name: Generate coverage summary
-        run: forge coverage --ir-minimum --report summary --skip "test/formal/**"
+      - name: Check production coverage gate
+        run: npm run coverage:check
       - name: Assert no excluded cryptography
         run: |
           ! grep -RniE 'post.?quantum|quantum|ML.?DSA|SLH.?DSA|\bPQ\b' src test formal fixtures script
