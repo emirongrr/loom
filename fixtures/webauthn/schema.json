@@ -5,8 +5,11 @@
   "additionalProperties": false,
   "required": [
     "version",
+    "matrixId",
+    "capturedAt",
     "platform",
     "browser",
+    "authenticator",
     "authenticatorClass",
     "rpId",
     "origin",
@@ -18,12 +21,16 @@
     "clientDataJSON",
     "r",
     "s",
-    "expected"
+    "expected",
+    "negativeMutations"
   ],
   "properties": {
     "version": { "const": 1 },
+    "matrixId": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 80 },
+    "capturedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
     "platform": { "type": "string", "maxLength": 80 },
     "browser": { "type": "string", "maxLength": 80 },
+    "authenticator": { "type": "string", "maxLength": 80 },
     "authenticatorClass": { "enum": ["platform", "roaming"] },
     "rpId": { "type": "string", "maxLength": 253 },
     "origin": { "type": "string", "maxLength": 256 },
@@ -36,6 +43,20 @@
     "r": { "$ref": "#/$defs/hex32" },
     "s": { "$ref": "#/$defs/hex32" },
     "expected": { "type": "boolean" },
+    "negativeMutations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "challenge",
+          "origin",
+          "rpIdHash",
+          "userVerificationFlag",
+          "signature",
+          "payloadLength"
+        ]
+      }
+    },
     "notes": { "type": "string", "maxLength": 500 }
   },
   "$defs": {
