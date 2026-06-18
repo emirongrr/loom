@@ -497,6 +497,60 @@ export async function createRailgunAdapterProfile(options) {
   });
 }
 
+export async function createPrivacyPoolsAdapterProfile(options) {
+  if (!options || typeof options !== "object") throw new TypeError("privacy-pools profile options are required");
+  const host = options.host;
+  if (!host || typeof host.metadataBudget !== "function") {
+    throw new TypeError("privacy-pools profile host is required");
+  }
+  const createPlugin = options.createPlugin ?? (await loadPrivacyPoolsPluginFactory());
+  if (typeof createPlugin !== "function") throw new TypeError("privacy-pools plugin factory is required");
+
+  const plugin = await createPlugin(host, options.config ?? {});
+  const adapter = createKohakuShieldedPoolAdapter({
+    protocol: "privacy-pool",
+    host,
+    plugin: normalizePrivacyPoolsPlugin(plugin)
+  });
+  const scanState = createPrivateScanStateStore(options.storage ?? host.storage);
+
+  async function metadataBudget(context) {
+    return host.metadataBudget(normalizeContext(context));
+  }
+
+  return Object.freeze({
+    protocol: "privacy-pool",
+    adapter,
+    scanState,
+    metadataBudget,
+    createAccount: adapter.createAccount,
+    shield: adapter.shield,
+    privateTransfer: adapter.privateTransfer,
+    unshield: adapter.unshield,
+    broadcastPrivateOperation: adapter.broadcastPrivateOperation,
+    async sync(context, state) {
+      const normalizedContext = normalizeContext(context);
+      const budget = await metadataBudget(normalizedContext);
+      if (typeof plugin.sync !== "function") {
+        throw new PrivacyAdapterUnavailableError("privacy-pools plugin does not implement sync", {
+          protocol: "privacy-pool",
+          method: "sync"
+        });
+      }
+      const result = await plugin.sync({ context: normalizedContext, state }, host);
+      const normalizedState = scanState.set(normalizedContext, "privacy-pool", {
+        fromBlock: result.fromBlock,
+        toBlock: result.toBlock,
+        latestMerkleRoot: result.latestMerkleRoot
+      });
+      return Object.freeze({
+        ...normalizedState,
+        metadataBudget: budget
+      });
+    }
+  });
+}
+
 function normalizeBudgetItem(item) {
   if (!item || typeof item !== "object") throw new TypeError("metadata budget item must be an object");
   assertNonEmptyString(item.surface, "metadata surface");
@@ -521,8 +575,36 @@ async function loadRailgunPluginFactory() {
   }
 }
 
+async function loadPrivacyPoolsPluginFactory() {
+  try {
+    const privacyPools = await import("@kohaku-eth/privacy-pools");
+    return (
+      privacyPools.createPrivacyPoolsPlugin ??
+      privacyPools.createPrivacyPoolPlugin ??
+      privacyPools.createPlugin
+    );
+  } catch (error) {
+    throw new PrivacyAdapterUnavailableError("privacy-pools package is unavailable", {
+      package: "@kohaku-eth/privacy-pools",
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 function normalizeRailgunPlugin(plugin) {
   if (!plugin || typeof plugin !== "object") throw new TypeError("railgun plugin is required");
+  return Object.freeze({
+    ...plugin,
+    createAccount: plugin.createAccount,
+    prepareShield: plugin.prepareShield,
+    prepareTransfer: plugin.prepareTransfer,
+    prepareUnshield: plugin.prepareUnshield,
+    broadcastPrivateOperation: plugin.broadcastPrivateOperation
+  });
+}
+
+function normalizePrivacyPoolsPlugin(plugin) {
+  if (!plugin || typeof plugin !== "object") throw new TypeError("privacy-pools plugin is required");
   return Object.freeze({
     ...plugin,
     createAccount: plugin.createAccount,
