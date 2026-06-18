@@ -21,11 +21,12 @@ These are package dependencies, not optional peer suggestions. A third-party
 wallet client built through the Loom SDK receives the Kohaku runtime boundary
 as part of the SDK.
 
-This package does not yet ship a production Aztec, stealth-address, or
-privacy-pool release profile. It includes the Kohaku host runtime boundary, an
-executable Kohaku-style shielded-pool adapter wrapper, a Railgun adapter
-profile, and scoped local scan-state storage that wallet clients and
-third-party builders can use without changing Loom core contracts.
+This package does not yet ship a production Aztec, stealth-address, Railgun,
+or privacy-pool release adapter. It includes the Kohaku host runtime boundary,
+an executable Kohaku-style shielded-pool adapter wrapper, Railgun and
+privacy-pool profile boundaries, and scoped local scan-state storage that
+wallet clients and third-party builders can use without changing Loom core
+contracts.
 
 ## Design rules
 
@@ -53,6 +54,9 @@ third-party builders can use without changing Loom core contracts.
 - `createRailgunAdapterProfile`: Railgun profile that initializes a
   Kohaku-compatible Railgun plugin, exposes balance/sync/private-operation
   methods, and persists local scan checkpoints after metadata-budget approval.
+- `createPrivacyPoolsAdapterProfile`: privacy-pool profile that initializes a
+  Kohaku-compatible plugin, exposes shield/unshield/private-transfer/sync
+  methods, and persists local scan checkpoints after metadata-budget approval.
 - `createPrivateScanStateStore`: local scan checkpoint storage scoped by
   protocol, chain, account, application, and scan scope.
 - `PrivateScanner`: local-first discovery of private notes, stealth payments,
@@ -78,10 +82,12 @@ import Kohaku directly.
 ## Protocol profiles
 
 Railgun is integrated through `@kohaku-eth/railgun` as the default EVM
-shielded-pool profile boundary. Production release still requires live
-network rehearsal, dependency audit remediation, relayer/indexer/prover
-failure evidence, and protocol-specific review. Privacy pools should use
-`@kohaku-eth/privacy-pools`. The Kohaku docs currently refer to
+shielded-pool profile boundary. Privacy pools are integrated through a
+separate `@kohaku-eth/privacy-pools` profile boundary with the same metadata
+and local-scan rules. Production release still requires live network
+rehearsal, dependency audit remediation, relayer/indexer/prover failure
+evidence, vault interaction tests, and protocol-specific review. The Kohaku
+docs currently refer to
 `@kohaku-eth/tornado`, but the repository and npm registry expose
 `@kohaku-eth/tornado-cash`; Loom tracks the published package name. That
 package is part of the SDK-accessible stack because it exists upstream, but it
