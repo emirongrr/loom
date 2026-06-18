@@ -12,7 +12,7 @@ evidence-based.
 | Passkey auth | P-256/WebAuthn and multi-passkey threshold validator. | Increasingly common in passkey-first wallets. |
 | Social recovery | Guardian threshold, visible delay, expiry, cancellation, fresh guardian root. | Common in recovery wallets, with different trust and timing assumptions. |
 | Permissions | Granular target, selector, token, amount, time, use count, and paymaster bounds. | Session keys and smart sessions are common, often with broader surfaces. |
-| Privacy | Kohaku-backed SDK boundary with provider consent and metadata budgets; concrete adapters pending. | Usually wallet-side or protocol-specific, rarely account-core logic. |
+| Privacy | Kohaku-compatible SDK boundary with provider consent, metadata budgets, local scan lifecycle, shielded-pool wrapper, and Railgun profile boundary; production protocol adapters still require review and rehearsal. | Usually wallet-side or protocol-specific, rarely account-core logic. |
 | Cross-chain authority | L1 keystore surface and proof-gated sync module; production proof verifiers pending. | Often service, bridge, or chain-specific. Trust assumptions vary. |
 
 ## Gas comparison framework

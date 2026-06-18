@@ -21,9 +21,12 @@ privacy, recovery, verification, and permissionless exit.
   cancellation, hook enforcement, and atomic execution.
 - L1 keystore surface and proof-gated sync module; production proof verifiers
   remain pending.
-- @loom/privacy host runtime skeleton for Kohaku-backed clients. The runtime
-  requires explicit provider consent and metadata-budget checks before network
-  access.
+- @loom/account lifecycle intent builders for deployment, session grant/revoke,
+  recovery proposal, migration, vault withdrawal, private vault withdrawal
+  binding, and optional paymaster policy.
+- @loom/privacy Kohaku-compatible runtime boundary with explicit provider
+  consent, metadata-budget checks, local scan lifecycle state, shielded-pool
+  wrapper, and Railgun profile boundary before network access.
 
 ## Non-goals and warnings
 
@@ -32,6 +35,9 @@ privacy, recovery, verification, and permissionless exit.
 - Do not claim live cross-wallet gas superiority. Use the repository gas
   snapshot for Loom-only measurements and mark cross-wallet benchmarks as
   pending until the shared harness exists.
+- Do not claim live Railgun, Aztec, privacy-pool, or stealth-address
+  production privacy until protocol-specific adapters have review, live
+  rehearsal, and documented failure behavior.
 - Do not make Kohaku, Railgun, Aztec, privacy pools, RPC providers, relayers,
   indexers, paymasters, or recovery coordinators mandatory account authority.
 - Do not add a global identity registry that publicly links all user accounts.
