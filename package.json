@@ -10,6 +10,7 @@
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
     "account:test": "npm --prefix packages/account test",
     "privacy:test": "npm --prefix packages/privacy test",
+    "rehearsal:local": "node tools/rehearse-local-lifecycle.mjs",
     "site:build": "npm --prefix docs/site run build && node tools/copy-site-public.mjs",
     "site:check": "node tools/validate-site.mjs",
     "site:dev": "npm --prefix docs/site run dev",
