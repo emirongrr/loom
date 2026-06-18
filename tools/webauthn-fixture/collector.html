@@ -54,8 +54,11 @@ document.querySelector("#capture").onclick = async () => {
   const clientDataJSON = new TextDecoder().decode(assertion.response.clientDataJSON);
   const fixture = {
     version: 1,
+    matrixId: "replace-with-matrix-id",
+    capturedAt: new Date().toISOString().slice(0, 10),
     platform: navigator.platform.slice(0, 80),
     browser: navigator.userAgent.slice(0, 80),
+    authenticator: "replace-with-authenticator",
     authenticatorClass: "platform",
     rpId: location.hostname,
     origin: location.origin,
@@ -68,7 +71,8 @@ document.querySelector("#capture").onclick = async () => {
     r: signature.r,
     s: signature.s,
     expected: true,
-    notes: "Generated locally; inspect and remove unnecessary metadata before committing."
+    negativeMutations: [],
+    notes: "Generated locally; set matrixId/authenticator and fill negativeMutations only after mutation tests pass."
   };
   output.textContent = JSON.stringify(fixture, null, 2);
 };

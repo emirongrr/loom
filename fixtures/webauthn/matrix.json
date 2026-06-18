@@ -1,5 +1,13 @@
 {
   "version": 1,
+  "requiredNegativeMutations": [
+    "challenge",
+    "origin",
+    "rpIdHash",
+    "userVerificationFlag",
+    "signature",
+    "payloadLength"
+  ],
   "required": [
     { "id": "chrome-android-passkey", "browser": "Chrome", "authenticator": "Android passkey", "status": "missing" },
     { "id": "chrome-windows-hello", "browser": "Chrome", "authenticator": "Windows Hello", "status": "missing" },
