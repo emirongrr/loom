@@ -5,8 +5,14 @@ export type AccountLifecycleKind =
   | "session.grant"
   | "session.revoke"
   | "recovery.propose"
+  | "recovery.cancel"
+  | "recovery.execute"
   | "migration.schedule"
+  | "migration.cancel"
+  | "migration.execute"
   | "vault.withdrawal.schedule"
+  | "vault.withdrawal.cancel"
+  | "vault.withdrawal.execute"
   | "vault.privateWithdrawal.schedule"
   | "paymaster.policy";
 
@@ -16,8 +22,14 @@ export interface LifecycleAuthority {
     | "bounded-session"
     | "permission-revocation"
     | "account-recovery"
+    | "account-recovery-cancellation"
+    | "account-recovery-execution"
     | "account-migration"
+    | "account-migration-cancellation"
+    | "account-migration-execution"
     | "vault-withdrawal"
+    | "vault-withdrawal-cancellation"
+    | "vault-withdrawal-execution"
     | "vault-private-withdrawal"
     | "fee-policy";
   requiresUserSignature: boolean;
@@ -27,6 +39,8 @@ export interface LifecycleAuthority {
   cancellableByGuardian?: boolean;
   optionalInfrastructure?: boolean;
   metadataBudgetRequired?: boolean;
+  exactPendingOperationRequired?: boolean;
+  cancelsPendingHighRiskOperation?: boolean;
 }
 
 export interface SessionScope {
@@ -86,6 +100,30 @@ export interface AccountLifecycleClient {
     callData?: Hex;
   }): LifecycleIntent;
 
+  buildRecoveryCancellation(input: {
+    chainId?: number;
+    account?: Hex;
+    recoveryId: Hex;
+    configVersion: bigint | string | number;
+    nonce: bigint | string | number;
+    route?: "account" | "guardian";
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildRecoveryExecution(input: {
+    chainId?: number;
+    account?: Hex;
+    recoveryId: Hex;
+    oldValidators: Hex[];
+    newValidator: Hex;
+    initDataHash: Hex;
+    newGuardianRoot: Hex;
+    newGuardianThreshold: number;
+    executeAfter: bigint | string | number;
+    expiresAt: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
   buildMigration(input: {
     chainId?: number;
     account?: Hex;
@@ -97,6 +135,29 @@ export interface AccountLifecycleClient {
     callData?: Hex;
   }): LifecycleIntent;
 
+  buildMigrationCancellation(input: {
+    chainId?: number;
+    account?: Hex;
+    migrationId: Hex;
+    configVersion: bigint | string | number;
+    nonce: bigint | string | number;
+    route?: "account" | "guardian";
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildMigrationExecution(input: {
+    chainId?: number;
+    account?: Hex;
+    migrationId: Hex;
+    destination: Hex;
+    destinationCodeHash: Hex;
+    destinationConfigHash: Hex;
+    callsHash: Hex;
+    executeAfter: bigint | string | number;
+    expiresAt: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
   buildVaultWithdrawal(input: {
     chainId?: number;
     account?: Hex;
@@ -105,6 +166,28 @@ export interface AccountLifecycleClient {
     amount: bigint | string | number;
     executeAfter: bigint | string | number;
     expiry?: bigint | string | number;
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildVaultWithdrawalCancellation(input: {
+    chainId?: number;
+    account?: Hex;
+    withdrawalId: Hex;
+    configVersion: bigint | string | number;
+    route?: "account" | "guardian";
+    callData?: Hex;
+  }): LifecycleIntent;
+
+  buildVaultWithdrawalExecution(input: {
+    chainId?: number;
+    account?: Hex;
+    withdrawalId: Hex;
+    token: Hex;
+    recipient: Hex;
+    amount: bigint | string | number;
+    callDataHash: Hex;
+    executeAfter: bigint | string | number;
+    expiresAt: bigint | string | number;
     callData?: Hex;
   }): LifecycleIntent;
 
