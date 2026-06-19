@@ -46,10 +46,35 @@ contract GranularSessionValidator is ILoomValidator {
     mapping(address account => mapping(bytes32 permissionId => bool)) private _knownPermission;
 
     event PermissionGranted(address indexed account, bytes32 indexed permissionId, address indexed signer);
+    event PermissionBatchGranted(address indexed account, uint256 count);
     event PermissionRevoked(address indexed account, bytes32 indexed permissionId);
 
     function grantPermission(bytes32 permissionId, Permission calldata permission) external {
         if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
+        _grantPermission(msg.sender, permissionId, permission);
+        ILoomAccount(msg.sender)
+            .notifyConfigChange(keccak256(abi.encode("GRANULAR_SESSION_PERMISSION", permissionId, permission)));
+    }
+
+    function grantPermissions(bytes32[] calldata permissionIds, Permission[] calldata newPermissions) external {
+        if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
+        if (permissionIds.length == 0 || permissionIds.length != newPermissions.length) revert InvalidPermission();
+
+        for (uint256 i; i < permissionIds.length; ++i) {
+            for (uint256 j; j < i; ++j) {
+                if (permissionIds[i] == permissionIds[j]) revert InvalidPermission();
+            }
+            _grantPermission(msg.sender, permissionIds[i], newPermissions[i]);
+        }
+
+        ILoomAccount(msg.sender)
+            .notifyConfigChange(
+                keccak256(abi.encode("GRANULAR_SESSION_PERMISSION_BATCH", permissionIds, newPermissions))
+            );
+        emit PermissionBatchGranted(msg.sender, permissionIds.length);
+    }
+
+    function _grantPermission(address account, bytes32 permissionId, Permission calldata permission) internal {
         if (
             permissionId == bytes32(0) || permission.signer == address(0) || permission.target == address(0)
                 || permission.selector == bytes4(0) || permission.validUntil <= permission.validAfter
@@ -60,16 +85,14 @@ contract GranularSessionValidator is ILoomValidator {
                 || (permission.token != address(0) && !_isSupportedTokenSelector(permission.selector))
         ) revert InvalidPermission();
 
-        if (!_knownPermission[msg.sender][permissionId]) {
-            if (_permissionIds[msg.sender].length >= MAX_PERMISSION_IDS) revert PermissionLimitReached();
-            _knownPermission[msg.sender][permissionId] = true;
-            _permissionIds[msg.sender].push(permissionId);
+        if (!_knownPermission[account][permissionId]) {
+            if (_permissionIds[account].length >= MAX_PERMISSION_IDS) revert PermissionLimitReached();
+            _knownPermission[account][permissionId] = true;
+            _permissionIds[account].push(permissionId);
         }
-        permissions[msg.sender][permissionId] = permission;
-        revoked[msg.sender][permissionId] = false;
-        ILoomAccount(msg.sender)
-            .notifyConfigChange(keccak256(abi.encode("GRANULAR_SESSION_PERMISSION", permissionId, permission)));
-        emit PermissionGranted(msg.sender, permissionId, permission.signer);
+        permissions[account][permissionId] = permission;
+        revoked[account][permissionId] = false;
+        emit PermissionGranted(account, permissionId, permission.signer);
     }
 
     function revokePermission(bytes32 permissionId) external {

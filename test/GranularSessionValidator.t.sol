@@ -170,6 +170,74 @@ contract GranularSessionValidatorTest {
         require(!invalid, "mismatched token and target accepted");
     }
 
+    function testBatchGrantPermissionsRequiresTimelockAndIsAtomic() public {
+        bytes32[] memory permissionIds = new bytes32[](2);
+        permissionIds[0] = keccak256("batch-grant-a");
+        permissionIds[1] = keccak256("batch-grant-b");
+
+        GranularSessionValidator.Permission[] memory permissions = new GranularSessionValidator.Permission[](2);
+        permissions[0] = _tokenPermission(address(0), 60, 100, 2, 3);
+        permissions[1] = _tokenPermission(address(0xA11CE), 25, 50, 2, 4);
+
+        bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermissions, (permissionIds, permissions));
+        (bool direct,) = address(validator).call(grant);
+        require(!direct, "direct batch grant accepted");
+
+        uint64 versionBefore = account.configVersion();
+        _scheduleAndExecute(grant);
+        require(account.configVersion() == versionBefore + 1, "batch grant did not advance config once");
+        require(validator.permissionCount(address(account)) == 2, "batch permissions not enumerable");
+        require(validator.permissionIdAt(address(account), 0) == permissionIds[0], "wrong first permission id");
+        require(validator.permissionIdAt(address(account), 1) == permissionIds[1], "wrong second permission id");
+
+        require(
+            _validate(permissionIds[0], _singleTokenCall(recipient, 60), address(0), 0)
+                != ValidationDataLib.SIG_VALIDATION_FAILED,
+            "first permission rejected"
+        );
+        require(
+            _validate(permissionIds[1], _singleTokenCall(recipient, 25), address(0xA11CE), 0)
+                != ValidationDataLib.SIG_VALIDATION_FAILED,
+            "second permission rejected"
+        );
+
+        bytes32[] memory duplicateIds = new bytes32[](2);
+        duplicateIds[0] = keccak256("duplicate");
+        duplicateIds[1] = duplicateIds[0];
+        GranularSessionValidator.Permission[] memory duplicatePermissions = new GranularSessionValidator.Permission[](2);
+        duplicatePermissions[0] = permissions[0];
+        duplicatePermissions[1] = permissions[1];
+        bytes memory duplicateGrant =
+            abi.encodeCall(GranularSessionValidator.grantPermissions, (duplicateIds, duplicatePermissions));
+        _schedule(duplicateGrant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool duplicateAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, duplicateGrant)));
+        require(!duplicateAccepted, "duplicate batch permission id accepted");
+        require(validator.permissionCount(address(account)) == 2, "duplicate grant mutated permissions");
+
+        bytes32[] memory invalidIds = new bytes32[](2);
+        invalidIds[0] = keccak256("invalid-a");
+        invalidIds[1] = keccak256("invalid-b");
+        GranularSessionValidator.Permission[] memory invalidPermissions = new GranularSessionValidator.Permission[](2);
+        invalidPermissions[0] = permissions[0];
+        invalidPermissions[1] = permissions[1];
+        invalidPermissions[1].token = address(0xCAFE);
+        bytes memory invalidGrant =
+            abi.encodeCall(GranularSessionValidator.grantPermissions, (invalidIds, invalidPermissions));
+        _schedule(invalidGrant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool invalidAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, invalidGrant)));
+        require(!invalidAccepted, "invalid batch permission accepted");
+        require(validator.permissionCount(address(account)) == 2, "invalid grant partially mutated permissions");
+        require(
+            _validate(invalidIds[0], _singleTokenCall(recipient, 1), address(0), 0)
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "invalid batch granted first permission"
+        );
+    }
+
     function testMalformedAndUnsupportedCallsFailClosed() public {
         bytes32 permissionId = keccak256("malformed-permission");
         _grant(permissionId, _tokenPermission(address(0), 60, 100, 2, 3));
@@ -223,11 +291,19 @@ contract GranularSessionValidatorTest {
 
     function _grant(bytes32 permissionId, GranularSessionValidator.Permission memory permission) internal {
         bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
+        _scheduleAndExecute(grant);
+    }
+
+    function _scheduleAndExecute(bytes memory grant) internal {
+        _schedule(grant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, grant);
+    }
+
+    function _schedule(bytes memory grant) internal {
         bytes memory schedule =
             abi.encodeCall(LoomAccount.scheduleCall, (address(validator), 0, grant, account.MIN_CONFIG_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
-        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
-        account.executeScheduled(address(validator), 0, grant);
     }
 
     function _validate(bytes32 permissionId, bytes memory accountCall, address paymaster, uint64 sequence)
