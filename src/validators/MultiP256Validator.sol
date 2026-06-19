@@ -124,13 +124,12 @@ contract MultiP256Validator is ILoomValidator, ILoomDirectValidator {
         bytes32 userOpHash,
         uint256,
         bytes calldata encodedSignatures,
-        bytes calldata callData,
+        bytes calldata,
         address
     ) external view returns (uint256) {
         address hook = policyHooks[account];
         if (
             hook == address(0) || !ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)
-                || !IPolicyHook(hook).isLowRisk(account, callData)
                 || !_verifyThreshold(account, userOpHash, encodedSignatures)
         ) return ValidationDataLib.SIG_VALIDATION_FAILED;
         return 0;

@@ -828,8 +828,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
         if (execution.target != address(this)) return false;
         return selector == this.setGuardianConfig.selector || selector == this.installModule.selector
-            || selector == this.uninstallModule.selector || selector == this.cancelScheduled.selector
-            || selector == this.cancelMigration.selector;
+            || selector == this.uninstallModule.selector;
     }
 
     function _guardianApproved(bytes32 digest, GuardianApproval[] calldata approvals) internal view returns (bool) {

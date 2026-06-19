@@ -175,6 +175,14 @@ contract SecurityRegressionTest {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(guardianKey, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
+        MockTarget target = new MockTarget();
+        bytes memory scheduledCall = abi.encodeCall(MockTarget.setValue, (1));
+        bytes memory schedule = abi.encodeCall(
+            LoomAccount.scheduleCall, (address(target), 0, scheduledCall, account.MIN_HIGH_RISK_DELAY())
+        );
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        bytes32 operationId = keccak256(abi.encode(address(target), uint256(0), scheduledCall, account.configVersion()));
+
         account.freeze(address(guardianVerifier), keyCommitment, guardianSalt, new bytes32[](0), signature);
         // forge-lint: disable-next-line(block-timestamp)
         require(account.frozenUntil() > block.timestamp, "account not frozen");
@@ -184,6 +192,13 @@ contract SecurityRegressionTest {
         (bool normalExecution,) =
             address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(transfer))));
         require(!normalExecution, "frozen account executed normal call");
+
+        ExecutionLib.Execution memory cancelScheduled =
+            ExecutionLib.Execution(address(account), 0, abi.encodeCall(LoomAccount.cancelScheduled, (operationId)));
+        (bool cancelledWhileFrozen,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(cancelScheduled))));
+        require(!cancelledWhileFrozen, "frozen primary cancelled scheduled operation");
+        require(account.scheduledOperations(operationId) != 0, "failed frozen cancel cleared operation");
 
         (bool replayed,) = address(account)
             .call(
