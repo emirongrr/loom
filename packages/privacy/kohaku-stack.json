@@ -7,28 +7,32 @@
       "kind": "npm",
       "version": "0.0.1-alpha.9",
       "required": true,
-      "loomSurface": "Private transaction plugin interface"
+      "loomSurface": "Private transaction plugin interface",
+      "productionGate": "Do not expose production private transfer UX until plugin lifecycle, permission binding, metadata surfaces, and failure behavior are reviewed."
     },
     {
       "name": "@kohaku-eth/provider",
       "kind": "npm",
       "version": "0.1.0-alpha.8",
       "required": true,
-      "loomSurface": "Provider abstraction for verified and replaceable transports"
+      "loomSurface": "Provider abstraction for verified and replaceable transports",
+      "productionGate": "Do not use as default provider runtime until no-default-RPC behavior, provider consent, stale-state handling, and mobile integration are reviewed."
     },
     {
       "name": "@kohaku-eth/railgun",
       "kind": "npm",
       "version": "0.0.1-alpha.26",
       "required": true,
-      "loomSurface": "Default EVM shielded-pool backend"
+      "loomSurface": "Default EVM shielded-pool backend",
+      "productionGate": "Do not claim Railgun production transfers until dependency graph, relayer/indexer behavior, local scan state, vault interaction, and protocol assumptions are reviewed."
     },
     {
       "name": "@kohaku-eth/privacy-pools",
       "kind": "npm",
       "version": "0.0.1",
       "required": true,
-      "loomSurface": "Privacy-pools backend and private withdrawal research path"
+      "loomSurface": "Privacy-pools backend and private withdrawal research path",
+      "productionGate": "Do not expose privacy-pools UX until membership, withdrawal, relayer, proof-generation, and metadata assumptions are reviewed."
     },
     {
       "name": "@kohaku-eth/tornado-cash",
