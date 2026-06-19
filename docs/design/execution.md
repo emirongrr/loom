@@ -26,6 +26,47 @@ credential profile therefore cannot invalidate another profile's pre-signed
 fallback operation merely by publishing its own direct execution. A failed
 validation, hook, or inner call rolls back the nonce increment.
 
+## Direct validator requirements
+
+Direct execution is an independent publication path, not an independent
+authority layer. A validator is direct-capable only when it implements
+`ILoomDirectValidator` and treats `validateDirectExecution` as a narrow
+authorization profile for one exact account call.
+
+A direct validator must:
+
+- verify a signature or threshold over the account-provided direct execution
+  digest, not over an application-defined digest;
+- bind the exact account call supplied by `executeDirect`;
+- enforce expiry and reject stale or malformed signatures;
+- apply the same risk classification it would require for comparable
+  EntryPoint execution;
+- fail closed when required policy hooks, signer state, credential state, or
+  validator configuration are missing;
+- return `false` instead of reverting for ordinary invalid signatures whenever
+  possible, so the account can preserve nonce rollback behavior;
+- reject arbitrary ERC-1271 message signing unless that validator explicitly
+  documents a narrower, reviewed ERC-1271 authority profile.
+
+A direct validator must not:
+
+- authorize calls by trusting `msg.sender`, `tx.origin`, the relayer, or a
+  wallet frontend;
+- read account policy during ERC-4337 `validateUserOp`; policy reads belong to
+  execution-time hooks and direct-execution validation only;
+- accept signatures that omit `configVersion`, nonce, chain ID, validator
+  address, mode, calldata hash, or expiry from the account digest;
+- grant session keys, guardians, paymasters, or relayers direct execution
+  authority unless the account installed a validator specifically designed for
+  that role;
+- bypass freeze, hooks, policy accounting, unsupported-mode checks, or atomic
+  execution by calling targets directly.
+
+The account enforces the shared digest, nonce, freeze, hook, and execution
+rules. Validators own only their signer-specific proof of authorization. This
+keeps the EntryPoint liveness escape hatch compatible with Loom's narrow
+authority and walkaway requirements.
+
 ## Supported modes
 
 | Call type | Mode prefix | Calldata encoding | Behavior |
