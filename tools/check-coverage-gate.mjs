@@ -10,6 +10,24 @@ const forge = existsSync(localForge) ? localForge : "forge";
 
 const MIN_LINES = 80;
 const MIN_BRANCHES = 60;
+const CRITICAL_MODULES = [
+  "src/account/LoomAccount.sol",
+  "src/account/LoomAccountFactory.sol",
+  "src/adapters/ERC7579ModuleAdapter.sol",
+  "src/hooks/PolicyHook.sol",
+  "src/hooks/VaultHook.sol",
+  "src/keystore/EthereumL1KeystoreVerifier.sol",
+  "src/keystore/LoomKeystore.sol",
+  "src/recovery/ECDSAGuardianVerifier.sol",
+  "src/recovery/ERC1271GuardianVerifier.sol",
+  "src/recovery/KeystoreSyncRecoveryModule.sol",
+  "src/recovery/P256GuardianVerifier.sol",
+  "src/recovery/RecoveryManager.sol",
+  "src/validators/ECDSAValidator.sol",
+  "src/validators/GranularSessionValidator.sol",
+  "src/validators/MultiP256Validator.sol",
+  "src/validators/P256Validator.sol"
+];
 
 function parseMetric(cell) {
   const match = /(\d+(?:\.\d+)?)%\s*\((\d+)\/(\d+)\)/.exec(cell);
@@ -81,9 +99,25 @@ function assertGate(summary) {
     failures.push(`production source branch coverage ${formatPercent(summary.branches)} < ${MIN_BRANCHES}%`);
   }
 
+  const byFile = new Map(summary.files.map(row => [row.file, row]));
+  for (const file of CRITICAL_MODULES) {
+    const row = byFile.get(file);
+    if (!row) {
+      failures.push(`critical module coverage missing for ${file}`);
+      continue;
+    }
+    if (row.lines.percent < MIN_LINES) {
+      failures.push(`${file} line coverage ${formatPercent(row.lines.percent)} < ${MIN_LINES}%`);
+    }
+    if (row.branches.percent < MIN_BRANCHES) {
+      failures.push(`${file} branch coverage ${formatPercent(row.branches.percent)} < ${MIN_BRANCHES}%`);
+    }
+  }
+
   console.log(
     `production source coverage: lines ${formatPercent(summary.lines)}, branches ${formatPercent(summary.branches)}`
   );
+  console.log(`critical module coverage gate: ${CRITICAL_MODULES.length} modules at ${MIN_LINES}%/${MIN_BRANCHES}%`);
 
   if (failures.length !== 0) {
     throw new Error(`coverage gate failed:\n${failures.join("\n")}`);
@@ -94,12 +128,39 @@ function selfTest() {
   const summary = parseCoverageSummary(`
 | script/DeployCore.s.sol | 0.00% (0/3) | 0.00% (0/2) | 100.00% (0/0) | 0.00% (0/1) |
 | src/account/LoomAccount.sol | 87.50% (7/8) | 88.89% (8/9) | 60.00% (3/5) | 100.00% (1/1) |
+| src/account/LoomAccountFactory.sol | 100.00% (3/3) | 100.00% (3/3) | 75.00% (3/4) | 100.00% (1/1) |
+| src/adapters/ERC7579ModuleAdapter.sol | 84.62% (11/13) | 71.43% (10/14) | 75.00% (3/4) | 75.00% (3/4) |
 | src/hooks/PolicyHook.sol | 90.00% (9/10) | 90.00% (9/10) | 66.67% (2/3) | 100.00% (1/1) |
+| src/hooks/VaultHook.sol | 93.02% (120/129) | 90.40% (160/177) | 63.16% (24/38) | 94.74% (18/19) |
+| src/keystore/EthereumL1KeystoreVerifier.sol | 100.00% (13/13) | 100.00% (25/25) | 100.00% (4/4) | 100.00% (2/2) |
+| src/keystore/LoomKeystore.sol | 92.50% (37/40) | 86.27% (44/51) | 60.00% (6/10) | 85.71% (6/7) |
+| src/recovery/ECDSAGuardianVerifier.sol | 100.00% (3/3) | 100.00% (7/7) | 100.00% (0/0) | 100.00% (1/1) |
+| src/recovery/ERC1271GuardianVerifier.sol | 100.00% (8/8) | 100.00% (11/11) | 100.00% (3/3) | 100.00% (1/1) |
+| src/recovery/KeystoreSyncRecoveryModule.sol | 96.81% (91/94) | 94.90% (149/157) | 60.00% (12/20) | 100.00% (14/14) |
+| src/recovery/P256GuardianVerifier.sol | 100.00% (8/8) | 100.00% (8/8) | 100.00% (0/0) | 100.00% (2/2) |
+| src/recovery/RecoveryManager.sol | 97.67% (84/86) | 96.53% (139/144) | 75.00% (15/20) | 100.00% (12/12) |
+| src/validators/ECDSAValidator.sol | 91.67% (33/36) | 86.96% (40/46) | 71.43% (5/7) | 100.00% (9/9) |
+| src/validators/GranularSessionValidator.sol | 93.33% (70/75) | 90.00% (117/130) | 68.75% (22/32) | 100.00% (9/9) |
+| src/validators/MultiP256Validator.sol | 91.67% (77/84) | 89.16% (115/129) | 64.29% (18/28) | 100.00% (14/14) |
+| src/validators/P256Validator.sol | 91.30% (42/46) | 84.91% (45/53) | 62.50% (5/8) | 100.00% (9/9) |
 `);
-  assert.equal(summary.files.length, 2);
-  assert.equal(summary.lines, 88.88888888888889);
-  assert.equal(summary.branches, 62.5);
+  assert.equal(summary.files.length, 16);
+  assert.equal(Math.round(summary.lines * 100) / 100, 93.9);
+  assert.equal(Math.round(summary.branches * 100) / 100, 67.2);
   assertGate(summary);
+
+  assert.throws(
+    () =>
+      assertGate({
+        ...summary,
+        files: summary.files.map(row =>
+          row.file === "src/account/LoomAccount.sol"
+            ? { ...row, branches: { ...row.branches, percent: 59.99 } }
+            : row
+        )
+      }),
+    /src\/account\/LoomAccount\.sol branch coverage 59\.99% < 60%/u
+  );
 }
 
 function main() {

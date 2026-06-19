@@ -79,7 +79,10 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
         address
     ) external view returns (uint256) {
         address hook = policyHooks[account];
-        if (hook == address(0) || !ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)) {
+        if (hook == address(0)) {
+            return ValidationDataLib.SIG_VALIDATION_FAILED;
+        }
+        if (!ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)) {
             return ValidationDataLib.SIG_VALIDATION_FAILED;
         }
         return _verify(account, userOpHash, signature) ? 0 : ValidationDataLib.SIG_VALIDATION_FAILED;
@@ -97,8 +100,10 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
         bytes calldata accountCall
     ) external view returns (bool) {
         address hook = policyHooks[account];
-        return hook != address(0) && ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)
-            && IPolicyHook(hook).isLowRisk(account, accountCall) && _verify(account, executionHash, signature);
+        if (hook == address(0)) return false;
+        if (!ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)) return false;
+        if (!IPolicyHook(hook).isLowRisk(account, accountCall)) return false;
+        return _verify(account, executionHash, signature);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {

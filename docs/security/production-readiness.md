@@ -61,7 +61,9 @@ does not make a deployment production-ready.
 - Guardian freeze cannot be cleared early by a compromised primary validator,
   and guardians have no general UserOperation or ERC-1271 authority.
 - Enforced aggregate production-source coverage gate with at least 80% line
-  coverage and 60% branch coverage across `src/**`.
+  coverage and 60% branch coverage across `src/**`, plus the same per-module
+  gate for security-critical account, factory, adapter, hook, keystore,
+  recovery, and validator contracts.
 - Source scan confirming experimental account cryptography is absent from
   production contract scope unless an explicit audit-candidate decision has
   moved it into scope.
@@ -72,15 +74,10 @@ does not make a deployment production-ready.
 
 Coverage gates exclude symbolic formal harnesses because Halmos, not Forge
 coverage, executes them. The current unfiltered report excluding formal
-harnesses is approximately 86.4% lines and 60.5% branches. `LoomAccount`
-coverage is approximately 86.8% lines and 59.6% branches. `RecoveryManager`
-coverage is approximately 97.7% lines and 75.0% branches. `VaultHook`
-coverage is approximately 93.0% lines and 63.2% branches. `LoomKeystore`
-coverage is approximately 92.5% lines and 60.0% branches.
-`KeystoreSyncRecoveryModule` coverage is approximately 96.8% lines and 60.0%
-branches. CI now enforces the aggregate production-source gate. Before audit
-freeze, every security-critical production module should also reach at least
-80% lines and 60% branches.
+harnesses is approximately 91.4% lines and 64.4% branches across production
+source. CI enforces both the aggregate production-source gate and per-module
+80% line / 60% branch gates for the security-critical production modules
+listed in `tools/check-coverage-gate.mjs`.
 
 Slither's `arbitrary-send-eth` warning is locally suppressed only on the
 account execution call because arbitrary authorized execution is the core

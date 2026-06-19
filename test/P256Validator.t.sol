@@ -8,6 +8,7 @@ import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
 import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
+import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
 import {MockTarget} from "./mocks/MockTarget.sol";
 
 interface VmP256 {
@@ -224,6 +225,135 @@ contract P256ValidatorTest {
 
         require(target.value() == 51, "P-256 direct execution failed");
         require(account.directExecutionNonces(address(validator)) == 1, "P-256 direct nonce missing");
+    }
+
+    function testP256RejectsHashOnlyApprovalRemovedHookAndWrongModuleType() public {
+        MockP256Verifier verifier = new MockP256Verifier();
+        P256Validator validator = new P256Validator(address(verifier));
+        MockPolicyHook hook = new MockPolicyHook();
+        bytes memory origin = bytes("https://wallet.example");
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (
+                    bytes32(uint256(1)),
+                    bytes32(uint256(2)),
+                    keccak256("wallet.example"),
+                    keccak256(origin),
+                    address(hook)
+                )
+            )
+        );
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        bytes32 hash = keccak256("p256-removed-hook");
+        P256Validator.WebAuthnSignature memory signature = P256Validator.WebAuthnSignature({
+            authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
+            clientDataJSON: bytes.concat(
+                bytes('{"type":"webauthn.get","challenge":"'),
+                _base64Url(hash),
+                bytes('","origin":"'),
+                origin,
+                bytes('","crossOrigin":false}')
+            ),
+            origin: origin,
+            r: bytes32(uint256(1)),
+            s: bytes32(uint256(1))
+        });
+
+        require(
+            !validator.isValidSignature(address(account), hash, abi.encode(signature)), "hash-only approval accepted"
+        );
+        require(validator.isModuleType(ModuleType.VALIDATOR), "validator module type rejected");
+        require(!validator.isModuleType(ModuleType.HOOK), "hook module type accepted");
+
+        bytes memory uninstall =
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.HOOK, address(hook), bytes("")));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, uninstall, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, uninstall);
+
+        require(
+            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0))
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "removed hook accepted"
+        );
+    }
+
+    function testP256DirectExecutionRejectsDeniedPolicyAndWrongSignature() public {
+        MockP256Verifier verifier = new MockP256Verifier();
+        P256Validator validator = new P256Validator(address(verifier));
+        DenyPolicyHook denyHook = new DenyPolicyHook();
+        bytes memory origin = bytes("https://wallet.example");
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(denyHook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (
+                    bytes32(uint256(1)),
+                    bytes32(uint256(2)),
+                    keccak256("wallet.example"),
+                    keccak256(origin),
+                    address(denyHook)
+                )
+            )
+        );
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        MockTarget target = new MockTarget();
+        bytes32 mode = account.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (53))));
+        bytes32 digest = account.directExecutionDigest(address(validator), mode, executionCalldata, 0, type(uint48).max);
+        P256Validator.WebAuthnSignature memory signature = P256Validator.WebAuthnSignature({
+            authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
+            clientDataJSON: bytes.concat(
+                bytes('{"type":"webauthn.get","challenge":"'),
+                _base64Url(digest),
+                bytes('","origin":"'),
+                origin,
+                bytes('","crossOrigin":false}')
+            ),
+            origin: origin,
+            r: bytes32(uint256(1)),
+            s: bytes32(uint256(1))
+        });
+
+        require(
+            !validator.validateDirectExecution(address(account), digest, abi.encode(signature), executionCalldata),
+            "denied policy accepted P-256 direct execution"
+        );
+
+        MockPolicyHook allowHook = new MockPolicyHook();
+        bytes memory installHook = abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(allowHook), ""));
+        _scheduleAndExecute(account, address(account), installHook);
+        bytes memory setHook = abi.encodeCall(P256Validator.setPolicyHook, (address(allowHook)));
+        _scheduleAndExecute(account, address(validator), setHook);
+        signature.clientDataJSON = bytes.concat(
+            bytes('{"type":"webauthn.get","challenge":"'),
+            _base64Url(keccak256("wrong")),
+            bytes('","origin":"'),
+            origin,
+            bytes('","crossOrigin":false}')
+        );
+        require(
+            !validator.validateDirectExecution(address(account), digest, abi.encode(signature), executionCalldata),
+            "wrong P-256 direct signature accepted"
+        );
+    }
+
+    function _scheduleAndExecute(LoomAccount account, address target, bytes memory data) internal {
+        bytes memory schedule = abi.encodeCall(LoomAccount.scheduleCall, (target, 0, data, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(target, 0, data);
     }
 
     function _base64Url(bytes32 input) internal pure returns (bytes memory) {

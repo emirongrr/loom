@@ -305,6 +305,37 @@ contract LoomAccountFactoryTest {
             "not idempotent"
         );
     }
+
+    function testFactoryRejectsInvalidEntryPointAndUnauthorizedCreation() public {
+        try new LoomAccountFactory(IEntryPoint(address(0x1234))) {
+            revert("invalid entrypoint accepted");
+        } catch {}
+
+        try new LoomAccountFactory(IEntryPoint(address(new BadSenderCreatorEntryPoint()))) {
+            revert("entrypoint without senderCreator code accepted");
+        } catch {}
+
+        MockEntryPoint entryPoint = new MockEntryPoint();
+        LoomAccountFactory factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)));
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+
+        (bool created,) = address(factory)
+            .call(
+                abi.encodeCall(
+                    LoomAccountFactory.createAccount,
+                    (keccak256("unauthorized"), keccak256("guardians"), 1, keccak256("config"), modules)
+                )
+            );
+        require(!created, "non-senderCreator created account");
+    }
+}
+
+contract BadSenderCreatorEntryPoint {
+    function senderCreator() external pure returns (address) {
+        return address(0xBADC0DE);
+    }
 }
 
 contract DirectExecutionGuardianVerifier is IGuardianVerifier {

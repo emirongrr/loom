@@ -46,6 +46,18 @@ contract ValidatorBranchCoverageTest {
             .call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, uninstalledHook)));
         require(!hookChanged, "uninstalled hook accepted");
 
+        MockPolicyHook replacementHook = new MockPolicyHook();
+        bytes memory installHook =
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(replacementHook), ""));
+        _schedule(account, address(account), installHook);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, installHook);
+        bytes memory installedHook = abi.encodeCall(ECDSAValidator.setPolicyHook, (address(replacementHook)));
+        _schedule(account, address(validator), installedHook);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, installedHook);
+        require(validator.policyHooks(address(account)) == address(replacementHook), "installed hook rejected");
+
         bytes32 digest = keccak256("invalid-signature");
         require(
             validator.validateUserOp(address(account), digest, 0, hex"deadbeef", bytes("call"), address(0))
@@ -92,6 +104,48 @@ contract ValidatorBranchCoverageTest {
         );
     }
 
+    function testECDSAValidatorRejectsWrongDirectSignatureAndHashOnlyApproval() public {
+        ECDSAValidator validator = new ECDSAValidator();
+        MockPolicyHook hook = new MockPolicyHook();
+        LoomAccount account = _ecdsaAccount(validator, address(hook));
+        bytes32 digest = keccak256("wrong-direct-signature");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xB0B, digest);
+        bytes memory wrongSignature = abi.encodePacked(r, s, v);
+
+        require(
+            !validator.validateDirectExecution(address(account), digest, wrongSignature, bytes("low-risk-call")),
+            "wrong direct signature accepted"
+        );
+        require(!validator.isValidSignature(address(account), digest, wrongSignature), "hash-only approval accepted");
+        require(validator.isModuleType(ModuleType.VALIDATOR), "validator module type rejected");
+        require(!validator.isModuleType(ModuleType.EXECUTOR), "executor module type accepted");
+    }
+
+    function testUninitializedPrimaryValidatorsFailClosed() public {
+        ECDSAValidator ecdsa = new ECDSAValidator();
+        bytes32 digest = keccak256("uninitialized-validator");
+        require(
+            ecdsa.validateUserOp(address(0xA11CE), digest, 0, bytes(""), bytes("call"), address(0))
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "uninitialized ECDSA validator accepted UserOp"
+        );
+        require(
+            !ecdsa.validateDirectExecution(address(0xA11CE), digest, bytes(""), bytes("call")),
+            "uninitialized ECDSA validator accepted direct execution"
+        );
+
+        P256Validator p256 = new P256Validator(address(new MockP256Verifier()));
+        require(
+            p256.validateUserOp(address(0xA11CE), digest, 0, bytes(""), bytes("call"), address(0))
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "uninitialized P-256 validator accepted UserOp"
+        );
+        require(
+            !p256.validateDirectExecution(address(0xA11CE), digest, bytes(""), bytes("call")),
+            "uninitialized P-256 validator accepted direct execution"
+        );
+    }
+
     function testP256ValidatorRejectsInvalidInitializationAndPolicyHookChanges() public {
         P256Validator validator = new P256Validator(address(new MockP256Verifier()));
         MockPolicyHook hook = new MockPolicyHook();
@@ -128,6 +182,18 @@ contract ValidatorBranchCoverageTest {
         (bool hookChanged,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, zeroHook)));
         require(!hookChanged, "zero policy hook accepted");
+
+        MockPolicyHook replacementHook = new MockPolicyHook();
+        bytes memory installHook =
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(replacementHook), ""));
+        _schedule(account, address(account), installHook);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, installHook);
+        bytes memory installedHook = abi.encodeCall(P256Validator.setPolicyHook, (address(replacementHook)));
+        _schedule(account, address(validator), installedHook);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, installedHook);
+        require(validator.policyHooks(address(account)) == address(replacementHook), "installed P-256 hook rejected");
     }
 
     function _ecdsaAccount(ECDSAValidator validator, address hook) internal returns (LoomAccount) {
