@@ -48,6 +48,7 @@ run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtur
 run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
 run("Website checks", process.execPath, ["tools/validate-site.mjs"]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
+run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);

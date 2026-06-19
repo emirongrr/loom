@@ -9,6 +9,7 @@
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
     "account:test": "npm --prefix packages/account test",
+    "guardian:test": "npm --prefix packages/guardian test",
     "privacy:test": "npm --prefix packages/privacy test",
     "rehearsal:local": "node tools/rehearse-local-lifecycle.mjs",
     "site:build": "npm --prefix docs/site run build && node tools/copy-site-public.mjs",
@@ -18,6 +19,7 @@
     "verify": "node tools/verify.mjs --full"
   },
   "devDependencies": {
+    "js-sha3": "0.8.0",
     "solc": "0.8.35"
   },
   "optionalDependencies": {
