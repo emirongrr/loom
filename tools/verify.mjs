@@ -45,6 +45,7 @@ function assertExperimentalAccountCryptoAbsentFromContracts() {
 }
 
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
+run("WebAuthn fixture parser tests", process.execPath, ["--test", "tools/validate-webauthn-fixtures.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
 run("Website checks", process.execPath, ["tools/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
