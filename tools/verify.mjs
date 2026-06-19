@@ -52,6 +52,10 @@ run("Bundler qualification evidence tests", process.execPath, [
   "--test",
   "tools/validate-bundler-qualification.test.mjs"
 ]);
+run("Deployment manifest evidence tests", process.execPath, [
+  "--test",
+  "tools/validate-deployment-manifest.test.mjs"
+]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);

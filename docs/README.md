@@ -42,6 +42,7 @@ extension without hidden upgrade authority.
 ## Operations And Standards
 
 - [Deployment and verification](operations/deployment.md)
+- [Deployment manifest evidence](operations/deployment-manifest.md)
 - [Bundler qualification](operations/bundler-qualification.md)
 - [Local lifecycle rehearsal](operations/local-rehearsal.md)
 - [Live lifecycle rehearsal](operations/live-rehearsal.md)

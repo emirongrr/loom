@@ -11,6 +11,8 @@
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
     "bundler:qualification:test": "node --test tools/validate-bundler-qualification.test.mjs",
     "bundler:qualification:check": "node tools/validate-bundler-qualification.mjs",
+    "deployment:manifest:test": "node --test tools/validate-deployment-manifest.test.mjs",
+    "deployment:manifest:check": "node tools/validate-deployment-manifest.mjs",
     "account:test": "npm --prefix packages/account test",
     "guardian:test": "npm --prefix packages/guardian test",
     "privacy:test": "npm --prefix packages/privacy test",
