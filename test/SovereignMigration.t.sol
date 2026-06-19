@@ -163,6 +163,99 @@ contract SovereignMigrationTest {
         require(!acceptedWrongCodehash, "wrong destination codehash accepted");
     }
 
+    function testMigrationRejectsWrongDestinationConfigAtScheduleAndInvalidWindow() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        MockTarget target = new MockTarget();
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
+
+        (bool acceptedWrongConfig,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(source),
+                                0,
+                                abi.encodeCall(
+                                    LoomAccount.scheduleMigration,
+                                    (
+                                        address(destination),
+                                        address(destination).codehash,
+                                        keccak256("wrong-destination-config"),
+                                        keccak256(abi.encode(calls)),
+                                        source.MIN_CONFIG_DELAY(),
+                                        1 days
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedWrongConfig, "wrong destination config scheduled");
+
+        (bool acceptedLongWindow,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(source),
+                                0,
+                                abi.encodeCall(
+                                    LoomAccount.scheduleMigration,
+                                    (
+                                        address(destination),
+                                        address(destination).codehash,
+                                        destination.configHash(),
+                                        keccak256(abi.encode(calls)),
+                                        source.MIN_CONFIG_DELAY(),
+                                        source.MAX_MIGRATION_WINDOW() + 1
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedLongWindow, "overlong migration window accepted");
+
+        FutureNativeAccountLike futureDestination = new FutureNativeAccountLike();
+        (bool acceptedOpaqueConfig,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(source),
+                                0,
+                                abi.encodeCall(
+                                    LoomAccount.scheduleMigration,
+                                    (
+                                        address(futureDestination),
+                                        address(futureDestination).codehash,
+                                        keccak256("opaque-config"),
+                                        keccak256(abi.encode(calls)),
+                                        source.MIN_CONFIG_DELAY(),
+                                        1 days
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedOpaqueConfig, "opaque destination accepted non-zero config");
+    }
+
     function testMigrationRejectsWrongCallsDestinationConfigExpiryAndStaleConfig() public {
         LoomAccount source = _account(false);
         LoomAccount destination = _account(false);

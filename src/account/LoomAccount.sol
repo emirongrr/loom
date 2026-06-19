@@ -66,6 +66,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
     uint48 public constant FREEZE_DURATION = 2 days;
+    uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint256 public constant MAX_VALIDATORS = 16;
     uint256 public constant MAX_HOOKS = 8;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
@@ -572,7 +573,11 @@ contract LoomAccount is IERC1271, ILoomAccount {
             destination == address(0) || destination == address(this) || destinationCodeHash == bytes32(0)
                 || destination.code.length == 0 || destination.codehash != destinationCodeHash
                 || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY || executionWindow == 0
+                || executionWindow > MAX_MIGRATION_WINDOW
         ) revert InvalidMigration();
+        if (destinationConfigHash != bytes32(0) && ILoomAccount(destination).configHash() != destinationConfigHash) {
+            revert InvalidMigration();
+        }
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 readyAt = uint48(block.timestamp) + delay;
         uint48 expiresAt = readyAt + executionWindow;
