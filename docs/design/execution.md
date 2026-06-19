@@ -102,6 +102,7 @@ frontend is unavailable.
 Execution remains conservative:
 
 - migration cannot run while the account is frozen;
+- primary-key self-cancellation cannot run while the account is frozen;
 - migration cannot run before `readyAt`, after `expiresAt`, or after a source
   config change;
 - destination code must match the commitment;

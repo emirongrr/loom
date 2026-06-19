@@ -36,8 +36,8 @@ the destination address, destination runtime code hash, destination
 account-local migration nonce, and chain ID. Migration execution is
 permissionless after the delay, but still passes through freeze checks, active
 hooks, and policy accounting. The account can cancel the pending migration
-through a self-call, including while frozen; the guardian threshold can also
-cancel without receiving spending or execution authority.
+through a self-call only while the account is not frozen; the guardian threshold
+can cancel without receiving spending or execution authority.
 
 ## Authorization
 
@@ -94,11 +94,17 @@ Recovery behavior is documented in `docs/design/recovery.md`.
 
 ## Graded access
 
-The primary validator asks `PolicyHook` whether a call is low risk. A policy is
-scoped to a target and selector, limits value per call and per period, and may
-restrict the ERC-20 recipient or spender to one address. A zero counterparty
-means unrestricted destination. Calls outside policy cannot be authorized by
-the primary validator.
+Primary validator `validateUserOp` checks the signature and that the configured
+policy hook is still installed, but it does not ask `PolicyHook` whether the
+call is low risk during ERC-4337 validation. This keeps validation narrow for
+bundler compatibility. The installed hook enforces low-risk policy when the
+account executes the call, and direct signed execution asks the same hook before
+accepting the direct execution digest.
+
+A policy is scoped to a target and selector, limits value per call and per
+period, and may restrict the ERC-20 recipient or spender to one address. A zero
+counterparty means unrestricted destination. Calls outside policy cannot
+complete through normal account execution or direct execution.
 
 Policy limits are enforced by the hook for normal and scheduled execution.
 They are absolute guardrails until removed through the config timelock, not

@@ -27,9 +27,15 @@ user-presence, user-verification, size, and low-s checks.
 ## Graded access
 
 Threshold MFA does not grant unrestricted account authority. It authorizes
-only UserOperations classified as low risk by the installed `PolicyHook`.
-High-risk execution continues to require the guardian or delayed execution
-path.
+ERC-4337 UserOperations after checking the configured threshold and installed
+policy hook. The validator does not call `PolicyHook.isLowRisk` during
+`validateUserOp`, because bundler validation must avoid execution-policy reads
+that can break ERC-4337 validation rules. Policy enforcement happens when the
+account executes the UserOperation.
+
+Direct signed execution remains low-risk only: direct-capable validators call
+the installed `PolicyHook` before accepting the direct execution digest.
+High-risk execution continues to require the guardian or delayed execution path.
 
 The validator rejects arbitrary ERC-1271 messages. This prevents an MFA
 signature over an opaque hash from bypassing transaction policy.

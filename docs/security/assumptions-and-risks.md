@@ -15,7 +15,7 @@ Security claims are valid only under the assumptions listed here and in
 | Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
-| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, account or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
+| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, non-frozen account cancellation or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
 | Vault hook | Separates daily spending from delayed long-term storage withdrawals | Misconfigured policy, non-standard token semantics, public withdrawal metadata | Exact withdrawal commitments, account delay plus vault delay, guardian-threshold cancellation, config-version invalidation |
 | L1 keystore | Stores canonical cross-chain identity roots | L1 controller compromise, identity correlation, unsupported proof system | User-controlled L1 controller, monotonic versioning, app-account root, proof-gated delayed L2 sync |
 | Keystore proof verifier | Authenticates keystore state for same-chain L1 sync or future L2 proof-pull sync | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Immutable verifier binding, independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
@@ -51,6 +51,9 @@ Security claims are valid only under the assumptions listed here and in
   Safe, Loom, institutional, HSM, or other ERC-1271 guardians inherit their own
   threshold, policy, hardware, custody, and operational risks.
 - One valid guardian can intentionally freeze ordinary execution for 48 hours.
+  During that window, the primary validator cannot self-cancel scheduled calls
+  or migrations; guardian-threshold cancellation remains available for the
+  flows that explicitly support it.
 - Token limits constrain canonical calldata amounts. They do not model
   fee-on-transfer behavior, rebasing, callbacks, token valuation, bridge
   semantics, or malicious token implementations.
