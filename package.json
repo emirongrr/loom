@@ -7,6 +7,7 @@
     "deps:audit": "node tools/audit-dependencies.mjs",
     "docs:check": "node tools/validate-doc-links.mjs",
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
+    "fixtures:test": "node --test tools/validate-webauthn-fixtures.test.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
     "bundler:qualification:test": "node --test tools/validate-bundler-qualification.test.mjs",
     "bundler:qualification:check": "node tools/validate-bundler-qualification.mjs",
