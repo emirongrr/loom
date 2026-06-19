@@ -17,6 +17,9 @@ The manifest must include:
 
 - network name, chain ID, EntryPoint v0.9 address, and EntryPoint runtime code
   hash;
+- network family (`ethereum`, `op-stack`, or `arbitrum`) and explicit finality
+  assumptions;
+- EntryPoint `senderCreator` address and runtime code hash;
 - P-256 support evidence, either precompile behavior verification or fallback
   verifier address and code hash;
 - git commit, clean source archive hash, Solidity version, Foundry version,
@@ -25,8 +28,10 @@ The manifest must include:
   arguments, artifact path, init-code hash, and runtime-code hash;
 - explorer source-verification URL for every deployment;
 - checks proving clean-checkout build, local bytecode reproduction,
-  EntryPoint verification, P-256 verification, explorer verification, no admin
-  or upgrade key, and no Loom service dependency.
+  EntryPoint verification, `senderCreator` verification, P-256 verification,
+  deterministic address reproduction, factory EIP-170 runtime-size compliance,
+  explorer verification, no admin or upgrade key, and no Loom service
+  dependency.
 
 The validator recomputes init-code and runtime-code hashes from Foundry
 artifacts and rejects mismatches. It intentionally does not fetch explorers or

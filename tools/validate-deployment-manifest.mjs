@@ -37,12 +37,18 @@ function assertTopLevel(manifest) {
 function assertNetwork(network) {
   if (!network || typeof network !== "object") throw new Error("network must be an object");
   if (!network.name || typeof network.name !== "string") throw new Error("network.name is required");
+  if (!["ethereum", "op-stack", "arbitrum"].includes(network.family)) {
+    throw new Error("network.family must be ethereum, op-stack, or arbitrum");
+  }
   if (!Number.isSafeInteger(network.chainId) || network.chainId <= 0) {
     throw new Error("network.chainId must be positive");
   }
   assertAddress(network.entryPoint, "network.entryPoint");
   if (network.entryPointVersion !== "0.9.0") throw new Error("network.entryPointVersion must be 0.9.0");
   assertBytes32(network.entryPointCodeHash, "network.entryPointCodeHash");
+  assertAddress(network.senderCreator, "network.senderCreator");
+  assertBytes32(network.senderCreatorCodeHash, "network.senderCreatorCodeHash");
+  assertFinality(network.finality);
 
   if (!network.p256 || typeof network.p256 !== "object") throw new Error("network.p256 is required");
   if (!["precompile", "fallback-verifier"].includes(network.p256.kind)) {
@@ -50,12 +56,28 @@ function assertNetwork(network) {
   }
   if (network.p256.kind === "precompile") {
     assertAddress(network.p256.address, "network.p256.address");
-    if (typeof network.p256.behaviorVerified !== "boolean") {
-      throw new Error("network.p256.behaviorVerified must be boolean");
-    }
+    if (network.p256.behaviorVerified !== true) throw new Error("network.p256.behaviorVerified must be true");
   } else {
     assertAddress(network.p256.address, "network.p256.address");
     assertBytes32(network.p256.codeHash, "network.p256.codeHash");
+  }
+}
+
+function assertFinality(finality) {
+  if (!finality || typeof finality !== "object") throw new Error("network.finality is required");
+  if (!["ethereum-finalized", "op-stack-l1-finalized", "arbitrum-l1-confirmed"].includes(finality.kind)) {
+    throw new Error("network.finality.kind is invalid");
+  }
+  if (!Number.isSafeInteger(finality.minConfirmations) || finality.minConfirmations <= 0) {
+    throw new Error("network.finality.minConfirmations must be positive");
+  }
+  if (finality.kind !== "ethereum-finalized") {
+    if (!Number.isSafeInteger(finality.l1ChainId) || finality.l1ChainId !== 1) {
+      throw new Error("network.finality.l1ChainId must be Ethereum mainnet");
+    }
+    if (!Number.isSafeInteger(finality.challengeWindowSeconds) || finality.challengeWindowSeconds <= 0) {
+      throw new Error("network.finality.challengeWindowSeconds must be positive");
+    }
   }
 }
 
@@ -131,8 +153,11 @@ function assertChecks(checks) {
     "cleanCheckoutBuild",
     "localBytecodeReproduction",
     "entryPointBytecodeVerified",
+    "senderCreatorBytecodeVerified",
     "p256BehaviorVerified",
     "explorerSourceVerified",
+    "deterministicAddressReproduction",
+    "factoryRuntimeWithinEip170",
     "noAdminOrUpgradeKey",
     "noLoomServiceRequired"
   ];
