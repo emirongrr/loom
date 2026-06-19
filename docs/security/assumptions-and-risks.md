@@ -109,9 +109,11 @@ Security claims are valid only under the assumptions listed here and in
   A production L2 verifier must specify its trusted L1 state root source,
   finality delay, reorg handling, storage-slot derivation, account-proof
   validation, and chain-specific failure behavior.
-- Keystore sync currently maps `validatorRoot` to one replacement validator and
-  initialization payload. This matches the current account recovery entry point
-  but does not yet support applying an arbitrary multi-validator root from L1.
+- Keystore sync maps `validatorRoot` to a complete replacement validator set
+  and initialization payloads. The set must be sorted, duplicate-free, and
+  applied atomically after the sync delay. This improves cross-chain validator
+  portability but does not remove the need for audited production L2 proof
+  verifiers.
 - Keystore sync does not prove privacy of account membership. `appAccountRoot`
   hides enumeration but an app account reveals membership when it presents a
   proof, and reuse of one identity across many public accounts can still create
@@ -142,7 +144,8 @@ Security claims are valid only under the assumptions listed here and in
 8. L1 keystore sync is implemented at the registry/module boundary and has a
    same-chain Ethereum L1 verifier, but lacks production L2 storage proof
    verifiers for Base, Arbitrum, Optimism, and future supported rollups.
-9. Keystore sync has no live cross-chain rehearsal proving L1 update, proof
+9. Keystore sync supports complete multi-validator root application, but has no
+   live cross-chain rehearsal proving L1 update, proof
    generation, L2 proposal, cancellation, expiry, and execution on each target
    rollup.
 10. Keystore identity creation still requires a client-side ceremony that

@@ -32,7 +32,8 @@ validator set and guardian configuration only when all of the following hold:
 - an audited proof verifier accepts the L1 keystore state;
 - the L1 version is newer than the last applied version;
 - the local account is included in the L1 `appAccountRoot`;
-- the `validatorRoot` commits to the new validator and initialization data;
+- the `validatorRoot` commits to the complete new validator set and each
+  validator's initialization data;
 - the complete old validator set is supplied;
 - the sync delay has elapsed and the execution window has not expired;
 - the local `configVersion` has not changed since proposal.
@@ -104,10 +105,8 @@ added only as separately audited adapters.
 
 - The current account still has local `configHash` and `configVersion`.
 - Sync is delayed and cancelable; L1 updates do not instantly mutate L2 state.
-- The initial sync module maps `validatorRoot` to one replacement validator
-  because the current account recovery entry point replaces the complete local
-  validator set with one new validator module.
-- Future multi-validator roots require an account recovery entry point that can
-  install a complete validator set atomically.
+- The sync module applies a complete validator-set replacement. The old set
+  must be supplied in full, the new set must be sorted and duplicate-free, and
+  the account applies the replacement atomically under the recovery module.
 - This is not an asset bridge, force-withdrawal system, privacy pool, or light
   client wallet implementation.

@@ -5,16 +5,13 @@ import {LoomAccount} from "./LoomAccount.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
 contract LoomAccountFactory {
-    error OnlySenderCreator();
-    error InvalidEntryPoint();
+    error InvalidFactory();
 
     IEntryPoint public immutable entryPoint;
 
-    event AccountCreated(address indexed account, bytes32 indexed salt);
-
     constructor(IEntryPoint entryPoint_) {
-        if (address(entryPoint_).code.length == 0) revert InvalidEntryPoint();
-        if (address(entryPoint_.senderCreator()).code.length == 0) revert InvalidEntryPoint();
+        if (address(entryPoint_).code.length == 0) revert InvalidFactory();
+        if (address(entryPoint_.senderCreator()).code.length == 0) revert InvalidFactory();
         entryPoint = entryPoint_;
     }
 
@@ -25,11 +22,10 @@ contract LoomAccountFactory {
         bytes32 configHash,
         LoomAccount.ModuleInit[] calldata modules
     ) external returns (LoomAccount account) {
-        if (msg.sender != address(entryPoint.senderCreator())) revert OnlySenderCreator();
+        if (msg.sender != address(entryPoint.senderCreator())) revert InvalidFactory();
         address predicted = getAddress(salt, guardianRoot, guardianThreshold, configHash, modules);
         if (predicted.code.length != 0) return LoomAccount(payable(predicted));
         account = new LoomAccount{salt: salt}(address(entryPoint), guardianRoot, guardianThreshold, configHash, modules);
-        emit AccountCreated(address(account), salt);
     }
 
     function getAddress(

@@ -20,8 +20,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
     struct PendingSync {
         bytes32 identityId;
         bytes32 oldValidatorsHash;
-        address newValidator;
-        bytes32 initDataHash;
+        bytes32 newValidatorRoot;
+        bytes32 newValidatorsHash;
         bytes32 newGuardianRoot;
         uint8 newGuardianThreshold;
         uint64 l1Version;
@@ -43,9 +43,11 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
     uint48 public constant SYNC_WINDOW = 7 days;
     uint256 public constant MAX_SIGNATURES = 32;
     uint256 public constant MAX_PROOF_LENGTH = 32;
+    uint256 public constant MAX_VALIDATORS = 16;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
     bytes32 public constant SINGLE_VALIDATOR_ROOT_TYPEHASH =
         keccak256("LoomSingleValidatorRoot(address validator,bytes32 initDataHash)");
+    bytes32 public constant VALIDATOR_SET_ROOT_TYPEHASH = keccak256("LoomValidatorSetRoot(bytes32 validatorsHash)");
     bytes32 public constant APP_ACCOUNT_LEAF_TYPEHASH =
         keccak256("LoomAppAccount(uint256 chainId,address account,address syncModule)");
     bytes32 public constant EIP712_DOMAIN_TYPEHASH =
@@ -68,7 +70,7 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         bytes32 indexed identityId,
         bytes32 indexed syncId,
         uint64 l1Version,
-        address newValidator,
+        bytes32 newValidatorRoot,
         bytes32 newGuardianRoot,
         uint8 newGuardianThreshold,
         uint48 readyAt,
@@ -90,20 +92,20 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         bytes calldata l1Proof,
         bytes32[] calldata appAccountProof,
         address[] calldata oldValidators,
-        address newValidator,
-        bytes32 initDataHash
+        ILoomAccount.RecoveryModuleInit[] calldata newValidators
     ) external returns (bytes32 syncId) {
-        if (pendingSyncs[account].readyAt != 0) revert SyncAlreadyPending();
+        if (pendingSyncs[account].readyAt != 0) {
+            revert SyncAlreadyPending();
+        }
+        bytes32 newValidatorsHash = keccak256(abi.encode(newValidators));
+        bytes32 newValidatorRoot = validatorSetRoot(newValidators);
         if (
-            account.code.length == 0 || identityId == bytes32(0) || newValidator.code.length == 0
-                || initDataHash == bytes32(0) || config.version <= lastAppliedL1Version[account]
+            account.code.length == 0 || identityId == bytes32(0) || config.version <= lastAppliedL1Version[account]
                 || config.guardianRoot == bytes32(0) || config.guardianThreshold == 0
-                || config.guardianThreshold > MAX_GUARDIAN_THRESHOLD
-                || config.validatorRoot != singleValidatorRoot(newValidator, initDataHash)
+                || config.guardianThreshold > MAX_GUARDIAN_THRESHOLD || config.validatorRoot != newValidatorRoot
                 || !MerkleProof.verify(appAccountProof, config.appAccountRoot, appAccountLeaf(account))
                 || !ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, address(this))
-                || ILoomAccount(account).isModuleInstalled(ModuleType.VALIDATOR, newValidator)
-                || !_validCompleteValidatorSet(account, oldValidators)
+                || !_validCompleteValidatorSet(account, oldValidators) || !_validNewValidatorSet(account, newValidators)
                 || !proofVerifier.verifyKeystoreConfig(l1Keystore, identityId, config.version, config, l1Proof)
         ) revert InvalidSync();
 
@@ -117,8 +119,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         pendingSyncs[account] = PendingSync({
             identityId: identityId,
             oldValidatorsHash: oldValidatorsHash,
-            newValidator: newValidator,
-            initDataHash: initDataHash,
+            newValidatorRoot: newValidatorRoot,
+            newValidatorsHash: newValidatorsHash,
             newGuardianRoot: config.guardianRoot,
             newGuardianThreshold: config.guardianThreshold,
             l1Version: config.version,
@@ -133,7 +135,7 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
             identityId,
             syncId,
             config.version,
-            newValidator,
+            newValidatorRoot,
             config.guardianRoot,
             config.guardianThreshold,
             readyAt,
@@ -157,11 +159,15 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         _cancel(account, pending);
     }
 
-    function executeSync(address account, address[] calldata oldValidators, bytes calldata initData) external {
+    function executeSync(
+        address account,
+        address[] calldata oldValidators,
+        ILoomAccount.RecoveryModuleInit[] calldata newValidators
+    ) external {
         PendingSync memory pending = pendingSyncs[account];
         if (
             pending.readyAt == 0 || keccak256(abi.encode(oldValidators)) != pending.oldValidatorsHash
-                || keccak256(initData) != pending.initDataHash
+                || keccak256(abi.encode(newValidators)) != pending.newValidatorsHash
         ) revert InvalidSync();
         // Timestamp drift is negligible relative to the multi-day sync delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -175,8 +181,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         syncNonces[account] = pending.nonce + 1;
         lastAppliedL1Version[account] = pending.l1Version;
         ILoomAccount(account)
-            .recoverConfiguration(
-                oldValidators, pending.newValidator, initData, pending.newGuardianRoot, pending.newGuardianThreshold
+            .recoverConfigurationSet(
+                oldValidators, newValidators, pending.newGuardianRoot, pending.newGuardianThreshold
             );
         emit KeystoreSyncExecuted(account, pending.identityId, syncId);
     }
@@ -187,8 +193,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
                 account,
                 pending.identityId,
                 pending.oldValidatorsHash,
-                pending.newValidator,
-                pending.initDataHash,
+                pending.newValidatorRoot,
+                pending.newValidatorsHash,
                 pending.newGuardianRoot,
                 pending.newGuardianThreshold,
                 pending.l1Version,
@@ -212,6 +218,10 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
 
     function singleValidatorRoot(address validator, bytes32 initDataHash) public pure returns (bytes32) {
         return keccak256(abi.encode(SINGLE_VALIDATOR_ROOT_TYPEHASH, validator, initDataHash));
+    }
+
+    function validatorSetRoot(ILoomAccount.RecoveryModuleInit[] calldata validators) public pure returns (bytes32) {
+        return keccak256(abi.encode(VALIDATOR_SET_ROOT_TYPEHASH, keccak256(abi.encode(validators))));
     }
 
     function appAccountLeaf(address account) public view returns (bytes32) {
@@ -267,6 +277,29 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
                 return false;
             }
             previous = validators[i];
+        }
+        return true;
+    }
+
+    function _validNewValidatorSet(address account, ILoomAccount.RecoveryModuleInit[] calldata validators)
+        internal
+        view
+        returns (bool)
+    {
+        ILoomAccount loom = ILoomAccount(account);
+        if (validators.length == 0 || validators.length > MAX_VALIDATORS) return false;
+        address previous = address(0);
+        for (uint256 i; i < validators.length; ++i) {
+            ILoomAccount.RecoveryModuleInit calldata validator = validators[i];
+            if (
+                validator.moduleTypeId != ModuleType.VALIDATOR || validator.module <= previous
+                    || validator.module.code.length == 0
+                    || loom.isModuleInstalled(ModuleType.VALIDATOR, validator.module)
+                    || !ILoomModule(validator.module).isModuleType(ModuleType.VALIDATOR)
+            ) {
+                return false;
+            }
+            previous = validator.module;
         }
         return true;
     }
