@@ -47,6 +47,10 @@ function assertExperimentalAccountCryptoAbsentFromContracts() {
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
 run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
 run("Website checks", process.execPath, ["tools/validate-site.mjs"]);
+run("Bundler qualification evidence tests", process.execPath, [
+  "--test",
+  "tools/validate-bundler-qualification.test.mjs"
+]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);

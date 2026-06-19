@@ -8,6 +8,8 @@
     "docs:check": "node tools/validate-doc-links.mjs",
     "fixtures:check": "node tools/validate-webauthn-fixtures.mjs",
     "fixtures:release": "node tools/validate-webauthn-fixtures.mjs --require-complete",
+    "bundler:qualification:test": "node --test tools/validate-bundler-qualification.test.mjs",
+    "bundler:qualification:check": "node tools/validate-bundler-qualification.mjs",
     "account:test": "npm --prefix packages/account test",
     "guardian:test": "npm --prefix packages/guardian test",
     "privacy:test": "npm --prefix packages/privacy test",

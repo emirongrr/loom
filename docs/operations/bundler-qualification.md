@@ -21,6 +21,29 @@ bundler. Passing that suite does not replace Loom account lifecycle tests.
 No API-key-only bundler may be the sole tested path. Release evidence must
 include one locally operated or otherwise permissionless bundler path.
 
+## Evidence Manifest
+
+Release candidates must add a real evidence manifest and validate it with:
+
+```sh
+node tools/validate-bundler-qualification.mjs evidence/bundlers/<network>.json
+```
+
+The manifest intentionally records only RPC origins, not full URLs. Do not
+commit API keys, endpoint paths, query strings, bearer tokens, private keys, or
+wallet secrets. The validator requires:
+
+- at least two distinct bundler RPC origins;
+- at least two distinct bundler implementations;
+- at least two distinct operators;
+- the expected chain ID and EntryPoint in every bundler response;
+- passing upstream bundler spec-test references;
+- native gas, approved paymaster, rejected paymaster, invalid signature, stale
+  nonce, malformed calldata, unsupported mode, receipt reconciliation, and
+  atomic batch checks;
+- one local, self-hosted, or otherwise permissionless direct `handleOps`
+  fallback path.
+
 `.github/workflows/bundler-live.yml` provides a manual two-endpoint preflight.
 It intentionally fails when the two configured endpoints are identical.
 Preflight success is necessary but does not satisfy the complete lifecycle
