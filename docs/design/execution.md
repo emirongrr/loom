@@ -89,6 +89,7 @@ intent commits to:
 - current source `configVersion`;
 - source migration nonce;
 - execution delay and expiry;
+- maximum 30-day execution window;
 - current chain ID through `migrationIdFor`.
 
 The account itself can schedule and cancel migrations through `execute`, so a
@@ -105,6 +106,7 @@ Execution remains conservative:
 - primary-key self-cancellation cannot run while the account is frozen;
 - migration cannot run before `readyAt`, after `expiresAt`, or after a source
   config change;
+- migration windows longer than 30 days cannot be scheduled;
 - destination code must match the commitment;
 - Loom-compatible destinations can additionally bind destination `configHash`;
 - the call batch must match the committed hash exactly;
