@@ -90,6 +90,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     );
     bytes32 private constant NAME_HASH = keccak256("LoomAccount");
     bytes32 private constant VERSION_HASH = keccak256("1");
+    bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
+    bytes32 private constant CONFIGURATION_SET_RECOVERED_HASH = keccak256("CONFIGURATION_SET_RECOVERED");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
@@ -394,32 +396,60 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint8 newGuardianThreshold
     ) external nonReentrantExecution {
         if (!_modules[ModuleType.RECOVERY][msg.sender]) revert InvalidModule();
+        _validateCompleteValidatorSet(oldValidators);
         if (
-            oldValidators.length == 0 || oldValidators.length != _validatorCount
-                || _modules[ModuleType.VALIDATOR][newValidator] || newGuardianRoot == bytes32(0)
-                || newGuardianRoot == guardianRoot || newGuardianThreshold == 0
-                || newGuardianThreshold > MAX_GUARDIAN_THRESHOLD
+            _modules[ModuleType.VALIDATOR][newValidator] || newValidator.code.length == 0
+                || !ILoomModule(newValidator).isModuleType(ModuleType.VALIDATOR)
         ) revert InvalidModule();
-        address previous = address(0);
-        for (uint256 i; i < oldValidators.length; ++i) {
-            address oldValidator = oldValidators[i];
-            if (oldValidator <= previous || !_modules[ModuleType.VALIDATOR][oldValidator]) revert InvalidModule();
-            previous = oldValidator;
-        }
+        _validateRecoveryGuardianConfig(newGuardianRoot, newGuardianThreshold);
         guardianRoot = newGuardianRoot;
         guardianThreshold = newGuardianThreshold;
         emit GuardianConfigUpdated(newGuardianRoot, newGuardianThreshold);
-        _installModule(ModuleType.VALIDATOR, newValidator, initData);
         for (uint256 i; i < oldValidators.length; ++i) {
-            _uninstallModule(ModuleType.VALIDATOR, oldValidators[i], "");
+            _removeValidatorForRecovery(oldValidators[i]);
+        }
+        _installModule(ModuleType.VALIDATOR, newValidator, initData);
+        _advanceConfig(
+            keccak256(
+                abi.encode(
+                    CONFIGURATION_RECOVERED_HASH,
+                    keccak256(abi.encode(oldValidators)),
+                    newValidator,
+                    keccak256(initData),
+                    newGuardianRoot,
+                    newGuardianThreshold
+                )
+            )
+        );
+    }
+
+    function recoverConfigurationSet(
+        address[] calldata oldValidators,
+        ILoomAccount.RecoveryModuleInit[] calldata newValidators,
+        bytes32 newGuardianRoot,
+        uint8 newGuardianThreshold
+    ) external nonReentrantExecution {
+        if (!_modules[ModuleType.RECOVERY][msg.sender]) revert InvalidModule();
+        _validateCompleteValidatorSet(oldValidators);
+        _validateNewValidatorSet(newValidators);
+        _validateRecoveryGuardianConfig(newGuardianRoot, newGuardianThreshold);
+
+        guardianRoot = newGuardianRoot;
+        guardianThreshold = newGuardianThreshold;
+        emit GuardianConfigUpdated(newGuardianRoot, newGuardianThreshold);
+
+        for (uint256 i; i < oldValidators.length; ++i) {
+            _removeValidatorForRecovery(oldValidators[i]);
+        }
+        for (uint256 i; i < newValidators.length; ++i) {
+            _installModule(ModuleType.VALIDATOR, newValidators[i].module, newValidators[i].initData);
         }
         _advanceConfig(
             keccak256(
                 abi.encode(
-                    "CONFIGURATION_RECOVERED",
+                    CONFIGURATION_SET_RECOVERED_HASH,
                     keccak256(abi.encode(oldValidators)),
-                    newValidator,
-                    keccak256(initData),
+                    keccak256(abi.encode(newValidators)),
                     newGuardianRoot,
                     newGuardianThreshold
                 )
@@ -456,6 +486,51 @@ contract LoomAccount is IERC1271, ILoomAccount {
             if (!ok) revert CallFailed(result);
         }
         emit ModuleUninstalled(moduleTypeId, module);
+    }
+
+    function _removeValidatorForRecovery(address module) internal {
+        if (!_modules[ModuleType.VALIDATOR][module]) revert InvalidModule();
+        _modules[ModuleType.VALIDATOR][module] = false;
+        --_validatorCount;
+        for (uint256 i; i < _validators.length; ++i) {
+            if (_validators[i] == module) {
+                _validators[i] = _validators[_validators.length - 1];
+                _validators.pop();
+                break;
+            }
+        }
+        emit ModuleUninstalled(ModuleType.VALIDATOR, module);
+    }
+
+    function _validateCompleteValidatorSet(address[] calldata validators) internal view {
+        if (validators.length == 0 || validators.length != _validatorCount) revert InvalidModule();
+        address previous = address(0);
+        for (uint256 i; i < validators.length; ++i) {
+            address validator = validators[i];
+            if (validator <= previous || !_modules[ModuleType.VALIDATOR][validator]) revert InvalidModule();
+            previous = validator;
+        }
+    }
+
+    function _validateNewValidatorSet(ILoomAccount.RecoveryModuleInit[] calldata validators) internal view {
+        if (validators.length == 0 || validators.length > MAX_VALIDATORS) revert InvalidModule();
+        address previous = address(0);
+        for (uint256 i; i < validators.length; ++i) {
+            ILoomAccount.RecoveryModuleInit calldata validator = validators[i];
+            if (
+                validator.moduleTypeId != ModuleType.VALIDATOR || validator.module <= previous
+                    || validator.module.code.length == 0 || _modules[ModuleType.VALIDATOR][validator.module]
+                    || !ILoomModule(validator.module).isModuleType(ModuleType.VALIDATOR)
+            ) revert InvalidModule();
+            previous = validator.module;
+        }
+    }
+
+    function _validateRecoveryGuardianConfig(bytes32 newGuardianRoot, uint8 newGuardianThreshold) internal view {
+        if (
+            newGuardianRoot == bytes32(0) || newGuardianRoot == guardianRoot || newGuardianThreshold == 0
+                || newGuardianThreshold > MAX_GUARDIAN_THRESHOLD
+        ) revert InvalidModule();
     }
 
     function isModuleInstalled(uint256 moduleTypeId, address module) external view returns (bool) {

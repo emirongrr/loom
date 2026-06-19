@@ -2,6 +2,12 @@
 pragma solidity 0.8.35;
 
 interface ILoomAccount {
+    struct RecoveryModuleInit {
+        uint256 moduleTypeId;
+        address module;
+        bytes initData;
+    }
+
     function configHash() external view returns (bytes32);
     function configVersion() external view returns (uint64);
     function guardianRoot() external view returns (bytes32);
@@ -17,6 +23,12 @@ interface ILoomAccount {
         address[] calldata oldValidators,
         address newValidator,
         bytes calldata initData,
+        bytes32 newGuardianRoot,
+        uint8 newGuardianThreshold
+    ) external;
+    function recoverConfigurationSet(
+        address[] calldata oldValidators,
+        RecoveryModuleInit[] calldata newValidators,
         bytes32 newGuardianRoot,
         uint8 newGuardianThreshold
     ) external;
