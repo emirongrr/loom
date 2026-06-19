@@ -134,4 +134,15 @@ stronger long-term signature assumptions.
   SDK release, until those findings are fixed upstream, safely overridden, or
   isolated with evidence.
 
+Dependency evidence is checked with:
+
+```sh
+npm run kohaku:stack:check
+npm run kohaku:stack:test
+```
+
+The stack manifest must match installed Kohaku package versions, document every
+SDK surface, keep reviewed override pins narrow, and attach production gates to
+alpha, source-tracked, external, or legally sensitive protocol packages.
+
 See `docs/design/privacy-adapters.md` for the binding architecture.
