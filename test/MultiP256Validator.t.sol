@@ -157,6 +157,8 @@ contract MultiP256ValidatorTest {
             !validator.isValidSignature(address(account), keccak256("message"), ""),
             "MFA validator authorized arbitrary hash"
         );
+        require(validator.isModuleType(ModuleType.VALIDATOR), "validator module type rejected");
+        require(!validator.isModuleType(ModuleType.HOOK), "hook module type accepted");
     }
 
     function testMfaValidationDoesNotReadPolicyButDirectExecutionDoes() public {
@@ -201,6 +203,22 @@ contract MultiP256ValidatorTest {
             ),
             "direct execution bypassed low-risk policy"
         );
+    }
+
+    function testPolicyHookLifecycleRejectsInvalidAndAcceptsInstalledHook() public {
+        bytes memory zeroHook = abi.encodeCall(MultiP256Validator.setPolicyHook, (address(0)));
+        _schedule(account, address(validator), zeroHook);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool invalid,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, zeroHook)));
+        require(!invalid, "zero policy hook accepted");
+
+        MockPolicyHook replacement = new MockPolicyHook();
+        bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(replacement), ""));
+        _scheduleAndExecute(address(account), install);
+        bytes memory setHook = abi.encodeCall(MultiP256Validator.setPolicyHook, (address(replacement)));
+        _scheduleAndExecute(address(validator), setHook);
+        require(validator.policyHooks(address(account)) == address(replacement), "policy hook not updated");
     }
 
     function testMfaDirectExecutionRequiresThreshold() public {
