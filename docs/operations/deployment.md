@@ -53,6 +53,17 @@ The manifest must be reviewed by a second person before any account receives
 production funds. Address prediction must be repeated independently from the
 published constructor inputs and salt.
 
+Machine-readable release manifests must pass:
+
+```sh
+npm run deployment:manifest:check -- evidence/deployments/<network>.json
+```
+
+The validator recomputes bytecode hashes from checked Foundry artifacts and
+rejects missing EntryPoint, P-256, explorer, reproducibility, or no-Loom-service
+checks. See `docs/operations/deployment-manifest.md` for the schema and
+release evidence rules.
+
 Current pinned toolchain and contract dependencies:
 
 - Foundry `v1.7.1`
