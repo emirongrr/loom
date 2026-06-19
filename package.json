@@ -19,6 +19,7 @@
     "guardian:test": "npm --prefix packages/guardian test",
     "privacy:test": "npm --prefix packages/privacy test",
     "rehearsal:local": "node tools/rehearse-local-lifecycle.mjs",
+    "rehearsal:live:test": "node --test tools/validate-live-rehearsal.test.mjs",
     "rehearsal:live:check": "node tools/validate-live-rehearsal.mjs",
     "site:build": "npm --prefix docs/site run build && node tools/copy-site-public.mjs",
     "site:check": "node tools/validate-site.mjs",

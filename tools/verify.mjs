@@ -56,6 +56,7 @@ run("Deployment manifest evidence tests", process.execPath, [
   "--test",
   "tools/validate-deployment-manifest.test.mjs"
 ]);
+run("Live rehearsal evidence tests", process.execPath, ["--test", "tools/validate-live-rehearsal.test.mjs"]);
 run("Kohaku stack evidence tests", process.execPath, ["--test", "tools/validate-kohaku-stack.test.mjs"]);
 run("Kohaku stack evidence", process.execPath, ["tools/validate-kohaku-stack.mjs"]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);

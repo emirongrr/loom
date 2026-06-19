@@ -44,15 +44,54 @@ test("deployment manifest rejects missing chain and build verification", async (
   );
 });
 
+test("deployment manifest rejects missing finality and sender creator evidence", async () => {
+  const root = await fixtureRoot();
+  const missingFamily = manifestFor(root);
+  delete missingFamily.network.family;
+  await assert.rejects(() => validateDeploymentManifest(missingFamily, { root }), /network.family/);
+
+  const badFinality = manifestFor(root);
+  badFinality.network.finality = { kind: "op-stack-l1-finalized", minConfirmations: 1, l1ChainId: 10 };
+  await assert.rejects(() => validateDeploymentManifest(badFinality, { root }), /l1ChainId must be Ethereum mainnet/);
+
+  const missingSenderCreator = manifestFor(root);
+  delete missingSenderCreator.network.senderCreatorCodeHash;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingSenderCreator, { root }),
+    /network.senderCreatorCodeHash/
+  );
+});
+
 test("deployment manifest rejects unsafe P-256 and duplicate salts", async () => {
   const root = await fixtureRoot();
   const badP256 = manifestFor(root);
   badP256.network.p256 = { kind: "unknown", address: address("p256") };
   await assert.rejects(() => validateDeploymentManifest(badP256, { root }), /p256.kind/);
 
+  const unverifiedP256 = manifestFor(root);
+  unverifiedP256.network.p256.behaviorVerified = false;
+  await assert.rejects(() => validateDeploymentManifest(unverifiedP256, { root }), /behaviorVerified must be true/);
+
   const duplicate = manifestFor(root);
   duplicate.deployments.push({ ...duplicate.deployments[0], name: "Other" });
   await assert.rejects(() => validateDeploymentManifest(duplicate, { root }), /duplicate deployment salt/);
+});
+
+test("deployment manifest rejects missing deterministic and size checks", async () => {
+  const root = await fixtureRoot();
+  const missingDeterminism = manifestFor(root);
+  missingDeterminism.checks.deterministicAddressReproduction = false;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingDeterminism, { root }),
+    /missing passing deployment check: deterministicAddressReproduction/
+  );
+
+  const missingFactorySize = manifestFor(root);
+  delete missingFactorySize.checks.factoryRuntimeWithinEip170;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingFactorySize, { root }),
+    /missing passing deployment check: factoryRuntimeWithinEip170/
+  );
 });
 
 test("deployment manifest rejects artifact paths outside the repository", async () => {
@@ -81,10 +120,17 @@ function manifestFor(root) {
     version: 1,
     network: {
       name: "sepolia",
+      family: "ethereum",
       chainId: 11155111,
       entryPoint: address("entry-point"),
       entryPointVersion: "0.9.0",
       entryPointCodeHash: bytes32("entry-point-code"),
+      senderCreator: address("sender-creator"),
+      senderCreatorCodeHash: bytes32("sender-creator-code"),
+      finality: {
+        kind: "ethereum-finalized",
+        minConfirmations: 2
+      },
       p256: {
         kind: "precompile",
         address: address("p256"),
@@ -119,8 +165,11 @@ function manifestFor(root) {
       cleanCheckoutBuild: true,
       localBytecodeReproduction: true,
       entryPointBytecodeVerified: true,
+      senderCreatorBytecodeVerified: true,
       p256BehaviorVerified: true,
       explorerSourceVerified: true,
+      deterministicAddressReproduction: true,
+      factoryRuntimeWithinEip170: true,
       noAdminOrUpgradeKey: true,
       noLoomServiceRequired: true
     }

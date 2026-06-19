@@ -17,15 +17,24 @@ was required.
 The manifest must include:
 
 - network name, chain ID, and non-Loom RPC kind;
+- network family (`ethereum`, `op-stack`, or `arbitrum`) and finality
+  assumptions for the rehearsal chain;
 - source and destination account addresses;
 - EntryPoint and alternative EntryPoint destination address;
 - source and destination code hashes;
+- at least two independent non-Loom transaction publishers, such as separate
+  bundlers, public RPCs, or a self-hosted node;
 - at least two real token contracts;
-- at least one non-standard, fee-on-transfer, or rebasing token behavior;
+- at least one standard ERC-20 and at least one non-standard token behavior;
+- token decimals and positive test amounts;
+- migration destination kind, delay, expiry, and guardian cancellation
+  threshold;
+- vault withdrawal delay plus both native and ERC-20 rehearsal assets;
 - transaction hashes for deployment, funding, migration schedule,
   guardian cancellation, expiry attempt, successful migration, vault schedule,
   vault guardian cancellation, and vault execution;
-- boolean checks proving native exit and no Loom service dependency.
+- boolean checks proving independent publishers, direct execution fallback,
+  native exit, and no Loom service dependency.
 
 ## Command
 
