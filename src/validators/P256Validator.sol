@@ -75,14 +75,11 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
         bytes32 userOpHash,
         uint256,
         bytes calldata signature,
-        bytes calldata callData,
+        bytes calldata,
         address
     ) external view returns (uint256) {
         address hook = policyHooks[account];
-        if (
-            hook == address(0) || !ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)
-                || !IPolicyHook(hook).isLowRisk(account, callData)
-        ) {
+        if (hook == address(0) || !ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, hook)) {
             return ValidationDataLib.SIG_VALIDATION_FAILED;
         }
         return _verify(account, userOpHash, signature) ? 0 : ValidationDataLib.SIG_VALIDATION_FAILED;

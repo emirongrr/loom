@@ -159,7 +159,7 @@ contract MultiP256ValidatorTest {
         );
     }
 
-    function testMfaCannotBypassLowRiskPolicy() public {
+    function testMfaValidationDoesNotReadPolicyButDirectExecutionDoes() public {
         DenyPolicyHook denyHook = new DenyPolicyHook();
         MultiP256Validator deniedValidator = new MultiP256Validator(address(new MockP256Verifier()));
         MultiP256Validator.CredentialInit[] memory initial = new MultiP256Validator.CredentialInit[](2);
@@ -183,8 +183,23 @@ contract MultiP256ValidatorTest {
         require(
             deniedValidator.validateUserOp(
                 address(deniedAccount), hash, 0, abi.encode(signatures), bytes("call"), address(0)
-            ) == ValidationDataLib.SIG_VALIDATION_FAILED,
-            "MFA bypassed low-risk policy"
+            ) == 0,
+            "validation read low-risk policy"
+        );
+
+        MockTarget target = new MockTarget();
+        bytes32 mode = deniedAccount.SINGLE_EXECUTION_MODE();
+        bytes memory executionCalldata =
+            abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1))));
+        bytes32 executionHash =
+            deniedAccount.directExecutionDigest(address(deniedValidator), mode, executionCalldata, 0, type(uint48).max);
+        signatures[0] = MultiP256Validator.CredentialSignature(ID_ONE, _signature(executionHash, 1));
+        signatures[1] = MultiP256Validator.CredentialSignature(ID_TWO, _signature(executionHash, 2));
+        require(
+            !deniedValidator.validateDirectExecution(
+                address(deniedAccount), executionHash, abi.encode(signatures), executionCalldata
+            ),
+            "direct execution bypassed low-risk policy"
         );
     }
 

@@ -54,7 +54,7 @@ contract ValidatorBranchCoverageTest {
         );
     }
 
-    function testECDSAValidatorRejectsDeniedAndRemovedPolicyHook() public {
+    function testECDSAValidatorValidationSkipsPolicyButRejectsRemovedHook() public {
         ECDSAValidator deniedValidator = new ECDSAValidator();
         DenyPolicyHook deniedHook = new DenyPolicyHook();
         LoomAccount deniedAccount = _ecdsaAccount(deniedValidator, address(deniedHook));
@@ -64,8 +64,8 @@ contract ValidatorBranchCoverageTest {
 
         require(
             deniedValidator.validateUserOp(address(deniedAccount), digest, 0, signature, bytes("call"), address(0))
-                == ValidationDataLib.SIG_VALIDATION_FAILED,
-            "denied policy accepted"
+                == 0,
+            "validation read denied policy"
         );
         require(
             !deniedValidator.validateDirectExecution(address(deniedAccount), digest, signature, bytes("call")),

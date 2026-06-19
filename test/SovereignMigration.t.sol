@@ -205,7 +205,7 @@ contract SovereignMigrationTest {
         require(!staleAccepted, "stale config migration accepted");
     }
 
-    function testMigrationCanBeCancelledAndIsFrozenSafeOnlyForCancellation() public {
+    function testMigrationSelfCancelIsBlockedWhileFrozen() public {
         LoomAccount source = _account(true);
         LoomAccount destination = _account(false);
         MockTarget target = new MockTarget();
@@ -217,15 +217,23 @@ contract SovereignMigrationTest {
         (bool executedWhileFrozen,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
         require(!executedWhileFrozen, "frozen account executed migration before delay");
 
-        source.execute(
-            bytes32(0),
-            abi.encode(ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ())))
-        );
-        require(source.migrationNonce() == 1, "cancel did not advance migration nonce");
-        require(target.value() == 0, "cancelled migration executed");
+        (bool cancelledWhileFrozen,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ()))
+                        )
+                    )
+                )
+            );
+        require(!cancelledWhileFrozen, "frozen primary cancelled migration");
+        require(source.migrationNonce() == 0, "failed frozen cancel advanced migration nonce");
+        require(target.value() == 0, "frozen migration executed");
 
         vm.warp(source.frozenUntil());
-        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
         source.execute(
             bytes32(0),
             abi.encode(ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ())))
