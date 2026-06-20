@@ -23,15 +23,59 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   assertTopLevel(manifest);
   assertNetwork(manifest.network);
   assertBuild(manifest.build);
+  assertReproducibility(manifest.reproducibility, repoRoot);
   assertDeployments(manifest.deployments, repoRoot);
   assertChecks(manifest.checks);
 }
 
 function assertTopLevel(manifest) {
-  for (const key of ["version", "network", "build", "deployments", "checks"]) {
+  for (const key of ["version", "network", "build", "reproducibility", "deployments", "checks"]) {
     if (!(key in manifest)) throw new Error(`missing top-level manifest field: ${key}`);
   }
   if (manifest.version !== 1) throw new Error("unsupported deployment manifest version");
+}
+
+function assertReproducibility(reproducibility, repoRoot) {
+  if (!reproducibility || typeof reproducibility !== "object") {
+    throw new Error("reproducibility must be an object");
+  }
+  if (!Array.isArray(reproducibility.commands) || reproducibility.commands.length === 0) {
+    throw new Error("reproducibility.commands must be a non-empty array");
+  }
+  const commandNames = new Set();
+  for (const [index, item] of reproducibility.commands.entries()) {
+    const label = `reproducibility.commands[${index}]`;
+    if (!item.name || typeof item.name !== "string") throw new Error(`${label}.name is required`);
+    if (commandNames.has(item.name)) throw new Error(`duplicate reproducibility command: ${item.name}`);
+    commandNames.add(item.name);
+    if (!item.command || typeof item.command !== "string") throw new Error(`${label}.command is required`);
+    if (item.exitCode !== 0) throw new Error(`${label}.exitCode must be 0`);
+  }
+  for (const name of ["install", "build", "verify", "manifest-check"]) {
+    if (!commandNames.has(name)) throw new Error(`missing reproducibility command: ${name}`);
+  }
+
+  if (!Array.isArray(reproducibility.files) || reproducibility.files.length === 0) {
+    throw new Error("reproducibility.files must be a non-empty array");
+  }
+  const filePaths = new Set();
+  for (const [index, item] of reproducibility.files.entries()) {
+    const label = `reproducibility.files[${index}]`;
+    if (!item.path || typeof item.path !== "string") throw new Error(`${label}.path is required`);
+    if (isAbsolute(item.path) || item.path.split(/[\\/]+/).includes("..")) {
+      throw new Error(`${label}.path must stay inside repository`);
+    }
+    if (filePaths.has(item.path)) throw new Error(`duplicate reproducibility file: ${item.path}`);
+    filePaths.add(item.path);
+    assertBytes32(item.hash, `${label}.hash`);
+    const path = join(repoRoot, item.path);
+    if (!existsSync(path)) throw new Error(`${label}.path does not exist: ${item.path}`);
+    const actual = hashBytes(readFileSync(path));
+    if (item.hash !== actual) throw new Error(`${label}.hash mismatch for ${item.path}`);
+  }
+  for (const path of ["foundry.toml", "package-lock.json"]) {
+    if (!filePaths.has(path)) throw new Error(`missing reproducibility file: ${path}`);
+  }
 }
 
 function assertNetwork(network) {
@@ -128,6 +172,21 @@ function assertDeployments(deployments, repoRoot) {
     if (!deployment.explorer.url || typeof deployment.explorer.url !== "string") {
       throw new Error(`${label}.explorer.url is required`);
     }
+    assertPublicUrl(deployment.explorer.url, `${label}.explorer.url`);
+    assertDeploymentReceipt(deployment.receipt, label);
+  }
+}
+
+function assertDeploymentReceipt(receipt, label) {
+  if (!receipt || typeof receipt !== "object") throw new Error(`${label}.receipt is required`);
+  assertTxHash(receipt.transactionHash, `${label}.receipt.transactionHash`);
+  assertAddress(receipt.deployer, `${label}.receipt.deployer`);
+  if (!Number.isSafeInteger(receipt.blockNumber) || receipt.blockNumber <= 0) {
+    throw new Error(`${label}.receipt.blockNumber must be positive`);
+  }
+  if (receipt.status !== "0x1") throw new Error(`${label}.receipt.status must be 0x1`);
+  if (receipt.gasUsed !== undefined && (!Number.isSafeInteger(receipt.gasUsed) || receipt.gasUsed <= 0)) {
+    throw new Error(`${label}.receipt.gasUsed must be positive`);
   }
 }
 
@@ -170,12 +229,35 @@ function hashHex(value) {
   return `0x${keccak_256(Buffer.from(value.slice(2), "hex"))}`;
 }
 
+function hashBytes(value) {
+  return `0x${keccak_256(value)}`;
+}
+
 function assertAddress(value, label) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(value ?? "")) throw new Error(`${label} must be a 20-byte address`);
 }
 
 function assertBytes32(value, label) {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value ?? "")) throw new Error(`${label} must be bytes32`);
+}
+
+function assertTxHash(value, label) {
+  assertBytes32(value, label);
+}
+
+function assertPublicUrl(value, label) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid URL`);
+  }
+  if (!["https:", "http:"].includes(url.protocol)) throw new Error(`${label} must use http or https`);
+  if (url.username || url.password) throw new Error(`${label} must not contain credentials`);
+  const text = value.toLowerCase();
+  for (const marker of ["apikey=", "api_key=", "access_token=", "secret=", "token="]) {
+    if (text.includes(marker)) throw new Error(`${label} must not contain secret-bearing query parameters`);
+  }
 }
 
 function isHex(value) {

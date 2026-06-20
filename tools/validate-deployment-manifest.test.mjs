@@ -102,6 +102,56 @@ test("deployment manifest rejects artifact paths outside the repository", async 
   await assert.rejects(() => validateDeploymentManifest(manifest, { root }), /artifact must stay inside repository/);
 });
 
+test("deployment manifest rejects missing or mismatched reproducibility evidence", async () => {
+  const root = await fixtureRoot();
+  const missingCommand = manifestFor(root);
+  missingCommand.reproducibility.commands = missingCommand.reproducibility.commands.filter(
+    item => item.name !== "manifest-check"
+  );
+  await assert.rejects(
+    () => validateDeploymentManifest(missingCommand, { root }),
+    /missing reproducibility command: manifest-check/
+  );
+
+  const badExit = manifestFor(root);
+  badExit.reproducibility.commands[0].exitCode = 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(badExit, { root }),
+    /reproducibility\.commands\[0\]\.exitCode must be 0/
+  );
+
+  const badFileHash = manifestFor(root);
+  badFileHash.reproducibility.files[0].hash = bytes32("wrong-file-hash");
+  await assert.rejects(
+    () => validateDeploymentManifest(badFileHash, { root }),
+    /reproducibility\.files\[0\]\.hash mismatch/
+  );
+});
+
+test("deployment manifest rejects failed receipts and secret-bearing explorer URLs", async () => {
+  const root = await fixtureRoot();
+  const failedReceipt = manifestFor(root);
+  failedReceipt.deployments[0].receipt.status = "0x0";
+  await assert.rejects(
+    () => validateDeploymentManifest(failedReceipt, { root }),
+    /deployments\[0\]\.receipt\.status must be 0x1/
+  );
+
+  const missingReceipt = manifestFor(root);
+  delete missingReceipt.deployments[0].receipt.transactionHash;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingReceipt, { root }),
+    /deployments\[0\]\.receipt\.transactionHash/
+  );
+
+  const secretUrl = manifestFor(root);
+  secretUrl.deployments[0].explorer.url = "https://example.invalid/address?apikey=secret";
+  await assert.rejects(
+    () => validateDeploymentManifest(secretUrl, { root }),
+    /must not contain secret-bearing query parameters/
+  );
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "loom-deployment-manifest-"));
   const artifactDir = join(root, "out", "Example.sol");
@@ -111,6 +161,8 @@ async function fixtureRoot() {
     deployedBytecode: { object: "0x6001" }
   };
   await writeFile(join(artifactDir, "Example.json"), JSON.stringify(artifact, null, 2));
+  await writeFile(join(root, "foundry.toml"), "[profile.default]\nsolc = \"0.8.35\"\n");
+  await writeFile(join(root, "package-lock.json"), "{\"lockfileVersion\":3}\n");
   return root;
 }
 
@@ -146,6 +198,22 @@ function manifestFor(root) {
       optimizer: { enabled: true, runs: 200 },
       evmVersion: "osaka"
     },
+    reproducibility: {
+      commands: [
+        { name: "install", command: "npm ci", exitCode: 0 },
+        { name: "build", command: "forge build --sizes", exitCode: 0 },
+        { name: "verify", command: "npm run verify:quick", exitCode: 0 },
+        {
+          name: "manifest-check",
+          command: "npm run deployment:manifest:check -- evidence/deployments/sepolia.json",
+          exitCode: 0
+        }
+      ],
+      files: [
+        { path: "foundry.toml", hash: hashText("[profile.default]\nsolc = \"0.8.35\"\n") },
+        { path: "package-lock.json", hash: hashText("{\"lockfileVersion\":3}\n") }
+      ]
+    },
     deployments: [
       {
         name: "Example",
@@ -158,6 +226,13 @@ function manifestFor(root) {
         explorer: {
           verified: true,
           url: "https://example.invalid/address"
+        },
+        receipt: {
+          transactionHash: bytes32("deploy-tx"),
+          deployer: address("deployer"),
+          blockNumber: 123,
+          status: "0x1",
+          gasUsed: 500000
         }
       }
     ],
@@ -178,6 +253,10 @@ function manifestFor(root) {
 
 function hashHex(value) {
   return `0x${keccak_256(Buffer.from(value.slice(2), "hex"))}`;
+}
+
+function hashText(value) {
+  return `0x${keccak_256(Buffer.from(value, "utf8"))}`;
 }
 
 function address(seed) {
