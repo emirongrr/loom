@@ -15,6 +15,29 @@ const REQUIRED_CHECKS = [
   "receiptReconciliation",
   "permissionlessHandleOpsFallback"
 ];
+const REQUIRED_LIFECYCLE_CHECKS = REQUIRED_CHECKS.filter(value => value !== "permissionlessHandleOpsFallback");
+const REQUIRED_LIFECYCLE_RECEIPTS = [
+  "deploy",
+  "single",
+  "batch",
+  "nativeGas",
+  "paymasterApproved",
+  "paymasterRejected",
+  "sessionGrant",
+  "sessionRevoke",
+  "recoveryProposal",
+  "recoveryCancel",
+  "migrationSchedule",
+  "migrationCancel",
+  "vaultSchedule",
+  "vaultCancel"
+];
+const REQUIRED_LIFECYCLE_STAGES = [
+  "session",
+  "recovery",
+  "migration",
+  "vault"
+];
 
 const PERMISSIONLESS_ENDPOINT_KINDS = new Set(["local", "permissionless", "self-hosted"]);
 
@@ -70,12 +93,23 @@ function assertLifecycle(lifecycle, bundlers, chainId, entryPoint) {
     }
 
     assertObject(item.checks, `${label}.checks`);
-    for (const key of REQUIRED_CHECKS.filter(value => value !== "permissionlessHandleOpsFallback")) {
+    for (const key of REQUIRED_LIFECYCLE_CHECKS) {
       if (item.checks[key] !== true) throw new Error(`missing passing lifecycle check for ${item.bundler}: ${key}`);
     }
 
+    assertObject(item.stages, `${label}.stages`);
+    for (const key of REQUIRED_LIFECYCLE_STAGES) {
+      assertObject(item.stages[key], `${label}.stages.${key}`);
+      if (item.stages[key].scheduled !== true) throw new Error(`${label}.stages.${key}.scheduled must be true`);
+      if (item.stages[key].cancelled !== true) throw new Error(`${label}.stages.${key}.cancelled must be true`);
+      if (item.stages[key].configBound !== true) throw new Error(`${label}.stages.${key}.configBound must be true`);
+      if (item.stages[key].receiptReconciled !== true) {
+        throw new Error(`${label}.stages.${key}.receiptReconciled must be true`);
+      }
+    }
+
     assertObject(item.receipts, `${label}.receipts`);
-    for (const key of ["deploy", "single", "batch", "nativeGas", "paymasterApproved"]) {
+    for (const key of REQUIRED_LIFECYCLE_RECEIPTS) {
       assertTxHash(item.receipts[key], `${label}.receipts.${key}`);
     }
   }

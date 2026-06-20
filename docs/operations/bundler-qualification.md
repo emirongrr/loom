@@ -14,6 +14,8 @@ For each bundler, retain machine-readable evidence for:
    rejection;
 7. receipt retrieval and event reconciliation;
 8. direct permissionless `handleOps` fallback without the bundler service.
+9. account lifecycle operations covering session grant/revoke, recovery
+   proposal/cancel, migration schedule/cancel, and vault schedule/cancel.
 
 The upstream `eth-infinitism/bundler-spec-tests` suite must also pass for each
 bundler. Passing that suite does not replace Loom account lifecycle tests.
@@ -26,7 +28,10 @@ entry must prove the same Loom account address completed counterfactual deploy,
 single UserOperation, atomic batch UserOperation, native gas, approved paymaster
 flow, rejected paymaster flow, invalid signature rejection, stale nonce
 rejection, malformed calldata rejection, unsupported mode rejection, and receipt
-reconciliation through that specific bundler. Aggregate receipts are not enough.
+reconciliation through that specific bundler. It must also include stage
+evidence proving session, recovery, migration, and vault operations were
+scheduled, cancelled, config-bound, and receipt-reconciled through that
+bundler. Aggregate receipts are not enough.
 
 ## Evidence Manifest
 
@@ -50,6 +55,12 @@ wallet secrets. The validator requires:
 - native gas, approved paymaster, rejected paymaster, invalid signature, stale
   nonce, malformed calldata, unsupported mode, receipt reconciliation, and
   atomic batch checks;
+- per-bundler receipts for deploy, single call, batch call, native gas,
+  approved paymaster, rejected paymaster, session grant, session revoke,
+  recovery proposal, recovery cancellation, migration schedule, migration
+  cancellation, vault schedule, and vault cancellation;
+- per-bundler stage evidence proving session, recovery, migration, and vault
+  flows are scheduled, cancelled, config-bound, and receipt-reconciled;
 - one local, self-hosted, or otherwise permissionless direct `handleOps`
   fallback path.
 
