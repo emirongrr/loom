@@ -1,0 +1,394 @@
+import type {
+  AccountLifecycleClient,
+  LifecycleIntent,
+  Hex
+} from "../../account/src/index.js";
+import type {
+  KohakuHost,
+  KohakuHostOptions,
+  KohakuProviderProfile,
+  MetadataBudget,
+  PrivacyContext,
+  ShieldedPoolAdapter
+} from "../../privacy/src/index.js";
+
+export class InvalidSdkRequestError extends Error {
+  readonly details: Record<string, unknown>;
+}
+
+export interface KohakuRuntime {
+  readonly host: KohakuHost;
+  readonly providerProfile: KohakuProviderProfile;
+  readonly providerConsentKey: string;
+  metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
+  request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+export function createKohakuRuntime(options?: Partial<KohakuHostOptions> & {
+  host?: KohakuHost;
+}): KohakuRuntime;
+
+export interface AppScope {
+  readonly applicationId: string;
+  readonly origin: string;
+  readonly chainId: number;
+  readonly account?: Hex;
+  readonly label?: string;
+}
+
+export interface AppScopeManager {
+  scopeForOrigin(input: string | {
+    origin: string;
+    chainId?: number;
+    account?: Hex;
+    label?: string;
+  }): AppScope;
+  bindPrivacyContext(context: PrivacyContext, scope: AppScope): PrivacyContext;
+}
+
+export function createAppScopeManager(options?: {
+  chainId?: number;
+  account?: Hex;
+}): AppScopeManager;
+
+export interface ClearSigningReview {
+  readonly title: string;
+  readonly kind: string;
+  readonly chainId: number;
+  readonly account?: Hex;
+  readonly risk: string;
+  readonly requiresUserSignature: boolean;
+  readonly requiresGuardianApproval: boolean;
+  readonly delayRequired: boolean;
+  readonly metadataBudgetRequired: boolean;
+  readonly optionalInfrastructure: boolean;
+  readonly summary: string;
+}
+
+export interface LoomSdk {
+  readonly lifecycle: AccountLifecycleClient;
+  readonly kohaku: KohakuRuntime;
+  readonly appScopes: AppScopeManager;
+  readonly clearSigning: {
+    explainIntent(intent: LifecycleIntent): ClearSigningReview;
+  };
+  buildAppSessionGrant(input: AppSessionGrantInput): AppSessionGrantIntent;
+  preparePrivateVaultWithdrawal(input: PrivateVaultWithdrawalPreparationInput): Promise<PrivateVaultWithdrawalPreparation>;
+}
+
+export function createLoomSdk(options?: {
+  chainId?: number;
+  account?: Hex;
+  kohaku?: Partial<KohakuHostOptions> & { host?: KohakuHost };
+}): LoomSdk;
+
+export interface LoomSignerAdapter {
+  signUserOperation(envelope: UserOperationEnvelope): Promise<Hex>;
+}
+
+export interface LoomTransportAdapter {
+  sendUserOperation(envelope: UserOperationEnvelope): Promise<{
+    userOpHash: Hex;
+    receipt?: unknown;
+  }>;
+  estimateUserOperationGas?(envelope: UserOperationEnvelope): Promise<UserOperationGasEstimate>;
+  getUserOperationReceipt?(input: { userOpHash: Hex }): Promise<UserOperationReceipt | null>;
+  waitForUserOperationReceipt?(input: {
+    userOpHash: Hex;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }): Promise<UserOperationReceipt>;
+}
+
+export interface LoomCall {
+  readonly target: Hex;
+  readonly value?: bigint | string | number;
+  readonly data: Hex;
+}
+
+export interface LoomPreparedIntent {
+  readonly kind: string;
+  readonly intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
+  readonly intentHash: Hex;
+  readonly review: ClearSigningReview;
+}
+
+export interface AccountCallsIntent {
+  readonly kind: "account.calls";
+  readonly chainId: number;
+  readonly account: Hex;
+  readonly calls: readonly {
+    readonly target: Hex;
+    readonly value: bigint;
+    readonly data: Hex;
+  }[];
+  readonly authority: {
+    readonly risk: "account-execution" | string;
+    readonly requiresUserSignature: true;
+    readonly requiresGuardianApproval: false;
+    readonly delayRequired: false;
+  };
+}
+
+export interface UserOperationEnvelope {
+  readonly kind: "userOperation.prepare";
+  readonly chainId: number;
+  readonly account: Hex;
+  readonly intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
+  readonly intentHash: Hex;
+  readonly userOperation: {
+    readonly sender: Hex;
+    readonly nonce: bigint;
+    readonly factory?: Hex;
+    readonly factoryData?: Hex;
+    readonly callData: Hex;
+    readonly callGasLimit: bigint;
+    readonly verificationGasLimit: bigint;
+    readonly preVerificationGas: bigint;
+    readonly maxFeePerGas: bigint;
+    readonly maxPriorityFeePerGas: bigint;
+    readonly paymaster?: Hex;
+    readonly paymasterData?: Hex;
+    readonly signature: Hex;
+  };
+  readonly review: ClearSigningReview;
+}
+
+export interface UserOperationGasEstimate {
+  readonly callGasLimit: bigint;
+  readonly verificationGasLimit: bigint;
+  readonly preVerificationGas: bigint;
+}
+
+export interface UserOperationReceipt {
+  readonly userOpHash: Hex;
+  readonly success: boolean;
+  readonly receipt?: unknown;
+  readonly [key: string]: unknown;
+}
+
+export interface LoomClient {
+  readonly account: Hex;
+  readonly chainId: number;
+  readonly sdk: LoomSdk;
+  prepareDeployAccount(input: {
+    factory: Hex;
+    salt: Hex;
+    initCode?: Hex;
+  }): LoomPreparedIntent & {
+    readonly factory: Hex;
+    readonly salt: Hex;
+    readonly initCode: Hex;
+  };
+  prepareCalls(input: {
+    calls: readonly LoomCall[];
+    risk?: string;
+  }): LoomPreparedIntent & {
+    readonly intent: AccountCallsIntent;
+  };
+  prepareUserOperation(
+    prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
+    overrides?: UserOperationOverrides
+  ): UserOperationEnvelope;
+  sendPreparedUserOperation(
+    prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
+    overrides?: UserOperationOverrides & {
+      signer?: LoomSignerAdapter;
+      transport?: LoomTransportAdapter;
+    }
+  ): Promise<{ userOpHash: Hex; receipt?: unknown }>;
+  sendCalls(
+    input: { calls: readonly LoomCall[]; risk?: string },
+    overrides?: UserOperationOverrides & {
+      signer?: LoomSignerAdapter;
+      transport?: LoomTransportAdapter;
+    }
+  ): Promise<{ userOpHash: Hex; receipt?: unknown }>;
+  sendCallsAndWait(
+    input: { calls: readonly LoomCall[]; risk?: string },
+    overrides?: UserOperationOverrides & {
+      signer?: LoomSignerAdapter;
+      transport?: LoomTransportAdapter;
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+    }
+  ): Promise<{ userOpHash: Hex; receipt: UserOperationReceipt }>;
+  estimateCalls(
+    input: { calls: readonly LoomCall[]; risk?: string },
+    overrides?: UserOperationOverrides & {
+      transport?: LoomTransportAdapter;
+    }
+  ): Promise<UserOperationGasEstimate>;
+  waitForUserOperationReceipt(
+    input: { userOpHash: Hex },
+    overrides?: {
+      transport?: LoomTransportAdapter;
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+    }
+  ): Promise<UserOperationReceipt>;
+  grantSession(input: AppSessionGrantInput): LoomPreparedIntent & {
+    readonly intent: AppSessionGrantIntent;
+  };
+  revokeSession(input: Parameters<AccountLifecycleClient["buildSessionRevoke"]>[0]): LoomPreparedIntent;
+  proposeRecovery(input: Parameters<AccountLifecycleClient["buildRecoveryProposal"]>[0]): LoomPreparedIntent;
+  cancelRecovery(input: Parameters<AccountLifecycleClient["buildRecoveryCancellation"]>[0]): LoomPreparedIntent;
+  executeRecovery(input: Parameters<AccountLifecycleClient["buildRecoveryExecution"]>[0]): LoomPreparedIntent;
+  scheduleVaultWithdrawal(input: Parameters<AccountLifecycleClient["buildVaultWithdrawal"]>[0]): LoomPreparedIntent;
+  preparePrivateVaultWithdrawal(input: PrivateVaultWithdrawalPreparationInput): Promise<PrivateVaultWithdrawalPreparation>;
+}
+
+export interface UserOperationOverrides {
+  nonce?: bigint | string | number;
+  callData?: Hex;
+  factory?: Hex;
+  factoryData?: Hex;
+  callGasLimit?: bigint | string | number;
+  verificationGasLimit?: bigint | string | number;
+  preVerificationGas?: bigint | string | number;
+  maxFeePerGas?: bigint | string | number;
+  maxPriorityFeePerGas?: bigint | string | number;
+  paymaster?: Hex;
+  paymasterData?: Hex;
+  signature?: Hex;
+}
+
+export function createLoomClient(options: {
+  chainId: number;
+  account: Hex;
+  sdk?: LoomSdk;
+  kohaku?: Partial<KohakuHostOptions> & { host?: KohakuHost };
+  signer?: LoomSignerAdapter;
+  transport?: LoomTransportAdapter;
+  middleware?: readonly ((envelope: UserOperationEnvelope) => Promise<UserOperationEnvelope> | UserOperationEnvelope)[];
+}): LoomClient;
+
+export interface BundlerTransportOptions {
+  endpoint: string;
+  entryPoint: Hex;
+  fetch?: typeof fetch;
+  headers?: Record<string, string>;
+  requestId?: number | string;
+  pollIntervalMs?: number;
+}
+
+export function createBundlerTransport(options: BundlerTransportOptions): LoomTransportAdapter & {
+  readonly endpoint: string;
+  readonly entryPoint: Hex;
+};
+
+export interface PasskeyChallenge {
+  readonly type: "loom.passkey-user-operation";
+  readonly credentialId: string;
+  readonly rpId: string;
+  readonly origin?: string;
+  readonly account: Hex;
+  readonly chainId: number;
+  readonly intentHash: Hex;
+  readonly userOperationHash: Hex;
+}
+
+export interface PasskeyAssertion {
+  readonly authenticatorData: Hex;
+  readonly clientDataJSON: Hex;
+  readonly signature: Hex;
+  readonly userHandle?: Hex;
+}
+
+export function createPasskeySigner(options: {
+  credentialId: string;
+  rpId: string;
+  origin?: string;
+  signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion>;
+}): LoomSignerAdapter & {
+  readonly credentialId: string;
+  readonly rpId: string;
+  readonly origin?: string;
+};
+
+export function prepareUserOperationEnvelope(input: {
+  chainId: number;
+  account: Hex;
+  intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
+} & UserOperationOverrides): UserOperationEnvelope;
+
+export interface AppSessionGrantInput {
+  lifecycle?: AccountLifecycleClient;
+  appScopes?: AppScopeManager;
+  appScope?: AppScope;
+  origin?: string;
+  label?: string;
+  chainId?: number;
+  account?: Hex;
+  sessionKey: Hex;
+  target: Hex;
+  selector: Hex;
+  token: Hex;
+  maxAmount: bigint | string | number;
+  validAfter?: bigint | string | number;
+  validUntil: bigint | string | number;
+  maxUses: number;
+  callData?: Hex;
+}
+
+export interface AppSessionGrantIntent extends LifecycleIntent {
+  readonly kind: "session.grant";
+  readonly appScope: {
+    readonly applicationId: string;
+    readonly chainId: number;
+    readonly account?: Hex;
+    readonly label?: string;
+  };
+  readonly appBindingHash: Hex;
+  readonly review: ClearSigningReview;
+}
+
+export function buildAppSessionGrant(options: AppSessionGrantInput): AppSessionGrantIntent;
+
+export interface PrivateVaultWithdrawalPreparationInput {
+  lifecycle?: AccountLifecycleClient;
+  appScopes?: AppScopeManager;
+  appScope?: AppScope;
+  adapter: ShieldedPoolAdapter;
+  method?: "shield" | "unshield" | "privateTransfer" | "buildOperation";
+  context: PrivacyContext;
+  privateRequest?: Record<string, unknown>;
+  vault: {
+    token: Hex;
+    recipient: Hex;
+    amount: bigint | string | number;
+    executeAfter: bigint | string | number;
+    expiry?: bigint | string | number;
+    callData?: Hex;
+  };
+}
+
+export interface PrivateVaultWithdrawalPreparation {
+  readonly intent: LifecycleIntent;
+  readonly operation: {
+    readonly protocol: string;
+    readonly chainId: number;
+    readonly calls: readonly {
+      readonly target: Hex;
+      readonly value: bigint;
+      readonly data: Hex;
+    }[];
+    readonly metadataBudget: MetadataBudget;
+    readonly operation: unknown;
+    readonly requiresVaultDelay: boolean;
+    readonly requiresBridgeFinality?: string;
+  };
+  readonly hashes: {
+    readonly privateOperationHash: Hex;
+    readonly metadataBudgetHash: Hex;
+  };
+  readonly review: ClearSigningReview;
+}
+
+export function preparePrivateVaultWithdrawal(
+  options: PrivateVaultWithdrawalPreparationInput
+): Promise<PrivateVaultWithdrawalPreparation>;
+
+export function explainLifecycleIntent(intent: LifecycleIntent): ClearSigningReview;
+
+export function hashCanonical(value: unknown): Hex;
