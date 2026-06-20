@@ -89,13 +89,16 @@ native gas asset.
     in the future SDK/client and must verify balances, nonces, recovery,
     guardian, vault, validator, and L1 keystore state without making a Loom RPC
     or indexer mandatory.
-11. Kohaku SDK stack. Initial architecture and package seed bind Loom's future
-    SDK boundary to upstream Kohaku packages as direct dependencies where they
-    are published, and as source-level tracked capabilities where they are not.
-    Concrete Railgun, privacy-pools, Tornado compatibility, hybrid
-    ECDSA-plus-post-quantum account-security, and Aztec flows require separate
-    dependency review, provider profiles, protocol threat models, metadata
-    budgets, live rehearsal, and audit before production use.
+11. Kohaku SDK stack and wallet engine SDK. Initial packages now include
+    `@loom/account`, `@loom/privacy`, and `@loom/sdk`. The SDK provides local
+    lifecycle builders, a Kohaku-compatible privacy host boundary, app-scoped
+    sessions, explicit bundler transport, passkey signer boundary, gas
+    estimation, receipt waiting, middleware hooks, and private-vault operation
+    binding. Concrete Railgun, privacy-pools, Tornado compatibility, hybrid
+    ECDSA-plus-post-quantum account-security, browser WebAuthn signing, and
+    Aztec flows require separate dependency review, provider profiles, protocol
+    threat models, metadata budgets, live rehearsal, and audit before
+    production use.
 
 ## Core boundary
 

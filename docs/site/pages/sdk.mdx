@@ -1,8 +1,11 @@
 # SDK
 
-Loom currently ships two early SDK packages: `@loom/account` for account
-lifecycle intent builders and `@loom/privacy` for a Kohaku-compatible privacy
-runtime boundary.
+Loom currently ships three early SDK packages:
+
+- `@loom/account` for account lifecycle intent builders.
+- `@loom/privacy` for a Kohaku-compatible privacy runtime boundary.
+- `@loom/sdk` for the local wallet-engine client surface that joins account,
+  privacy, passkey, bundler, and app-scoped session helpers.
 
 These packages are wallet-engine primitives, not a finished wallet client.
 They must not hide trust assumptions, select default infrastructure, or claim
@@ -25,6 +28,61 @@ The package deliberately avoids side effects:
 Wallets remain responsible for explaining the intent, collecting signatures,
 simulating where appropriate, and publishing through user-selected
 infrastructure.
+
+## Wallet engine client
+
+`@loom/sdk` exposes a developer-facing client without selecting default
+infrastructure:
+
+```ts
+import {
+  createBundlerTransport,
+  createLoomClient,
+  createPasskeySigner,
+} from '@loom/sdk'
+
+const wallet = createLoomClient({
+  chainId: 1,
+  account: '0x1111111111111111111111111111111111111111',
+  kohaku: {
+    providerProfile: profile,
+  },
+})
+
+await wallet.sendCallsAndWait(
+  {
+    calls: [
+      {
+        target: '0x3333333333333333333333333333333333333333',
+        value: 0n,
+        data: '0x1234',
+      },
+    ],
+  },
+  {
+    signer: createPasskeySigner({
+      credentialId: 'local-credential-id',
+      rpId: 'wallet.example',
+      signChallenge: walletPasskeyPrompt,
+    }),
+    transport: createBundlerTransport({
+      endpoint: 'https://bundler.example',
+      entryPoint: '0x3333333333333333333333333333333333333333',
+    }),
+    timeoutMs: 60000,
+  },
+)
+```
+
+The client supports `prepareDeployAccount`, `prepareCalls`,
+`prepareUserOperation`, `sendCalls`, `sendCallsAndWait`, `estimateCalls`,
+`waitForUserOperationReceipt`, app-scoped `grantSession`, recovery proposal and
+cancellation builders, vault withdrawal builders, private vault operation
+binding, middleware hooks, explicit bundler transport, and passkey signer
+boundaries.
+
+All network, signing, paymaster, and privacy operations remain adapter-driven.
+There is no default Loom RPC, bundler, paymaster, signer, or relayer.
 
 ## Privacy runtime
 
@@ -91,6 +149,7 @@ await host.network.fetch(profile.endpoint)
 | --- | --- | --- |
 | `@loom/account` | Account deploy, session grant/revoke, recovery proposal, migration, vault withdrawal, private vault binding, and paymaster policy builders. | Implemented boundary |
 | `@loom/privacy` | Kohaku host, provider profiles, metadata budgets, local scan lifecycle, shielded-pool wrapper, and Railgun profile boundary. | Implemented boundary |
-| `@loom/client` | Wallet engine for mobile apps and partner wallets with verified state and clear signing. | Planned |
+| `@loom/sdk` | Wallet engine client, app-scoped sessions, passkey signer boundary, bundler transport, gas estimation, receipt waiting, middleware, and private-vault binding. | Implemented boundary |
+| Production wallet client | Mobile/web app with verified state, browser WebAuthn implementation, simulation, clear signing, live bundler qualification, and concrete privacy protocol flows. | Planned |
 
 SDKs should improve UX without becoming account authority.

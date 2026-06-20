@@ -92,6 +92,13 @@ L1-to-L2 messaging is not a keystore authority path. Wallets, scripts, or
 watchers may carry proofs, but a message bridge, relayer, or Loom-operated
 service must never be treated as proof that an L1 config is valid.
 
+Production-candidate verifier evidence must pass the keystore proof profile
+validator described in `docs/operations/keystore-proof-profile.md`. The profile
+requires immutable verifier bytecode, audit evidence, explicit finality
+assumptions, storage-slot derivation, negative vectors, and proof authority
+rooted in Ethereum L1 state. OP Stack and Arbitrum support remain unsupported
+until their chain-specific verifier profiles and contracts pass that gate.
+
 ## Privacy Notes
 
 The L1 keystore improves cross-chain key management but creates public

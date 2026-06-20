@@ -2,7 +2,7 @@
 
 Research date: 2026-06-14
 
-Updated: 2026-06-16 for vault/security-module comparison.
+Updated: 2026-06-20 for SDK and privacy-runtime comparison.
 
 This document compares Loom with open-source smart-account systems
 that are relevant to passkeys, modular permissions, recovery, and Ethereum L2
@@ -17,8 +17,9 @@ guardian freeze, and narrow recovery path for broken hooks.
 
 Loom is behind mature ecosystems in module interoperability, passkey
 compatibility, permission expressiveness, ERC-1271 application compatibility,
-multi-owner authentication, SDK/tooling, deployment maturity, and audit
-history.
+multi-owner authentication depth, deployment maturity, and audit history.
+The first wallet-engine SDK now exists, but it is still young compared with
+production SDKs from Safe, Biconomy, Alchemy, ZeroDev, and similar providers.
 
 Most importantly, Loom currently uses the ERC-7579 mode-byte layout and
 module-type numbers, but it is not a plug-and-play ERC-7579 account:
@@ -76,7 +77,7 @@ compatible until conformance tests prove the exact supported surface.
 | EIP-7702 | Not supported | Openfort, Porto, delegation frameworks | Deliberate non-goal; monitor without coupling immutable core |
 | Upgradeability | No proxy or admin | Many modular accounts are upgradeable | Loom advantage for unruggability; migrations require new modules/account version |
 | Audits/deployments | Pre-audit, no public deployments | Safe, Coinbase, Nexus, Kernel have stronger deployment history | Independent audit, testnet soak, reproducible deployment manifests |
-| SDK/tooling | Contracts only | Kernel, Safe, Coinbase, Rhinestone have SDK ecosystems | Add reference encoder, account client and compatibility test vectors later |
+| SDK/tooling | Early wallet-engine SDK with lifecycle builders, explicit bundler transport, passkey signer adapter, app-scoped sessions, and privacy-runtime boundary | Kernel, Safe, Coinbase, Rhinestone, Biconomy, Alchemy, and ZeroDev have mature SDK ecosystems | Add live adapters, typed contract encoders, example apps, integration test vectors, and production release evidence |
 
 ## P-256 and L2 findings
 

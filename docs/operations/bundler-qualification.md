@@ -21,6 +21,13 @@ bundler. Passing that suite does not replace Loom account lifecycle tests.
 No API-key-only bundler may be the sole tested path. Release evidence must
 include one locally operated or otherwise permissionless bundler path.
 
+The manifest must include a `lifecycle` entry for every qualified bundler. Each
+entry must prove the same Loom account address completed counterfactual deploy,
+single UserOperation, atomic batch UserOperation, native gas, approved paymaster
+flow, rejected paymaster flow, invalid signature rejection, stale nonce
+rejection, malformed calldata rejection, unsupported mode rejection, and receipt
+reconciliation through that specific bundler. Aggregate receipts are not enough.
+
 ## Evidence Manifest
 
 Release candidates must add a real evidence manifest and validate it with:
@@ -38,6 +45,8 @@ wallet secrets. The validator requires:
 - at least two distinct operators;
 - the expected chain ID and EntryPoint in every bundler response;
 - passing upstream bundler spec-test references;
+- one lifecycle result per bundler, all using the same account address and
+  expected EntryPoint;
 - native gas, approved paymaster, rejected paymaster, invalid signature, stale
   nonce, malformed calldata, unsupported mode, receipt reconciliation, and
   atomic batch checks;

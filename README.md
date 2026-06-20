@@ -28,10 +28,10 @@ Loom is an Ethereum account layer designed around:
 - open standards where they preserve user exit;
 - privacy as a security property, not a cosmetic feature.
 
-This repository contains the on-chain account and authorization layer. It does
-not contain the future mobile wallet, fintech-style user experience, private
-transfer system, light client, cross-chain router, hosted infrastructure, or
-SDK.
+This repository contains the on-chain account and authorization layer plus
+early local SDK packages for wallet builders. It does not contain the future
+mobile wallet, fintech-style user experience, production private transfer
+system, light client, cross-chain router, or hosted infrastructure.
 
 ## Why It Exists
 
@@ -148,6 +148,27 @@ design, tests, and audit.
 - Delayed sovereign migration with destination code/config binding,
   cancellation, expiry, hook enforcement, and atomic execution.
 - Limited ERC-7579 adapter surface with unsupported modes rejected.
+
+## Implemented SDK Layer
+
+Loom now includes early wallet-engine SDK packages for developers who want to
+build clients without depending on Loom-operated infrastructure:
+
+- `@loom/account` builds local lifecycle intents for deployment, sessions,
+  recovery, migration, vault withdrawal, private vault binding, and paymaster
+  policy.
+- `@loom/privacy` provides a Kohaku-compatible host boundary with explicit
+  provider consent, metadata budgets, local scan state, and privacy adapter
+  wrappers.
+- `@loom/sdk` combines the account and privacy layers into a developer-facing
+  wallet engine with `createLoomClient`, app-scoped sessions,
+  `sendCalls`, `sendCallsAndWait`, gas estimation, receipt waiting,
+  explicit bundler transport, passkey signer boundary, middleware hooks, and
+  private-vault operation binding.
+
+The SDK deliberately does not choose a default RPC, bundler, paymaster,
+relayer, signer, recovery coordinator, or privacy provider. Those adapters must
+be supplied by the wallet developer or user.
 
 ## What Is Intentionally Not In Core
 

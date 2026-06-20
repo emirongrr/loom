@@ -13,6 +13,8 @@
     "bundler:qualification:check": "node tools/validate-bundler-qualification.mjs",
     "deployment:manifest:test": "node --test tools/validate-deployment-manifest.test.mjs",
     "deployment:manifest:check": "node tools/validate-deployment-manifest.mjs",
+    "keystore:profile:test": "node --test tools/validate-keystore-proof-profile.test.mjs",
+    "keystore:profile:check": "node tools/validate-keystore-proof-profile.mjs",
     "kohaku:stack:test": "node --test tools/validate-kohaku-stack.test.mjs",
     "kohaku:stack:check": "node tools/validate-kohaku-stack.mjs",
     "account:test": "npm --prefix packages/account test",
