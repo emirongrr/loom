@@ -30,6 +30,9 @@ The manifest must include:
   `package-lock.json`;
 - every deployed Loom contract address, deterministic salt, constructor
   arguments, artifact path, init-code hash, and runtime-code hash;
+- account implementation address and runtime-code hash;
+- proxy creation-code hash and runtime-code hash used by the factory;
+- app registry address, constructor factory address, and runtime-code hash;
 - deployment receipt evidence for every contract, including transaction hash,
   deployer, block number, success status, and gas used when available;
 - explorer source-verification URL for every deployment;
@@ -78,11 +81,14 @@ The evidence directory is intentionally not pre-populated with fake data.
    with successful exit codes.
 5. Record `foundry.toml`, `package-lock.json`, and any additional release
    input file hashes.
-6. Verify each deployment's runtime bytecode against the local artifact.
+6. Verify each deployment's runtime bytecode against the local artifact,
+   including the account implementation, proxy runtime, factory, registry,
+   EntryPoint, validators, hooks, recovery modules, and verifier contracts.
 7. Record deployment transaction hashes, deployer addresses, block numbers,
    receipt status, and gas used.
 8. Verify source on the relevant explorer.
-9. Record EntryPoint bytecode and P-256 support evidence for the target chain.
+9. Record EntryPoint bytecode, account implementation bytecode, proxy bytecode,
+   app registry bytecode, and P-256 support evidence for the target chain.
 10. Collect deployer, independent reproducer, and security reviewer
     attestations over the final manifest hash.
 11. Add the manifest in a dedicated evidence PR and run the validator.

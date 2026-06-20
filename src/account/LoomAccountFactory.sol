@@ -2,17 +2,25 @@
 pragma solidity 0.8.35;
 
 import {LoomAccount} from "./LoomAccount.sol";
+import {AppAccountRegistry} from "../factory/AppAccountRegistry.sol";
+import {LoomAccountProxy} from "../proxy/LoomAccountProxy.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
 contract LoomAccountFactory {
     error InvalidFactory();
 
     IEntryPoint public immutable entryPoint;
+    address public immutable accountImplementation;
+    AppAccountRegistry public immutable registry;
 
-    constructor(IEntryPoint entryPoint_) {
-        if (address(entryPoint_).code.length == 0) revert InvalidFactory();
+    event LoomAccountCreated(address indexed account);
+
+    constructor(IEntryPoint entryPoint_, address accountImplementation_) {
+        if (address(entryPoint_).code.length == 0 || accountImplementation_.code.length == 0) revert InvalidFactory();
         if (address(entryPoint_.senderCreator()).code.length == 0) revert InvalidFactory();
         entryPoint = entryPoint_;
+        accountImplementation = accountImplementation_;
+        registry = new AppAccountRegistry(address(this));
     }
 
     function createAccount(
@@ -25,7 +33,12 @@ contract LoomAccountFactory {
         if (msg.sender != address(entryPoint.senderCreator())) revert InvalidFactory();
         address predicted = getAddress(salt, guardianRoot, guardianThreshold, configHash, modules);
         if (predicted.code.length != 0) return LoomAccount(payable(predicted));
-        account = new LoomAccount{salt: salt}(address(entryPoint), guardianRoot, guardianThreshold, configHash, modules);
+        bytes memory initData = abi.encodeCall(
+            LoomAccount.initialize, (address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
+        );
+        account = LoomAccount(payable(address(new LoomAccountProxy{salt: salt}(accountImplementation, initData))));
+        registry.registerAccount(address(account));
+        emit LoomAccountCreated(address(account));
     }
 
     function getAddress(
@@ -35,10 +48,11 @@ contract LoomAccountFactory {
         bytes32 configHash,
         LoomAccount.ModuleInit[] calldata modules
     ) public view returns (address) {
-        bytes memory initCode = abi.encodePacked(
-            type(LoomAccount).creationCode,
-            abi.encode(address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
+        bytes memory initData = abi.encodeCall(
+            LoomAccount.initialize, (address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
         );
+        bytes memory initCode =
+            abi.encodePacked(type(LoomAccountProxy).creationCode, abi.encode(accountImplementation, initData));
         return
             address(
                 uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(initCode)))))

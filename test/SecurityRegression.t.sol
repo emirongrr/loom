@@ -128,19 +128,24 @@ contract SecurityRegressionTest {
 
     function testFactoryRejectsDirectDeployment() public {
         MockEntryPoint entryPoint = new MockEntryPoint();
-        LoomAccountFactory factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)));
-        LoomAccount.ModuleInit[] memory modules = _modules(address(new MockValidator()));
+        MockValidator validator = new MockValidator();
+        LoomAccountFactory factory =
+            new LoomAccountFactory(IEntryPoint(address(entryPoint)), _implementation(entryPoint, validator));
+        LoomAccount.ModuleInit[] memory modules = _modules(address(validator));
         try factory.createAccount(keccak256("salt"), keccak256("guardians"), 1, keccak256("config"), modules) {
             revert("direct deployment accepted");
         } catch {}
     }
 
     function testInvalidEntryPointRejected() public {
-        try new LoomAccountFactory(IEntryPoint(address(0xBEEF))) {
+        MockEntryPoint validEntryPoint = new MockEntryPoint();
+        MockValidator validator = new MockValidator();
+        address implementation = _implementation(validEntryPoint, validator);
+        try new LoomAccountFactory(IEntryPoint(address(0xBEEF)), implementation) {
             revert("invalid entry point accepted");
         } catch {}
 
-        try new LoomAccountFactory(IEntryPoint(address(new InvalidEntryPointMock()))) {
+        try new LoomAccountFactory(IEntryPoint(address(new InvalidEntryPointMock())), implementation) {
             revert("entry point without sender creator accepted");
         } catch {}
     }
@@ -603,6 +608,19 @@ contract SecurityRegressionTest {
     function _modules(address validator) internal pure returns (LoomAccount.ModuleInit[] memory modules) {
         modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validator, "");
+    }
+
+    function _implementation(MockEntryPoint entryPoint, MockValidator validator) internal returns (address) {
+        LoomAccount.ModuleInit[] memory modules = _modules(address(validator));
+        return address(
+            new LoomAccount(
+                address(entryPoint),
+                keccak256("implementation-guardians"),
+                1,
+                keccak256("implementation-config"),
+                modules
+            )
+        );
     }
 
     function _scheduleAndExecute(LoomAccount account, address target, bytes memory data, uint48 delay) internal {

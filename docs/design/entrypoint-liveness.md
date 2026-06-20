@@ -14,8 +14,7 @@ ordinary mutable account setting:
 
 Coinbase Smart Wallet also permits direct calls from an address owner. That
 provides a useful liveness fallback for address owners, but it does not by
-itself give a passkey-only owner a permissionless transaction publisher and
-its upgradeable proxy tradeoff is outside Loom's immutable model.
+itself give a passkey-only owner a permissionless transaction publisher.
 
 ERC-4337 requires an account to validate that `validateUserOp` was called by a
 trusted EntryPoint, and the signed UserOperation hash binds the EntryPoint.
@@ -33,7 +32,8 @@ resulting transaction like any other transaction.
 
 ## Loom decision
 
-Loom retains one immutable EntryPoint. Adding an EntryPoint registry,
+Loom stores one EntryPoint per account during construction or initialization.
+Adding an EntryPoint registry,
 developer switch, guardian switch, or immediate mutable allowlist would create
 a new censorship or takeover surface.
 

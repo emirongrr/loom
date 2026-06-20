@@ -95,7 +95,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
-    address public immutable entryPoint;
+    address public entryPoint;
     bytes32 public configHash;
     uint64 public configVersion;
     bytes32 public guardianRoot;
@@ -145,49 +145,32 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bytes32 configHash_,
         ModuleInit[] memory modules
     ) payable {
-        if (entryPoint_.code.length == 0 || configHash_ == bytes32(0) || modules.length == 0) {
-            revert InvalidInitialization();
-        }
-        if (guardianRoot_ == bytes32(0) || guardianThreshold_ == 0 || guardianThreshold_ > MAX_GUARDIAN_THRESHOLD) {
-            revert InvalidGuardianConfig();
-        }
-        entryPoint = entryPoint_;
-        guardianRoot = guardianRoot_;
-        guardianThreshold = guardianThreshold_;
-        configHash = configHash_;
-        configVersion = 1;
-        for (uint256 i; i < modules.length; ++i) {
-            _installModule(modules[i].moduleTypeId, modules[i].module, modules[i].initData);
-        }
-        if (_validatorCount == 0) revert InvalidGuardianConfig();
-        emit ConfigUpdated(configHash_, 1);
-        emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
+        _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
     receive() external payable {}
 
-    function initializeDelegatedAccount(
+    function initialize(
+        address entryPoint_,
         bytes32 guardianRoot_,
         uint8 guardianThreshold_,
         bytes32 configHash_,
         ModuleInit[] calldata modules
     ) external payable {
-        if (msg.sender != address(this) || configVersion != 0 || configHash_ == bytes32(0) || modules.length == 0) {
+        _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
+    }
+
+    function initializeDelegatedAccount(
+        address entryPoint_,
+        bytes32 guardianRoot_,
+        uint8 guardianThreshold_,
+        bytes32 configHash_,
+        ModuleInit[] calldata modules
+    ) external payable {
+        if (msg.sender != address(this)) {
             revert InvalidInitialization();
         }
-        if (guardianRoot_ == bytes32(0) || guardianThreshold_ == 0 || guardianThreshold_ > MAX_GUARDIAN_THRESHOLD) {
-            revert InvalidGuardianConfig();
-        }
-        guardianRoot = guardianRoot_;
-        guardianThreshold = guardianThreshold_;
-        configHash = configHash_;
-        configVersion = 1;
-        for (uint256 i; i < modules.length; ++i) {
-            _installModule(modules[i].moduleTypeId, modules[i].module, modules[i].initData);
-        }
-        if (_validatorCount == 0) revert InvalidGuardianConfig();
-        emit ConfigUpdated(configHash_, 1);
-        emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
+        _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
@@ -808,6 +791,32 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
         emit ModuleInstalled(moduleTypeId, module);
         if (_executingScheduled) _advanceConfig(keccak256(abi.encode("MODULE_INSTALLED", moduleTypeId, module)));
+    }
+
+    function _initialize(
+        address entryPoint_,
+        bytes32 guardianRoot_,
+        uint8 guardianThreshold_,
+        bytes32 configHash_,
+        ModuleInit[] memory modules
+    ) internal {
+        if (configVersion != 0 || entryPoint_.code.length == 0 || configHash_ == bytes32(0) || modules.length == 0) {
+            revert InvalidInitialization();
+        }
+        if (guardianRoot_ == bytes32(0) || guardianThreshold_ == 0 || guardianThreshold_ > MAX_GUARDIAN_THRESHOLD) {
+            revert InvalidGuardianConfig();
+        }
+        entryPoint = entryPoint_;
+        guardianRoot = guardianRoot_;
+        guardianThreshold = guardianThreshold_;
+        configHash = configHash_;
+        configVersion = 1;
+        for (uint256 i; i < modules.length; ++i) {
+            _installModule(modules[i].moduleTypeId, modules[i].module, modules[i].initData);
+        }
+        if (_validatorCount == 0) revert InvalidGuardianConfig();
+        emit ConfigUpdated(configHash_, 1);
+        emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
     }
 
     function _advanceConfig(bytes32 changeHash) internal {

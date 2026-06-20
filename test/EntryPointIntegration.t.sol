@@ -27,8 +27,17 @@ contract EntryPointIntegrationTest {
 
     function setUp() public {
         entryPoint = new EntryPoint();
-        factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)));
         validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](1);
+        implementationModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount implementation = new LoomAccount(
+            address(entryPoint),
+            keccak256("implementation-guardians"),
+            1,
+            keccak256("implementation-config"),
+            implementationModules
+        );
+        factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)), address(implementation));
         target = new MockTarget();
     }
 

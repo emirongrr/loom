@@ -38,8 +38,11 @@ contract EIP7702IntegrationTest {
             abi.encodeCall(ECDSAValidator.initialize, (delegated, address(hook)))
         );
 
-        require(_tryInitialize(address(0xB0B), delegated, modules) == false, "external caller initialized 7702 account");
-        require(_tryInitialize(delegated, delegated, modules), "self initialization failed");
+        require(
+            _tryInitialize(address(0xB0B), delegated, address(entryPoint), modules) == false,
+            "external caller initialized 7702 account"
+        );
+        require(_tryInitialize(delegated, delegated, address(entryPoint), modules), "self initialization failed");
 
         LoomAccount account = LoomAccount(payable(delegated));
         require(account.configVersion() == 1, "config version missing");
@@ -79,7 +82,7 @@ contract EIP7702IntegrationTest {
             .call(
                 abi.encodeCall(
                     LoomAccount.initializeDelegatedAccount,
-                    (keccak256("new-guardians"), 1, keccak256("new-config"), modules)
+                    (address(entryPoint), keccak256("new-guardians"), 1, keccak256("new-config"), modules)
                 )
             );
 
@@ -96,14 +99,17 @@ contract EIP7702IntegrationTest {
         vm.etch(delegated, address(template).code);
     }
 
-    function _tryInitialize(address sender, address delegated, LoomAccount.ModuleInit[] memory modules)
-        internal
-        returns (bool ok)
-    {
+    function _tryInitialize(
+        address sender,
+        address delegated,
+        address entryPoint,
+        LoomAccount.ModuleInit[] memory modules
+    ) internal returns (bool ok) {
         vm.prank(sender);
         (ok,) = delegated.call(
             abi.encodeCall(
-                LoomAccount.initializeDelegatedAccount, (keccak256("guardians"), 1, keccak256("7702-config"), modules)
+                LoomAccount.initializeDelegatedAccount,
+                (entryPoint, keccak256("guardians"), 1, keccak256("7702-config"), modules)
             )
         );
     }

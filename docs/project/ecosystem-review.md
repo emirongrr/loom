@@ -75,7 +75,7 @@ compatible until conformance tests prove the exact supported surface.
 | Token receivers | ETH plus stateless ERC-721/ERC-1155 safe-transfer receivers | Common in mature smart accounts | Add integration vectors for major token implementations |
 | Contract creation | Can call an external factory | Alchemy can CREATE/CREATE2 directly | Optional; avoid unless a concrete wallet workflow needs it |
 | EIP-7702 | Not supported | Openfort, Porto, delegation frameworks | Deliberate non-goal; monitor without coupling immutable core |
-| Upgradeability | No proxy or admin | Many modular accounts are upgradeable | Loom advantage for unruggability; migrations require new modules/account version |
+| Upgradeability | Immutable shared implementation proxy with no admin or upgrade selector | Many modular accounts are upgradeable | Loom keeps unruggability while reducing deploy cost; new versions require migration, not in-place upgrades |
 | Audits/deployments | Pre-audit, no public deployments | Safe, Coinbase, Nexus, Kernel have stronger deployment history | Independent audit, testnet soak, reproducible deployment manifests |
 | SDK/tooling | Early wallet-engine SDK with lifecycle builders, explicit bundler transport, passkey signer adapter, app-scoped sessions, and privacy-runtime boundary | Kernel, Safe, Coinbase, Rhinestone, Biconomy, Alchemy, and ZeroDev have mature SDK ecosystems | Add live adapters, typed contract encoders, example apps, integration test vectors, and production release evidence |
 
@@ -98,8 +98,8 @@ supported browsers and platforms are mandatory before release.
 
 ## What Loom does better
 
-- No upgrade proxy, implementation administrator, developer recovery path, or
-  privileged factory.
+- No proxy upgrade key, mutable implementation slot, implementation
+  administrator, developer recovery path, or privileged factory.
 - Configuration and module changes are delayed and invalidate stale scheduled
   operations.
 - Primary passkey authority is intentionally limited to policy-classified

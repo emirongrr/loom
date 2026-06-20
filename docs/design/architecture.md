@@ -2,10 +2,14 @@
 
 ## Principles
 
-Loom accounts are immutable per-account contracts. There is no implementation
-proxy, admin key, developer recovery path, or privileged factory operation.
-Every authority must be installed by the account and exercised through an
-installed validator.
+Loom accounts are deployed through an immutable shared implementation proxy to
+reduce account creation cost. This is not an upgrade mechanism: each proxy
+stores its implementation address as an immutable code value, has no admin or
+upgrade selector, and cannot change implementation after deployment. New Loom
+versions require a new implementation, a new factory, and explicit user
+migration rather than an in-place proxy upgrade. There is no developer recovery
+path or privileged factory operation. Every authority must be installed by the
+account and exercised through an installed validator.
 
 The account implements the ERC-4337 validation entry point, provider-independent
 direct signed execution, ERC-1271 signature validation, and Loom-specific
@@ -23,10 +27,10 @@ authority.
 
 The same account runtime can also be used as an EIP-7702 delegation target for
 EOAs that need to preserve an existing address. A delegated EOA must perform a
-self-call to `initializeDelegatedAccount(...)` before it has Loom authority.
-Constructor-deployed accounts cannot use this initializer because their
-`configVersion` is already non-zero. EIP-7702 behavior is documented in
-`docs/design/eip-7702.md`.
+self-call to `initializeDelegatedAccount(...)` with an explicitly selected
+EntryPoint before it has Loom authority. Constructor-deployed accounts cannot
+use this initializer because their `configVersion` is already non-zero. EIP-7702
+behavior is documented in `docs/design/eip-7702.md`.
 
 The account also exposes a delayed sovereign migration state machine. A user
 can schedule an exact atomic batch that moves assets or authority toward a

@@ -290,8 +290,8 @@ contract Base64UrlTest {
 contract LoomAccountFactoryTest {
     function testFactoryAddressIsDeterministic() public {
         MockEntryPoint entryPoint = new MockEntryPoint();
-        LoomAccountFactory factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)));
         MockValidator validator = new MockValidator();
+        LoomAccountFactory factory = _factory(entryPoint, validator);
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         bytes32 salt = keccak256("loom-test");
@@ -299,25 +299,31 @@ contract LoomAccountFactoryTest {
         LoomAccount deployed =
             entryPoint.createAccount(factory, salt, keccak256("guardians"), 1, keccak256("config"), modules);
         require(address(deployed) == predicted, "unexpected create2 address");
+        require(factory.registry().isAccount(predicted), "registry did not record account");
+        require(factory.registry().accountCount() == 1, "registry count missing");
         require(
             address(entryPoint.createAccount(factory, salt, keccak256("guardians"), 1, keccak256("config"), modules))
                 == predicted,
             "not idempotent"
         );
+        require(factory.registry().accountCount() == 1, "duplicate deployment inflated registry count");
     }
 
     function testFactoryRejectsInvalidEntryPointAndUnauthorizedCreation() public {
-        try new LoomAccountFactory(IEntryPoint(address(0x1234))) {
+        MockEntryPoint validEntryPoint = new MockEntryPoint();
+        MockValidator implementationValidator = new MockValidator();
+        address implementation = _implementation(validEntryPoint, implementationValidator);
+        try new LoomAccountFactory(IEntryPoint(address(0x1234)), implementation) {
             revert("invalid entrypoint accepted");
         } catch {}
 
-        try new LoomAccountFactory(IEntryPoint(address(new BadSenderCreatorEntryPoint()))) {
+        try new LoomAccountFactory(IEntryPoint(address(new BadSenderCreatorEntryPoint())), implementation) {
             revert("entrypoint without senderCreator code accepted");
         } catch {}
 
         MockEntryPoint entryPoint = new MockEntryPoint();
-        LoomAccountFactory factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)));
         MockValidator validator = new MockValidator();
+        LoomAccountFactory factory = _factory(entryPoint, validator);
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
 
@@ -329,6 +335,24 @@ contract LoomAccountFactoryTest {
                 )
             );
         require(!created, "non-senderCreator created account");
+    }
+
+    function _factory(MockEntryPoint entryPoint, MockValidator validator) internal returns (LoomAccountFactory) {
+        return new LoomAccountFactory(IEntryPoint(address(entryPoint)), _implementation(entryPoint, validator));
+    }
+
+    function _implementation(MockEntryPoint entryPoint, MockValidator validator) internal returns (address) {
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        return address(
+            new LoomAccount(
+                address(entryPoint),
+                keccak256("implementation-guardians"),
+                1,
+                keccak256("implementation-config"),
+                modules
+            )
+        );
     }
 }
 

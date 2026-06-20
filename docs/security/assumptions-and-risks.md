@@ -13,6 +13,7 @@ Security claims are valid only under the assumptions listed here and in
 | Validators | Approve UserOperations within their profile | Key compromise or validator implementation bug | Timelocked lifecycle, narrow validators, complete-set recovery |
 | Hooks | Inspect and block execution | Policy bypass or temporary denial of service | Hook snapshot semantics, fail-closed behavior, exact delayed-removal bypass |
 | Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
+| Account proxy | Dispatches account calls to a shared implementation | Initialization bug, storage-layout mismatch, implementation-code dependency, mistaken upgrade assumption | Immutable implementation pointer, no admin or upgrade selector, one-time initialization, codehash manifests, proxy-specific tests |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
 | Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, non-frozen account cancellation or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
@@ -22,21 +23,33 @@ Security claims are valid only under the assumptions listed here and in
 | Privacy adapters | Build private receive, transfer, shielded-pool, or private-execution flows | Account graph leakage, relayer/indexer/prover dependency, hardcoded RPC leakage, wrong bridge/finality assumption, false privacy claim, legally sensitive protocol exposure | Kohaku SDK stack, local-first scanning, provider profiles, metadata budgets, protocol-specific threat models, native exit fallback, adapter-specific release gates |
 | Kohaku account-security tooling | Provides a future hybrid two-signature ERC-4337 account compatibility or migration target through the SDK stack | Unaudited verifier import, excessive gas, large public keys, wrong migration destination, hidden account replacement, single-signature fallback by mistake | Source-level tracking only, no core import, delayed migration, guardian cancellation, independent audit gate, explicit hybrid verification tests |
 | Session validators | Approve bounded calls | Permission parser or nonce-key mistake | Exact bounds, immediate revoke, dedicated nonce key |
-| Factory and deployment | Select immutable account inputs | Wrong EntryPoint, module, guardian root, or verifier | Reproducible manifests and independent verification |
+| Factory and deployment | Select immutable account inputs and implementation | Wrong EntryPoint, account implementation, module, guardian root, or verifier | Reproducible manifests, implementation codehash verification, deterministic address checks, independent verification |
+| App registry | Records accounts deployed by one app factory for analytics | Account correlation, count inflation, mistaken authority source | Per-app registry, factory-only registration, duplicate rejection, no execution dependency, clear privacy documentation |
 | EIP-7702 delegation | Lets an EOA preserve its address while using Loom runtime code | Malicious persistent delegation, wrong template, uninitialized delegated storage, cross-chain authorization blast radius | Self-only one-time initialization, template bytecode verification, chain-specific authorization, explicit client warnings |
 | Wallet client | Constructs and explains authority | Clear-signing failure, metadata leakage, unsafe defaults | Open-source independent clients and the walkaway test |
 | Verified wallet client | Displays and constructs operations from chain state | False balances, stale nonces, hidden recovery, wrong roots, account graph leakage | Light-client verification, explicit unknown states, user-selected endpoints, privacy-preserving scanning |
 
 ## Contract limitations
 
+- Proxy-deployed accounts rely on the selected shared implementation code
+  continuing to exist and match the deployment manifest. The proxy cannot
+  change implementation, so a flawed implementation requires explicit user
+  migration to a new account rather than an upgrade transaction.
+- The proxy uses `delegatecall` only for fixed implementation dispatch. Loom
+  still rejects user/module-requested delegatecall execution modes. Storage
+  layout changes in future implementations must be treated as new-account
+  migration work, not as in-place upgrade work.
+- The app registry is not an account authority source. It can support app-local
+  account counts and public TVL indexing, but registry membership does not
+  prove user consent, wallet installation, ownership, or private balances.
 - The account permanently binds one EntryPoint for ERC-4337. Direct signed
   execution preserves provider-independent publication. Immediate direct
   execution remains policy-limited; arbitrary high-risk calls retain their
   visible delay. The migration state machine provides delayed account exit but
   does not change the EntryPoint for the source account.
-- EIP-7702 delegated accounts inherit the EntryPoint immutable embedded in the
-  delegated Loom template. Selecting the wrong template is equivalent to
-  selecting the wrong account implementation for that EOA.
+- EIP-7702 delegated accounts write the selected EntryPoint during self-only
+  initialization. Selecting the wrong runtime or initializer EntryPoint is
+  equivalent to selecting the wrong account implementation for that EOA.
 - EIP-7702 authorization is persistent and can be phished. Loom contracts can
   require self-only initialization and normal account policy after setup, but
   they cannot make a user-signed delegation to malicious code safe.
@@ -175,6 +188,10 @@ Security claims are valid only under the assumptions listed here and in
     must revalidate those overrides against upstream Kohaku releases and keep
     isolation tests for untrusted wallet input and network-facing runtime
     paths.
+17. Immutable proxy deployment is implemented but unaudited. Production release
+    requires independent review of proxy initialization, storage layout,
+    implementation codehash binding, registry non-authority, deployment
+    manifests, gas tradeoffs, and migration guidance.
 
 ## Cypherpunk acceptance rule
 

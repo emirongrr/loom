@@ -1,13 +1,16 @@
 # Audit Scope
 
-Loom consists of immutable smart-account contracts. The audit must evaluate
-the complete interaction between the account core, validators, hooks, factory,
-and the official ERC-4337 v0.9 EntryPoint.
+Loom consists of immutable smart-account contracts deployed through a
+non-upgradeable shared implementation proxy. The audit must evaluate the
+complete interaction between the account core, proxy, registry, validators,
+hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 
 ## In-scope production contracts
 
 - `src/account/LoomAccount.sol`
 - `src/account/LoomAccountFactory.sol`
+- `src/proxy/LoomAccountProxy.sol`
+- `src/factory/AppAccountRegistry.sol`
 - `src/hooks/PolicyHook.sol`
 - `src/hooks/VaultHook.sol`
 - `src/keystore/EthereumL1KeystoreVerifier.sol`
@@ -34,7 +37,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
 3. Configuration changes cannot execute before the required delay.
 4. A config change invalidates operations committed to an older
    `configVersion`.
-5. Unsupported execution modes and all delegatecall execution revert.
+5. Unsupported execution modes and all user/module-requested delegatecall
+   execution revert. The only delegatecall in production scope is the
+   non-upgradeable proxy dispatch to its immutable implementation.
 6. Batch execution is atomic.
 7. Frozen accounts cannot perform normal execution.
 8. A single guardian can freeze but cannot transfer assets.
@@ -95,6 +100,13 @@ especially EntryPoint validation, nonce handling, and sender creation.
     local delay, unexpired window, and unchanged local `configVersion`.
 34. Keystore sync cancellation cannot execute calls, cannot move assets, and
     rejects duplicate or invalid guardian approvals.
+35. A proxy account's implementation address cannot change after deployment,
+    has no admin or upgrade selector, and stores account state in the proxy
+    rather than in the shared implementation.
+36. The app registry is analytics-only: only its immutable factory can
+    register accounts, duplicate registration cannot inflate `accountCount`,
+    and registry membership grants no execution, recovery, or migration
+    authority.
 
 ## Reviewer focus areas
 
@@ -114,6 +126,11 @@ especially EntryPoint validation, nonce handling, and sender creation.
   validator replacement, and recovery-module authority.
 - ERC-4337 validation behavior, malformed signatures, prefunding, and nonce
   semantics.
+- Proxy initialization, immutable implementation dispatch, revert bubbling,
+  storage separation from the implementation, and absence of upgrade/admin
+  selectors.
+- App registry factory-only registration, duplicate handling, and its
+  non-authority relationship to account execution.
 - Direct-execution domain separation, nonce/config invalidation, explicit
   validator capability, and hook behavior when the caller is an arbitrary
   transaction publisher rather than the EntryPoint.

@@ -9,7 +9,7 @@ every Loom release because the methodology evolves.
 |---|---|---|
 | Account abstraction | ERC-4337 validation and open validator selection | `LoomAccount.validateUserOp` |
 | Atomic batching | Batch reverts entirely when any subcall fails | `LoomAccount.execute` |
-| Account unruggability | No admin, proxy, or developer recovery authority | Account and factory constructors |
+| Account unruggability | Non-upgradeable immutable proxy, no admin, no mutable implementation, and no developer recovery authority | Proxy, account, and factory constructors |
 | Account portability | ERC-1271 and ERC-4337; Loom-specific limited module profile | Public interfaces |
 | Account recovery | Visible guardian-threshold proposal, delay, cancellation, expiry, and atomic validator/guardian rotation | `RecoveryManager`, account recovery module |
 | Permissions management | Exact-call and granular enumerable revocable session permissions plus allowance revoke | `SessionKeyValidator`, `GranularSessionValidator`, `revokeTokenAllowance` |
