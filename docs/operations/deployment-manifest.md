@@ -24,8 +24,14 @@ The manifest must include:
   verifier address and code hash;
 - git commit, clean source archive hash, Solidity version, Foundry version,
   optimizer settings, `viaIR`, and EVM version;
+- reproducibility commands for install, build, verification, and manifest
+  validation, all with zero exit status;
+- reproducibility file hashes for at least `foundry.toml` and
+  `package-lock.json`;
 - every deployed Loom contract address, deterministic salt, constructor
   arguments, artifact path, init-code hash, and runtime-code hash;
+- deployment receipt evidence for every contract, including transaction hash,
+  deployer, block number, success status, and gas used when available;
 - explorer source-verification URL for every deployment;
 - checks proving clean-checkout build, local bytecode reproduction,
   EntryPoint verification, `senderCreator` verification, P-256 verification,
@@ -34,7 +40,9 @@ The manifest must include:
   dependency.
 
 The validator recomputes init-code and runtime-code hashes from Foundry
-artifacts and rejects mismatches. It intentionally does not fetch explorers or
+artifacts, recomputes configured reproducibility file hashes, and rejects
+mismatches. It also rejects explorer URLs containing credentials or common
+secret-bearing query parameters. It intentionally does not fetch explorers or
 RPC endpoints; network evidence must be reviewed separately and should never
 require committing API keys.
 
@@ -57,14 +65,22 @@ The evidence directory is intentionally not pre-populated with fake data.
 1. Freeze the audited source commit.
 2. Build from a clean checkout with pinned dependencies.
 3. Deploy with deterministic salts and public constructor arguments.
-4. Verify each deployment's runtime bytecode against the local artifact.
-5. Verify source on the relevant explorer.
-6. Record EntryPoint bytecode and P-256 support evidence for the target chain.
-7. Add the manifest in a dedicated evidence PR and run the validator.
+4. Record the exact install, build, verification, and manifest-check commands
+   with successful exit codes.
+5. Record `foundry.toml`, `package-lock.json`, and any additional release
+   input file hashes.
+6. Verify each deployment's runtime bytecode against the local artifact.
+7. Record deployment transaction hashes, deployer addresses, block numbers,
+   receipt status, and gas used.
+8. Verify source on the relevant explorer.
+9. Record EntryPoint bytecode and P-256 support evidence for the target chain.
+10. Add the manifest in a dedicated evidence PR and run the validator.
 
 ## Non-Goals
 
 - No private keys, API keys, RPC URLs with credentials, or wallet secrets.
+- No explorer URLs with `apikey`, `api_key`, `access_token`, `secret`, or
+  `token` query parameters.
 - No mock deployment manifests.
 - No production readiness claim from manifest validation alone.
 - No chain support unless EntryPoint, P-256 behavior, explorer verification,
