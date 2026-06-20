@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const PROTOCOLS = new Set(["railgun", "privacy-pool", "aztec"]);
 const SURFACES = new Set(["rpc", "indexer", "relayer", "prover", "bridge", "timing", "browser-storage", "backup"]);
+const SERVICE_KINDS = new Set(["community", "self-hosted", "protocol", "third-party"]);
 const REQUIRED_CHECKS = [
   "noDefaultProvider",
   "explicitConsent",
@@ -40,6 +41,7 @@ export function validatePrivacyAdapterProfile(profile) {
   assertScan(profile.scan);
   assertOperations(profile.operations, profile.protocol);
   assertFailures(profile.failures);
+  assertRehearsal(profile.rehearsal, profile);
   assertChecks(profile.checks, profile.protocol);
 }
 
@@ -54,6 +56,7 @@ function assertTopLevel(profile) {
     "scan",
     "operations",
     "failures",
+    "rehearsal",
     "checks"
   ]) {
     if (!(key in profile)) throw new Error(`missing top-level privacy adapter profile field: ${key}`);
@@ -161,6 +164,96 @@ function assertFailures(failures) {
   if (failures.relayer.mandatory !== false) throw new Error("failures.relayer.mandatory must be false");
 }
 
+function assertRehearsal(rehearsal, profile) {
+  assertObject(rehearsal, "rehearsal");
+  assertObject(rehearsal.network, "rehearsal.network");
+  if (rehearsal.network.chainId !== profile.chainId) {
+    throw new Error("rehearsal.network.chainId must match profile.chainId");
+  }
+  if (!["testnet", "mainnet"].includes(rehearsal.network.environment)) {
+    throw new Error("rehearsal.network.environment must be testnet or mainnet");
+  }
+  if (typeof rehearsal.network.name !== "string" || rehearsal.network.name.length === 0) {
+    throw new Error("rehearsal.network.name is required");
+  }
+
+  assertObject(rehearsal.sdkIntegration, "rehearsal.sdkIntegration");
+  if (rehearsal.sdkIntegration.package !== profile.dependency.package) {
+    throw new Error("rehearsal.sdkIntegration.package must match dependency.package");
+  }
+  if (rehearsal.sdkIntegration.version !== profile.dependency.version) {
+    throw new Error("rehearsal.sdkIntegration.version must match dependency.version");
+  }
+  if (rehearsal.sdkIntegration.mockProtocol !== false) {
+    throw new Error("rehearsal.sdkIntegration.mockProtocol must be false");
+  }
+  if (rehearsal.sdkIntegration.kohakuHostBoundary !== true) {
+    throw new Error("rehearsal.sdkIntegration.kohakuHostBoundary must be true");
+  }
+  if (typeof rehearsal.sdkIntegration.reference !== "string" || rehearsal.sdkIntegration.reference.length === 0) {
+    throw new Error("rehearsal.sdkIntegration.reference is required");
+  }
+
+  assertObject(rehearsal.localScan, "rehearsal.localScan");
+  assertBytes32(rehearsal.localScan.storageScopeHash, "rehearsal.localScan.storageScopeHash");
+  assertBytes32(rehearsal.localScan.initialCheckpointHash, "rehearsal.localScan.initialCheckpointHash");
+  assertBytes32(rehearsal.localScan.finalCheckpointHash, "rehearsal.localScan.finalCheckpointHash");
+  if (rehearsal.localScan.initialCheckpointHash === rehearsal.localScan.finalCheckpointHash) {
+    throw new Error("rehearsal.localScan must advance checkpoint");
+  }
+  if (rehearsal.localScan.staleCheckpointRejected !== true) {
+    throw new Error("rehearsal.localScan.staleCheckpointRejected must be true");
+  }
+  if (rehearsal.localScan.resetScopedStateTested !== true) {
+    throw new Error("rehearsal.localScan.resetScopedStateTested must be true");
+  }
+
+  assertObject(rehearsal.operations, "rehearsal.operations");
+  assertOperationEvidence(rehearsal.operations.shield, "rehearsal.operations.shield");
+  assertOperationEvidence(rehearsal.operations.privateTransfer, "rehearsal.operations.privateTransfer");
+  assertOperationEvidence(rehearsal.operations.unshield, "rehearsal.operations.unshield");
+  assertVaultEvidence(rehearsal.operations.vaultProtectedUnshield);
+
+  assertObject(rehearsal.services, "rehearsal.services");
+  assertServiceEvidence(rehearsal.services.indexer, "rehearsal.services.indexer");
+  assertServiceEvidence(rehearsal.services.relayer, "rehearsal.services.relayer");
+  assertServiceEvidence(rehearsal.services.prover, "rehearsal.services.prover");
+}
+
+function assertOperationEvidence(operation, label) {
+  assertObject(operation, label);
+  if (typeof operation.operationId !== "string" || operation.operationId.length === 0) {
+    throw new Error(`${label}.operationId is required`);
+  }
+  assertBytes32(operation.metadataBudgetHash, `${label}.metadataBudgetHash`);
+  assertBytes32(operation.permissionHash, `${label}.permissionHash`);
+  if (!Number.isSafeInteger(operation.expiry) || operation.expiry <= 0) {
+    throw new Error(`${label}.expiry must be positive`);
+  }
+  if (operation.maxFeeBound !== true) throw new Error(`${label}.maxFeeBound must be true`);
+  if (operation.receiptStatus !== "success") throw new Error(`${label}.receiptStatus must be success`);
+}
+
+function assertVaultEvidence(vault) {
+  assertObject(vault, "rehearsal.operations.vaultProtectedUnshield");
+  assertBytes32(vault.privateOperationHash, "rehearsal.operations.vaultProtectedUnshield.privateOperationHash");
+  assertBytes32(vault.vaultIntentHash, "rehearsal.operations.vaultProtectedUnshield.vaultIntentHash");
+  assertTxHash(vault.scheduleTxHash, "rehearsal.operations.vaultProtectedUnshield.scheduleTxHash");
+  assertTxHash(vault.executeTxHash, "rehearsal.operations.vaultProtectedUnshield.executeTxHash");
+  if (!Number.isSafeInteger(vault.delaySeconds) || vault.delaySeconds <= 0) {
+    throw new Error("rehearsal.operations.vaultProtectedUnshield.delaySeconds must be positive");
+  }
+}
+
+function assertServiceEvidence(service, label) {
+  assertObject(service, label);
+  if (!SERVICE_KINDS.has(service.kind)) throw new Error(`${label}.kind is invalid`);
+  if (service.mandatory !== false) throw new Error(`${label}.mandatory must be false`);
+  assertOrigin(service.origin, `${label}.origin`);
+  if (service.failureModeTested !== true) throw new Error(`${label}.failureModeTested must be true`);
+  if (service.failureClassified !== true) throw new Error(`${label}.failureClassified must be true`);
+}
+
 function assertChecks(checks, protocol) {
   assertObject(checks, "checks");
   for (const key of REQUIRED_CHECKS) {
@@ -173,4 +266,29 @@ function assertChecks(checks, protocol) {
 
 function assertObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
+}
+
+function assertBytes32(value, label) {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${label} must be bytes32`);
+  }
+}
+
+function assertTxHash(value, label) {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${label} must be a transaction hash`);
+  }
+}
+
+function assertOrigin(value, label) {
+  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} is required`);
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid URL origin`);
+  }
+  if (url.origin !== value || url.pathname !== "/" || url.search !== "" || url.hash !== "") {
+    throw new Error(`${label} must be a URL origin without path, query, or fragment`);
+  }
 }

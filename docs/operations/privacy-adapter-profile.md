@@ -28,6 +28,18 @@ Each production-candidate profile must include:
 - failure classification for indexer, relayer, prover, RPC, and timing errors;
 - indexer failure tests proving failed sync does not mutate checkpoints;
 - relayer evidence proving relayers are optional, never mandatory;
+- live rehearsal evidence proving the adapter used the pinned production SDK,
+  not a mock protocol;
+- local scan evidence proving scoped checkpoints advanced, stale checkpoints
+  were rejected, and scoped reset behavior was tested;
+- shield, private transfer, and unshield operation evidence with metadata
+  budget hashes, permission hashes, fee bounds, expiries, and successful
+  receipts;
+- vault-protected unshield evidence with private operation hash, vault intent
+  hash, delayed schedule transaction, delayed execute transaction, and delay
+  duration;
+- service evidence for indexer, relayer, and prover origins, including tested
+  and classified failure behavior, with each service marked optional;
 - native Loom exit fallback and no account-wide authority for the adapter.
 
 Aztec profiles additionally require bridge-finality review because the adapter
@@ -43,9 +55,38 @@ Production evidence files should be added only after live rehearsal with the
 actual protocol dependency, network, relayer/indexer/prover behavior, and vault
 interaction path.
 
+## Rehearsal Evidence
+
+The `rehearsal` section is the production claim boundary. It must show that the
+adapter executed through the pinned dependency package and version, crossed the
+Loom privacy host boundary, and avoided mock protocol paths.
+
+Required rehearsal fields:
+
+- `network`: chain id, environment (`testnet` or `mainnet`), and network name;
+- `sdkIntegration`: dependency package, dependency version, `mockProtocol:
+  false`, `kohakuHostBoundary: true`, and a review reference;
+- `localScan`: storage scope hash, initial checkpoint hash, final checkpoint
+  hash, stale checkpoint rejection, and scoped reset testing;
+- `operations.shield`, `operations.privateTransfer`, and
+  `operations.unshield`: operation id, metadata budget hash, permission hash,
+  expiry, fee bound, and successful receipt status;
+- `operations.vaultProtectedUnshield`: private operation hash, vault intent
+  hash, delayed schedule transaction hash, delayed execute transaction hash,
+  and delay duration;
+- `services.indexer`, `services.relayer`, and `services.prover`: service kind,
+  URL origin only, `mandatory: false`, failure-mode test evidence, and
+  classified failure behavior.
+
+The validator intentionally rejects provider URLs with paths, query strings, or
+fragments. Evidence may identify a service origin, but it must not commit an
+account, viewing key, app scope, note id, or user-specific query into a reusable
+profile.
+
 ## Non-Goals
 
 - No production private-transfer claim from wrapper tests alone.
+- No production private-transfer claim from mock protocol rehearsal.
 - No default Railgun, privacy-pool, Aztec, relayer, indexer, prover, or scanner.
 - No private protocol dependency inside Loom core contracts.
 - No viewing key, scanning key, private note, or account graph in public state.
