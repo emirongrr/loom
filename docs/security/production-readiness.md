@@ -78,7 +78,9 @@ does not make a deployment production-ready.
 - Enforced aggregate production-source coverage gate with at least 80% line
   coverage and 60% branch coverage across `src/**`, plus the same per-module
   gate for security-critical account, factory, adapter, hook, keystore,
-  recovery, and validator contracts.
+  recovery, session, and validator contracts. The gate also reports named
+  account-core, recovery, vault, and session risk groups so audit reviewers can
+  see which authority boundary is under-covered.
 - Source scan confirming experimental account cryptography is absent from
   production contract scope unless an explicit audit-candidate decision has
   moved it into scope.
@@ -92,7 +94,8 @@ coverage, executes them. The current unfiltered report excluding formal
 harnesses is approximately 91.4% lines and 64.4% branches across production
 source. CI enforces both the aggregate production-source gate and per-module
 80% line / 60% branch gates for the security-critical production modules
-listed in `tools/check-coverage-gate.mjs`.
+listed in `tools/check-coverage-gate.mjs`, plus named risk-group coverage for
+account-core, recovery, vault, and session authority.
 
 Slither's `arbitrary-send-eth` warning is locally suppressed only on the
 account execution call because arbitrary authorized execution is the core
