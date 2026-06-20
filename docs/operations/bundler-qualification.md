@@ -54,8 +54,22 @@ wallet secrets. The validator requires:
   fallback path.
 
 `.github/workflows/bundler-live.yml` provides a manual two-endpoint preflight.
-It intentionally fails when the two configured endpoints are identical.
-Preflight success is necessary but does not satisfy the complete lifecycle
-matrix above.
+It intentionally fails when the two configured endpoints are identical, when
+either endpoint reports the wrong chain ID, or when either endpoint does not
+advertise the expected EntryPoint.
+
+The workflow requires:
+
+- `BUNDLER_A_URL`;
+- `BUNDLER_B_URL`;
+- `ENTRYPOINT_ADDRESS`;
+- `BUNDLER_CHAIN_ID`.
+
+`tools/bundler-smoke.mjs` records only the RPC origin, reported chain ID, and
+supported EntryPoints. It rejects credentials, query strings, fragments, and
+secret-bearing endpoint parameters. Preflight success is necessary but does
+not satisfy the complete lifecycle matrix above; it is the first live gate
+before account deployment, native gas, paymaster, rejection, receipt, and
+permissionless fallback evidence is collected.
 
 Reference: https://github.com/eth-infinitism/bundler-spec-tests

@@ -52,6 +52,7 @@ run("Bundler qualification evidence tests", process.execPath, [
   "--test",
   "tools/validate-bundler-qualification.test.mjs"
 ]);
+run("Bundler smoke preflight tests", process.execPath, ["--test", "tools/bundler-smoke.test.mjs"]);
 run("Deployment manifest evidence tests", process.execPath, [
   "--test",
   "tools/validate-deployment-manifest.test.mjs"

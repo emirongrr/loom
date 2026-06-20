@@ -15,6 +15,7 @@ jobs:
       BUNDLER_A_URL: ${{ secrets.BUNDLER_A_URL }}
       BUNDLER_B_URL: ${{ secrets.BUNDLER_B_URL }}
       ENTRYPOINT_ADDRESS: ${{ secrets.ENTRYPOINT_ADDRESS }}
+      BUNDLER_CHAIN_ID: ${{ secrets.BUNDLER_CHAIN_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,8 +30,9 @@ jobs:
           test -n "$BUNDLER_A_URL"
           test -n "$BUNDLER_B_URL"
           test -n "$ENTRYPOINT_ADDRESS"
+          test -n "$BUNDLER_CHAIN_ID"
           test "$BUNDLER_A_URL" != "$BUNDLER_B_URL"
       - name: Check first bundler
-        run: node tools/bundler-smoke.mjs "$BUNDLER_A_URL" "$ENTRYPOINT_ADDRESS"
+        run: node tools/bundler-smoke.mjs "$BUNDLER_A_URL" "$ENTRYPOINT_ADDRESS" "$BUNDLER_CHAIN_ID"
       - name: Check second bundler
-        run: node tools/bundler-smoke.mjs "$BUNDLER_B_URL" "$ENTRYPOINT_ADDRESS"
+        run: node tools/bundler-smoke.mjs "$BUNDLER_B_URL" "$ENTRYPOINT_ADDRESS" "$BUNDLER_CHAIN_ID"
