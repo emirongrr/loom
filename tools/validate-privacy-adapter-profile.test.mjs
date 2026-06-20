@@ -50,6 +50,44 @@ test("privacy adapter profile requires unshield vault delay and failure classifi
   assert.throws(() => validatePrivacyAdapterProfile(mandatoryRelayer), /relayer.mandatory must be false/);
 });
 
+test("privacy adapter profile requires live SDK evidence rather than a mock protocol", () => {
+  const mock = railgunProfile();
+  mock.rehearsal.sdkIntegration.mockProtocol = true;
+  assert.throws(() => validatePrivacyAdapterProfile(mock), /mockProtocol must be false/);
+
+  const mismatch = railgunProfile();
+  mismatch.rehearsal.sdkIntegration.package = "@kohaku-eth/privacy-pools";
+  assert.throws(() => validatePrivacyAdapterProfile(mismatch), /sdkIntegration.package must match/);
+
+  const noBoundary = railgunProfile();
+  noBoundary.rehearsal.sdkIntegration.kohakuHostBoundary = false;
+  assert.throws(() => validatePrivacyAdapterProfile(noBoundary), /kohakuHostBoundary must be true/);
+});
+
+test("privacy adapter profile requires advancing local scan evidence", () => {
+  const stagnant = railgunProfile();
+  stagnant.rehearsal.localScan.finalCheckpointHash = stagnant.rehearsal.localScan.initialCheckpointHash;
+  assert.throws(() => validatePrivacyAdapterProfile(stagnant), /must advance checkpoint/);
+
+  const staleAccepted = railgunProfile();
+  staleAccepted.rehearsal.localScan.staleCheckpointRejected = false;
+  assert.throws(() => validatePrivacyAdapterProfile(staleAccepted), /staleCheckpointRejected must be true/);
+});
+
+test("privacy adapter profile requires vault and service rehearsal evidence", () => {
+  const noVaultExecute = railgunProfile();
+  noVaultExecute.rehearsal.operations.vaultProtectedUnshield.executeTxHash = "0x1234";
+  assert.throws(() => validatePrivacyAdapterProfile(noVaultExecute), /executeTxHash must be a transaction hash/);
+
+  const mandatoryRelayer = railgunProfile();
+  mandatoryRelayer.rehearsal.services.relayer.mandatory = true;
+  assert.throws(() => validatePrivacyAdapterProfile(mandatoryRelayer), /rehearsal.services.relayer.mandatory must be false/);
+
+  const leakyOrigin = railgunProfile();
+  leakyOrigin.rehearsal.services.indexer.origin = "https://indexer.example/path?account=0xabc";
+  assert.throws(() => validatePrivacyAdapterProfile(leakyOrigin), /origin must be a URL origin/);
+});
+
 test("privacy adapter profile rejects package mismatch and unreviewed dependencies", () => {
   const mismatch = railgunProfile();
   mismatch.dependency.package = "@kohaku-eth/privacy-pools";
@@ -64,6 +102,7 @@ test("privacy adapter profile accepts Aztec only with bridge finality review", (
   const aztec = railgunProfile();
   aztec.protocol = "aztec";
   aztec.dependency.package = "@aztec/aztec.js";
+  aztec.rehearsal.sdkIntegration.package = "@aztec/aztec.js";
   aztec.operations.unshield.bridgeFinalityDocumented = true;
   aztec.checks.bridgeFinalityReviewed = true;
 
@@ -140,6 +179,44 @@ function railgunProfile() {
         tested: true
       }
     },
+    rehearsal: {
+      network: {
+        chainId: 1,
+        environment: "testnet",
+        name: "sepolia"
+      },
+      sdkIntegration: {
+        package: "@kohaku-eth/railgun",
+        version: "0.0.1-alpha.26",
+        mockProtocol: false,
+        kohakuHostBoundary: true,
+        reference: "evidence/privacy/railgun-sepolia-2026-06-20.json"
+      },
+      localScan: {
+        storageScopeHash: bytes32("10"),
+        initialCheckpointHash: bytes32("11"),
+        finalCheckpointHash: bytes32("12"),
+        staleCheckpointRejected: true,
+        resetScopedStateTested: true
+      },
+      operations: {
+        shield: operationEvidence("shield"),
+        privateTransfer: operationEvidence("private-transfer"),
+        unshield: operationEvidence("unshield"),
+        vaultProtectedUnshield: {
+          privateOperationHash: bytes32("30"),
+          vaultIntentHash: bytes32("31"),
+          scheduleTxHash: bytes32("32"),
+          executeTxHash: bytes32("33"),
+          delaySeconds: 86400
+        }
+      },
+      services: {
+        indexer: serviceEvidence("https://indexer.example"),
+        relayer: serviceEvidence("https://relayer.example"),
+        prover: serviceEvidence("https://prover.example")
+      }
+    },
     checks: {
       noDefaultProvider: true,
       explicitConsent: true,
@@ -165,4 +242,29 @@ function operation() {
     maxFeeBound: true,
     expiryBound: true
   };
+}
+
+function operationEvidence(operationId) {
+  return {
+    operationId,
+    metadataBudgetHash: bytes32("20"),
+    permissionHash: bytes32("21"),
+    expiry: 1800,
+    maxFeeBound: true,
+    receiptStatus: "success"
+  };
+}
+
+function serviceEvidence(origin) {
+  return {
+    kind: "third-party",
+    mandatory: false,
+    origin,
+    failureModeTested: true,
+    failureClassified: true
+  };
+}
+
+function bytes32(byte) {
+  return `0x${byte.repeat(32)}`;
 }
