@@ -33,6 +33,8 @@ The manifest must include:
 - deployment receipt evidence for every contract, including transaction hash,
   deployer, block number, success status, and gas used when available;
 - explorer source-verification URL for every deployment;
+- signed release attestations from three distinct roles: deployer,
+  independent reproducer, and security reviewer;
 - checks proving clean-checkout build, local bytecode reproduction,
   EntryPoint verification, `senderCreator` verification, P-256 verification,
   deterministic address reproduction, factory EIP-170 runtime-size compliance,
@@ -45,6 +47,13 @@ mismatches. It also rejects explorer URLs containing credentials or common
 secret-bearing query parameters. It intentionally does not fetch explorers or
 RPC endpoints; network evidence must be reviewed separately and should never
 require committing API keys.
+
+The attestation section is not a substitute for audit. It binds the release
+manifest to explicit human or organization-level statements that the deployment
+was performed, independently reproduced, and reviewed against the release
+checklist. Signers must be distinct and must not represent a Loom-operated
+service. The validator checks attestation shape and role separation; reviewers
+must still verify the signatures and signer identities outside the repository.
 
 Keystore sync deployments need one additional artifact: a passing keystore
 proof profile. The deployment manifest proves what was deployed; the keystore
@@ -74,7 +83,9 @@ The evidence directory is intentionally not pre-populated with fake data.
    receipt status, and gas used.
 8. Verify source on the relevant explorer.
 9. Record EntryPoint bytecode and P-256 support evidence for the target chain.
-10. Add the manifest in a dedicated evidence PR and run the validator.
+10. Collect deployer, independent reproducer, and security reviewer
+    attestations over the final manifest hash.
+11. Add the manifest in a dedicated evidence PR and run the validator.
 
 ## Non-Goals
 
@@ -82,6 +93,8 @@ The evidence directory is intentionally not pre-populated with fake data.
 - No explorer URLs with `apikey`, `api_key`, `access_token`, `secret`, or
   `token` query parameters.
 - No mock deployment manifests.
+- No release manifest without distinct deployment, reproduction, and security
+  review attestations.
 - No production readiness claim from manifest validation alone.
 - No chain support unless EntryPoint, P-256 behavior, explorer verification,
   and local bytecode reproduction are all documented.
