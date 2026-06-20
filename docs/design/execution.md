@@ -114,9 +114,22 @@ The canonical batch mode follows ERC-7821's minimal single-batch encoding and
 authorization model. Loom does not implement ERC-7821 opData or recursive
 batch-of-batches modes.
 
-ERC-5792 remains a wallet-client RPC responsibility. A future client must
-report only capabilities that have corresponding conformance and integration
-tests.
+The SDK exposes an ERC-5792 Wallet Call boundary for client implementers:
+
+- `getCapabilities` reports `atomic.status = "supported"` only for the
+  enabled Loom account and chain;
+- unsupported requested chains are omitted instead of reported optimistically;
+- `prepareWalletSendCalls` accepts the EIP-5792 call tuple shape and maps it to
+  the same atomic Loom account batch intent used by `sendCalls`;
+- non-optional unsupported capabilities are rejected before signing;
+- optional capabilities are ignored unless a reviewed adapter implements them;
+- the clear-signing review is generated from the exact prepared account
+  intent.
+
+The SDK does not provide a hosted wallet RPC server, transaction simulation,
+or durable `wallet_getCallsStatus` store. Those remain wallet-client
+responsibilities and must be backed by independent conformance and integration
+tests before a product claims full ERC-5792 wallet-provider support.
 
 ## Sovereign migration
 

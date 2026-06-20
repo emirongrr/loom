@@ -137,6 +137,7 @@ export function createLoomClient(options = {}) {
   const transport = options.transport;
   const signer = options.signer;
   const middleware = normalizeMiddleware(options.middleware ?? []);
+  const submittedWalletCallIds = new Set();
 
   function prepareIntent(intent, overrides = {}) {
     return prepareUserOperationEnvelope({
@@ -190,6 +191,28 @@ export function createLoomClient(options = {}) {
         review: explainLifecycleIntent(intent)
       });
     },
+    getCapabilities(input = {}) {
+      return walletGetCapabilities({
+        account,
+        chainId,
+        address: input.address,
+        chainIds: input.chainIds
+      });
+    },
+    prepareWalletSendCalls(input) {
+      const prepared = prepareWalletSendCalls({
+        ...input,
+        account,
+        enabledChainId: chainId
+      });
+      if (submittedWalletCallIds.has(prepared.id)) {
+        throw new InvalidSdkRequestError("wallet_sendCalls id has already been used", {
+          code: -32602,
+          id: prepared.id
+        });
+      }
+      return prepared;
+    },
     prepareUserOperation(prepared, overrides = {}) {
       const intent = prepared?.intent ?? prepared;
       return prepareIntent(intent, overrides);
@@ -220,6 +243,18 @@ export function createLoomClient(options = {}) {
     async sendCalls(input, overrides = {}) {
       const prepared = this.prepareCalls(input);
       return this.sendPreparedUserOperation(prepared, overrides);
+    },
+    async sendWalletCalls(input, overrides = {}) {
+      const prepared = this.prepareWalletSendCalls(input);
+      const sent = await this.sendPreparedUserOperation(prepared, overrides);
+      submittedWalletCallIds.add(prepared.id);
+      return Object.freeze({
+        id: prepared.id,
+        userOpHash: sent.userOpHash,
+        capabilities: Object.freeze({
+          atomic: Object.freeze({ status: "supported" })
+        })
+      });
     },
     async sendCallsAndWait(input, overrides = {}) {
       const selectedTransport = overrides.transport ?? transport;
@@ -419,6 +454,91 @@ export function toViemCalls(prepared, options = {}) {
   const to = normalizeAddress(options.account ?? intent.account, "account");
   const data = normalizeHex(intent.callData, "callData");
   return Object.freeze([Object.freeze({ to, value: 0n, data })]);
+}
+
+export function walletGetCapabilities(input = {}) {
+  const account = normalizeAddress(input.account, "account");
+  const chainId = normalizeChainId(input.chainId);
+  if (input.address !== undefined && normalizeAddress(input.address, "capability address") !== account) {
+    return Object.freeze({});
+  }
+  const requestedChains = input.chainIds === undefined
+    ? [chainId]
+    : input.chainIds.map(parseCapabilityChainId);
+  const output = {};
+  for (const requested of requestedChains) {
+    if (requested !== chainId) continue;
+    output[toRpcChainId(requested)] = Object.freeze({
+      atomic: Object.freeze({ status: "supported" })
+    });
+  }
+  return Object.freeze(output);
+}
+
+export function prepareWalletSendCalls(input = {}) {
+  const account = normalizeAddress(input.account, "account");
+  const chainId = normalizeChainId(input.enabledChainId ?? input.localChainId ?? input.chainId);
+  if (input.version !== undefined && input.version !== "2.0.0") {
+    throw new InvalidSdkRequestError("unsupported wallet_sendCalls version", {
+      code: -32602,
+      version: input.version
+    });
+  }
+  if (input.from !== undefined && normalizeAddress(input.from, "wallet_sendCalls from") !== account) {
+    throw new InvalidSdkRequestError("wallet_sendCalls from does not match enabled account", {
+      code: 4100
+    });
+  }
+  const requestedChainId = parseRpcChainId(
+    input.requestChainId ?? input.chainIdHex ?? input.walletChainId ?? (
+      typeof input.chainId === "string" ? input.chainId : toRpcChainId(chainId)
+    )
+  );
+  if (requestedChainId !== chainId) {
+    throw new InvalidSdkRequestError("wallet_sendCalls chainId is not enabled", {
+      code: 4100,
+      chainId: toRpcChainId(requestedChainId)
+    });
+  }
+  const atomicRequired = input.atomicRequired !== false;
+  if (atomicRequired !== true && atomicRequired !== false) {
+    throw new InvalidSdkRequestError("wallet_sendCalls atomicRequired must be boolean", { code: -32602 });
+  }
+  rejectUnsupportedCapabilities(input.capabilities);
+  const calls = normalizeWalletCalls(input.calls);
+  for (const call of calls) rejectUnsupportedCapabilities(call.capabilities);
+  const intent = Object.freeze({
+    kind: "account.calls",
+    chainId,
+    account,
+    calls: Object.freeze(calls.map(call => Object.freeze({
+      target: call.target,
+      value: call.value,
+      data: call.data
+    }))),
+    authority: Object.freeze({
+      risk: "wallet-sendCalls",
+      requiresUserSignature: true,
+      requiresGuardianApproval: false,
+      delayRequired: false
+    })
+  });
+  const id = input.id === undefined
+    ? hashCanonical({ type: "loom.wallet_sendCalls", chainId, account, calls, atomicRequired })
+    : normalizeWalletCallId(input.id);
+  return Object.freeze({
+    kind: "wallet_sendCalls.prepare",
+    version: "2.0.0",
+    id,
+    chainId: toRpcChainId(chainId),
+    atomicRequired,
+    intent,
+    intentHash: hashCanonical(intent),
+    capabilities: Object.freeze({
+      atomic: Object.freeze({ status: "supported" })
+    }),
+    review: explainLifecycleIntent(intent)
+  });
 }
 
 export function createPasskeySigner(options = {}) {
@@ -728,6 +848,29 @@ function parseRpcQuantity(value, label) {
   return BigInt(value);
 }
 
+function parseRpcChainId(value) {
+  if (typeof value !== "string" || !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)) {
+    throw new InvalidSdkRequestError("chainId must be a 0x-prefixed quantity without leading zeroes", {
+      code: -32602
+    });
+  }
+  return normalizeChainId(Number(BigInt(value)));
+}
+
+function parseCapabilityChainId(value) {
+  if (typeof value === "number") return normalizeChainId(value);
+  return parseRpcChainId(value);
+}
+
+function parseOptionalRpcValue(value, label) {
+  if (typeof value === "string" && value.startsWith("0x")) return parseRpcQuantity(value, label);
+  return normalizeBigInt(value, label);
+}
+
+function toRpcChainId(value) {
+  return `0x${normalizeChainId(value).toString(16)}`;
+}
+
 function normalizeMiddleware(middleware) {
   if (!Array.isArray(middleware)) throw new InvalidSdkRequestError("middleware must be an array");
   return Object.freeze(middleware.map((item, index) => {
@@ -814,6 +957,46 @@ function normalizeCalls(calls) {
     throw new InvalidSdkRequestError("calls must be a non-empty array");
   }
   return Object.freeze(calls.map(normalizeCall));
+}
+
+function normalizeWalletCalls(calls) {
+  if (!Array.isArray(calls) || calls.length === 0) {
+    throw new InvalidSdkRequestError("wallet_sendCalls calls must be a non-empty array", { code: -32602 });
+  }
+  return Object.freeze(calls.map((call, index) => {
+    if (!call || typeof call !== "object") {
+      throw new InvalidSdkRequestError(`wallet_sendCalls call ${index} is invalid`, { code: -32602 });
+    }
+    return Object.freeze({
+      target: normalizeAddress(call.to ?? call.target, `wallet_sendCalls call ${index} target`),
+      value: parseOptionalRpcValue(call.value ?? 0n, `wallet_sendCalls call ${index} value`),
+      data: normalizeHex(call.data ?? "0x", `wallet_sendCalls call ${index} data`),
+      capabilities: call.capabilities
+    });
+  }));
+}
+
+function rejectUnsupportedCapabilities(capabilities) {
+  if (capabilities === undefined) return;
+  if (!capabilities || typeof capabilities !== "object" || Array.isArray(capabilities)) {
+    throw new InvalidSdkRequestError("capabilities must be an object", { code: -32602 });
+  }
+  for (const [name, value] of Object.entries(capabilities)) {
+    if (name === "atomic") continue;
+    if (!value || typeof value !== "object" || value.optional !== true) {
+      throw new InvalidSdkRequestError("unsupported non-optional capability", {
+        code: 5700,
+        capability: name
+      });
+    }
+  }
+}
+
+function normalizeWalletCallId(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 8194) {
+    throw new InvalidSdkRequestError("wallet_sendCalls id is invalid", { code: -32602 });
+  }
+  return value;
 }
 
 function encodeCalls(calls) {
