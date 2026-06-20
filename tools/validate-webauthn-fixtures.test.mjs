@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -11,7 +11,7 @@ const CHALLENGE = "0x" + "11".repeat(32);
 
 test("WebAuthn fixture parser accepts a verified browser assertion shape", async () => {
   await withFixtureRoot(async root => {
-    await writeFixture(root, fixture());
+    await writeFixture(root, fixture(), "corpus/chrome-android-passkey.json");
     assert.deepEqual(await validateWebAuthnFixtures({ root, requireComplete: true }), {
       fixtureCount: 1,
       incompleteCount: 0
@@ -59,6 +59,38 @@ test("WebAuthn fixture parser rejects duplicate and incomplete verified evidence
   });
 });
 
+test("WebAuthn fixture parser rejects environment, transport, and privacy mismatches", async () => {
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ platform: "iOS" }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /platform does not match matrix item/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ authenticatorClass: "roaming" }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /authenticator class does not match matrix item/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ transports: ["internal"] }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /missing matrix transport evidence/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ userAgentHash: "Chrome/126 Android" }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /invalid userAgentHash/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ privacy: { containsRawUserAgent: true } }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /exclude user identifiers and raw user-agent/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, { ...fixture(), userAgent: "raw browser fingerprint" });
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /forbidden fixture metadata: userAgent/);
+  });
+});
+
 async function withFixtureRoot(callback) {
   const root = await mkdtemp(join(tmpdir(), "loom-webauthn-"));
   try {
@@ -70,6 +102,8 @@ async function withFixtureRoot(callback) {
 }
 
 async function writeFixture(root, value, name = "fixture.json") {
+  const directory = join(root, name.split("/").slice(0, -1).join("/"));
+  if (directory !== root) await mkdir(directory, { recursive: true });
   await writeFile(join(root, name), JSON.stringify(value, null, 2));
 }
 
@@ -80,8 +114,11 @@ function matrix() {
     required: [
       {
         id: "chrome-android-passkey",
+        platform: "Android",
         browser: "Chrome",
         authenticator: "Android passkey",
+        authenticatorClass: "platform",
+        transports: ["internal", "hybrid"],
         status: "verified"
       }
     ]
@@ -94,17 +131,31 @@ function fixture({
   authenticatorRpId = "wallet.example",
   flags = 0x05,
   s = "0x" + "01".padStart(64, "0"),
-  negativeMutations = REQUIRED_MUTATIONS
+  negativeMutations = REQUIRED_MUTATIONS,
+  platform = "Android",
+  authenticatorClass = "platform",
+  transports = ["internal", "hybrid"],
+  userAgentHash = "0x" + "09".repeat(32),
+  privacy = {
+    containsRawUserAgent: false,
+    containsUserIdentifiers: false,
+    containsAttestationObject: false
+  }
 } = {}) {
   const rpId = "wallet.example";
   return {
     version: 1,
     matrixId: "chrome-android-passkey",
+    collectorVersion: "webauthn-fixture-collector@1.1.0",
     capturedAt: "2026-06-19",
-    platform: "Android",
+    platform,
+    platformVersion: "Android 16",
     browser: "Chrome",
+    browserVersion: "126.0.0.0",
     authenticator: "Android passkey",
-    authenticatorClass: "platform",
+    authenticatorClass,
+    transports,
+    userAgentHash,
     rpId,
     origin: "https://wallet.example",
     publicKeyX: "0x" + "01".repeat(32),
@@ -121,7 +172,8 @@ function fixture({
     r: "0x" + "04".repeat(32),
     s,
     expected: true,
-    negativeMutations
+    negativeMutations,
+    privacy
   };
 }
 

@@ -4,11 +4,13 @@
 <button id="capture">Create local credential and capture assertion</button>
 <pre id="output"></pre>
 <script>
+const COLLECTOR_VERSION = "webauthn-fixture-collector@1.1.0";
 const output = document.querySelector("#output");
 const bytesToHex = bytes => "0x" + [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, "0")).join("");
 const bytesToBase64Url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
   .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 const sha256Hex = async bytes => bytesToHex(await crypto.subtle.digest("SHA-256", bytes));
+const utf8 = value => new TextEncoder().encode(value);
 
 function parseDerSignature(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -52,14 +54,22 @@ document.querySelector("#capture").onclick = async () => {
   }});
   const signature = parseDerSignature(assertion.response.signature);
   const clientDataJSON = new TextDecoder().decode(assertion.response.clientDataJSON);
+  const transports = typeof created.response.getTransports === "function"
+    ? created.response.getTransports()
+    : [];
   const fixture = {
     version: 1,
     matrixId: "replace-with-matrix-id",
+    collectorVersion: COLLECTOR_VERSION,
     capturedAt: new Date().toISOString().slice(0, 10),
-    platform: navigator.platform.slice(0, 80),
-    browser: navigator.userAgent.slice(0, 80),
+    platform: "replace-with-platform-label",
+    platformVersion: navigator.platform.slice(0, 80),
+    browser: "replace-with-browser-label",
+    browserVersion: "replace-with-browser-version",
     authenticator: "replace-with-authenticator",
     authenticatorClass: "platform",
+    transports,
+    userAgentHash: await sha256Hex(utf8(navigator.userAgent)),
     rpId: location.hostname,
     origin: location.origin,
     publicKeyX: bytesToHex(point.slice(0, 32)),
@@ -72,7 +82,12 @@ document.querySelector("#capture").onclick = async () => {
     s: signature.s,
     expected: true,
     negativeMutations: [],
-    notes: "Generated locally; set matrixId/authenticator and fill negativeMutations only after mutation tests pass."
+    privacy: {
+      containsRawUserAgent: false,
+      containsUserIdentifiers: false,
+      containsAttestationObject: false
+    },
+    notes: "Generated locally; set matrixId/browser/platform/authenticator and fill negativeMutations only after mutation tests pass."
   };
   output.textContent = JSON.stringify(fixture, null, 2);
 };
