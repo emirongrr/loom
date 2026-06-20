@@ -25,11 +25,12 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   assertBuild(manifest.build);
   assertReproducibility(manifest.reproducibility, repoRoot);
   assertDeployments(manifest.deployments, repoRoot);
+  assertAttestations(manifest.attestations);
   assertChecks(manifest.checks);
 }
 
 function assertTopLevel(manifest) {
-  for (const key of ["version", "network", "build", "reproducibility", "deployments", "checks"]) {
+  for (const key of ["version", "network", "build", "reproducibility", "deployments", "attestations", "checks"]) {
     if (!(key in manifest)) throw new Error(`missing top-level manifest field: ${key}`);
   }
   if (manifest.version !== 1) throw new Error("unsupported deployment manifest version");
@@ -187,6 +188,38 @@ function assertDeploymentReceipt(receipt, label) {
   if (receipt.status !== "0x1") throw new Error(`${label}.receipt.status must be 0x1`);
   if (receipt.gasUsed !== undefined && (!Number.isSafeInteger(receipt.gasUsed) || receipt.gasUsed <= 0)) {
     throw new Error(`${label}.receipt.gasUsed must be positive`);
+  }
+}
+
+function assertAttestations(attestations) {
+  if (!Array.isArray(attestations) || attestations.length < 3) {
+    throw new Error("attestations must include deployer, independent reproducer, and security reviewer");
+  }
+  const roles = new Set();
+  const signers = new Set();
+  for (const [index, attestation] of attestations.entries()) {
+    const label = `attestations[${index}]`;
+    if (!attestation || typeof attestation !== "object") throw new Error(`${label} must be an object`);
+    if (!["deployer", "independent-reproducer", "security-reviewer"].includes(attestation.role)) {
+      throw new Error(`${label}.role is invalid`);
+    }
+    if (roles.has(attestation.role)) throw new Error(`duplicate attestation role: ${attestation.role}`);
+    roles.add(attestation.role);
+    if (!attestation.signer || typeof attestation.signer !== "string") throw new Error(`${label}.signer is required`);
+    if (attestation.signer.toLowerCase().includes("loom")) throw new Error(`${label}.signer must not be Loom service`);
+    if (signers.has(attestation.signer.toLowerCase())) throw new Error("attestation signers must be distinct");
+    signers.add(attestation.signer.toLowerCase());
+    assertBytes32(attestation.manifestHash, `${label}.manifestHash`);
+    if (!/^0x[0-9a-fA-F]{130}$/.test(attestation.signature ?? "")) {
+      throw new Error(`${label}.signature must be a 65-byte signature`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(attestation.signedAt ?? "")) throw new Error(`${label}.signedAt is invalid`);
+    if (typeof attestation.statement !== "string" || attestation.statement.length < 20) {
+      throw new Error(`${label}.statement is required`);
+    }
+  }
+  for (const role of ["deployer", "independent-reproducer", "security-reviewer"]) {
+    if (!roles.has(role)) throw new Error(`missing deployment attestation role: ${role}`);
   }
 }
 

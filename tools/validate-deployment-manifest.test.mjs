@@ -152,6 +152,25 @@ test("deployment manifest rejects failed receipts and secret-bearing explorer UR
   );
 });
 
+test("deployment manifest requires signed release attestations", async () => {
+  const root = await fixtureRoot();
+  const missing = manifestFor(root);
+  delete missing.attestations;
+  await assert.rejects(() => validateDeploymentManifest(missing, { root }), /missing top-level manifest field: attestations/);
+
+  const duplicateRole = manifestFor(root);
+  duplicateRole.attestations[1].role = "deployer";
+  await assert.rejects(() => validateDeploymentManifest(duplicateRole, { root }), /duplicate attestation role/);
+
+  const sharedSigner = manifestFor(root);
+  sharedSigner.attestations[1].signer = sharedSigner.attestations[0].signer;
+  await assert.rejects(() => validateDeploymentManifest(sharedSigner, { root }), /signers must be distinct/);
+
+  const badSignature = manifestFor(root);
+  badSignature.attestations[2].signature = "0x1234";
+  await assert.rejects(() => validateDeploymentManifest(badSignature, { root }), /signature must be a 65-byte signature/);
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "loom-deployment-manifest-"));
   const artifactDir = join(root, "out", "Example.sol");
@@ -236,6 +255,11 @@ function manifestFor(root) {
         }
       }
     ],
+    attestations: [
+      attestation("deployer", "0xDeployerKey"),
+      attestation("independent-reproducer", "0xReproducerKey"),
+      attestation("security-reviewer", "0xReviewerKey")
+    ],
     checks: {
       cleanCheckoutBuild: true,
       localBytecodeReproduction: true,
@@ -248,6 +272,17 @@ function manifestFor(root) {
       noAdminOrUpgradeKey: true,
       noLoomServiceRequired: true
     }
+  };
+}
+
+function attestation(role, signer) {
+  return {
+    role,
+    signer,
+    manifestHash: bytes32(`manifest-${role}`),
+    signature: `0x${"aa".repeat(65)}`,
+    signedAt: "2026-06-21",
+    statement: `${role} verified the deployment manifest and release evidence.`
   };
 }
 
