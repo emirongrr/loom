@@ -1,5 +1,5 @@
 import sha3 from "js-sha3";
-import { createAccountLifecycleClient } from "../../account/src/index.js";
+import { createAccountLifecycleClient, createLifecycleCallEncoder } from "../../account/src/index.js";
 import {
   createConsentStore,
   createKohakuHost,
@@ -97,11 +97,13 @@ export function createLoomSdk(options = {}) {
   const chainId = options.chainId === undefined ? undefined : normalizeChainId(options.chainId);
   const account = options.account === undefined ? undefined : normalizeAddress(options.account, "account");
   const lifecycle = createAccountLifecycleClient({ chainId, account });
+  const encoders = createLifecycleCallEncoder();
   const kohaku = createKohakuRuntime(options.kohaku ?? {});
   const appScopes = createAppScopeManager({ chainId, account });
 
   return Object.freeze({
     lifecycle,
+    encoders,
     kohaku,
     appScopes,
     clearSigning: Object.freeze({
@@ -191,6 +193,9 @@ export function createLoomClient(options = {}) {
     prepareUserOperation(prepared, overrides = {}) {
       const intent = prepared?.intent ?? prepared;
       return prepareIntent(intent, overrides);
+    },
+    toViemCalls(prepared) {
+      return toViemCalls(prepared, { account });
     },
     async sendPreparedUserOperation(prepared, overrides = {}) {
       const selectedSigner = overrides.signer ?? signer;
@@ -399,6 +404,21 @@ export function createBundlerTransport(options = {}) {
       });
     }
   });
+}
+
+export function toViemCalls(prepared, options = {}) {
+  const intent = prepared?.intent ?? prepared;
+  if (!intent || typeof intent !== "object") throw new InvalidSdkRequestError("prepared intent is required");
+  if (intent.kind === "account.calls") {
+    return Object.freeze(intent.calls.map(call => Object.freeze({
+      to: call.target,
+      value: call.value,
+      data: call.data
+    })));
+  }
+  const to = normalizeAddress(options.account ?? intent.account, "account");
+  const data = normalizeHex(intent.callData, "callData");
+  return Object.freeze([Object.freeze({ to, value: 0n, data })]);
 }
 
 export function createPasskeySigner(options = {}) {

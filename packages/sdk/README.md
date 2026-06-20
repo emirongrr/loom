@@ -8,6 +8,7 @@ or catalog.
 The package is intentionally narrow:
 
 - it builds local lifecycle intents;
+- it exposes typed lifecycle calldata encoders;
 - it creates a Kohaku-compatible host only from explicit provider input;
 - it scopes dapp activity locally instead of publishing a global account graph;
 - it binds private operations to vault withdrawals by hash;
@@ -61,6 +62,21 @@ const session = wallet.grantSession({
   validUntil: 2000000000n,
   maxUses: 3
 });
+```
+
+Typed encoders are exposed without adding a provider dependency:
+
+```js
+const data = wallet.sdk.encoders.account.revokeTokenAllowance({
+  token: "0x4444444444444444444444444444444444444444",
+  spender: "0x3333333333333333333333333333333333333333"
+});
+
+const viemCalls = wallet.toViemCalls(
+  wallet.prepareCalls({
+    calls: [{ target: wallet.account, value: 0n, data }]
+  })
+);
 ```
 
 Broadcasting requires caller-supplied signer and transport adapters:

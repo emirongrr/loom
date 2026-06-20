@@ -78,11 +78,32 @@ The client supports `prepareDeployAccount`, `prepareCalls`,
 `prepareUserOperation`, `sendCalls`, `sendCallsAndWait`, `estimateCalls`,
 `waitForUserOperationReceipt`, app-scoped `grantSession`, recovery proposal and
 cancellation builders, vault withdrawal builders, private vault operation
-binding, middleware hooks, explicit bundler transport, and passkey signer
-boundaries.
+binding, typed lifecycle calldata encoders, viem-compatible call shaping,
+middleware hooks, explicit bundler transport, and passkey signer boundaries.
 
 All network, signing, paymaster, and privacy operations remain adapter-driven.
 There is no default Loom RPC, bundler, paymaster, signer, or relayer.
+
+## Typed calldata and viem-shaped calls
+
+SDK users can build common Loom lifecycle calldata locally and pass it into
+their own simulation, viem, bundler, or signing flow:
+
+```ts
+const data = wallet.sdk.encoders.account.revokeTokenAllowance({
+  token: '0x4444444444444444444444444444444444444444',
+  spender: '0x3333333333333333333333333333333333333333',
+})
+
+const calls = wallet.toViemCalls(
+  wallet.prepareCalls({
+    calls: [{ target: wallet.account, value: 0n, data }],
+  }),
+)
+```
+
+The encoder surface is deliberately local. It does not select an RPC, signer,
+bundler, paymaster, relayer, or privacy provider.
 
 ## Privacy runtime
 

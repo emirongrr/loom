@@ -126,9 +126,10 @@ The intended direction is:
 - migration remains possible without asking Loom for permission;
 - asset movement should be atomic where the underlying assets allow it.
 
-The current contracts provide the account, permission, recovery, policy, and
-delayed migration foundations. Vault-specific modules still require separate
-design, tests, and audit.
+The current contracts provide the account, permission, recovery, policy,
+delayed migration, and optional vault hook foundations. Vault behavior still
+requires independent audit, live token rehearsal, and production monitoring
+before large balances are trusted to it.
 
 ## Implemented Contract Layer
 
@@ -155,16 +156,16 @@ Loom now includes early wallet-engine SDK packages for developers who want to
 build clients without depending on Loom-operated infrastructure:
 
 - `@loom/account` builds local lifecycle intents for deployment, sessions,
-  recovery, migration, vault withdrawal, private vault binding, and paymaster
-  policy.
+  recovery, migration, vault withdrawal, private vault binding, paymaster
+  policy, and typed lifecycle calldata encoding.
 - `@loom/privacy` provides a Kohaku-compatible host boundary with explicit
   provider consent, metadata budgets, local scan state, and privacy adapter
   wrappers.
 - `@loom/sdk` combines the account and privacy layers into a developer-facing
   wallet engine with `createLoomClient`, app-scoped sessions,
   `sendCalls`, `sendCallsAndWait`, gas estimation, receipt waiting,
-  explicit bundler transport, passkey signer boundary, middleware hooks, and
-  private-vault operation binding.
+  explicit bundler transport, passkey signer boundary, middleware hooks,
+  viem-compatible call shaping, and private-vault operation binding.
 
 The SDK deliberately does not choose a default RPC, bundler, paymaster,
 relayer, signer, recovery coordinator, or privacy provider. Those adapters must

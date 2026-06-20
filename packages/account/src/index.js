@@ -278,6 +278,86 @@ export function createAccountLifecycleClient(defaults = {}) {
   });
 }
 
+export function createLifecycleCallEncoder() {
+  return Object.freeze({
+    account: Object.freeze({
+      scheduleCall(input) {
+        return selector("dcfe7ea7") + encodeTuple([
+          encodeAddress(input?.target, "target"),
+          encodeUint(input?.value ?? 0n, "value"),
+          encodeOffset(4),
+          encodeUint(input?.delay, "delay")
+        ], [encodeBytes(input?.data ?? "0x", "data")]);
+      },
+      executeScheduled(input) {
+        return selector("64579bf6") + encodeTuple([
+          encodeAddress(input?.target, "target"),
+          encodeUint(input?.value ?? 0n, "value"),
+          encodeOffset(3)
+        ], [encodeBytes(input?.data ?? "0x", "data")]);
+      },
+      cancelScheduled(input) {
+        return selector("14a8b2b1") + encodeBytes32(input?.operationId, "operation id");
+      },
+      scheduleMigration(input) {
+        return selector("528833ca") + encodeWords([
+          encodeAddress(input?.destination, "migration destination"),
+          encodeBytes32(input?.destinationCodeHash, "destination code hash"),
+          encodeBytes32(input?.destinationConfigHash ?? zeroBytes32(), "destination config hash"),
+          encodeBytes32(input?.callsHash, "calls hash"),
+          encodeUint(input?.delay, "delay"),
+          encodeUint(input?.executionWindow, "execution window")
+        ]);
+      },
+      cancelMigration() {
+        return selector("10639ea0");
+      },
+      revokeTokenAllowance(input) {
+        return selector("bc881467") + encodeWords([
+          encodeAddress(input?.token, "token"),
+          encodeAddress(input?.spender, "spender")
+        ]);
+      }
+    }),
+    session: Object.freeze({
+      grantPermission(input) {
+        return selector("7d198ff1") + encodeWords([
+          encodeBytes32(input?.permissionId, "permission id"),
+          ...encodeGranularPermission(input?.permission)
+        ]);
+      },
+      revokePermission(input) {
+        return selector("e89005c7") + encodeBytes32(input?.permissionId, "permission id");
+      }
+    }),
+    vault: Object.freeze({
+      setVaultPolicy(input) {
+        return selector("d97a2860") + encodeWords([
+          encodeAddress(input?.asset, "asset"),
+          encodeUint(input?.policy?.dailyLimit, "daily limit"),
+          encodeUint(input?.policy?.period, "period"),
+          encodeUint(input?.policy?.delay, "delay"),
+          encodeBool(input?.policy?.enabled, "enabled")
+        ]);
+      },
+      removeVaultPolicy(input) {
+        return selector("15ed54ba") + encodeAddress(input?.asset, "asset");
+      },
+      scheduleVaultWithdrawal(input) {
+        return selector("1bdd50c5") + encodeTuple([
+          encodeAddress(input?.target, "target"),
+          encodeUint(input?.value ?? 0n, "value"),
+          encodeOffset(4),
+          encodeUint(input?.executionWindow, "execution window")
+        ], [encodeBytes(input?.callData ?? "0x", "callData")]);
+      },
+      cancelVaultWithdrawal(input) {
+        return selector("7facb463") + encodeBytes32(input?.withdrawalId, "withdrawal id");
+      }
+    })
+  });
+}
+
 function cancellationAuthority(risk, route) {
   return Object.freeze({
     risk,
@@ -326,6 +406,85 @@ function normalizeSortedAddressArray(value, label) {
 
 function freezeIntent(intent) {
   return Object.freeze(intent);
+}
+
+function encodeGranularPermission(permission) {
+  if (!permission || typeof permission !== "object") {
+    throw new InvalidLifecycleRequestError("permission is required");
+  }
+  return [
+    encodeAddress(permission.signer, "permission signer"),
+    encodeAddress(permission.target, "permission target"),
+    encodeAddress(permission.token, "permission token"),
+    encodeAddress(permission.counterparty ?? zeroAddress(), "permission counterparty"),
+    encodeAddress(permission.allowedPaymaster ?? zeroAddress(), "permission allowed paymaster"),
+    encodeSelector(permission.selector, "permission selector"),
+    encodeUint(permission.maxAmountPerCall, "permission max amount per call"),
+    encodeUint(permission.maxAmountPerUserOp, "permission max amount per user op"),
+    encodeUint(permission.validAfter ?? 0n, "permission valid after"),
+    encodeUint(permission.validUntil, "permission valid until"),
+    encodeUint(permission.maxUses, "permission max uses"),
+    encodeUint(permission.maxCallsPerUserOp ?? 1, "permission max calls per user op")
+  ];
+}
+
+function encodeTuple(headWords, dynamicTails = []) {
+  return encodeWords(headWords) + dynamicTails.join("");
+}
+
+function encodeWords(words) {
+  return words.join("");
+}
+
+function encodeOffset(staticWordCount) {
+  return encodeUint(BigInt(staticWordCount) * 32n, "offset");
+}
+
+function encodeBytes(value, label) {
+  const hex = normalizeHex(value, label);
+  const bytes = strip0x(hex);
+  const length = bytes.length / 2;
+  const paddedLength = Math.ceil(length / 32) * 64;
+  return encodeUint(length, `${label} length`) + bytes.padEnd(paddedLength, "0");
+}
+
+function encodeAddress(value, label) {
+  return strip0x(normalizeAddress(value, label)).padStart(64, "0");
+}
+
+function encodeBytes32(value, label) {
+  return strip0x(normalizeBytes32(value, label));
+}
+
+function encodeSelector(value, label) {
+  return strip0x(normalizeSelector(value, label)).padEnd(64, "0");
+}
+
+function encodeUint(value, label) {
+  const normalized = normalizeBigInt(value, label);
+  if (normalized >= 1n << 256n) throw new InvalidLifecycleRequestError(`${label} exceeds uint256`);
+  return normalized.toString(16).padStart(64, "0");
+}
+
+function encodeBool(value, label) {
+  if (typeof value !== "boolean") throw new InvalidLifecycleRequestError(`${label} must be boolean`);
+  return encodeUint(value ? 1n : 0n, label);
+}
+
+function selector(value) {
+  return `0x${value}`;
+}
+
+function strip0x(value) {
+  return value.slice(2);
+}
+
+function zeroAddress() {
+  return "0x0000000000000000000000000000000000000000";
+}
+
+function zeroBytes32() {
+  return "0x0000000000000000000000000000000000000000000000000000000000000000";
 }
 
 function normalizeChainId(value) {

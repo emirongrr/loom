@@ -18,6 +18,8 @@ clear signing, signing, and publication.
 - Visible delayed vault withdrawal schedule, cancellation, and execution
   intent.
 - Explicit optional paymaster policy intent.
+- Typed calldata encoders for common account, session, and vault lifecycle
+  calls.
 
 ## Design rules
 
@@ -28,6 +30,8 @@ clear signing, signing, and publication.
 - Paymaster use is always explicit and bounded by token, amount, and expiry.
 - Builders return data. Wallet clients remain responsible for simulation,
   signing, publishing, and user explanation.
+- Encoders return ABI calldata only. They do not simulate, sign, publish, or
+  select infrastructure.
 - The package must remain usable by third-party clients without Loom-operated
   infrastructure.
 

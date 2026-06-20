@@ -224,3 +224,73 @@ export function createAccountLifecycleClient(defaults?: {
   chainId?: number;
   account?: Hex;
 }): AccountLifecycleClient;
+
+export interface GranularPermissionInput {
+  signer: Hex;
+  target: Hex;
+  token: Hex;
+  counterparty?: Hex;
+  allowedPaymaster?: Hex;
+  selector: Hex;
+  maxAmountPerCall: bigint | string | number;
+  maxAmountPerUserOp: bigint | string | number;
+  validAfter?: bigint | string | number;
+  validUntil: bigint | string | number;
+  maxUses: bigint | string | number;
+  maxCallsPerUserOp?: bigint | string | number;
+}
+
+export interface LifecycleCallEncoder {
+  readonly account: {
+    scheduleCall(input: {
+      target: Hex;
+      value?: bigint | string | number;
+      data?: Hex;
+      delay: bigint | string | number;
+    }): Hex;
+    executeScheduled(input: {
+      target: Hex;
+      value?: bigint | string | number;
+      data?: Hex;
+    }): Hex;
+    cancelScheduled(input: { operationId: Hex }): Hex;
+    scheduleMigration(input: {
+      destination: Hex;
+      destinationCodeHash: Hex;
+      destinationConfigHash?: Hex;
+      callsHash: Hex;
+      delay: bigint | string | number;
+      executionWindow: bigint | string | number;
+    }): Hex;
+    cancelMigration(): Hex;
+    revokeTokenAllowance(input: { token: Hex; spender: Hex }): Hex;
+  };
+  readonly session: {
+    grantPermission(input: {
+      permissionId: Hex;
+      permission: GranularPermissionInput;
+    }): Hex;
+    revokePermission(input: { permissionId: Hex }): Hex;
+  };
+  readonly vault: {
+    setVaultPolicy(input: {
+      asset: Hex;
+      policy: {
+        dailyLimit: bigint | string | number;
+        period: bigint | string | number;
+        delay: bigint | string | number;
+        enabled: boolean;
+      };
+    }): Hex;
+    removeVaultPolicy(input: { asset: Hex }): Hex;
+    scheduleVaultWithdrawal(input: {
+      target: Hex;
+      value?: bigint | string | number;
+      callData?: Hex;
+      executionWindow: bigint | string | number;
+    }): Hex;
+    cancelVaultWithdrawal(input: { withdrawalId: Hex }): Hex;
+  };
+}
+
+export function createLifecycleCallEncoder(): LifecycleCallEncoder;
