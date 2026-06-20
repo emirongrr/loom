@@ -297,3 +297,141 @@ test("sdk exposes typed lifecycle encoders and viem-compatible call shapes", () 
     }
   ]);
 });
+
+test("client reports truthful ERC-5792 atomic capabilities for the enabled account and chain", () => {
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    }
+  });
+
+  assert.deepEqual(client.getCapabilities({ address: account, chainIds: ["0x1", "0x2105"] }), {
+    "0x1": {
+      atomic: {
+        status: "supported"
+      }
+    }
+  });
+  assert.deepEqual(client.getCapabilities({
+    address: "0x9999999999999999999999999999999999999999",
+    chainIds: ["0x1"]
+  }), {});
+});
+
+test("wallet_sendCalls preparation preserves atomic clear-signing review", () => {
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    }
+  });
+
+  const prepared = client.prepareWalletSendCalls({
+    version: "2.0.0",
+    id: "app-request-1",
+    from: account,
+    chainId: "0x1",
+    atomicRequired: true,
+    calls: [
+      { to: target, value: "0x2a", data: "0x1234" },
+      { to: token, data: "0xabcd" }
+    ],
+    capabilities: {
+      paymasterService: { optional: true, url: "https://paymaster.example" }
+    }
+  });
+
+  assert.equal(prepared.kind, "wallet_sendCalls.prepare");
+  assert.equal(prepared.id, "app-request-1");
+  assert.equal(prepared.capabilities.atomic.status, "supported");
+  assert.equal(prepared.intent.calls.length, 2);
+  assert.equal(prepared.intent.calls[0].value, 42n);
+  assert.equal(prepared.review.title, "Execute Loom account calls");
+  assert.equal(prepared.review.summary, `Account will execute 2 call(s) from ${account}.`);
+});
+
+test("wallet_sendCalls rejects unsupported required capabilities and mismatched chain or account", () => {
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    }
+  });
+
+  assert.throws(
+    () => client.prepareWalletSendCalls({
+      chainId: "0x1",
+      atomicRequired: true,
+      calls: [{ to: target, data: "0x1234" }],
+      capabilities: {
+        paymasterService: { url: "https://paymaster.example" }
+      }
+    }),
+    error => error instanceof InvalidSdkRequestError && error.details.code === 5700
+  );
+  assert.throws(
+    () => client.prepareWalletSendCalls({
+      from: "0x9999999999999999999999999999999999999999",
+      chainId: "0x1",
+      calls: [{ to: target, data: "0x1234" }]
+    }),
+    error => error instanceof InvalidSdkRequestError && error.details.code === 4100
+  );
+  assert.throws(
+    () => client.prepareWalletSendCalls({
+      chainId: "0x01",
+      calls: [{ to: target, data: "0x1234" }]
+    }),
+    error => error instanceof InvalidSdkRequestError && error.details.code === -32602
+  );
+});
+
+test("sendWalletCalls returns the app id and rejects duplicate ids", async () => {
+  const sent = [];
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    signer: {
+      async signUserOperation() {
+        return "0xdeadbeef";
+      }
+    },
+    transport: {
+      async sendUserOperation(envelope) {
+        sent.push(envelope);
+        return { userOpHash: "0x" + "78".repeat(32) };
+      }
+    }
+  });
+
+  const result = await client.sendWalletCalls({
+    id: "app-request-2",
+    chainId: "0x1",
+    atomicRequired: true,
+    calls: [{ to: target, data: "0x1234" }]
+  });
+
+  assert.equal(result.id, "app-request-2");
+  assert.equal(result.capabilities.atomic.status, "supported");
+  assert.equal(sent.length, 1);
+  await assert.rejects(
+    () => client.sendWalletCalls({
+      id: "app-request-2",
+      chainId: "0x1",
+      atomicRequired: true,
+      calls: [{ to: target, data: "0x1234" }]
+    }),
+    /wallet_sendCalls id has already been used/
+  );
+});

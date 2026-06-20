@@ -12,7 +12,9 @@ The package is intentionally narrow:
 - it creates a Kohaku-compatible host only from explicit provider input;
 - it scopes dapp activity locally instead of publishing a global account graph;
 - it binds private operations to vault withdrawals by hash;
-- it gives wallet clients a clear-signing review object for user display.
+- it gives wallet clients a clear-signing review object for user display;
+- it exposes ERC-5792 Wallet Call capability reporting and request builders
+  without claiming unsupported infrastructure.
 
 The SDK does not broadcast transactions, choose a default provider, or claim
 that any privacy protocol is available unless the caller supplies a concrete
@@ -78,6 +80,42 @@ const viemCalls = wallet.toViemCalls(
   })
 );
 ```
+
+ERC-5792 capability reporting is truthful and local. Loom reports atomic batch
+support only for the enabled account and chain; unsupported chains are omitted
+instead of producing an optimistic capability.
+
+```js
+const capabilities = wallet.getCapabilities({
+  address: wallet.account,
+  chainIds: ["0x1", "0x2105"]
+});
+
+const request = wallet.prepareWalletSendCalls({
+  version: "2.0.0",
+  id: "app-request-1",
+  from: wallet.account,
+  chainId: "0x1",
+  atomicRequired: true,
+  calls: [
+    {
+      to: "0x3333333333333333333333333333333333333333",
+      value: "0x0",
+      data: "0x1234"
+    }
+  ],
+  capabilities: {
+    paymasterService: { optional: true }
+  }
+});
+
+console.log(capabilities["0x1"].atomic.status); // "supported"
+console.log(request.review.summary);
+```
+
+Unsupported non-optional capabilities are rejected before signing. Optional
+capabilities are ignored unless a caller supplies a reviewed adapter that
+implements them.
 
 Broadcasting requires caller-supplied signer and transport adapters:
 

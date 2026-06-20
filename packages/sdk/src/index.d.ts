@@ -66,6 +66,14 @@ export interface ClearSigningReview {
   readonly summary: string;
 }
 
+export interface WalletCapabilities {
+  readonly [chainId: `0x${string}`]: {
+    readonly atomic?: {
+      readonly status: "supported" | "ready" | "unsupported";
+    };
+  };
+}
+
 export interface LoomSdk {
   readonly lifecycle: AccountLifecycleClient;
   readonly encoders: LifecycleCallEncoder;
@@ -119,6 +127,38 @@ export interface LoomPreparedIntent {
   readonly intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
   readonly intentHash: Hex;
   readonly review: ClearSigningReview;
+}
+
+export interface WalletSendCallsPreparation extends LoomPreparedIntent {
+  readonly kind: "wallet_sendCalls.prepare";
+  readonly version: "2.0.0";
+  readonly id: string;
+  readonly chainId: `0x${string}`;
+  readonly atomicRequired: boolean;
+  readonly intent: AccountCallsIntent;
+  readonly capabilities: {
+    readonly atomic: {
+      readonly status: "supported";
+    };
+  };
+}
+
+export interface WalletSendCallsInput {
+  readonly version?: "2.0.0";
+  readonly id?: string;
+  readonly from?: Hex;
+  readonly chainId?: `0x${string}`;
+  readonly requestChainId?: `0x${string}`;
+  readonly chainIdHex?: `0x${string}`;
+  readonly atomicRequired?: boolean;
+  readonly calls: readonly {
+    readonly to?: Hex;
+    readonly target?: Hex;
+    readonly value?: bigint | string | number;
+    readonly data?: Hex;
+    readonly capabilities?: Record<string, { optional?: boolean; [key: string]: unknown }>;
+  }[];
+  readonly capabilities?: Record<string, { optional?: boolean; [key: string]: unknown }>;
 }
 
 export interface AccountCallsIntent {
@@ -194,6 +234,11 @@ export interface LoomClient {
   }): LoomPreparedIntent & {
     readonly intent: AccountCallsIntent;
   };
+  getCapabilities(input?: {
+    address?: Hex;
+    chainIds?: readonly (`0x${string}` | number)[];
+  }): WalletCapabilities;
+  prepareWalletSendCalls(input: WalletSendCallsInput): WalletSendCallsPreparation;
   prepareUserOperation(
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
     overrides?: UserOperationOverrides
@@ -213,6 +258,21 @@ export interface LoomClient {
       transport?: LoomTransportAdapter;
     }
   ): Promise<{ userOpHash: Hex; receipt?: unknown }>;
+  sendWalletCalls(
+    input: WalletSendCallsInput,
+    overrides?: UserOperationOverrides & {
+      signer?: LoomSignerAdapter;
+      transport?: LoomTransportAdapter;
+    }
+  ): Promise<{
+    id: string;
+    userOpHash: Hex;
+    capabilities: {
+      atomic: {
+        status: "supported";
+      };
+    };
+  }>;
   sendCallsAndWait(
     input: { calls: readonly LoomCall[]; risk?: string },
     overrides?: UserOperationOverrides & {
@@ -271,6 +331,19 @@ export function createLoomClient(options: {
   transport?: LoomTransportAdapter;
   middleware?: readonly ((envelope: UserOperationEnvelope) => Promise<UserOperationEnvelope> | UserOperationEnvelope)[];
 }): LoomClient;
+
+export function walletGetCapabilities(input: {
+  account: Hex;
+  chainId: number;
+  address?: Hex;
+  chainIds?: readonly (`0x${string}` | number)[];
+}): WalletCapabilities;
+
+export function prepareWalletSendCalls(input: WalletSendCallsInput & {
+  account: Hex;
+  enabledChainId?: number;
+  localChainId?: number;
+}): WalletSendCallsPreparation;
 
 export interface BundlerTransportOptions {
   endpoint: string;
