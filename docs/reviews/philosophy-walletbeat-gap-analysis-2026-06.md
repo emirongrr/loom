@@ -77,13 +77,13 @@ possession, and guardian contact path are usable.
 
 Vitalik's 2024 wallet essay argues that wallet decentralization, censorship
 resistance, security, and privacy matter only if the wallet itself preserves
-them. Loom's core has strong unruggability: no upgrade proxy, no admin, no
-factory-controlled ownership path, timelocked high-risk changes, and no
-arbitrary delegatecall surface. The account only accepts EntryPoint or self
-execution (`src/account/LoomAccount.sol:277-280`), validates direct execution
-through installed validators and an expiry-bound EIP-712 digest
-(`src/account/LoomAccount.sol:282-327`), and uses ordinary `call`, not
-delegatecall, for authorized execution (`src/account/LoomAccount.sol:868-878`).
+them. Loom's core has strong unruggability: immutable shared implementation
+proxy dispatch with no upgrade/admin selector, no factory-controlled ownership
+path, timelocked high-risk changes, and no user/module delegatecall surface.
+The account only accepts EntryPoint or self execution, validates direct
+execution through installed validators and an expiry-bound EIP-712 digest, and
+uses ordinary `call`, not user-requested delegatecall, for authorized
+execution.
 
 Privacy is correctly treated as a security property, but implementation remains
 incomplete. The SDK refuses provider access until metadata budget and consent
@@ -149,7 +149,7 @@ Engineering gaps:
 |---|---:|---|---|
 | Account abstraction | Stage 2-ready contract base | ERC-4337 validation path in `src/account/LoomAccount.sol:236-264` | Live two-bundler testnet qualification and public evidence |
 | Atomic batching | Strong contract support | Batch loop reverts atomically on subcall revert in `src/account/LoomAccount.sol:347-357` and `_execute` bubbles revert in `src/account/LoomAccount.sol:868-878` | ERC-5792 capability/reporting in client and vectors |
-| Unruggability | Strong | Immutable EntryPoint/config-only state in `src/account/LoomAccount.sol:98-104`; delayed module install in `src/account/LoomAccount.sol:379-389` | Deployment manifests proving no proxy/admin |
+| Unruggability | Strong | Immutable proxy implementation pointer, no admin/upgrade selector, delayed module install, and no privileged factory path | Deployment manifests proving implementation/proxy/factory/registry code hashes and no upgrade authority |
 | Portability | Partial | ERC-1271 in `src/account/LoomAccount.sol:266-275`; limited module profile documented in `docs/standards/walletbeat-stage-2.md:8-17` | More standard ERC-7579 adapters and independent client examples |
 | Recovery | Strong contract base | Proposal/cancel/execute state machine in `src/recovery/RecoveryManager.sol:66-167` | Guardian ceremony tooling and real-device tests |
 | Permissions | Good contract base | Granular scope fields in `src/validators/GranularSessionValidator.sol:20-33`; revoke/enumeration in `src/validators/GranularSessionValidator.sol:98-109` | ERC-7715/permission RPC translation and wallet UX evidence |

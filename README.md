@@ -108,8 +108,8 @@ arrive as:
 - client and SDK layers that improve UX without becoming mandatory.
 
 Unsupported execution modes fail closed. There is no arbitrary delegatecall
-execution, no proxy upgrade key, no privileged factory path, and no permanent
-Loom administrator.
+execution, no proxy upgrade key, no mutable implementation slot, no privileged
+factory path, and no permanent Loom administrator.
 
 ## Vault Direction
 
@@ -133,8 +133,8 @@ before large balances are trusted to it.
 
 ## Implemented Contract Layer
 
-- Immutable `LoomAccount` with no developer, factory, or proxy upgrade
-  authority.
+- Immutable shared implementation proxy deployment with no developer, factory,
+  admin, or proxy upgrade authority.
 - ERC-4337 v0.9 validation and atomic single or batch execution.
 - ERC-1271 signature validation with policy-aware restrictions.
 - P-256/WebAuthn passkey validator.
