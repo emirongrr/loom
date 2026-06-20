@@ -79,6 +79,7 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
     if (fixture.privacy?.containsAttestationObject !== false) {
       throw new Error(`${name}: fixture must not include attestation object metadata`);
     }
+    assertProvenance(name, fixture.provenance);
 
     const matrixItem = matrixById.get(fixture.matrixId);
     if (fixture.browser !== matrixItem.browser) throw new Error(`${name}: browser does not match matrix item`);
@@ -169,6 +170,30 @@ function rejectForbiddenMetadata(name, value, path = "") {
     const currentPath = path ? `${path}.${key}` : key;
     if (forbiddenMetadataKeys.has(key)) throw new Error(`${name}: forbidden fixture metadata: ${currentPath}`);
     rejectForbiddenMetadata(name, child, currentPath);
+  }
+}
+
+function assertProvenance(name, provenance) {
+  if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) {
+    throw new Error(`${name}: provenance must be an object`);
+  }
+  if (provenance.captureMode !== "local-secure-context") {
+    throw new Error(`${name}: provenance.captureMode must be local-secure-context`);
+  }
+  if (provenance.collectorSource !== "tools/webauthn-fixture/collector.html") {
+    throw new Error(`${name}: provenance.collectorSource is invalid`);
+  }
+  if (provenance.requiresFreshCredential !== true) {
+    throw new Error(`${name}: provenance.requiresFreshCredential must be true`);
+  }
+  if (provenance.reviewedForPII !== true) {
+    throw new Error(`${name}: provenance.reviewedForPII must be true`);
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(provenance.collectorSourceHash ?? "")) {
+    throw new Error(`${name}: provenance.collectorSourceHash must be bytes32`);
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(provenance.negativeCaseManifestHash ?? "")) {
+    throw new Error(`${name}: provenance.negativeCaseManifestHash must be bytes32`);
   }
 }
 

@@ -20,6 +20,9 @@ Each fixture records:
 - authenticator data, client data JSON, and signature;
 - expected verification result;
 - mutation-negative evidence and WebAuthn behavior notes.
+- provenance proving the fixture came from the local collector, used a fresh
+  fixture-only credential, passed PII review, and is bound to a negative-case
+  manifest hash.
 
 Every accepted positive fixture must have generated negative tests that alter
 the challenge, origin, RP ID hash, flags, signature, and payload lengths.
@@ -44,8 +47,12 @@ keep only the anonymous metadata required by `schema.json`. Set `matrixId`,
 `browser`, `platform`, `authenticator`, `authenticatorClass`, and
 `transports` to the matching matrix entry. Fill `negativeMutations` only after
 tests cover challenge, origin, RP ID hash, user-verification flag, signature,
-and payload-length mutations. A fixture is accepted only after its positive
-and mutation-negative Foundry tests pass.
+and payload-length mutations. Set `provenance.reviewedForPII` only after
+checking that no raw credential identifier, user handle, username, display
+name, raw user-agent, attestation object, account address, or persistent
+device identifier is present. Set `negativeCaseManifestHash` only after the
+reviewed negative-case manifest is generated from the accepted fixture.
+A fixture is accepted only after its positive and mutation-negative tests pass.
 
 Put accepted fixtures under `corpus/`. Missing combinations must remain
 marked `missing` in `matrix.json`; do not add synthetic production fixtures to

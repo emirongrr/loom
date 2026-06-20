@@ -11,6 +11,10 @@ const bytesToBase64Url = bytes => btoa(String.fromCharCode(...new Uint8Array(byt
   .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 const sha256Hex = async bytes => bytesToHex(await crypto.subtle.digest("SHA-256", bytes));
 const utf8 = value => new TextEncoder().encode(value);
+const collectorSourceHash = async () => {
+  const response = await fetch(location.href, {cache: "no-store"});
+  return sha256Hex(utf8(await response.text()));
+};
 
 function parseDerSignature(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -86,6 +90,14 @@ document.querySelector("#capture").onclick = async () => {
       containsRawUserAgent: false,
       containsUserIdentifiers: false,
       containsAttestationObject: false
+    },
+    provenance: {
+      captureMode: "local-secure-context",
+      collectorSource: "tools/webauthn-fixture/collector.html",
+      collectorSourceHash: await collectorSourceHash(),
+      requiresFreshCredential: true,
+      reviewedForPII: false,
+      negativeCaseManifestHash: "replace-after-negative-case-generation"
     },
     notes: "Generated locally; set matrixId/browser/platform/authenticator and fill negativeMutations only after mutation tests pass."
   };

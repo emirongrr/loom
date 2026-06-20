@@ -28,7 +28,8 @@
     "s",
     "expected",
     "negativeMutations",
-    "privacy"
+    "privacy",
+    "provenance"
   ],
   "properties": {
     "version": { "const": 1 },
@@ -81,6 +82,26 @@
         "containsRawUserAgent": { "const": false },
         "containsUserIdentifiers": { "const": false },
         "containsAttestationObject": { "const": false }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captureMode",
+        "collectorSource",
+        "collectorSourceHash",
+        "requiresFreshCredential",
+        "reviewedForPII",
+        "negativeCaseManifestHash"
+      ],
+      "properties": {
+        "captureMode": { "const": "local-secure-context" },
+        "collectorSource": { "const": "tools/webauthn-fixture/collector.html" },
+        "collectorSourceHash": { "$ref": "#/$defs/hex32" },
+        "requiresFreshCredential": { "const": true },
+        "reviewedForPII": { "const": true },
+        "negativeCaseManifestHash": { "$ref": "#/$defs/hex32" }
       }
     },
     "notes": { "type": "string", "maxLength": 500 }
