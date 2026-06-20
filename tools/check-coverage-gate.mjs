@@ -26,7 +26,33 @@ const CRITICAL_MODULES = [
   "src/validators/ECDSAValidator.sol",
   "src/validators/GranularSessionValidator.sol",
   "src/validators/MultiP256Validator.sol",
-  "src/validators/P256Validator.sol"
+  "src/validators/P256Validator.sol",
+  "src/validators/SessionKeyValidator.sol"
+];
+
+const CRITICAL_GROUPS = [
+  {
+    name: "account-core",
+    files: ["src/account/LoomAccount.sol", "src/account/LoomAccountFactory.sol"]
+  },
+  {
+    name: "recovery",
+    files: [
+      "src/recovery/ECDSAGuardianVerifier.sol",
+      "src/recovery/ERC1271GuardianVerifier.sol",
+      "src/recovery/KeystoreSyncRecoveryModule.sol",
+      "src/recovery/P256GuardianVerifier.sol",
+      "src/recovery/RecoveryManager.sol"
+    ]
+  },
+  {
+    name: "vault",
+    files: ["src/hooks/VaultHook.sol"]
+  },
+  {
+    name: "session",
+    files: ["src/validators/GranularSessionValidator.sol", "src/validators/SessionKeyValidator.sol"]
+  }
 ];
 
 function parseMetric(cell) {
@@ -114,14 +140,48 @@ function assertGate(summary) {
     }
   }
 
+  for (const group of CRITICAL_GROUPS) {
+    const groupSummary = summarizeGroup(group, byFile, failures);
+    if (!groupSummary) continue;
+    if (groupSummary.lines < MIN_LINES) {
+      failures.push(`${group.name} group line coverage ${formatPercent(groupSummary.lines)} < ${MIN_LINES}%`);
+    }
+    if (groupSummary.branches < MIN_BRANCHES) {
+      failures.push(`${group.name} group branch coverage ${formatPercent(groupSummary.branches)} < ${MIN_BRANCHES}%`);
+    }
+  }
+
   console.log(
     `production source coverage: lines ${formatPercent(summary.lines)}, branches ${formatPercent(summary.branches)}`
   );
   console.log(`critical module coverage gate: ${CRITICAL_MODULES.length} modules at ${MIN_LINES}%/${MIN_BRANCHES}%`);
+  console.log(`critical group coverage gate: ${CRITICAL_GROUPS.map(group => group.name).join(", ")}`);
 
   if (failures.length !== 0) {
     throw new Error(`coverage gate failed:\n${failures.join("\n")}`);
   }
+}
+
+function summarizeGroup(group, byFile, failures) {
+  const totals = {
+    lines: { covered: 0, total: 0 },
+    branches: { covered: 0, total: 0 }
+  };
+  for (const file of group.files) {
+    const row = byFile.get(file);
+    if (!row) {
+      failures.push(`${group.name} group coverage missing for ${file}`);
+      return undefined;
+    }
+    totals.lines.covered += row.lines.covered;
+    totals.lines.total += row.lines.total;
+    totals.branches.covered += row.branches.covered;
+    totals.branches.total += row.branches.total;
+  }
+  return {
+    lines: percentage(totals.lines),
+    branches: percentage(totals.branches)
+  };
 }
 
 function selfTest() {
@@ -143,10 +203,11 @@ function selfTest() {
 | src/validators/GranularSessionValidator.sol | 93.33% (70/75) | 90.00% (117/130) | 68.75% (22/32) | 100.00% (9/9) |
 | src/validators/MultiP256Validator.sol | 91.67% (77/84) | 89.16% (115/129) | 64.29% (18/28) | 100.00% (14/14) |
 | src/validators/P256Validator.sol | 91.30% (42/46) | 84.91% (45/53) | 62.50% (5/8) | 100.00% (9/9) |
+| src/validators/SessionKeyValidator.sol | 92.31% (36/39) | 86.00% (43/50) | 60.00% (6/10) | 100.00% (8/8) |
 `);
-  assert.equal(summary.files.length, 16);
-  assert.equal(Math.round(summary.lines * 100) / 100, 93.9);
-  assert.equal(Math.round(summary.branches * 100) / 100, 67.2);
+  assert.equal(summary.files.length, 17);
+  assert.equal(Math.round(summary.lines * 100) / 100, 93.81);
+  assert.equal(Math.round(summary.branches * 100) / 100, 66.84);
   assertGate(summary);
 
   assert.throws(
@@ -160,6 +221,14 @@ function selfTest() {
         )
       }),
     /src\/account\/LoomAccount\.sol branch coverage 59\.99% < 60%/u
+  );
+  assert.throws(
+    () =>
+      assertGate({
+        ...summary,
+        files: summary.files.filter(row => row.file !== "src/validators/SessionKeyValidator.sol")
+      }),
+    /critical module coverage missing for src\/validators\/SessionKeyValidator\.sol/u
   );
 }
 

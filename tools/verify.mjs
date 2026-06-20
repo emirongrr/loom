@@ -53,6 +53,7 @@ run("Bundler qualification evidence tests", process.execPath, [
   "tools/validate-bundler-qualification.test.mjs"
 ]);
 run("Bundler smoke preflight tests", process.execPath, ["--test", "tools/bundler-smoke.test.mjs"]);
+run("Coverage gate self-test", process.execPath, ["tools/check-coverage-gate.mjs", "--self-test"]);
 run("Deployment manifest evidence tests", process.execPath, [
   "--test",
   "tools/validate-deployment-manifest.test.mjs"
