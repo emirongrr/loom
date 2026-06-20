@@ -13,6 +13,11 @@ Before adding a fixture, verify:
 - no username, display name, raw credential ID, raw user-agent, user handle,
   account address, attestation object, or persistent device identifier is
   present;
+- `provenance.collectorSourceHash` matches the collector used for capture;
+- `provenance.reviewedForPII` is true only after a human privacy review;
+- `provenance.negativeCaseManifestHash` binds the fixture to its reviewed
+  challenge, origin, RP ID hash, user-verification flag, signature, and
+  payload-length negative cases;
 - `negativeMutations` is populated only after challenge, origin, RP ID hash,
   user-verification flag, signature, and payload-length negative tests pass;
 - the matrix entry remains `captured` until both positive and negative

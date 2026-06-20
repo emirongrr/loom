@@ -91,6 +91,30 @@ test("WebAuthn fixture parser rejects environment, transport, and privacy mismat
   });
 });
 
+test("WebAuthn fixture parser requires local collector provenance", async () => {
+  await withFixtureRoot(async root => {
+    const value = fixture();
+    delete value.provenance;
+    await writeFixture(root, value);
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /provenance must be an object/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ provenance: { captureMode: "remote-service" } }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /captureMode must be local-secure-context/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ provenance: { reviewedForPII: false } }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /reviewedForPII must be true/);
+  });
+
+  await withFixtureRoot(async root => {
+    await writeFixture(root, fixture({ provenance: { negativeCaseManifestHash: "0x1234" } }));
+    await assert.rejects(() => validateWebAuthnFixtures({ root }), /negativeCaseManifestHash must be bytes32/);
+  });
+});
+
 async function withFixtureRoot(callback) {
   const root = await mkdtemp(join(tmpdir(), "loom-webauthn-"));
   try {
@@ -140,7 +164,8 @@ function fixture({
     containsRawUserAgent: false,
     containsUserIdentifiers: false,
     containsAttestationObject: false
-  }
+  },
+  provenance = {}
 } = {}) {
   const rpId = "wallet.example";
   return {
@@ -173,7 +198,16 @@ function fixture({
     s,
     expected: true,
     negativeMutations,
-    privacy
+    privacy,
+    provenance: {
+      captureMode: "local-secure-context",
+      collectorSource: "tools/webauthn-fixture/collector.html",
+      collectorSourceHash: "0x" + "0a".repeat(32),
+      requiresFreshCredential: true,
+      reviewedForPII: true,
+      negativeCaseManifestHash: "0x" + "0b".repeat(32),
+      ...provenance
+    }
   };
 }
 
