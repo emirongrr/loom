@@ -43,6 +43,7 @@ extension without hidden upgrade authority.
 
 - [Deployment and verification](operations/deployment.md)
 - [Deployment manifest evidence](operations/deployment-manifest.md)
+- [Keystore proof profile evidence](operations/keystore-proof-profile.md)
 - [Bundler qualification](operations/bundler-qualification.md)
 - [Local lifecycle rehearsal](operations/local-rehearsal.md)
 - [Live lifecycle rehearsal](operations/live-rehearsal.md)
@@ -52,5 +53,6 @@ extension without hidden upgrade authority.
 ## Reviews And Decisions
 
 - [Pre-audit review, June 2026](reviews/pre-audit-2026-06.md)
+- [Philosophy-grounded gap analysis, June 2026](reviews/philosophy-walletbeat-gap-analysis-2026-06.md)
 - [Preliminary review disposition](reviews/preliminary-review-disposition.md)
 - [Engineering decision records](decisions/README.md)

@@ -38,6 +38,12 @@ artifacts and rejects mismatches. It intentionally does not fetch explorers or
 RPC endpoints; network evidence must be reviewed separately and should never
 require committing API keys.
 
+Keystore sync deployments need one additional artifact: a passing keystore
+proof profile. The deployment manifest proves what was deployed; the keystore
+profile proves that the verifier's authority is Ethereum L1 state rather than
+L1-to-L2 messaging, bridge attestations, oracle answers, or Loom-operated
+services.
+
 ## Command
 
 ```sh

@@ -32,6 +32,10 @@ function validEvidence() {
         specTests: { passed: true, reference: "eth-infinitism/bundler-spec-tests@sha" }
       }
     ],
+    lifecycle: [
+      lifecycleFor("local-rundler"),
+      lifecycleFor("third-party-skandha")
+    ],
     checks: {
       counterfactualDeploy: true,
       singleUserOperation: true,
@@ -53,6 +57,35 @@ function validEvidence() {
       nativeGas: TX,
       paymasterApproved: TX,
       directHandleOpsFallback: TX
+    }
+  };
+}
+
+function lifecycleFor(bundler) {
+  return {
+    bundler,
+    chainId: 11155111,
+    entryPoint: ENTRYPOINT,
+    account: "0x" + "33".repeat(20),
+    checks: {
+      counterfactualDeploy: true,
+      singleUserOperation: true,
+      atomicBatchUserOperation: true,
+      nativeGas: true,
+      paymasterApproved: true,
+      paymasterRejected: true,
+      invalidSignatureRejected: true,
+      staleNonceRejected: true,
+      malformedCalldataRejected: true,
+      unsupportedModeRejected: true,
+      receiptReconciliation: true
+    },
+    receipts: {
+      deploy: TX,
+      single: TX,
+      batch: TX,
+      nativeGas: TX,
+      paymasterApproved: TX
     }
   };
 }
@@ -96,4 +129,22 @@ test("bundler qualification binds chain and expected entrypoint", () => {
   evidence.bundlers[1].chainId = 11155111;
   evidence.bundlers[1].supportedEntryPoints = ["0x" + "22".repeat(20)];
   assert.throws(() => validateBundlerQualification(evidence), /expected EntryPoint/);
+});
+
+test("bundler qualification requires each bundler to pass the same account lifecycle", () => {
+  const missing = validEvidence();
+  missing.lifecycle.pop();
+  assert.throws(() => validateBundlerQualification(missing), /one result per bundler/);
+
+  const wrongBundler = validEvidence();
+  wrongBundler.lifecycle[1].bundler = "unknown-bundler";
+  assert.throws(() => validateBundlerQualification(wrongBundler), /must match a qualified bundler/);
+
+  const differentAccount = validEvidence();
+  differentAccount.lifecycle[1].account = "0x" + "44".repeat(20);
+  assert.throws(() => validateBundlerQualification(differentAccount), /same account across bundlers/);
+
+  const missingLifecycleCheck = validEvidence();
+  missingLifecycleCheck.lifecycle[0].checks.atomicBatchUserOperation = false;
+  assert.throws(() => validateBundlerQualification(missingLifecycleCheck), /atomicBatchUserOperation/);
 });

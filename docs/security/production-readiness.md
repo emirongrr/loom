@@ -45,10 +45,19 @@ does not make a deployment production-ready.
   app-account membership, stale L1 version rejection, local config
   invalidation, guardian cancellation, delay, expiry, and complete-validator-set
   replacement tests.
+- Keystore proof profile tests for every production-candidate verifier,
+  including Ethereum L1 direct-read, OP Stack, or Arbitrum profile evidence,
+  immutable verifier bytecode, storage-slot derivation, finality assumptions,
+  negative vectors, and explicit rejection of messaging, bridge, oracle, or
+  Loom-service authority.
 - Privacy adapter permission-binding, metadata-budget, local-scanning,
   relayer/indexer/prover degraded-mode, vault interaction, cancellation,
   expiry, and native-exit fallback tests before any concrete adapter is
   accepted.
+- Wallet engine SDK tests for no default provider side effects, app-scoped
+  session binding, explicit bundler transport, gas estimation, receipt polling,
+  passkey signer challenge binding, middleware mutation, private-vault binding,
+  and no broadcast without caller-supplied signer and transport.
 - Kohaku provider-profile tests for user RPC, local node, Helios-verified RPC,
   Colibri-compatible provider, unavailable provider, stale indexer sync,
   locally persisted sync state, and no pre-consent default RPC queries.
@@ -121,11 +130,18 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
   delayed private-withdrawal adapter assumptions.
 - Independent audit and per-network testnet rehearsal for each production L1
   storage proof verifier used by keystore sync. Test-only verifier contracts
-  are not acceptable for production.
+  are not acceptable for production. Each verifier must also publish a
+  passing keystore proof profile under `docs/operations/keystore-proof-profile.md`.
 - Verified wallet client release evidence showing light-client backed reads
   for balances, nonces, recovery state, guardian roots, vault state, validator
   state, and L1 keystore roots, plus explicit degraded-mode UX when a chain is
   only partially verified.
+- SDK production release evidence showing browser WebAuthn implementation
+  compatibility, ERC-4337 bundler interoperability across at least two
+  independent operators, paymaster middleware isolation, receipt timeout
+  behavior, account deployment rehearsal, recovery ceremony rehearsal, and
+  developer documentation that states every required adapter and trust
+  assumption.
 - Privacy adapter release evidence for each supported protocol, including
   dependency and license review, protocol threat model, metadata-leakage
   review, local-first scanning, relayer/prover/indexer failure behavior,

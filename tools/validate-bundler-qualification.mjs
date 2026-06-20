@@ -20,7 +20,7 @@ const PERMISSIONLESS_ENDPOINT_KINDS = new Set(["local", "permissionless", "self-
 
 export function validateBundlerQualification(evidence) {
   assertObject(evidence, "evidence");
-  for (const key of ["version", "network", "entryPoint", "bundlers", "checks", "receipts"]) {
+  for (const key of ["version", "network", "entryPoint", "bundlers", "lifecycle", "checks", "receipts"]) {
     if (!(key in evidence)) throw new Error(`missing top-level evidence field: ${key}`);
   }
   if (evidence.version !== 1) throw new Error("unsupported bundler qualification evidence version");
@@ -28,6 +28,7 @@ export function validateBundlerQualification(evidence) {
   assertNetwork(evidence.network);
   assertAddress(evidence.entryPoint, "entryPoint");
   assertBundlers(evidence.bundlers, evidence.network.chainId, evidence.entryPoint);
+  assertLifecycle(evidence.lifecycle, evidence.bundlers, evidence.network.chainId, evidence.entryPoint);
   assertChecks(evidence.checks);
   assertReceipts(evidence.receipts);
 
@@ -36,6 +37,48 @@ export function validateBundlerQualification(evidence) {
     entryPoint: evidence.entryPoint,
     bundlers: evidence.bundlers.map(item => item.name)
   };
+}
+
+function assertLifecycle(lifecycle, bundlers, chainId, entryPoint) {
+  if (!Array.isArray(lifecycle) || lifecycle.length !== bundlers.length) {
+    throw new Error("lifecycle evidence must include one result per bundler");
+  }
+
+  const expectedBundlers = new Set(bundlers.map(item => item.name.toLowerCase()));
+  const seenBundlers = new Set();
+  let account = null;
+  for (const [index, item] of lifecycle.entries()) {
+    const label = `lifecycle[${index}]`;
+    assertObject(item, label);
+    if (!item.bundler || typeof item.bundler !== "string") throw new Error(`${label}.bundler is required`);
+    const bundlerName = item.bundler.toLowerCase();
+    if (!expectedBundlers.has(bundlerName)) throw new Error(`${label}.bundler must match a qualified bundler`);
+    if (seenBundlers.has(bundlerName)) throw new Error("lifecycle evidence contains duplicate bundler results");
+    seenBundlers.add(bundlerName);
+
+    if (!Number.isSafeInteger(item.chainId) || item.chainId !== chainId) {
+      throw new Error(`${label}.chainId must match network.chainId`);
+    }
+    assertAddress(item.entryPoint, `${label}.entryPoint`);
+    if (item.entryPoint.toLowerCase() !== entryPoint.toLowerCase()) {
+      throw new Error(`${label}.entryPoint must match expected EntryPoint`);
+    }
+    assertAddress(item.account, `${label}.account`);
+    if (account === null) account = item.account.toLowerCase();
+    if (item.account.toLowerCase() !== account) {
+      throw new Error("lifecycle evidence must use the same account across bundlers");
+    }
+
+    assertObject(item.checks, `${label}.checks`);
+    for (const key of REQUIRED_CHECKS.filter(value => value !== "permissionlessHandleOpsFallback")) {
+      if (item.checks[key] !== true) throw new Error(`missing passing lifecycle check for ${item.bundler}: ${key}`);
+    }
+
+    assertObject(item.receipts, `${label}.receipts`);
+    for (const key of ["deploy", "single", "batch", "nativeGas", "paymasterApproved"]) {
+      assertTxHash(item.receipts[key], `${label}.receipts.${key}`);
+    }
+  }
 }
 
 function assertNetwork(network) {
