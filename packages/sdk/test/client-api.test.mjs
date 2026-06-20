@@ -265,3 +265,35 @@ test("high-level client delegates session and recovery lifecycle builders", () =
   assert.equal(recovery.intent.kind, "recovery.propose");
   assert.equal(recovery.review.requiresGuardianApproval, true);
 });
+
+test("sdk exposes typed lifecycle encoders and viem-compatible call shapes", () => {
+  const sdk = createLoomSdk({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    }
+  });
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    sdk
+  });
+  const revokeCallData = sdk.encoders.account.revokeTokenAllowance({
+    token,
+    spender: target
+  });
+  const calls = client.toViemCalls(client.prepareCalls({
+    calls: [{ target, value: 0n, data: revokeCallData }]
+  }));
+
+  assert.equal(revokeCallData.slice(0, 10), "0xbc881467");
+  assert.deepEqual(calls, [
+    {
+      to: target,
+      value: 0n,
+      data: revokeCallData
+    }
+  ]);
+});

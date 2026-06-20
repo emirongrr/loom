@@ -1,5 +1,6 @@
 import type {
   AccountLifecycleClient,
+  LifecycleCallEncoder,
   LifecycleIntent,
   Hex
 } from "../../account/src/index.js";
@@ -67,6 +68,7 @@ export interface ClearSigningReview {
 
 export interface LoomSdk {
   readonly lifecycle: AccountLifecycleClient;
+  readonly encoders: LifecycleCallEncoder;
   readonly kohaku: KohakuRuntime;
   readonly appScopes: AppScopeManager;
   readonly clearSigning: {
@@ -103,6 +105,12 @@ export interface LoomTransportAdapter {
 export interface LoomCall {
   readonly target: Hex;
   readonly value?: bigint | string | number;
+  readonly data: Hex;
+}
+
+export interface ViemCall {
+  readonly to: Hex;
+  readonly value: bigint;
   readonly data: Hex;
 }
 
@@ -190,6 +198,7 @@ export interface LoomClient {
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
     overrides?: UserOperationOverrides
   ): UserOperationEnvelope;
+  toViemCalls(prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent): readonly ViemCall[];
   sendPreparedUserOperation(
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
     overrides?: UserOperationOverrides & {
@@ -276,6 +285,11 @@ export function createBundlerTransport(options: BundlerTransportOptions): LoomTr
   readonly endpoint: string;
   readonly entryPoint: Hex;
 };
+
+export function toViemCalls(
+  prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
+  options?: { account?: Hex }
+): readonly ViemCall[];
 
 export interface PasskeyChallenge {
   readonly type: "loom.passkey-user-operation";

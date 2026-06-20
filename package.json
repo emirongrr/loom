@@ -17,6 +17,8 @@
     "keystore:profile:check": "node tools/validate-keystore-proof-profile.mjs",
     "kohaku:stack:test": "node --test tools/validate-kohaku-stack.test.mjs",
     "kohaku:stack:check": "node tools/validate-kohaku-stack.mjs",
+    "privacy:profile:test": "node --test tools/validate-privacy-adapter-profile.test.mjs",
+    "privacy:profile:check": "node tools/validate-privacy-adapter-profile.mjs",
     "account:test": "npm --prefix packages/account test",
     "guardian:test": "npm --prefix packages/guardian test",
     "privacy:test": "npm --prefix packages/privacy test",

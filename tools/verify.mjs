@@ -63,6 +63,10 @@ run("Keystore proof profile tests", process.execPath, [
 run("Live rehearsal evidence tests", process.execPath, ["--test", "tools/validate-live-rehearsal.test.mjs"]);
 run("Kohaku stack evidence tests", process.execPath, ["--test", "tools/validate-kohaku-stack.test.mjs"]);
 run("Kohaku stack evidence", process.execPath, ["tools/validate-kohaku-stack.mjs"]);
+run("Privacy adapter profile tests", process.execPath, [
+  "--test",
+  "tools/validate-privacy-adapter-profile.test.mjs"
+]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);

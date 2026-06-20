@@ -229,6 +229,8 @@ decision record, threat-model update, tests, and an audit plan.
 A privacy adapter is not production-ready until it has:
 
 - A documented protocol profile and threat model.
+- A passing privacy adapter profile under
+  `docs/operations/privacy-adapter-profile.md`.
 - Local-first scanning with no mandatory Loom server.
 - A walkaway path using open tools and user-selected endpoints.
 - Explicit relayer, prover, indexer, bridge, and finality assumptions.

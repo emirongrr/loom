@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InvalidLifecycleRequestError, createAccountLifecycleClient } from "../src/index.js";
+import { InvalidLifecycleRequestError, createAccountLifecycleClient, createLifecycleCallEncoder } from "../src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const other = "0x2222222222222222222222222222222222222222";
@@ -319,6 +319,105 @@ test("completion builders reject ambiguous cancellation routes and unordered val
         newGuardianThreshold: 2,
         executeAfter: 100n,
         expiresAt: 200n
+      }),
+    InvalidLifecycleRequestError
+  );
+});
+
+test("lifecycle call encoder builds account timelock and migration calldata", () => {
+  const encoder = createLifecycleCallEncoder();
+  const schedule = encoder.account.scheduleCall({
+    target: other,
+    value: 5n,
+    data: "0x123456",
+    delay: 259200
+  });
+  const migration = encoder.account.scheduleMigration({
+    destination: other,
+    destinationCodeHash: codeHash,
+    callsHash: salt,
+    delay: 259200,
+    executionWindow: 604800
+  });
+
+  assert.equal(schedule.slice(0, 10), "0xdcfe7ea7");
+  assert.equal(schedule.slice(10, 74), other.slice(2).padStart(64, "0"));
+  assert.equal(schedule.slice(74, 138), "5".padStart(64, "0"));
+  assert.equal(schedule.slice(138, 202), "80".padStart(64, "0"));
+  assert.equal(schedule.slice(202, 266), (259200).toString(16).padStart(64, "0"));
+  assert.equal(schedule.slice(266, 330), "3".padStart(64, "0"));
+  assert.equal(schedule.slice(330, 394), "123456".padEnd(64, "0"));
+
+  assert.equal(migration.slice(0, 10), "0x528833ca");
+  assert.equal(migration.includes(codeHash.slice(2)), true);
+  assert.equal(migration.includes(salt.slice(2)), true);
+});
+
+test("lifecycle call encoder builds granular session and vault calldata", () => {
+  const encoder = createLifecycleCallEncoder();
+  const grant = encoder.session.grantPermission({
+    permissionId: codeHash,
+    permission: {
+      signer: other,
+      target: token,
+      token,
+      selector: "0xa9059cbb",
+      maxAmountPerCall: 100n,
+      maxAmountPerUserOp: 300n,
+      validAfter: 10n,
+      validUntil: 1000n,
+      maxUses: 7,
+      maxCallsPerUserOp: 3
+    }
+  });
+  const vault = encoder.vault.scheduleVaultWithdrawal({
+    target: token,
+    value: 0n,
+    callData: "0xa9059cbb" + other.slice(2).padStart(64, "0") + "64".padStart(64, "0"),
+    executionWindow: 604800
+  });
+
+  assert.equal(grant.slice(0, 10), "0x7d198ff1");
+  assert.equal(grant.slice(10, 74), codeHash.slice(2));
+  assert.equal(grant.includes(other.slice(2).padStart(64, "0")), true);
+  assert.equal(grant.includes("a9059cbb".padEnd(64, "0")), true);
+  assert.equal(grant.endsWith("3".padStart(64, "0")), true);
+
+  assert.equal(vault.slice(0, 10), "0x1bdd50c5");
+  assert.equal(vault.slice(138, 202), "80".padStart(64, "0"));
+});
+
+test("lifecycle call encoder rejects malformed typed inputs", () => {
+  const encoder = createLifecycleCallEncoder();
+
+  assert.throws(
+    () =>
+      encoder.session.grantPermission({
+        permissionId: codeHash,
+        permission: {
+          signer: other,
+          target: token,
+          token,
+          selector: "0x1234",
+          maxAmountPerCall: 1n,
+          maxAmountPerUserOp: 1n,
+          validUntil: 2n,
+          maxUses: 1
+        }
+      }),
+    InvalidLifecycleRequestError
+  );
+
+  assert.throws(
+    () =>
+      encoder.vault.setVaultPolicy({
+        asset: token,
+        policy: {
+          dailyLimit: 1n,
+          period: 86400,
+          delay: 259200,
+          enabled: "yes"
+        }
       }),
     InvalidLifecycleRequestError
   );

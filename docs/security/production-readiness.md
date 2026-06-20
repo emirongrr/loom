@@ -54,6 +54,12 @@ does not make a deployment production-ready.
   relayer/indexer/prover degraded-mode, vault interaction, cancellation,
   expiry, and native-exit fallback tests before any concrete adapter is
   accepted.
+- Privacy adapter profile tests for every production-candidate Railgun,
+  privacy-pool, or Aztec adapter, proving pinned dependency review, no default
+  provider, explicit consent, no viewing-key or account-graph disclosure,
+  local-first scan state, fail-closed stale scan behavior, optional relayer,
+  vault delay for protected unshield flows, native exit fallback, and no
+  account authority granted to the privacy protocol.
 - Wallet engine SDK tests for no default provider side effects, app-scoped
   session binding, explicit bundler transport, gas estimation, receipt polling,
   passkey signer challenge binding, middleware mutation, private-vault binding,
@@ -146,7 +152,8 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
   dependency and license review, protocol threat model, metadata-leakage
   review, local-first scanning, relayer/prover/indexer failure behavior,
   bridge or finality assumptions, vault interaction rehearsal, and clear user
-  warnings for degraded modes.
+  warnings for degraded modes. Each adapter must publish a passing privacy
+  adapter profile under `docs/operations/privacy-adapter-profile.md`.
 - Root, documentation-site, and Kohaku SDK dependency audits must pass at low
   severity or better. Any override used to keep audit clean must have a
   compatibility check, upstream-release review, exploitability analysis, and
