@@ -80,13 +80,37 @@ function lifecycleFor(bundler) {
       unsupportedModeRejected: true,
       receiptReconciliation: true
     },
+    stages: {
+      session: stage(),
+      recovery: stage(),
+      migration: stage(),
+      vault: stage()
+    },
     receipts: {
       deploy: TX,
       single: TX,
       batch: TX,
       nativeGas: TX,
-      paymasterApproved: TX
+      paymasterApproved: TX,
+      paymasterRejected: TX,
+      sessionGrant: TX,
+      sessionRevoke: TX,
+      recoveryProposal: TX,
+      recoveryCancel: TX,
+      migrationSchedule: TX,
+      migrationCancel: TX,
+      vaultSchedule: TX,
+      vaultCancel: TX
     }
+  };
+}
+
+function stage() {
+  return {
+    scheduled: true,
+    cancelled: true,
+    configBound: true,
+    receiptReconciled: true
   };
 }
 
@@ -147,4 +171,22 @@ test("bundler qualification requires each bundler to pass the same account lifec
   const missingLifecycleCheck = validEvidence();
   missingLifecycleCheck.lifecycle[0].checks.atomicBatchUserOperation = false;
   assert.throws(() => validateBundlerQualification(missingLifecycleCheck), /atomicBatchUserOperation/);
+});
+
+test("bundler qualification requires lifecycle stage and receipt evidence", () => {
+  const missingStage = validEvidence();
+  delete missingStage.lifecycle[0].stages.recovery;
+  assert.throws(() => validateBundlerQualification(missingStage), /stages.recovery must be an object/);
+
+  const unboundVault = validEvidence();
+  unboundVault.lifecycle[0].stages.vault.configBound = false;
+  assert.throws(() => validateBundlerQualification(unboundVault), /stages.vault.configBound must be true/);
+
+  const missingReceipt = validEvidence();
+  delete missingReceipt.lifecycle[0].receipts.sessionRevoke;
+  assert.throws(() => validateBundlerQualification(missingReceipt), /receipts.sessionRevoke must be bytes32/);
+
+  const missingCancellation = validEvidence();
+  missingCancellation.lifecycle[0].stages.migration.cancelled = false;
+  assert.throws(() => validateBundlerQualification(missingCancellation), /stages.migration.cancelled must be true/);
 });
