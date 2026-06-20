@@ -1,0 +1,22 @@
+{
+  "name": "@loom/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Privacy-aware Loom wallet engine SDK built around account lifecycle builders and Kohaku-compatible tooling.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "js-sha3": "0.8.0"
+  }
+}

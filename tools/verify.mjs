@@ -62,6 +62,7 @@ run("Kohaku stack evidence", process.execPath, ["tools/validate-kohaku-stack.mjs
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
+run("Wallet engine SDK tests", npm, ["--prefix", "packages/sdk", "test"]);
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);
