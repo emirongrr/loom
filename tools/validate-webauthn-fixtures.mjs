@@ -1,10 +1,19 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const defaultRoot = new URL("../fixtures/webauthn/", import.meta.url);
 const p256HalfOrder = 0x7fffffff800000007fffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
+const forbiddenMetadataKeys = new Set([
+  "attestationObject",
+  "credentialId",
+  "displayName",
+  "rawId",
+  "userAgent",
+  "userHandle",
+  "username"
+]);
 
 export async function validateWebAuthnFixtures({ root = defaultRoot, requireComplete = false } = {}) {
   const rootUrl = root instanceof URL ? root : pathToFileURL(`${root}/`);
@@ -23,17 +32,21 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
     if (!["missing", "captured", "verified"].includes(item.status)) {
       throw new Error(`invalid status for ${item.id}: ${item.status}`);
     }
-    if (!item.browser || !item.authenticator) throw new Error(`incomplete matrix item: ${item.id}`);
+    if (!item.browser || !item.platform || !item.authenticator || !item.authenticatorClass) {
+      throw new Error(`incomplete matrix item: ${item.id}`);
+    }
+    if (!Array.isArray(item.transports) || item.transports.length === 0) {
+      throw new Error(`matrix item must define transports: ${item.id}`);
+    }
     ids.add(item.id);
     matrixById.set(item.id, item);
   }
 
-  const files = (await readdir(rootPath)).filter(
-    name => name.endsWith(".json") && name !== "schema.json" && name !== "matrix.json"
-  );
+  const files = (await fixtureFiles(rootPath)).filter(name => name.endsWith(".json"));
   const fixtureIds = new Set();
   for (const name of files) {
     const fixture = JSON.parse(await readFile(join(rootPath, name), "utf8"));
+    rejectForbiddenMetadata(name, fixture);
     if (!matrixById.has(fixture.matrixId)) {
       throw new Error(`${name}: fixture matrixId is not required: ${fixture.matrixId}`);
     }
@@ -48,11 +61,37 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
       throw new Error(`${name}: incomplete assertion`);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fixture.capturedAt ?? "")) throw new Error(`${name}: invalid capturedAt`);
+    if (!/^0x[0-9a-fA-F]{64}$/.test(fixture.userAgentHash ?? "")) {
+      throw new Error(`${name}: invalid userAgentHash`);
+    }
+    if (!fixture.collectorVersion || fixture.collectorVersion.length > 40) {
+      throw new Error(`${name}: invalid collectorVersion`);
+    }
+    if (!fixture.browserVersion || !fixture.platformVersion) {
+      throw new Error(`${name}: incomplete environment metadata`);
+    }
+    if (!Array.isArray(fixture.transports) || fixture.transports.length === 0) {
+      throw new Error(`${name}: missing authenticator transports`);
+    }
+    if (fixture.privacy?.containsRawUserAgent !== false || fixture.privacy?.containsUserIdentifiers !== false) {
+      throw new Error(`${name}: fixture must explicitly exclude user identifiers and raw user-agent metadata`);
+    }
+    if (fixture.privacy?.containsAttestationObject !== false) {
+      throw new Error(`${name}: fixture must not include attestation object metadata`);
+    }
 
     const matrixItem = matrixById.get(fixture.matrixId);
     if (fixture.browser !== matrixItem.browser) throw new Error(`${name}: browser does not match matrix item`);
+    if (fixture.platform !== matrixItem.platform) throw new Error(`${name}: platform does not match matrix item`);
     if (fixture.authenticator !== matrixItem.authenticator) {
       throw new Error(`${name}: authenticator does not match matrix item`);
+    }
+    if (fixture.authenticatorClass !== matrixItem.authenticatorClass) {
+      throw new Error(`${name}: authenticator class does not match matrix item`);
+    }
+    const missingTransports = matrixItem.transports.filter(item => !fixture.transports.includes(item));
+    if (missingTransports.length !== 0) {
+      throw new Error(`${name}: missing matrix transport evidence: ${missingTransports.join(", ")}`);
     }
 
     const missingMutations = requiredNegativeMutations.filter(item => !fixture.negativeMutations?.includes(item));
@@ -89,6 +128,48 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
   }
 
   return { fixtureCount: files.length, incompleteCount: incomplete.length };
+}
+
+async function fixtureFiles(rootPath) {
+  const names = await readdir(rootPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of names) {
+    if (entry.isFile() && entry.name !== "schema.json" && entry.name !== "matrix.json") {
+      files.push(entry.name);
+    }
+  }
+  const corpusPath = join(rootPath, "corpus");
+  try {
+    for (const name of await walkJsonFiles(corpusPath)) {
+      files.push(relative(rootPath, name));
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return files;
+}
+
+async function walkJsonFiles(path) {
+  const entries = await readdir(path, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkJsonFiles(child)));
+    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+      files.push(child);
+    }
+  }
+  return files;
+}
+
+function rejectForbiddenMetadata(name, value, path = "") {
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    const currentPath = path ? `${path}.${key}` : key;
+    if (forbiddenMetadataKeys.has(key)) throw new Error(`${name}: forbidden fixture metadata: ${currentPath}`);
+    rejectForbiddenMetadata(name, child, currentPath);
+  }
 }
 
 function hexToBytes(value) {

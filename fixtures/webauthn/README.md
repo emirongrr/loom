@@ -9,8 +9,12 @@ Each fixture records:
 
 - fixture schema version;
 - matrix ID and capture date;
-- browser, operating-system, and authenticator class;
+- collector version;
+- browser, browser version, operating-system label/version, and authenticator
+  class;
 - authenticator type from the release matrix;
+- authenticator transport evidence;
+- hashed user-agent evidence for review deduplication;
 - RP ID and origin used only for the public test domain;
 - public key coordinates and credential ID hash;
 - authenticator data, client data JSON, and signature;
@@ -21,7 +25,9 @@ Every accepted positive fixture must have generated negative tests that alter
 the challenge, origin, RP ID hash, flags, signature, and payload lengths.
 
 Fixtures are release evidence, not production user telemetry. Collection must
-be opt-in and local-first.
+be opt-in and local-first. Do not commit usernames, display names, raw
+credential IDs, raw user-agent strings, user handles, attestation objects,
+account addresses, or persistent device identifiers.
 
 `matrix.json` records the minimum release matrix. `npm run fixtures:check`
 validates committed fixture shape, matrix membership, low-s signatures,
@@ -34,8 +40,13 @@ contract tests pass.
 
 `tools/webauthn-fixture/collector.html` creates a fresh local-only credential
 and assertion. Serve it from a local secure context, inspect the output, and
-remove unnecessary browser metadata before review. Set `matrixId` and
-`authenticator` to the matching matrix entry. Fill `negativeMutations` only
-after tests cover challenge, origin, RP ID hash, user-verification flag,
-signature, and payload-length mutations. A fixture is accepted only after its
-positive and mutation-negative Foundry tests pass.
+keep only the anonymous metadata required by `schema.json`. Set `matrixId`,
+`browser`, `platform`, `authenticator`, `authenticatorClass`, and
+`transports` to the matching matrix entry. Fill `negativeMutations` only after
+tests cover challenge, origin, RP ID hash, user-verification flag, signature,
+and payload-length mutations. A fixture is accepted only after its positive
+and mutation-negative Foundry tests pass.
+
+Put accepted fixtures under `corpus/`. Missing combinations must remain
+marked `missing` in `matrix.json`; do not add synthetic production fixtures to
+make a release gate pass.

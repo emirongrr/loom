@@ -9,9 +9,41 @@
     "payloadLength"
   ],
   "required": [
-    { "id": "chrome-android-passkey", "browser": "Chrome", "authenticator": "Android passkey", "status": "missing" },
-    { "id": "chrome-windows-hello", "browser": "Chrome", "authenticator": "Windows Hello", "status": "missing" },
-    { "id": "firefox-yubikey", "browser": "Firefox", "authenticator": "YubiKey", "status": "missing" },
-    { "id": "safari-apple-passkey", "browser": "Safari", "authenticator": "Apple passkey", "status": "missing" }
+    {
+      "id": "chrome-android-passkey",
+      "platform": "Android",
+      "browser": "Chrome",
+      "authenticator": "Android passkey",
+      "authenticatorClass": "platform",
+      "transports": ["internal", "hybrid"],
+      "status": "missing"
+    },
+    {
+      "id": "chrome-windows-hello",
+      "platform": "Windows",
+      "browser": "Chrome",
+      "authenticator": "Windows Hello",
+      "authenticatorClass": "platform",
+      "transports": ["internal"],
+      "status": "missing"
+    },
+    {
+      "id": "firefox-yubikey",
+      "platform": "Desktop",
+      "browser": "Firefox",
+      "authenticator": "YubiKey",
+      "authenticatorClass": "roaming",
+      "transports": ["usb"],
+      "status": "missing"
+    },
+    {
+      "id": "safari-apple-passkey",
+      "platform": "Apple",
+      "browser": "Safari",
+      "authenticator": "Apple passkey",
+      "authenticatorClass": "platform",
+      "transports": ["internal"],
+      "status": "missing"
+    }
   ]
 }
