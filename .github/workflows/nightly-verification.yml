@@ -54,7 +54,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
       - name: Verify initialization properties
