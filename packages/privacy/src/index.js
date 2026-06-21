@@ -689,6 +689,13 @@ async function loadAztecPluginFactory() {
 
 function normalizeRailgunPlugin(plugin) {
   if (!plugin || typeof plugin !== "object") throw new TypeError("railgun plugin is required");
+  const hasKohakuRailgunShape =
+    typeof plugin.instanceId === "function" ||
+    typeof plugin.broadcast === "function" ||
+    typeof plugin.prepareShieldMulti === "function" ||
+    typeof plugin.prepareTransferMulti === "function" ||
+    typeof plugin.prepareUnshieldMulti === "function";
+  if (hasKohakuRailgunShape) return normalizeKohakuRailgunPlugin(plugin);
   return Object.freeze({
     ...plugin,
     createAccount: plugin.createAccount,
@@ -696,6 +703,79 @@ function normalizeRailgunPlugin(plugin) {
     prepareTransfer: plugin.prepareTransfer,
     prepareUnshield: plugin.prepareUnshield,
     broadcastPrivateOperation: plugin.broadcastPrivateOperation
+  });
+}
+
+function normalizeKohakuRailgunPlugin(plugin) {
+  return Object.freeze({
+    ...plugin,
+    async createAccount() {
+      if (typeof plugin.instanceId !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not expose instanceId", {
+          protocol: "railgun",
+          method: "instanceId"
+        });
+      }
+      return {
+        shieldedAddress: await plugin.instanceId()
+      };
+    },
+    async prepareShield(request) {
+      if (typeof plugin.prepareShield !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareShield", {
+          protocol: "railgun",
+          method: "prepareShield"
+        });
+      }
+      const result = await plugin.prepareShield(toKohakuAssetAmount(request), request.recipient);
+      return {
+        operation: {
+          kind: "railgun-shield",
+          raw: result
+        },
+        calls: normalizeRailgunPublicCalls(result),
+        requiresVaultDelay: false
+      };
+    },
+    async prepareTransfer(request) {
+      if (typeof plugin.prepareTransfer !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareTransfer", {
+          protocol: "railgun",
+          method: "prepareTransfer"
+        });
+      }
+      const recipient = normalizeRailgunRecipient(request.recipient);
+      const result = await plugin.prepareTransfer(toKohakuAssetAmount(request), recipient);
+      return {
+        operation: result,
+        calls: [],
+        requiresVaultDelay: false
+      };
+    },
+    async prepareUnshield(request) {
+      if (typeof plugin.prepareUnshield !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareUnshield", {
+          protocol: "railgun",
+          method: "prepareUnshield"
+        });
+      }
+      const recipient = normalizeAddress(request.recipient, "unshield recipient");
+      const result = await plugin.prepareUnshield(toKohakuAssetAmount(request), recipient);
+      return {
+        operation: result,
+        calls: [],
+        requiresVaultDelay: true
+      };
+    },
+    async broadcastPrivateOperation(operation) {
+      if (typeof plugin.broadcast !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement broadcast", {
+          protocol: "railgun",
+          method: "broadcast"
+        });
+      }
+      return plugin.broadcast(operation);
+    }
   });
 }
 
@@ -781,10 +861,45 @@ function normalizePrivateOperationResult(protocol, chainId, metadataBudget, resu
 function normalizeCall(call) {
   if (!call || typeof call !== "object") throw new InvalidPrivateOperationError("operation call must be an object");
   return Object.freeze({
-    target: normalizeAddress(call.target, "operation target"),
+    target: normalizeAddress(call.target ?? call.to, "operation target"),
     value: normalizeBigInt(call.value ?? 0n, "operation value"),
     data: normalizeHex(call.data, "operation data")
   });
+}
+
+function normalizeRailgunPublicCalls(result) {
+  const calls = Array.isArray(result) ? result : (result?.calls ?? result?.transactions ?? []);
+  return calls.map(call => ({
+    target: call.target ?? call.to,
+    value: call.value ?? 0n,
+    data: call.data
+  }));
+}
+
+function toKohakuAssetAmount(request) {
+  if (!request || typeof request !== "object") {
+    throw new InvalidPrivateOperationError("private operation request is required", { protocol: "railgun" });
+  }
+  return Object.freeze({
+    asset: toKohakuAssetId(request.asset),
+    amount: normalizeBigInt(request.amount ?? 0n, "private operation amount")
+  });
+}
+
+function toKohakuAssetId(asset) {
+  if (asset === undefined || asset === null) return Object.freeze({ __type: "native" });
+  return Object.freeze({
+    __type: "erc20",
+    contract: normalizeAddress(asset, "private operation asset")
+  });
+}
+
+function normalizeRailgunRecipient(recipient) {
+  assertNonEmptyString(recipient, "railgun recipient");
+  if (!recipient.startsWith("0zk")) {
+    throw new TypeError("railgun recipient must be a Railgun address");
+  }
+  return recipient;
 }
 
 function privateScanStateKey(context, protocol) {

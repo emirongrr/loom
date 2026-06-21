@@ -55,6 +55,11 @@ Production evidence files should be added only after live rehearsal with the
 actual protocol dependency, network, relayer/indexer/prover behavior, and vault
 interaction path.
 
+For Railgun, Loom's SDK adapter must exercise the upstream Kohaku Railgun
+plugin methods directly: `instanceId`, `prepareShield`, `prepareTransfer`,
+`prepareUnshield`, and `broadcast`. Evidence from a Loom-only mock plugin is
+not sufficient for a production private-transfer claim.
+
 ## Rehearsal Evidence
 
 The `rehearsal` section is the production claim boundary. It must show that the
