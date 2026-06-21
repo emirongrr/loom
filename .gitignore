@@ -16,6 +16,7 @@ docs/site/dist/
 .kontrol-venv/
 .kontrol/
 kout/
+formal/lean/.lake/
 .DS_Store
 Thumbs.db
 *.log
