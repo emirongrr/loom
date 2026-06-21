@@ -54,6 +54,9 @@ third-party builders can use without changing Loom core contracts.
 - `createRailgunAdapterProfile`: Railgun profile that initializes a
   Kohaku-compatible Railgun plugin, exposes balance/sync/private-operation
   methods, and persists local scan checkpoints after metadata-budget approval.
+  It supports the upstream Kohaku Railgun plugin shape (`instanceId`,
+  `prepareShield`, `prepareTransfer`, `prepareUnshield`, and `broadcast`),
+  not only Loom test plugins.
 - `createPrivacyPoolsAdapterProfile`: privacy-pool profile that initializes a
   Kohaku-compatible plugin, exposes shield/unshield/private-transfer/sync
   methods, and persists local scan checkpoints after metadata-budget approval.
@@ -94,7 +97,11 @@ and local-scan rules. Aztec remains an optional adapter profile because it has
 separate private state, proving, bridge/finality, and wallet-account
 assumptions. Production release still requires live network rehearsal,
 dependency audit remediation, relayer/indexer/prover failure evidence, vault
-interaction tests, and protocol-specific review. The Kohaku
+interaction tests, and protocol-specific review. The Railgun adapter now
+normalizes upstream Kohaku Railgun public shield calls, private transfer
+operations, unshield operations, shielded account discovery, and private
+broadcast results behind Loom's metadata-budget boundary, but that is not yet
+testnet transfer evidence. The Kohaku
 docs currently refer to
 `@kohaku-eth/tornado`, but the repository and npm registry expose
 `@kohaku-eth/tornado-cash`; Loom tracks the published package name. That

@@ -283,6 +283,12 @@ export interface KohakuShieldedPoolPlugin {
   prepareUnshield?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
   prepareTransfer?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
   broadcastPrivateOperation?(operation: unknown, host: KohakuHost): Promise<unknown>;
+  instanceId?(): Promise<string>;
+  balance?(assets?: readonly unknown[]): Promise<readonly unknown[]>;
+  prepareShieldMulti?(assets: readonly unknown[], to?: string): Promise<unknown>;
+  prepareTransferMulti?(assets: readonly unknown[], to: string): Promise<unknown>;
+  prepareUnshieldMulti?(assets: readonly unknown[], to: Hex): Promise<unknown>;
+  broadcast?(operation: unknown): Promise<unknown>;
 }
 
 export function createKohakuShieldedPoolAdapter(options: {
