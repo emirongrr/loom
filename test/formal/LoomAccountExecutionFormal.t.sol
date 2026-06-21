@@ -8,7 +8,11 @@ import {MockValidator} from "../mocks/MockValidator.sol";
 import {FormalAccountBase, FormalGuardianVerifier, FormalTarget} from "./FormalHelpers.sol";
 
 contract LoomAccountExecutionFormal is FormalAccountBase {
-    function check_batchExecutionIsAtomic(uint256 newValue) public {
+    function testFuzz_BatchExecutionAtomicity(uint256 newValue) public {
+        check_BatchExecutionAtomicity(newValue);
+    }
+
+    function check_BatchExecutionAtomicity(uint256 newValue) public {
         (LoomAccount account,) = _account();
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution[] memory executions = new ExecutionLib.Execution[](2);
@@ -22,11 +26,15 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         assert(target.value() == 0);
     }
 
-    function check_frozenAccountCannotExecuteOrdinaryCall(uint256 newValue) public {
+    function testFuzz_FrozenAccountCannotExecute(uint256 newValue) public {
+        check_FrozenAccountCannotExecute(newValue);
+    }
+
+    function check_FrozenAccountCannotExecute(uint256 newValue) public {
         FormalGuardianVerifier verifier = new FormalGuardianVerifier();
         bytes32 keyCommitment = keccak256("key");
         bytes32 salt = keccak256("salt");
-        bytes32 leaf = keccak256(abi.encode(address(verifier), address(verifier).codehash, keyCommitment, salt));
+        bytes32 leaf = _guardianLeaf(verifier, keyCommitment, salt);
         MockValidator validator = new MockValidator();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
@@ -42,11 +50,15 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         assert(target.value() == 0);
     }
 
-    function check_frozenAccountCannotExecuteDirectOrdinaryCall(uint256 newValue) public {
+    function testFuzz_FrozenAccountCannotDirectExecute(uint256 newValue) public {
+        check_FrozenAccountCannotDirectExecute(newValue);
+    }
+
+    function check_FrozenAccountCannotDirectExecute(uint256 newValue) public {
         FormalGuardianVerifier verifier = new FormalGuardianVerifier();
         bytes32 keyCommitment = keccak256("key");
         bytes32 salt = keccak256("salt");
-        bytes32 leaf = keccak256(abi.encode(address(verifier), address(verifier).codehash, keyCommitment, salt));
+        bytes32 leaf = _guardianLeaf(verifier, keyCommitment, salt);
         MockValidator validator = new MockValidator();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
@@ -68,7 +80,11 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         assert(target.value() == 0);
     }
 
-    function check_directBatchExecutionIsAtomic(uint256 newValue) public {
+    function testFuzz_DirectBatchExecutionAtomicity(uint256 newValue) public {
+        check_DirectBatchExecutionAtomicity(newValue);
+    }
+
+    function check_DirectBatchExecutionAtomicity(uint256 newValue) public {
         (LoomAccount account, MockValidator validator) = _account();
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution[] memory executions = new ExecutionLib.Execution[](2);
