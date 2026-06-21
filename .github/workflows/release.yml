@@ -40,7 +40,7 @@ jobs:
             foundry.toml package.json package-lock.json .gas-snapshot
           sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: loom-${{ github.ref_name }}
           path: |
