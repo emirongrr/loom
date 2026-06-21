@@ -46,6 +46,14 @@ function assertExperimentalAccountCryptoAbsentFromContracts() {
 
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
 run("WebAuthn fixture parser tests", process.execPath, ["--test", "tools/validate-webauthn-fixtures.test.mjs"]);
+run("CI program structure", process.execPath, ["tools/validate-ci-program.mjs"]);
+run("CI program structure tests", process.execPath, ["--test", "tools/validate-ci-program.test.mjs"]);
+run("Certora program structure", process.execPath, ["tools/validate-certora-program.mjs"]);
+run("Certora program structure tests", process.execPath, ["--test", "tools/validate-certora-program.test.mjs"]);
+run("Kontrol program structure", process.execPath, ["tools/validate-kontrol-program.mjs"]);
+run("Kontrol program structure tests", process.execPath, ["--test", "tools/validate-kontrol-program.test.mjs"]);
+run("Formal program structure", process.execPath, ["tools/validate-formal-program.mjs"]);
+run("Formal program structure tests", process.execPath, ["--test", "tools/validate-formal-program.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
 run("Website checks", process.execPath, ["tools/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
@@ -83,7 +91,9 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  "LoomAccountInvariantTest"
+  "LoomAccountInvariantTest",
+  "--no-match-path",
+  "test/formal/**"
 ]);
 run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });

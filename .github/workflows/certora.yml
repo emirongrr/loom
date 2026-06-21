@@ -1,0 +1,106 @@
+name: certora
+
+on:
+  pull_request:
+    paths:
+      - "formal/certora/**"
+      - "src/**"
+      - ".github/workflows/certora.yml"
+      - "tools/validate-certora-program.mjs"
+      - "tools/validate-certora-program.test.mjs"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: certora-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: Certora readiness gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate Certora program
+        run: npm run certora:program:check
+
+  compile-only:
+    name: Certora compile-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        conf:
+          - formal/certora/conf/loom-account-authority.conf
+          - formal/certora/conf/loom-account-initialization.conf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Certora CLI
+        run: python -m pip install -r formal/certora/requirements.txt
+      - name: Install Solidity compiler
+        run: |
+          python -m pip install solc-select
+          solc-select install 0.8.35
+          solc-select use 0.8.35
+      - name: Compile Certora target
+        run: certoraRun ${{ matrix.conf }} --compilation_steps_only --solc "$(command -v solc)"
+
+  prove:
+    name: Certora prover
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        conf:
+          - formal/certora/conf/loom-account-authority.conf
+          - formal/certora/conf/loom-account-initialization.conf
+    env:
+      CERTORAKEY: ${{ secrets.CERTORA_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Certora CLI
+        if: env.CERTORAKEY != ''
+        run: python -m pip install -r formal/certora/requirements.txt
+      - name: Install Solidity compiler
+        if: env.CERTORAKEY != ''
+        run: |
+          python -m pip install solc-select
+          solc-select install 0.8.35
+          solc-select use 0.8.35
+      - name: Run Certora
+        if: env.CERTORAKEY != ''
+        run: certoraRun ${{ matrix.conf }} --wait_for_results=all --solc "$(command -v solc)"
+      - name: Explain skipped prover
+        if: env.CERTORAKEY == ''
+        run: echo "Skipping certoraRun because CERTORA_KEY is not configured."

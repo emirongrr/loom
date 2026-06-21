@@ -1,0 +1,51 @@
+name: kontrol
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kontrol-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prove-selected-targets:
+    name: Kontrol selected KEVM targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install KUP and Kontrol
+        run: |
+          bash <(curl -sSfL https://kframework.org/install)
+          export PATH="$HOME/.kup/bin:$HOME/.local/bin:$PATH"
+          KUP_BIN="$(command -v kup || find "$HOME" -type f -name kup -perm -111 2>/dev/null | head -n 1)"
+          if [ -z "$KUP_BIN" ]; then
+            echo "kup was not found after installation"
+            exit 1
+          fi
+          "$KUP_BIN" install kontrol
+          KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 2>/dev/null | head -n 1)"
+          if [ -z "$KONTROL_BIN" ]; then
+            echo "kontrol was not found after kup install kontrol"
+            exit 1
+          fi
+          dirname "$KUP_BIN" >> "$GITHUB_PATH"
+          dirname "$KONTROL_BIN" >> "$GITHUB_PATH"
+      - name: Build Kontrol project
+        run: kontrol build
+      - name: Prove selected authority target
+        run: kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator
+      - name: Prove selected initialization target
+        run: kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized

@@ -1,10 +1,8 @@
 name: formal-properties
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +12,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lean:
+    name: Lean authority model
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Lean
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat formal/lean/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build Lean model
+        run: cd formal/lean && lake build
+
   halmos:
     name: Symbolic properties
     runs-on: ubuntu-latest
@@ -27,15 +41,23 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.7.1
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - name: Install uv
         uses: astral-sh/setup-uv@v6
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
+      - name: Check formal test documentation
+        run: test -f test/formal/README.md
+      - name: Verify initialization properties
+        run: timeout 300s halmos --contract LoomAccountInitializationFormal
       - name: Verify authority properties
-        run: halmos --contract LoomAccountAuthorityFormal
+        run: timeout 300s halmos --contract LoomAccountAuthorityFormal
       - name: Verify execution properties
-        run: halmos --contract LoomAccountExecutionFormal
+        run: timeout 300s halmos --contract LoomAccountExecutionFormal
       - name: Verify recovery properties
-        run: halmos --contract LoomAccountRecoveryFormal
+        run: timeout 300s halmos --contract LoomAccountRecoveryFormal
       - name: Verify migration properties
-        run: halmos --contract LoomAccountMigrationFormal
+        run: timeout 300s halmos --contract LoomAccountMigrationFormal

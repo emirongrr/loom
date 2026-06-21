@@ -1,0 +1,81 @@
+name: test
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts, fuzz, and invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run contract tests
+        run: forge test -vvv
+      - name: Run extended fuzz tests
+        run: forge test --match-test testFuzz --fuzz-runs 2048
+      - name: Run CI fuzz and invariants
+        run: FOUNDRY_PROFILE=ci forge test -vvv
+
+  sdk:
+    name: SDK and evidence tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test account SDK
+        run: npm run account:test
+      - name: Test guardian SDK
+        run: npm run guardian:test
+      - name: Test privacy SDK
+        run: npm run privacy:test
+      - name: Test wallet engine SDK
+        run: npm run sdk:test
+      - name: Test WebAuthn fixture parser
+        run: npm run fixtures:test
+      - name: Test bundler qualification evidence
+        run: npm run bundler:qualification:test
+      - name: Test deployment manifest evidence
+        run: npm run deployment:manifest:test
+      - name: Test keystore proof profile evidence
+        run: npm run keystore:profile:test
+      - name: Test live rehearsal evidence
+        run: npm run rehearsal:live:test
+      - name: Test privacy adapter profile evidence
+        run: npm run privacy:profile:test
+      - name: Test formal program structure
+        run: npm run formal:program:test
+      - name: Test CI program structure
+        run: npm run ci:program:test
