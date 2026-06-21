@@ -30,6 +30,11 @@ assert(exists("formal/certora/specs/LoomAccountInitialization.spec"), "LoomAccou
 assert(exists("formal/certora/specs/properties.md"), "Certora properties documentation is required");
 
 assertIncludes("formal/certora/README.md", "CVL rules are formal specifications for selected behaviors", "must state CVL claim boundary");
+assertIncludes(
+  "formal/certora/README.md",
+  "License Boundary",
+  "must document Certora CLI license boundary",
+);
 assertIncludes("formal/certora/SCOPE.md", "Validator count cannot become zero", "must include first authority rule group");
 assertIncludes("formal/certora/SCOPE.md", "manual prover job", "must describe manual prover scope");
 assertIncludes("formal/certora/rules/README.md", "Do not add placeholder rules that are not run locally", "must reject fake CVL coverage");

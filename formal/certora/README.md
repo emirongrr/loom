@@ -72,6 +72,14 @@ The workflow maps this secret to the environment variable expected by Certora:
   anti-upgrade rules.
 - `specs/properties.md` describes the property taxonomy and claim boundary.
 
+## License Boundary
+
+`certora-cli` is pinned as an optional developer and CI prover tool. It is not
+linked into Loom contracts, shipped SDK runtime packages, browser bundles, or
+wallet clients. The supply-chain workflow keeps GPL-family licenses denied by
+default and grants a narrow dependency-review exception only for
+`pkg:pypi/certora-cli`.
+
 ## Local Commands
 
 Install the pinned Certora CLI into a local workspace virtualenv:

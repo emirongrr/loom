@@ -130,6 +130,7 @@ function validateSupplyChainWorkflow() {
   for (const required of [
     "actions/dependency-review-action@v4",
     "fail-on-severity: high",
+    "allow-dependencies-licenses: pkg:pypi/certora-cli",
     "ossf/scorecard-action@v2.4.2",
     "publish_results: false",
   ]) {
