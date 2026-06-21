@@ -1,0 +1,279 @@
+namespace Loom
+
+inductive Actor where
+  | account
+  | validator
+  | guardian
+  | external
+  | developer
+  | factory
+  | registry
+  | provider
+  | proxy
+  deriving DecidableEq, Repr
+
+inductive Transition where
+  | ordinaryExecute (actor : Actor)
+  | freezeByGuardian
+  | scheduleRecovery
+  | cancelRecoveryByGuardian
+  | executeRecovery (newValidatorCount : Nat)
+  | configChange
+  | scheduleMigration
+  | executeMigration
+  | initialize
+  | upgradeImplementation (actor : Actor)
+  deriving DecidableEq, Repr
+
+structure State where
+  validatorCount : Nat
+  configVersion : Nat
+  frozen : Bool
+  recoveryPending : Bool
+  recoveryReady : Bool
+  migrationPending : Bool
+  initialized : Bool
+  deriving Repr
+
+def hasValidator (s : State) : Prop :=
+  s.validatorCount > 0
+
+def noPlatformAuthority (actor : Actor) : Prop :=
+  actor != Actor.developer
+    /\ actor != Actor.factory
+    /\ actor != Actor.registry
+    /\ actor != Actor.provider
+    /\ actor != Actor.proxy
+
+def ordinaryActorAllowed : Actor -> Bool
+  | Actor.account => true
+  | Actor.validator => true
+  | _ => false
+
+def step (s : State) : Transition -> Option State
+  | Transition.ordinaryExecute actor =>
+      if s.frozen = true then
+        none
+      else if ordinaryActorAllowed actor = true then
+        some s
+      else
+        none
+  | Transition.freezeByGuardian =>
+      some { s with frozen := true }
+  | Transition.scheduleRecovery =>
+      some { s with recoveryPending := true, recoveryReady := false }
+  | Transition.cancelRecoveryByGuardian =>
+      if s.frozen = true /\ s.recoveryPending = true then
+        some { s with recoveryPending := false, recoveryReady := false }
+      else
+        none
+  | Transition.executeRecovery newValidatorCount =>
+      if s.recoveryPending = true /\ s.recoveryReady = true /\ newValidatorCount > 0 then
+        some {
+          s with
+            validatorCount := newValidatorCount,
+            configVersion := s.configVersion + 1,
+            recoveryPending := false,
+            recoveryReady := false
+        }
+      else
+        none
+  | Transition.configChange =>
+      some { s with configVersion := s.configVersion + 1 }
+  | Transition.scheduleMigration =>
+      some { s with migrationPending := true }
+  | Transition.executeMigration =>
+      if s.frozen = true \/ s.migrationPending = false then
+        none
+      else
+        some { s with migrationPending := false }
+  | Transition.initialize =>
+      if s.initialized = true then none else some { s with initialized := true }
+  | Transition.upgradeImplementation _ =>
+      none
+
+theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
+    s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
+  intro h
+  simp [step, h]
+
+theorem initialized_state_rejects_reinitialization (s : State) :
+    s.initialized = true -> step s Transition.initialize = none := by
+  intro h
+  simp [step, h]
+
+theorem immutable_proxy_has_no_upgrade_transition (s : State) (actor : Actor) :
+    step s (Transition.upgradeImplementation actor) = none := by
+  simp [step]
+
+theorem frozen_guardian_cancel_recovery_allowed (s : State) :
+    s.frozen = true ->
+    s.recoveryPending = true ->
+    step s Transition.cancelRecoveryByGuardian =
+      some { s with recoveryPending := false, recoveryReady := false } := by
+  intro hf hp
+  simp [step, hf, hp]
+
+theorem recovery_requires_nonzero_replacement
+    (s s' : State)
+    (newValidatorCount : Nat) :
+    step s (Transition.executeRecovery newValidatorCount) = some s' ->
+    s'.validatorCount > 0 := by
+  intro hstep
+  unfold step at hstep
+  by_cases h :
+      s.recoveryPending = true /\ s.recoveryReady = true /\ newValidatorCount > 0
+  · simp [h] at hstep
+    cases hstep
+    exact h.2.2
+  · simp [h] at hstep
+
+theorem platform_actors_cannot_ordinary_execute_when_not_frozen
+    (s : State)
+    (actor : Actor) :
+    actor = Actor.developer
+      \/ actor = Actor.factory
+      \/ actor = Actor.registry
+      \/ actor = Actor.provider
+      \/ actor = Actor.proxy ->
+    s.frozen = false ->
+    step s (Transition.ordinaryExecute actor) = none := by
+  intro hplatform hf
+  rcases hplatform with hdev | hfactory | hregistry | hprovider | hproxy
+  · subst actor
+    simp [step, hf, ordinaryActorAllowed]
+  · subst actor
+    simp [step, hf, ordinaryActorAllowed]
+  · subst actor
+    simp [step, hf, ordinaryActorAllowed]
+  · subst actor
+    simp [step, hf, ordinaryActorAllowed]
+  · subst actor
+    simp [step, hf, ordinaryActorAllowed]
+
+theorem successful_step_preserves_validator_nonzero
+    (s s' : State)
+    (t : Transition) :
+    hasValidator s ->
+    step s t = some s' ->
+    hasValidator s' := by
+  intro hs hstep
+  cases t with
+  | ordinaryExecute actor =>
+      unfold step at hstep
+      by_cases hf : s.frozen = true
+      · simp [hf] at hstep
+      · simp [hf] at hstep
+        by_cases ha : ordinaryActorAllowed actor = true
+        · simp [ha] at hstep
+          cases hstep
+          exact hs
+        · simp [ha] at hstep
+  | freezeByGuardian =>
+      simp [step, hasValidator] at hstep
+      cases hstep
+      exact hs
+  | scheduleRecovery =>
+      simp [step, hasValidator] at hstep
+      cases hstep
+      exact hs
+  | cancelRecoveryByGuardian =>
+      unfold step at hstep
+      by_cases h : s.frozen = true /\ s.recoveryPending = true
+      · simp [h, hasValidator] at hstep
+        cases hstep
+        exact hs
+      · simp [h] at hstep
+  | executeRecovery newValidatorCount =>
+      exact recovery_requires_nonzero_replacement s s' newValidatorCount hstep
+  | configChange =>
+      simp [step, hasValidator] at hstep
+      cases hstep
+      exact hs
+  | scheduleMigration =>
+      simp [step, hasValidator] at hstep
+      cases hstep
+      exact hs
+  | executeMigration =>
+      unfold step at hstep
+      by_cases h : s.frozen = true \/ s.migrationPending = false
+      · simp [h] at hstep
+      · simp [h, hasValidator] at hstep
+        cases hstep
+        exact hs
+  | initialize =>
+      unfold step at hstep
+      by_cases h : s.initialized = true
+      · simp [h] at hstep
+      · simp [h, hasValidator] at hstep
+        cases hstep
+        exact hs
+  | upgradeImplementation actor =>
+      simp [step] at hstep
+
+theorem config_version_never_decreases_on_success
+    (s s' : State)
+    (t : Transition) :
+    step s t = some s' ->
+    s.configVersion <= s'.configVersion := by
+  intro hstep
+  cases t with
+  | ordinaryExecute actor =>
+      unfold step at hstep
+      by_cases hf : s.frozen = true
+      · simp [hf] at hstep
+      · simp [hf] at hstep
+        by_cases ha : ordinaryActorAllowed actor = true
+        · simp [ha] at hstep
+          cases hstep
+          exact Nat.le_refl s.configVersion
+        · simp [ha] at hstep
+  | freezeByGuardian =>
+      simp [step] at hstep
+      cases hstep
+      exact Nat.le_refl s.configVersion
+  | scheduleRecovery =>
+      simp [step] at hstep
+      cases hstep
+      exact Nat.le_refl s.configVersion
+  | cancelRecoveryByGuardian =>
+      unfold step at hstep
+      by_cases h : s.frozen = true /\ s.recoveryPending = true
+      · simp [h] at hstep
+        cases hstep
+        exact Nat.le_refl s.configVersion
+      · simp [h] at hstep
+  | executeRecovery newValidatorCount =>
+      unfold step at hstep
+      by_cases h :
+          s.recoveryPending = true /\ s.recoveryReady = true /\ newValidatorCount > 0
+      · simp [h] at hstep
+        cases hstep
+        exact Nat.le_succ s.configVersion
+      · simp [h] at hstep
+  | configChange =>
+      simp [step] at hstep
+      cases hstep
+      exact Nat.le_succ s.configVersion
+  | scheduleMigration =>
+      simp [step] at hstep
+      cases hstep
+      exact Nat.le_refl s.configVersion
+  | executeMigration =>
+      unfold step at hstep
+      by_cases h : s.frozen = true \/ s.migrationPending = false
+      · simp [h] at hstep
+      · simp [h] at hstep
+        cases hstep
+        exact Nat.le_refl s.configVersion
+  | initialize =>
+      unfold step at hstep
+      by_cases h : s.initialized = true
+      · simp [h] at hstep
+      · simp [h] at hstep
+        cases hstep
+        exact Nat.le_refl s.configVersion
+  | upgradeImplementation actor =>
+      simp [step] at hstep
+
+end Loom

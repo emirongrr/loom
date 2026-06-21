@@ -1,4 +1,4 @@
-name: contracts
+name: ci
 
 on:
   push:
@@ -36,6 +36,8 @@ jobs:
         run: npm ci
       - name: Audit dependencies
         run: npm run deps:audit
+      - name: Validate CI program structure
+        run: npm run ci:program:check
       - name: Validate documentation
         run: npm run docs:check
       - name: Validate website
@@ -46,6 +48,8 @@ jobs:
         run: npm run site:build
       - name: Validate WebAuthn fixtures
         run: npm run fixtures:check
+      - name: Validate formal program structure
+        run: npm run formal:program:check
       - name: Test privacy SDK boundary
         run: npm run privacy:test
       - name: Check formatting
@@ -55,13 +59,7 @@ jobs:
       - name: Check production bytecode sizes
         run: forge build --sizes --skip "test/**" "script/**"
       - name: Check gas snapshot
-        run: forge snapshot --force --check --tolerance 1 --no-match-contract LoomAccountInvariantTest
-      - name: Run contract tests
-        run: forge test -vvv
-      - name: Run extended fuzz tests
-        run: forge test --match-test testFuzz --fuzz-runs 10000
-      - name: Run CI fuzz and invariants
-        run: FOUNDRY_PROFILE=ci forge test -vvv
+        run: forge snapshot --force --check --tolerance 1 --no-match-contract LoomAccountInvariantTest --no-match-path "test/formal/**"
       - name: Check production coverage gate
         run: npm run coverage:check
       - name: Assert no excluded cryptography

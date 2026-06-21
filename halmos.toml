@@ -1,0 +1,11 @@
+[global]
+match-contract = ".*Formal"
+function = "check_"
+loop = 2
+depth = 100000
+width = 500000
+solver-timeout-branching = "1s"
+solver-timeout-assertion = "60s"
+default-array-lengths = "0,1,2"
+default-bytes-lengths = "0,65,1024"
+storage-layout = "solidity"

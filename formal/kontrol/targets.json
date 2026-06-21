@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "tool": "kontrol",
+  "claimBoundary": "Kontrol targets reuse Foundry-style property tests for KEVM-backed symbolic execution. They are selected proof targets, not complete wallet verification.",
+  "targets": [
+    {
+      "name": "initialization-one-shot",
+      "contract": "LoomAccountInitializationFormal",
+      "matchTest": "LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
+      "property": "Initialized accounts cannot be initialized again.",
+      "source": "test/formal/LoomAccountInitializationFormal.t.sol"
+    },
+    {
+      "name": "immutable-proxy-no-upgrade-selector",
+      "contract": "LoomAccountInitializationFormal",
+      "matchTest": "LoomAccountInitializationFormal.test_NoMutableUpgradeSelectorsThroughProxy",
+      "property": "Immutable proxy deployment does not expose mutable upgrade/admin selectors.",
+      "source": "test/formal/LoomAccountInitializationFormal.t.sol"
+    },
+    {
+      "name": "account-authority",
+      "contract": "LoomAccountAuthorityFormal",
+      "matchTest": "LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
+      "property": "The final validator cannot be removed.",
+      "source": "test/formal/LoomAccountAuthorityFormal.t.sol"
+    },
+    {
+      "name": "frozen-execution",
+      "contract": "LoomAccountExecutionFormal",
+      "matchTest": "LoomAccountExecutionFormal.testFuzz_FrozenAccountCannotExecute",
+      "property": "Frozen accounts cannot execute ordinary calls.",
+      "source": "test/formal/LoomAccountExecutionFormal.t.sol"
+    },
+    {
+      "name": "recovery-delay",
+      "contract": "LoomAccountRecoveryFormal",
+      "matchTest": "LoomAccountRecoveryFormal.test_RecoveryDelayIsEnforced",
+      "property": "Recovery cannot execute before the configured delay.",
+      "source": "test/formal/LoomAccountRecoveryFormal.t.sol"
+    },
+    {
+      "name": "migration-hash-binding",
+      "contract": "LoomAccountMigrationFormal",
+      "matchTest": "LoomAccountMigrationFormal.testFuzz_MigrationHashBinding",
+      "property": "Migration execution must match the scheduled call hash.",
+      "source": "test/formal/LoomAccountMigrationFormal.t.sol"
+    }
+  ]
+}

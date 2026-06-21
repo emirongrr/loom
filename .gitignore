@@ -10,6 +10,13 @@ docs/site/dist/
 .env
 .env.*
 !.env.example
+.certora-venv/
+.certora-venv-linux/
+.halmos-venv/
+.kontrol-venv/
+.kontrol/
+kout/
+formal/lean/.lake/
 .DS_Store
 Thumbs.db
 *.log
