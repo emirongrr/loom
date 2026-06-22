@@ -54,6 +54,58 @@ export interface GuardianBackupEnvelope {
   ciphertext: Hex;
 }
 
+export interface GuardianProofOfPossessionEvidence {
+  leaf: Hex;
+  challengeDigest: Hex;
+  signature: string;
+  verifierKind: "ecdsa" | "p256-webauthn" | "erc1271" | "hardware" | "institutional" | string;
+  verified: boolean;
+  expiresAt: number;
+}
+
+export interface GuardianEncryptedBackupEvidence {
+  leaf: Hex;
+  envelopeHash: Hex;
+  decryptionTested: boolean;
+}
+
+export interface GuardianUsabilityProof {
+  client: string;
+  rootRebuilt: boolean;
+  proofsVerified: boolean;
+  thresholdReachable: boolean;
+  backupDecryptionTested: boolean;
+}
+
+export interface GuardianPrivacyProof {
+  saltedCommitments: boolean;
+  publicEvidenceRedacted: boolean;
+  noCentralService: boolean;
+  noGuardianGraphUpload: boolean;
+}
+
+export interface GuardianOnboardingEvidence {
+  version: 1;
+  account?: Hex;
+  chainId?: number;
+  ceremonyId: Hex;
+  guardianRoot: Hex;
+  threshold: number;
+  guardianCount: number;
+  leaves: readonly {
+    leaf: Hex;
+    proofHash: Hex;
+    challengeDigest: Hex;
+    possessionVerified: boolean;
+    verifierKind: string;
+    backupEnvelopeHash: Hex;
+    backupDecryptionTested: boolean;
+  }[];
+  usabilityProof: GuardianUsabilityProof;
+  privacyProof: GuardianPrivacyProof;
+  evidenceHash: Hex;
+}
+
 export class InvalidGuardianCeremonyError extends Error {
   readonly details: Record<string, unknown>;
 }
@@ -91,3 +143,17 @@ export function encryptGuardianBackup(input: {
 }): GuardianBackupEnvelope;
 
 export function decryptGuardianBackup(input: GuardianBackupEnvelope & { passphrase: string }): unknown;
+
+export function buildGuardianOnboardingEvidence(input: {
+  guardians: readonly GuardianInput[];
+  threshold: number;
+  account: Hex;
+  chainId: number;
+  ceremonyId?: Hex;
+  proofsOfPossession: readonly GuardianProofOfPossessionEvidence[];
+  encryptedBackups: readonly GuardianEncryptedBackupEvidence[];
+  usabilityProof: GuardianUsabilityProof;
+  privacyProof: GuardianPrivacyProof;
+}): GuardianOnboardingEvidence;
+
+export function validateGuardianOnboardingEvidence(evidence: GuardianOnboardingEvidence): true;

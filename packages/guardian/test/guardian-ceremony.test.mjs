@@ -3,11 +3,13 @@ import test from "node:test";
 import {
   InvalidGuardianCeremonyError,
   buildGuardianCeremony,
+  buildGuardianOnboardingEvidence,
   buildGuardianTree,
   createGuardianPossessionChallenge,
   decryptGuardianBackup,
   encryptGuardianBackup,
   guardianLeaf,
+  validateGuardianOnboardingEvidence,
   verifyGuardianProof
 } from "../src/index.js";
 
@@ -131,3 +133,115 @@ test("guardian backup envelope encrypts local ceremony evidence and rejects wron
     Error
   );
 });
+
+test("guardian onboarding evidence proves possession backup usability and redacts sensitive ceremony data", () => {
+  const ceremony = buildGuardianCeremony({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId
+  });
+  const evidence = buildGuardianOnboardingEvidence({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId,
+    proofsOfPossession: ceremony.leaves.map(leaf => {
+      const challenge = createGuardianPossessionChallenge({
+        ...leaf,
+        account,
+        chainId: 1,
+        ceremonyId,
+        expiresAt: 2000000000
+      });
+      return {
+        leaf: leaf.leaf,
+        challengeDigest: challenge.digest,
+        signature: `0x${"ab".repeat(65)}`,
+        verifierKind: "p256-webauthn",
+        verified: true,
+        expiresAt: 2000000000
+      };
+    }),
+    encryptedBackups: ceremony.leaves.map((leaf, index) => ({
+      leaf: leaf.leaf,
+      envelopeHash: bytes32(`backup-${index}`),
+      decryptionTested: true
+    })),
+    usabilityProof: {
+      client: "@loom/guardian test client",
+      rootRebuilt: true,
+      proofsVerified: true,
+      thresholdReachable: true,
+      backupDecryptionTested: true
+    },
+    privacyProof: {
+      saltedCommitments: true,
+      publicEvidenceRedacted: true,
+      noCentralService: true,
+      noGuardianGraphUpload: true
+    }
+  });
+
+  assert.equal(evidence.guardianRoot, ceremony.guardianRoot);
+  assert.equal(validateGuardianOnboardingEvidence(evidence), true);
+  const publicJson = JSON.stringify(evidence).toLowerCase();
+  assert.equal(publicJson.includes("keycommitment"), false);
+  assert.equal(publicJson.includes('"salt"'), false);
+  assert.equal(publicJson.includes("ciphertext"), false);
+});
+
+test("guardian onboarding evidence rejects bad possession and missing backup proof", () => {
+  const ceremony = buildGuardianCeremony({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId
+  });
+  const proofsOfPossession = ceremony.leaves.map(leaf => ({
+    leaf: leaf.leaf,
+    challengeDigest: bytes32("wrong-challenge"),
+    signature: `0x${"ab".repeat(65)}`,
+    verifierKind: "p256-webauthn",
+    verified: true,
+    expiresAt: 2000000000
+  }));
+
+  assert.throws(
+    () =>
+      buildGuardianOnboardingEvidence({
+        guardians,
+        threshold: 2,
+        account,
+        chainId: 1,
+        ceremonyId,
+        proofsOfPossession,
+        encryptedBackups: ceremony.leaves.map((leaf, index) => ({
+          leaf: leaf.leaf,
+          envelopeHash: bytes32(`backup-${index}`),
+          decryptionTested: true
+        })),
+        usabilityProof: {
+          client: "@loom/guardian test client",
+          rootRebuilt: true,
+          proofsVerified: true,
+          thresholdReachable: true,
+          backupDecryptionTested: true
+        },
+        privacyProof: {
+          saltedCommitments: true,
+          publicEvidenceRedacted: true,
+          noCentralService: true,
+          noGuardianGraphUpload: true
+        }
+      }),
+    /challenge digest mismatch/
+  );
+});
+
+function bytes32(seed) {
+  return `0x${"00".repeat(16)}${Buffer.from(seed).toString("hex").padEnd(32, "0").slice(0, 32)}`;
+}
