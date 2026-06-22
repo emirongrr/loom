@@ -72,3 +72,4 @@ Remove this section when no special review guidance is needed. -->
 - [ ] Gas and bytecode changes are measured or not applicable
 - [ ] Security assumptions and residual risks are explicit
 - [ ] Documentation is unchanged or tracked in a separate `docs:` pull request
+- [ ] Branch history is clean: no `Merge branch 'main' into ...` commits
