@@ -1,0 +1,50 @@
+name: deployment-manifest-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Path to the committed production-candidate deployment manifest"
+        required: true
+        default: "evidence/deployments/<network>.json"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate deployment manifest candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MANIFEST_PATH: ${{ inputs.manifest_path }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Refuse local-only manifest inputs
+        run: |
+          test -n "$MANIFEST_PATH"
+          case "$MANIFEST_PATH" in
+            /*|*..*|*.local.json|*.config.json|*.config.local.json)
+              echo "manifest_path must be a committed evidence manifest, not a local config"
+              exit 1
+              ;;
+          esac
+          test -f "$MANIFEST_PATH"
+      - name: Rebuild deployment artifacts
+        run: forge build --sizes
+      - name: Validate deployment manifest
+        run: npm run deployment:manifest:check -- "$MANIFEST_PATH"
