@@ -66,13 +66,14 @@ function validateTestWorkflow() {
 function validateCertoraWorkflow() {
   const file = ".github/workflows/certora.yml";
   assertWorkflowSecurityDefaults(file);
+  assertIncludes(file, "pull_request:", "certora workflow must run on every pull request because it is branch-required");
+  assert(!read(file).includes("paths:"), `${file}: branch-required certora workflow must not use pull_request paths filters`);
   for (const required of [
     "name: certora",
     "npm run certora:program:check",
     "Certora compile-only",
     "--compilation_steps_only",
     "solc-select install 0.8.35",
-    "formal/certora/**",
     "CERTORAKEY: ${{ secrets.CERTORA_KEY }}",
   ]) {
     assertIncludes(file, required, `missing required certora workflow step: ${required}`);
