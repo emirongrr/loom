@@ -64,3 +64,16 @@ change that proves the intended behavior. Follow-up documentation work should
 use a separate `docs:` pull request. When a contract change alters an authority
 boundary or security assumption, identify the required documentation follow-up
 in the original pull request before merging.
+
+## Merge discipline
+
+Repository history should read as a sequence of reviewed changes, not as a log
+of branch maintenance. Pull requests are merged with GitHub squash merge only,
+using the pull request title as the final commit title. Merge commits and rebase
+merges are disabled for the repository.
+
+Keep feature branches current by rebasing onto `main` before review instead of
+merging `main` into the branch. Do not add `Merge branch 'main' into ...`
+commits to pull request branches. If a branch needs a conflict fix, make the
+smallest explicit fixup commit and let the final squash merge collapse the pull
+request into one reviewed commit.

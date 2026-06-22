@@ -148,6 +148,20 @@ function validateFormalProgramInPackage() {
   );
 }
 
+function validateRepositoryMergePolicyDocs() {
+  assertIncludes("CONTRIBUTING.md", "GitHub squash merge only", "must document squash-only pull request merging");
+  assertIncludes(
+    "CONTRIBUTING.md",
+    "Do not add `Merge branch 'main' into ...`",
+    "must document that feature branches should not merge main",
+  );
+  assertIncludes(
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "Branch history is clean",
+    "pull request checklist must remind contributors to keep branch history clean",
+  );
+}
+
 validateContractsWorkflow();
 validateTestWorkflow();
 validateFormalWorkflow();
@@ -156,5 +170,6 @@ validateKontrolWorkflow();
 validateSupplyChainWorkflow();
 validateCertoraWorkflow();
 validateFormalProgramInPackage();
+validateRepositoryMergePolicyDocs();
 
 console.log("ci program structure ok");
