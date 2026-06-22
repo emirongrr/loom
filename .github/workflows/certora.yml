@@ -2,13 +2,6 @@ name: certora
 
 on:
   pull_request:
-    paths:
-      - "formal/certora/**"
-      - "src/**"
-      - ".github/workflows/certora.yml"
-      - "tools/validate-certora-program.mjs"
-      - "tools/validate-certora-program.test.mjs"
-      - "package.json"
   workflow_dispatch:
 
 permissions:
