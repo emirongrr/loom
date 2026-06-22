@@ -6,6 +6,8 @@ const { keccak256 } = sha3;
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
 const BACKUP_VERSION = 1;
 const EVIDENCE_VERSION = 1;
+const SETUP_PLAN_VERSION = 1;
+const MIN_CONFIG_DELAY_SECONDS = 3 * 24 * 60 * 60;
 
 export class InvalidGuardianCeremonyError extends Error {
   constructor(message, details = {}) {
@@ -276,6 +278,72 @@ export function validateGuardianOnboardingEvidence(evidence) {
   return true;
 }
 
+export function buildProgressiveGuardianSetupPlan(input) {
+  const account = normalizeAddress(input?.account, "account");
+  const chainId = normalizePositiveInteger(input?.chainId, "chainId");
+  if (input?.currentRecoveryConfigured === true) {
+    throw new InvalidGuardianCeremonyError("progressive setup is only for guardianless accounts");
+  }
+  const evidence = input?.evidence === undefined
+    ? buildGuardianOnboardingEvidence({ ...input, account, chainId })
+    : normalizeGuardianEvidenceForPlan(input.evidence, { account, chainId });
+  const delaySeconds = normalizePositiveInteger(input?.delaySeconds ?? MIN_CONFIG_DELAY_SECONDS, "delaySeconds");
+  if (delaySeconds < MIN_CONFIG_DELAY_SECONDS) {
+    throw new InvalidGuardianCeremonyError("guardian setup delay is below Loom config delay");
+  }
+  const setGuardianConfigCallData = encodeSetGuardianConfig(evidence.guardianRoot, evidence.threshold);
+  const scheduleCallData = encodeScheduleCall({
+    target: account,
+    value: 0n,
+    data: setGuardianConfigCallData,
+    delay: delaySeconds
+  });
+  const plan = {
+    version: SETUP_PLAN_VERSION,
+    kind: "guardian.progressiveSetup.plan",
+    account,
+    chainId,
+    guardianRoot: evidence.guardianRoot,
+    guardianThreshold: evidence.threshold,
+    guardianCount: evidence.guardianCount,
+    ceremonyId: evidence.ceremonyId,
+    evidenceHash: evidence.evidenceHash,
+    delaySeconds,
+    call: Object.freeze({
+      target: account,
+      value: 0n,
+      data: scheduleCallData
+    }),
+    innerCall: Object.freeze({
+      target: account,
+      value: 0n,
+      data: setGuardianConfigCallData
+    }),
+    authority: Object.freeze({
+      risk: "guardian-setup",
+      requiresUserSignature: true,
+      requiresGuardianApproval: false,
+      delayRequired: true,
+      recoveryAvailableAfterExecution: true
+    }),
+    review: Object.freeze({
+      title: "Enable guardian recovery",
+      risk: "guardian-setup",
+      summary:
+        `Schedule guardian recovery with threshold ${evidence.threshold}/${evidence.guardianCount} after ${delaySeconds} seconds.`,
+      warnings: Object.freeze([
+        "Recovery remains unavailable until the delayed guardian setup executes.",
+        "The public plan exposes only the guardian root, threshold, and redacted ceremony evidence hash.",
+        "Do not upload guardian secrets, salts, backup ciphertext, or a social graph to a centralized service."
+      ])
+    })
+  };
+  return deepFreeze({
+    ...plan,
+    planHash: keccakJson(plan)
+  });
+}
+
 function hashPair(left, right) {
   const a = normalizeBytes32(left, "left");
   const b = normalizeBytes32(right, "right");
@@ -292,6 +360,7 @@ function keccakJson(value) {
 
 function stableStringify(value) {
   return JSON.stringify(value, (_key, item) => {
+    if (typeof item === "bigint") return item.toString();
     if (!item || typeof item !== "object" || Array.isArray(item)) return item;
     return Object.keys(item)
       .sort()
@@ -383,12 +452,66 @@ function assertRedactedEvidence(evidence) {
   }
 }
 
+function normalizeGuardianEvidenceForPlan(evidence, { account, chainId }) {
+  validateGuardianOnboardingEvidence(evidence);
+  if (evidence.account !== account) {
+    throw new InvalidGuardianCeremonyError("guardian evidence account mismatch");
+  }
+  if (evidence.chainId !== chainId) {
+    throw new InvalidGuardianCeremonyError("guardian evidence chainId mismatch");
+  }
+  return evidence;
+}
+
+function encodeSetGuardianConfig(root, threshold) {
+  const guardianRoot = normalizeBytes32(root, "guardian root");
+  const guardianThreshold = normalizePositiveInteger(threshold, "guardian threshold");
+  return `${selector("setGuardianConfig(bytes32,uint8)")}${strip0x(guardianRoot)}${encodeUint256Word(guardianThreshold)}`;
+}
+
+function encodeScheduleCall({ target, value, data, delay }) {
+  const encodedData = encodeBytes(data, "schedule data");
+  return `${selector("scheduleCall(address,uint256,bytes,uint48)")}${[
+    encodeAddress(target),
+    encodeUint256Word(value),
+    encodeUint256Word(128n),
+    encodeUint256Word(delay)
+  ].join("")}${encodedData}`;
+}
+
+function encodeBytes(value, label) {
+  const hex = normalizeHex(value, label);
+  if (hex.length % 2 !== 0) throw new InvalidGuardianCeremonyError(`${label} must be byte-aligned hex`);
+  const bytes = strip0x(hex);
+  const byteLength = bytes.length / 2;
+  const paddedLength = Math.ceil(byteLength / 32) * 64;
+  return `${encodeUint256Word(byteLength)}${bytes.padEnd(paddedLength, "0")}`;
+}
+
+function selector(signature) {
+  return `0x${keccak256(signature).slice(0, 8)}`;
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const item of Object.values(value)) deepFreeze(item);
+  return Object.freeze(value);
+}
+
 function encodeAddress(value) {
   return strip0x(normalizeAddress(value, "address")).padStart(64, "0");
 }
 
 function encodeUint256(value) {
   return BigInt(normalizePositiveInteger(value, "uint256")).toString(16).padStart(64, "0");
+}
+
+function encodeUint256Word(value) {
+  const normalized = BigInt(value);
+  if (normalized < 0n || normalized >= 1n << 256n) {
+    throw new InvalidGuardianCeremonyError("uint256 value out of range");
+  }
+  return normalized.toString(16).padStart(64, "0");
 }
 
 function compareHex(a, b) {

@@ -106,6 +106,43 @@ export interface GuardianOnboardingEvidence {
   evidenceHash: Hex;
 }
 
+export interface ProgressiveGuardianSetupPlan {
+  version: 1;
+  kind: "guardian.progressiveSetup.plan";
+  account: Hex;
+  chainId: number;
+  guardianRoot: Hex;
+  guardianThreshold: number;
+  guardianCount: number;
+  ceremonyId: Hex;
+  evidenceHash: Hex;
+  delaySeconds: number;
+  call: {
+    target: Hex;
+    value: bigint;
+    data: Hex;
+  };
+  innerCall: {
+    target: Hex;
+    value: bigint;
+    data: Hex;
+  };
+  authority: {
+    risk: "guardian-setup";
+    requiresUserSignature: true;
+    requiresGuardianApproval: false;
+    delayRequired: true;
+    recoveryAvailableAfterExecution: true;
+  };
+  review: {
+    title: string;
+    risk: "guardian-setup";
+    summary: string;
+    warnings: readonly string[];
+  };
+  planHash: Hex;
+}
+
 export class InvalidGuardianCeremonyError extends Error {
   readonly details: Record<string, unknown>;
 }
@@ -157,3 +194,18 @@ export function buildGuardianOnboardingEvidence(input: {
 }): GuardianOnboardingEvidence;
 
 export function validateGuardianOnboardingEvidence(evidence: GuardianOnboardingEvidence): true;
+
+export function buildProgressiveGuardianSetupPlan(input: {
+  account: Hex;
+  chainId: number;
+  currentRecoveryConfigured?: boolean;
+  delaySeconds?: number;
+  evidence?: GuardianOnboardingEvidence;
+  guardians?: readonly GuardianInput[];
+  threshold?: number;
+  ceremonyId?: Hex;
+  proofsOfPossession?: readonly GuardianProofOfPossessionEvidence[];
+  encryptedBackups?: readonly GuardianEncryptedBackupEvidence[];
+  usabilityProof?: GuardianUsabilityProof;
+  privacyProof?: GuardianPrivacyProof;
+}): ProgressiveGuardianSetupPlan;

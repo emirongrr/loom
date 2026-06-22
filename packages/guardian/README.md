@@ -21,6 +21,8 @@ show, sign, back up, and compare against deployed account configuration.
 - Redacted onboarding evidence that proves possession, backup usability,
   threshold reachability, and privacy-preserving ceremony construction without
   publishing salts, key commitments, backup ciphertext, or guardian graphs.
+- Progressive guardian setup planner for passkey-first accounts that were
+  deployed without guardian recovery.
 
 ## Design rules
 
@@ -79,3 +81,40 @@ The public evidence intentionally includes leaf hashes, proof hashes,
 challenge digests, backup envelope hashes, and boolean review results. It does
 not include salts, key commitments, backup ciphertext, guardian private data,
 or any Loom-operated recovery dependency.
+
+## Progressive setup planner
+
+Passkey-first onboarding can deploy an account with no guardians. That account
+must be shown as unprotected until the user schedules and executes a delayed
+guardian configuration. `buildProgressiveGuardianSetupPlan(...)` converts
+redacted guardian onboarding evidence into the exact account call a wallet
+should ask the user to sign:
+
+```js
+import {
+  buildGuardianOnboardingEvidence,
+  buildProgressiveGuardianSetupPlan,
+} from '@loom/guardian'
+
+const evidence = buildGuardianOnboardingEvidence(localCeremonyInput)
+const plan = buildProgressiveGuardianSetupPlan({
+  account: '0x1111111111111111111111111111111111111111',
+  chainId: 1,
+  evidence,
+})
+
+// Submit through the account as a normal user-authorized call.
+await wallet.sendCalls({
+  calls: [plan.call],
+})
+```
+
+The plan schedules `setGuardianConfig(guardianRoot, threshold)` through the
+account's delayed self-configuration path. It is not a recovery operation, does
+not grant guardians spending authority, and does not introduce a Loom-operated
+coordinator. The default delay is the account config delay: 259200 seconds.
+
+The public plan includes only the account, chain, guardian root, threshold,
+ceremony id, evidence hash, delayed calldata, and user-facing review metadata.
+It must not include guardian salts, key commitments, backup ciphertext, private
+keys, seed phrases, viewing keys, or a guardian social graph.

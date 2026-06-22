@@ -12,6 +12,13 @@ guardian-threshold cancellation. Wallets and SDKs must describe it as
 unprotected recovery. Users can add a real guardian root later through the
 normal delayed self-configuration path.
 
+`@loom/guardian` provides a progressive setup planner for this path. The
+planner verifies redacted guardian onboarding evidence, builds the
+`setGuardianConfig(root, threshold)` calldata, and wraps it in the account's
+delayed `scheduleCall(...)` self-call. It does not choose guardians, publish a
+guardian graph, bypass the three-day config delay, or add any Loom-operated
+recovery service.
+
 ## Lifecycle
 
 1. The user creates a new validator or passkey configuration on a new device.
@@ -59,6 +66,11 @@ proof-of-possession ceremony, independently rebuild the root, retain encrypted
 recovery material, and simulate the exact recovery proposal before funding the
 account. A future zero-knowledge setup proof requires separate design and
 audit; Loom will not claim that an arbitrary root is usable.
+
+For guardianless accounts, the same ceremony must happen before the user signs
+the delayed setup plan. Until that scheduled call executes on-chain, the
+account remains unprotected and clients must continue showing recovery as
+unavailable.
 
 Once a non-zero guardian configuration is installed, the account does not allow
 it to be cleared back to zero. A user who intentionally wants a guardianless
