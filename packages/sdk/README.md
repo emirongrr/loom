@@ -26,7 +26,8 @@ adapter.
 import {
   createBundlerTransport,
   createLoomClient,
-  createPasskeySigner
+  createPasskeySigner,
+  createRpcStateTransport
 } from "@loom/sdk";
 
 const wallet = createLoomClient({
@@ -79,6 +80,28 @@ const deploy = wallet.prepareDeployAccount({
 
 console.log(deploy.review.summary);
 ```
+
+Wallets should read account safety state after deployment and on every security
+screen instead of inferring recovery status locally. The SDK requires an
+explicit read transport; it does not choose a default RPC.
+
+```js
+const state = await wallet.readSafetyState({
+  stateTransport: createRpcStateTransport({
+    endpoint: "https://rpc.example"
+  }),
+  recoveryModule: "0x6666666666666666666666666666666666666666",
+  blockTag: "safe"
+});
+
+if (state.status === "unprotected-recovery") {
+  showWarning(state.review.summary);
+}
+```
+
+The state reader exposes guardian configuration, validator count, freeze state,
+pending recovery, and pending migration. Malformed or inconsistent on-chain
+state fails closed with `InvalidSdkRequestError`.
 
 Typed encoders are exposed without adding a provider dependency:
 

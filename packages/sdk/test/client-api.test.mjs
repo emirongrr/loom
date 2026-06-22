@@ -11,8 +11,10 @@ const factory = "0x2222222222222222222222222222222222222222";
 const target = "0x3333333333333333333333333333333333333333";
 const sessionKey = "0x4444444444444444444444444444444444444444";
 const token = "0x5555555555555555555555555555555555555555";
+const recoveryModule = "0x6666666666666666666666666666666666666666";
 const salt = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const configHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const zeroBytes32 = "0x" + "00".repeat(32);
 
 const providerProfile = {
   mode: "user-rpc",
@@ -32,6 +34,62 @@ const providerProfile = {
     ]
   }
 };
+
+function word(value) {
+  return BigInt(value).toString(16).padStart(64, "0");
+}
+
+function bytes32(value) {
+  return value.slice(2).padStart(64, "0");
+}
+
+function addressWord(value) {
+  return value.slice(2).padStart(64, "0");
+}
+
+function abi(...words) {
+  return `0x${words.join("")}`;
+}
+
+function accountStateTransport({
+  recoveryConfigured = false,
+  guardianRoot = zeroBytes32,
+  guardianThreshold = 0n,
+  configVersion = 1n,
+  frozenUntil = 0n,
+  validatorCount = 1n,
+  pendingMigration = [
+    addressWord("0x0000000000000000000000000000000000000000"),
+    bytes32(zeroBytes32),
+    bytes32(zeroBytes32),
+    bytes32(zeroBytes32),
+    word(0n),
+    word(0n),
+    word(0n),
+    word(0n)
+  ],
+  pendingRecovery
+} = {}) {
+  const responses = [
+    abi(word(recoveryConfigured ? 1n : 0n)),
+    abi(bytes32(guardianRoot)),
+    abi(word(guardianThreshold)),
+    abi(word(configVersion)),
+    abi(word(frozenUntil)),
+    abi(word(validatorCount)),
+    abi(...pendingMigration)
+  ];
+  if (pendingRecovery !== undefined) responses.push(abi(...pendingRecovery));
+  return {
+    calls: [],
+    async ethCall(input) {
+      this.calls.push(input);
+      const result = responses.shift();
+      if (result === undefined) throw new Error("unexpected eth_call");
+      return result;
+    }
+  };
+}
 
 test("loom client construction has no transport signing or provider side effects", () => {
   let calls = 0;
@@ -231,6 +289,187 @@ test("estimateCalls delegates to caller supplied transport", async () => {
   });
 
   assert.equal(estimate.callGasLimit, 1n);
+});
+
+test("client reads guardianless recovery onboarding safety state", async () => {
+  const stateTransport = accountStateTransport();
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport
+  });
+  const state = await client.readSafetyState({ now: 100n });
+
+  assert.equal(state.kind, "account.safetyState");
+  assert.equal(state.status, "unprotected-recovery");
+  assert.equal(state.recoveryConfigured, false);
+  assert.equal(state.config.guardianRoot, zeroBytes32);
+  assert.equal(state.config.guardianThreshold, 0);
+  assert.equal(state.config.validatorCount, 1n);
+  assert.equal(state.pending.migration.active, false);
+  assert.match(state.review.summary, /Guardian recovery is not configured/);
+  assert.equal(stateTransport.calls.length, 7);
+});
+
+test("client reports pending recovery before ordinary protected state", async () => {
+  const root = "0x" + "12".repeat(32);
+  const newRoot = "0x" + "34".repeat(32);
+  const newValidator = "0x7777777777777777777777777777777777777777";
+  const stateTransport = accountStateTransport({
+    recoveryConfigured: true,
+    guardianRoot: root,
+    guardianThreshold: 2n,
+    configVersion: 5n,
+    pendingRecovery: [
+      bytes32("0x" + "56".repeat(32)),
+      addressWord(newValidator),
+      bytes32("0x" + "78".repeat(32)),
+      bytes32(newRoot),
+      word(2n),
+      word(1000n),
+      word(2000n),
+      word(6n),
+      word(9n)
+    ]
+  });
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport
+  });
+  const state = await client.readSafetyState({ recoveryModule, now: 500n });
+
+  assert.equal(state.status, "pending-recovery");
+  assert.equal(state.recoveryConfigured, true);
+  assert.equal(state.config.guardianRoot, root);
+  assert.equal(state.config.guardianThreshold, 2);
+  assert.equal(state.pending.recovery.active, true);
+  assert.equal(state.pending.recovery.newValidator, newValidator);
+  assert.equal(state.pending.recovery.newGuardianRoot, newRoot);
+  assert.equal(state.pending.recovery.readyAt, 1000n);
+  assert.match(state.warnings.join("\n"), /Recovery is pending/);
+  assert.equal(stateTransport.calls.length, 8);
+});
+
+test("client reports frozen and pending migration safety states", async () => {
+  const root = "0x" + "12".repeat(32);
+  const destination = "0x8888888888888888888888888888888888888888";
+  const stateTransport = accountStateTransport({
+    recoveryConfigured: true,
+    guardianRoot: root,
+    guardianThreshold: 1n,
+    frozenUntil: 900n,
+    pendingMigration: [
+      addressWord(destination),
+      bytes32("0x" + "90".repeat(32)),
+      bytes32("0x" + "91".repeat(32)),
+      bytes32("0x" + "92".repeat(32)),
+      word(700n),
+      word(1200n),
+      word(3n),
+      word(4n)
+    ]
+  });
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport
+  });
+  const state = await client.readSafetyState({ now: 500n });
+
+  assert.equal(state.status, "frozen");
+  assert.equal(state.freeze.active, true);
+  assert.equal(state.pending.migration.active, true);
+  assert.equal(state.pending.migration.destination, destination);
+  assert.match(state.warnings.join("\n"), /Account is frozen/);
+  assert.match(state.warnings.join("\n"), /Migration is pending/);
+});
+
+test("client refuses to read safety state without explicit state transport", async () => {
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    }
+  });
+
+  await assert.rejects(() => client.readSafetyState(), InvalidSdkRequestError);
+});
+
+test("client safety reader fails closed on inconsistent guardian state", async () => {
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport: accountStateTransport({
+      recoveryConfigured: false,
+      guardianRoot: "0x" + "12".repeat(32),
+      guardianThreshold: 0n
+    })
+  });
+
+  await assert.rejects(() => client.readSafetyState(), InvalidSdkRequestError);
+});
+
+test("client safety reader fails closed on impossible validator and pending recovery state", async () => {
+  const zeroValidatorClient = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport: accountStateTransport({
+      validatorCount: 0n
+    })
+  });
+  const malformedRecoveryClient = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport: accountStateTransport({
+      recoveryConfigured: true,
+      guardianRoot: "0x" + "12".repeat(32),
+      guardianThreshold: 1n,
+      pendingRecovery: [
+        bytes32("0x" + "56".repeat(32)),
+        addressWord("0x0000000000000000000000000000000000000000"),
+        bytes32("0x" + "78".repeat(32)),
+        bytes32("0x" + "34".repeat(32)),
+        word(1n),
+        word(1000n),
+        word(2000n),
+        word(6n),
+        word(9n)
+      ]
+    })
+  });
+
+  await assert.rejects(() => zeroValidatorClient.readSafetyState(), InvalidSdkRequestError);
+  await assert.rejects(
+    () => malformedRecoveryClient.readSafetyState({ recoveryModule }),
+    InvalidSdkRequestError
+  );
 });
 
 test("high-level client delegates session and recovery lifecycle builders", () => {

@@ -43,6 +43,7 @@ infrastructure:
 import {
   createBundlerTransport,
   createLoomClient,
+  createRpcStateTransport,
   createPasskeySigner,
 } from '@loom/sdk'
 
@@ -83,11 +84,36 @@ The client supports `prepareDeployAccount`, `prepareCalls`,
 `prepareUserOperation`, `sendCalls`, `sendCallsAndWait`, `estimateCalls`,
 `waitForUserOperationReceipt`, app-scoped `grantSession`, recovery proposal and
 cancellation builders, vault withdrawal builders, private vault operation
-binding, typed lifecycle calldata encoders, viem-compatible call shaping,
+binding, account safety state reads, typed lifecycle calldata encoders, viem-compatible call shaping,
 middleware hooks, explicit bundler transport, and passkey signer boundaries.
 
 All network, signing, paymaster, and privacy operations remain adapter-driven.
 There is no default Loom RPC, bundler, paymaster, signer, or relayer.
+
+## Recovery onboarding state
+
+Progressive recovery lets a user start with a passkey before guardians are
+configured. Wallets must still show that state clearly. `@loom/sdk` provides a
+read-only account safety snapshot that uses caller-supplied infrastructure:
+
+```ts
+const state = await wallet.readSafetyState({
+  stateTransport: createRpcStateTransport({
+    endpoint: 'https://rpc.example',
+  }),
+  recoveryModule: '0x6666666666666666666666666666666666666666',
+  blockTag: 'safe',
+})
+
+if (state.status === 'unprotected-recovery') {
+  showWarning(state.review.summary)
+}
+```
+
+The snapshot includes guardian root and threshold, validator count, freeze
+status, pending recovery, and pending migration. Inconsistent guardian state or
+zero validators are rejected instead of being displayed as safe. This keeps the
+onboarding UX easy without hiding the cost of not configuring recovery.
 
 ## Typed calldata and viem-shaped calls
 

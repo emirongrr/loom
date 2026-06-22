@@ -4,6 +4,7 @@ import {
   InvalidSdkRequestError,
   createBundlerTransport,
   createPasskeySigner,
+  createRpcStateTransport,
   prepareUserOperationEnvelope
 } from "../src/index.js";
 
@@ -182,6 +183,55 @@ test("bundler transport rejects rpc errors and malformed hashes", async () => {
 
   await assert.rejects(failing.sendUserOperation(envelope), InvalidSdkRequestError);
   await assert.rejects(malformed.sendUserOperation(envelope), InvalidSdkRequestError);
+});
+
+test("state transport construction has no network side effects", () => {
+  let calls = 0;
+  createRpcStateTransport({
+    endpoint: "https://rpc.example",
+    fetch: async () => {
+      calls += 1;
+      return new Response("{}");
+    }
+  });
+
+  assert.equal(calls, 0);
+});
+
+test("state transport sends eth_call through explicit endpoint", async () => {
+  const requests = [];
+  const transport = createRpcStateTransport({
+    endpoint: "https://rpc.example",
+    fetch: async (url, init) => {
+      requests.push({ url, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x" + "00".repeat(32) }));
+    }
+  });
+  const result = await transport.ethCall({
+    to: account,
+    data: "0x12345678",
+    blockTag: "safe"
+  });
+
+  assert.equal(result, "0x" + "00".repeat(32));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "https://rpc.example");
+  assert.equal(requests[0].body.method, "eth_call");
+  assert.deepEqual(requests[0].body.params, [{ to: account, data: "0x12345678" }, "safe"]);
+});
+
+test("state transport rejects rpc errors and malformed hex", async () => {
+  const failing = createRpcStateTransport({
+    endpoint: "https://rpc.example",
+    fetch: async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { message: "rejected" } }))
+  });
+  const malformed = createRpcStateTransport({
+    endpoint: "https://rpc.example",
+    fetch: async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "not-hex" }))
+  });
+
+  await assert.rejects(failing.ethCall({ to: account, data: "0x12345678" }), InvalidSdkRequestError);
+  await assert.rejects(malformed.ethCall({ to: account, data: "0x12345678" }), InvalidSdkRequestError);
 });
 
 test("passkey signer construction has no credential side effects", () => {
