@@ -5,6 +5,7 @@ const { keccak256 } = sha3;
 
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
 const BACKUP_VERSION = 1;
+const EVIDENCE_VERSION = 1;
 
 export class InvalidGuardianCeremonyError extends Error {
   constructor(message, details = {}) {
@@ -190,6 +191,91 @@ export function decryptGuardianBackup(input) {
   return JSON.parse(plaintext.toString("utf8"));
 }
 
+export function buildGuardianOnboardingEvidence(input) {
+  const ceremony = buildGuardianCeremony(input);
+  const proofsByLeaf = indexByLeaf(input?.proofsOfPossession, "proofsOfPossession");
+  const backupsByLeaf = indexByLeaf(input?.encryptedBackups, "encryptedBackups");
+  const usabilityProof = normalizeUsabilityProof(input?.usabilityProof);
+  const privacyProof = normalizePrivacyProof(input?.privacyProof);
+  const leaves = ceremony.leaves.map(leaf => {
+    const possession = normalizePossessionEvidence(proofsByLeaf.get(leaf.leaf), leaf, ceremony);
+    const backup = normalizeBackupEvidence(backupsByLeaf.get(leaf.leaf), leaf);
+    return Object.freeze({
+      leaf: leaf.leaf,
+      proofHash: keccakJson(ceremony.proofs.find(item => item.leaf === leaf.leaf)?.proof ?? []),
+      challengeDigest: possession.challengeDigest,
+      possessionVerified: possession.verified,
+      verifierKind: possession.verifierKind,
+      backupEnvelopeHash: backup.envelopeHash,
+      backupDecryptionTested: backup.decryptionTested
+    });
+  });
+
+  const evidence = {
+    version: EVIDENCE_VERSION,
+    account: ceremony.account,
+    chainId: ceremony.chainId,
+    ceremonyId: ceremony.ceremonyId,
+    guardianRoot: ceremony.guardianRoot,
+    threshold: ceremony.threshold,
+    guardianCount: ceremony.guardianCount,
+    leaves: Object.freeze(leaves),
+    usabilityProof,
+    privacyProof
+  };
+  return Object.freeze({
+    ...evidence,
+    evidenceHash: keccakJson(evidence)
+  });
+}
+
+export function validateGuardianOnboardingEvidence(evidence) {
+  if (!evidence || typeof evidence !== "object") throw new InvalidGuardianCeremonyError("guardian evidence is required");
+  if (evidence.version !== EVIDENCE_VERSION) throw new InvalidGuardianCeremonyError("unsupported guardian evidence version");
+  if (evidence.account !== undefined) normalizeAddress(evidence.account, "evidence account");
+  if (evidence.chainId !== undefined) normalizePositiveInteger(evidence.chainId, "evidence chainId");
+  normalizeBytes32(evidence.ceremonyId, "evidence ceremony id");
+  normalizeBytes32(evidence.guardianRoot, "evidence guardian root");
+  const threshold = normalizePositiveInteger(evidence.threshold, "evidence threshold");
+  const guardianCount = normalizePositiveInteger(evidence.guardianCount, "evidence guardian count");
+  if (threshold > guardianCount) throw new InvalidGuardianCeremonyError("evidence threshold exceeds guardian count");
+  if (!Array.isArray(evidence.leaves) || evidence.leaves.length !== guardianCount) {
+    throw new InvalidGuardianCeremonyError("evidence leaves must match guardian count");
+  }
+
+  const seen = new Set();
+  let verifiedPossession = 0;
+  let testedBackups = 0;
+  for (const [index, leaf] of evidence.leaves.entries()) {
+    const label = `evidence.leaves[${index}]`;
+    normalizeBytes32(leaf.leaf, `${label}.leaf`);
+    normalizeBytes32(leaf.proofHash, `${label}.proofHash`);
+    normalizeBytes32(leaf.challengeDigest, `${label}.challengeDigest`);
+    normalizeBytes32(leaf.backupEnvelopeHash, `${label}.backupEnvelopeHash`);
+    assertNonEmptyString(leaf.verifierKind, `${label}.verifierKind`);
+    if (seen.has(leaf.leaf)) throw new InvalidGuardianCeremonyError("duplicate guardian evidence leaf");
+    seen.add(leaf.leaf);
+    if (leaf.possessionVerified !== true) throw new InvalidGuardianCeremonyError(`${label}.possessionVerified must be true`);
+    if (leaf.backupDecryptionTested !== true) {
+      throw new InvalidGuardianCeremonyError(`${label}.backupDecryptionTested must be true`);
+    }
+    verifiedPossession += 1;
+    testedBackups += 1;
+  }
+  if (verifiedPossession < threshold) throw new InvalidGuardianCeremonyError("insufficient proof-of-possession evidence");
+  if (testedBackups < threshold) throw new InvalidGuardianCeremonyError("insufficient encrypted backup evidence");
+  normalizeUsabilityProof(evidence.usabilityProof);
+  normalizePrivacyProof(evidence.privacyProof);
+  if (evidence.evidenceHash !== undefined) {
+    const { evidenceHash: _ignored, ...withoutHash } = evidence;
+    if (evidence.evidenceHash !== keccakJson(withoutHash)) {
+      throw new InvalidGuardianCeremonyError("guardian evidence hash mismatch");
+    }
+  }
+  assertRedactedEvidence(evidence);
+  return true;
+}
+
 function hashPair(left, right) {
   const a = normalizeBytes32(left, "left");
   const b = normalizeBytes32(right, "right");
@@ -198,6 +284,103 @@ function hashPair(left, right) {
 
 function keccakHex(hex) {
   return `0x${keccak256(Buffer.from(hex, "hex"))}`;
+}
+
+function keccakJson(value) {
+  return `0x${keccak256(Buffer.from(stableStringify(value), "utf8"))}`;
+}
+
+function stableStringify(value) {
+  return JSON.stringify(value, (_key, item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.keys(item)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = item[key];
+        return acc;
+      }, {});
+  });
+}
+
+function normalizePossessionEvidence(possession, leaf, ceremony) {
+  if (!possession || typeof possession !== "object") {
+    throw new InvalidGuardianCeremonyError("missing proof-of-possession evidence", { leaf: leaf.leaf });
+  }
+  const challenge = createGuardianPossessionChallenge({
+    ...leaf,
+    account: ceremony.account,
+    chainId: ceremony.chainId,
+    ceremonyId: ceremony.ceremonyId,
+    expiresAt: possession.expiresAt
+  });
+  const challengeDigest = normalizeBytes32(possession.challengeDigest, "possession challenge digest");
+  if (challengeDigest !== challenge.digest) {
+    throw new InvalidGuardianCeremonyError("proof-of-possession challenge digest mismatch", { leaf: leaf.leaf });
+  }
+  assertNonEmptyString(possession.signature, "possession signature");
+  return Object.freeze({
+    challengeDigest,
+    verifierKind: assertNonEmptyStringReturn(possession.verifierKind, "possession verifier kind"),
+    verified: possession.verified === true
+  });
+}
+
+function normalizeBackupEvidence(backup, leaf) {
+  if (!backup || typeof backup !== "object") {
+    throw new InvalidGuardianCeremonyError("missing encrypted backup evidence", { leaf: leaf.leaf });
+  }
+  return Object.freeze({
+    envelopeHash: normalizeBytes32(backup.envelopeHash, "backup envelope hash"),
+    decryptionTested: backup.decryptionTested === true
+  });
+}
+
+function normalizeUsabilityProof(proof) {
+  if (!proof || typeof proof !== "object") throw new InvalidGuardianCeremonyError("usability proof is required");
+  for (const key of ["rootRebuilt", "proofsVerified", "thresholdReachable", "backupDecryptionTested"]) {
+    if (proof[key] !== true) throw new InvalidGuardianCeremonyError(`usabilityProof.${key} must be true`);
+  }
+  assertNonEmptyString(proof.client, "usability proof client");
+  return Object.freeze({
+    client: proof.client,
+    rootRebuilt: true,
+    proofsVerified: true,
+    thresholdReachable: true,
+    backupDecryptionTested: true
+  });
+}
+
+function normalizePrivacyProof(proof) {
+  if (!proof || typeof proof !== "object") throw new InvalidGuardianCeremonyError("privacy proof is required");
+  for (const key of ["saltedCommitments", "publicEvidenceRedacted", "noCentralService", "noGuardianGraphUpload"]) {
+    if (proof[key] !== true) throw new InvalidGuardianCeremonyError(`privacyProof.${key} must be true`);
+  }
+  return Object.freeze({
+    saltedCommitments: true,
+    publicEvidenceRedacted: true,
+    noCentralService: true,
+    noGuardianGraphUpload: true
+  });
+}
+
+function indexByLeaf(items, label) {
+  if (!Array.isArray(items) || items.length === 0) throw new InvalidGuardianCeremonyError(`${label} must be non-empty`);
+  const byLeaf = new Map();
+  for (const [index, item] of items.entries()) {
+    const leaf = normalizeBytes32(item?.leaf, `${label}[${index}].leaf`);
+    if (byLeaf.has(leaf)) throw new InvalidGuardianCeremonyError(`duplicate ${label} leaf`);
+    byLeaf.set(leaf, item);
+  }
+  return byLeaf;
+}
+
+function assertRedactedEvidence(evidence) {
+  const text = JSON.stringify(evidence).toLowerCase();
+  for (const forbidden of ["keycommitment", "\"salt\"", "ciphertext", "authtag", "privatekey", "viewingkey", "seedphrase"]) {
+    if (text.includes(forbidden)) {
+      throw new InvalidGuardianCeremonyError(`guardian evidence must not expose ${forbidden}`);
+    }
+  }
 }
 
 function encodeAddress(value) {
@@ -241,6 +424,17 @@ function normalizeHex(value, label) {
   if (typeof value !== "string" || !HEX_PATTERN.test(value)) {
     throw new InvalidGuardianCeremonyError(`${label} must be hex`);
   }
+  return value;
+}
+
+function assertNonEmptyString(value, label) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new InvalidGuardianCeremonyError(`${label} must be a non-empty string`);
+  }
+}
+
+function assertNonEmptyStringReturn(value, label) {
+  assertNonEmptyString(value, label);
   return value;
 }
 

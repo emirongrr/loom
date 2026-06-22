@@ -152,4 +152,33 @@ The stack manifest must match installed Kohaku package versions, document every
 SDK surface, keep reviewed override pins narrow, and attach production gates to
 alpha, source-tracked, external, or legally sensitive protocol packages.
 
+## Railgun live rehearsal
+
+The Railgun profile can now be exercised through a live-network rehearsal
+harness:
+
+```sh
+LOOM_PRIVACY_REHEARSAL=1 npm run privacy:railgun:rehearsal -- config/railgun-rehearsal.json evidence/privacy/railgun-testnet.json
+npm run privacy:profile:check -- evidence/privacy/railgun-testnet.json
+```
+
+The rehearsal uses the same `createRailgunAdapterProfile` path as wallet SDK
+integrators. It creates a Kohaku host, requires explicit provider consent,
+initializes the upstream Railgun plugin, exercises account discovery, balance
+sync, shield, private transfer, unshield, optional private broadcast, local
+scan checkpointing, and service failure classification, then emits a privacy
+adapter profile that the repository validator can check.
+
+The config file must not contain private keys, viewing keys, scanning keys,
+seed phrases, guardian salts, or account graphs. Operation evidence records
+permission hashes, expiry bounds, fee bounds, receipt status, local checkpoint
+hashes, and vault-delay transaction hashes. It does not record the user's
+private notes or financial graph.
+
+Passing the local unit tests only proves the rehearsal harness and evidence
+format. A production claim still requires running the harness against live
+testnet or mainnet infrastructure, attaching the resulting evidence file,
+reviewing the dependency graph, and rehearsing vault-protected unshield flows
+with real receipts.
+
 See `docs/design/privacy-adapters.md` for the binding architecture.
