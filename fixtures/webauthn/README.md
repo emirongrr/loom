@@ -24,6 +24,11 @@ Each fixture records:
   fixture-only credential, passed PII review, and is bound to a negative-case
   manifest hash.
 
+The corpus is intentionally empty until a real browser/device assertion is
+captured. Do not commit generated examples as release evidence. A fixture only
+becomes release evidence when the matrix entry, positive assertion, negative
+case manifest, and reviewed mutation results all agree.
+
 Every accepted positive fixture must have generated negative tests that alter
 the challenge, origin, RP ID hash, flags, signature, and payload lengths.
 
@@ -50,9 +55,19 @@ tests cover challenge, origin, RP ID hash, user-verification flag, signature,
 and payload-length mutations. Set `provenance.reviewedForPII` only after
 checking that no raw credential identifier, user handle, username, display
 name, raw user-agent, attestation object, account address, or persistent
-device identifier is present. Set `negativeCaseManifestHash` only after the
-reviewed negative-case manifest is generated from the accepted fixture.
-A fixture is accepted only after its positive and mutation-negative tests pass.
+device identifier is present.
+
+Generate the negative-case manifest from the reviewed positive fixture:
+
+```sh
+node tools/webauthn-fixture/negative-cases.mjs fixtures/webauthn/corpus/<fixture>.json > negative-cases.json
+```
+
+Set `provenance.negativeCaseManifestHash` to the manifest hash only after the
+reviewed negative-case manifest is generated from the accepted fixture and its
+challenge, origin, RP ID hash, user-verification flag, signature, and
+payload-length mutations are exercised against the Solidity verifier tests. A
+fixture is accepted only after its positive and mutation-negative tests pass.
 
 Put accepted fixtures under `corpus/`. Missing combinations must remain
 marked `missing` in `matrix.json`; do not add synthetic production fixtures to
