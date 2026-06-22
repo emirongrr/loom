@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install Node.js
@@ -50,7 +50,7 @@ jobs:
           - formal/certora/conf/loom-account-initialization.conf
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install Python
@@ -82,7 +82,7 @@ jobs:
       CERTORAKEY: ${{ secrets.CERTORA_KEY }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install Python
