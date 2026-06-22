@@ -19,6 +19,7 @@ kout/
 formal/lean/.lake/
 .DS_Store
 Thumbs.db
+.tmp/
 *.log
 *.swp
 .idea/
