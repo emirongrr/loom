@@ -34,6 +34,9 @@ clear signing, signing, and publication.
   select infrastructure.
 - The package must remain usable by third-party clients without Loom-operated
   infrastructure.
+- Deployment intents may mark `recoveryStatus: "unprotected"` for passkey-only
+  bootstrap. Wallets must show that guardian recovery is unavailable until the
+  user adds a non-zero guardian root and threshold.
 
 ## Non-goals
 

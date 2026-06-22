@@ -29,6 +29,11 @@ Wallets remain responsible for explaining the intent, collecting signatures,
 simulating where appropriate, and publishing through user-selected
 infrastructure.
 
+For first-run onboarding, a wallet may build a passkey-only deployment with
+`recoveryStatus: 'unprotected'`. This improves onboarding but must be shown as
+no guardian recovery: if the primary credential is lost before guardians are
+added, access may be lost.
+
 ## Wallet engine client
 
 `@loom/sdk` exposes a developer-facing client without selecting default

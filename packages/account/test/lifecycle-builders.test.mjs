@@ -33,7 +33,24 @@ test("deployment builder binds factory salt and init code without sending a tran
   assert.equal(intent.factory, other);
   assert.equal(intent.salt, salt);
   assert.equal(intent.initCode, "0x1234");
+  assert.equal(intent.recoveryStatus, "guardian-protected");
+  assert.equal(intent.authority.risk, "deployment");
   assert.equal(intent.authority.requiresUserSignature, true);
+  assert.equal(intent.authority.recoveryAvailable, true);
+});
+
+test("deployment builder can mark passkey-only bootstrap as unprotected recovery", () => {
+  const client = createAccountLifecycleClient({ chainId: 1 });
+  const intent = client.buildAccountDeployment({
+    factory: other,
+    salt,
+    initCode: "0x1234",
+    recoveryStatus: "unprotected"
+  });
+
+  assert.equal(intent.recoveryStatus, "unprotected");
+  assert.equal(intent.authority.risk, "unprotected-recovery");
+  assert.equal(intent.authority.recoveryAvailable, false);
 });
 
 test("session grant requires granular target selector token amount time and use bounds", () => {
@@ -107,6 +124,20 @@ test("recovery proposal is visible delayed and guardian-approved", () => {
   assert.equal(intent.authority.requiresGuardianApproval, true);
   assert.equal(intent.authority.delayRequired, true);
   assert.equal(intent.authority.cancellable, true);
+});
+
+test("recovery proposal rejects accounts without configured guardians", () => {
+  const client = createAccountLifecycleClient({ chainId: 1, account });
+  assert.throws(
+    () =>
+      client.buildRecoveryProposal({
+        newConfigHash: codeHash,
+        configVersion: 2n,
+        executeAfter: 100n,
+        recoveryConfigured: false
+      }),
+    InvalidLifecycleRequestError
+  );
 });
 
 test("recovery cancellation binds id version nonce and route", () => {

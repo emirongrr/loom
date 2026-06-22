@@ -61,6 +61,12 @@ abstract contract FormalAccountBase {
         );
     }
 
+    function _unprotectedAccount() internal returns (LoomAccount account, MockValidator validator) {
+        validator = new MockValidator();
+        account =
+            new LoomAccount(_entryPointAddress(), bytes32(0), 0, keccak256("config"), _validatorModules(validator));
+    }
+
     function _executeFromEntryPoint(LoomAccount account, ExecutionLib.Execution memory execution) internal {
         vm.prank(account.entryPoint());
         account.execute(bytes32(0), abi.encode(execution));

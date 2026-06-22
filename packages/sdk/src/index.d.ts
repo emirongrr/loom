@@ -223,10 +223,12 @@ export interface LoomClient {
     factory: Hex;
     salt: Hex;
     initCode?: Hex;
+    recoveryStatus?: "guardian-protected" | "unprotected";
   }): LoomPreparedIntent & {
     readonly factory: Hex;
     readonly salt: Hex;
     readonly initCode: Hex;
+    readonly recoveryStatus: "guardian-protected" | "unprotected";
   };
   prepareCalls(input: {
     calls: readonly LoomCall[];

@@ -533,13 +533,17 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     function setGuardianConfig(bytes32 newRoot, uint8 newThreshold) external onlyScheduledSelf {
-        if (newRoot == bytes32(0) || newThreshold == 0 || newThreshold > MAX_GUARDIAN_THRESHOLD) {
+        if (!_validProtectedGuardianConfig(newRoot, newThreshold)) {
             revert InvalidGuardianConfig();
         }
         guardianRoot = newRoot;
         guardianThreshold = newThreshold;
         emit GuardianConfigUpdated(newRoot, newThreshold);
         _advanceConfig(keccak256(abi.encode("GUARDIANS_UPDATED", newRoot, newThreshold)));
+    }
+
+    function recoveryConfigured() external view returns (bool) {
+        return _recoveryConfigured();
     }
 
     function notifyConfigChange(bytes32 changeHash) external {
@@ -803,7 +807,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (configVersion != 0 || entryPoint_.code.length == 0 || configHash_ == bytes32(0) || modules.length == 0) {
             revert InvalidInitialization();
         }
-        if (guardianRoot_ == bytes32(0) || guardianThreshold_ == 0 || guardianThreshold_ > MAX_GUARDIAN_THRESHOLD) {
+        if (!_validInitialGuardianConfig(guardianRoot_, guardianThreshold_)) {
             revert InvalidGuardianConfig();
         }
         entryPoint = entryPoint_;
@@ -817,6 +821,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (_validatorCount == 0) revert InvalidGuardianConfig();
         emit ConfigUpdated(configHash_, 1);
         emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
+    }
+
+    function _validInitialGuardianConfig(bytes32 root, uint8 threshold) internal pure returns (bool) {
+        return (root == bytes32(0) && threshold == 0) || _validProtectedGuardianConfig(root, threshold);
+    }
+
+    function _validProtectedGuardianConfig(bytes32 root, uint8 threshold) internal pure returns (bool) {
+        return root != bytes32(0) && threshold != 0 && threshold <= MAX_GUARDIAN_THRESHOLD;
+    }
+
+    function _recoveryConfigured() internal view returns (bool) {
+        return guardianRoot != bytes32(0) && guardianThreshold != 0;
     }
 
     function _advanceConfig(bytes32 changeHash) internal {

@@ -78,6 +78,9 @@ preserving a portable expert path.
   direct infrastructure paths remain first-class.
 - Guardian setup may be guided, but no Loom guardian is mandatory or silently
   privileged.
+- Passkey-only onboarding may create an account before guardians exist, but
+  clients must state that recovery is unavailable until the user adds an
+  independent guardian set.
 - Security warnings and simulations protect users, but the client does not
   impose a centralized censorship policy.
 - Account and application activity should use separated identities where

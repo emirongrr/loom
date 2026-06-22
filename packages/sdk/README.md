@@ -66,6 +66,20 @@ const session = wallet.grantSession({
 });
 ```
 
+Passkey-only onboarding can prepare an account before guardians are available,
+but the review object must be shown to the user as unprotected recovery:
+
+```js
+const deploy = wallet.prepareDeployAccount({
+  factory: "0x5555555555555555555555555555555555555555",
+  salt: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  initCode: "0x1234",
+  recoveryStatus: "unprotected"
+});
+
+console.log(deploy.review.summary);
+```
+
 Typed encoders are exposed without adding a provider dependency:
 
 ```js

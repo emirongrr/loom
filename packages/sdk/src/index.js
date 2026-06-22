@@ -157,7 +157,8 @@ export function createLoomClient(options = {}) {
         chainId,
         factory: input.factory,
         salt: input.salt,
-        initCode: input.initCode
+        initCode: input.initCode,
+        recoveryStatus: input.recoveryStatus
       });
       const intentHash = hashCanonical(intent);
       return Object.freeze({
@@ -167,6 +168,7 @@ export function createLoomClient(options = {}) {
         factory: intent.factory,
         salt: intent.salt,
         initCode: intent.initCode,
+        recoveryStatus: intent.recoveryStatus,
         review: explainLifecycleIntent(intent)
       });
     },
@@ -1052,6 +1054,10 @@ function summaryForIntent(intent) {
   switch (intent.kind) {
     case "account.calls":
       return `Account will execute ${intent.calls.length} call(s) from ${intent.account}.`;
+    case "account.deploy":
+      return intent.recoveryStatus === "unprotected"
+        ? "Account will be deployed without guardian recovery; losing the primary credential can permanently lose access."
+        : "Account will be deployed with guardian recovery configured.";
     case "session.grant":
       return intent.appScope
         ? `App-scoped session ${intent.appBindingHash} may call ${intent.scope.selector} on ${intent.scope.target} up to ${intent.scope.maxUses} time(s).`

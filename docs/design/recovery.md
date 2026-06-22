@@ -5,6 +5,13 @@ committed validator set with one new validator and rotating to a fresh guardian
 root after a visible delay. It never receives arbitrary execution, executor,
 delegatecall, token-transfer, or upgrade authority.
 
+Accounts may be created in an explicit guardianless bootstrap state with
+`guardianRoot == 0` and `guardianThreshold == 0`. This state improves passkey
+onboarding but does not provide social recovery, guardian freeze, or
+guardian-threshold cancellation. Wallets and SDKs must describe it as
+unprotected recovery. Users can add a real guardian root later through the
+normal delayed self-configuration path.
+
 ## Lifecycle
 
 1. The user creates a new validator or passkey configuration on a new device.
@@ -18,8 +25,8 @@ delegatecall, token-transfer, or upgrade authority.
    threshold may cancel during this period.
 5. After the delay, anyone may execute the exact committed complete-set
    replacement and guardian rotation during a seven-day execution window.
-   Partial and duplicate validator sets, zero guardian roots, invalid
-   thresholds, and reuse of the old guardian root are rejected.
+Partial and duplicate validator sets, zero guardian roots, invalid
+thresholds, and reuse of the old guardian root are rejected.
 6. Execution advances `configVersion` and the recovery nonce. Replays and
    proposals committed to stale configuration fail.
 
@@ -52,6 +59,11 @@ proof-of-possession ceremony, independently rebuild the root, retain encrypted
 recovery material, and simulate the exact recovery proposal before funding the
 account. A future zero-knowledge setup proof requires separate design and
 audit; Loom will not claim that an arbitrary root is usable.
+
+Once a non-zero guardian configuration is installed, the account does not allow
+it to be cleared back to zero. A user who intentionally wants a guardianless
+account again should migrate to a new account under the visible migration
+rules instead of silently deleting recovery from the current account.
 
 ## Industry examples
 
