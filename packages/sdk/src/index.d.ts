@@ -110,6 +110,80 @@ export interface LoomTransportAdapter {
   }): Promise<UserOperationReceipt>;
 }
 
+export interface LoomStateReadTransport {
+  ethCall(input: {
+    to: Hex;
+    data: Hex;
+    blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+  }): Promise<Hex>;
+  getCode?(input: {
+    address: Hex;
+    blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+  }): Promise<Hex>;
+}
+
+export type AccountSafetyStatus =
+  | "guardian-protected"
+  | "unprotected-recovery"
+  | "pending-recovery"
+  | "pending-migration"
+  | "frozen";
+
+export interface PendingMigrationState {
+  readonly active: boolean;
+  readonly destination: Hex;
+  readonly destinationCodeHash: Hex;
+  readonly destinationConfigHash: Hex;
+  readonly callsHash: Hex;
+  readonly readyAt: bigint;
+  readonly expiresAt: bigint;
+  readonly configVersion: bigint;
+  readonly nonce: bigint;
+}
+
+export interface PendingRecoveryState {
+  readonly active: boolean;
+  readonly oldValidatorsHash: Hex;
+  readonly newValidator: Hex;
+  readonly initDataHash: Hex;
+  readonly newGuardianRoot: Hex;
+  readonly newGuardianThreshold: number;
+  readonly readyAt: bigint;
+  readonly expiresAt: bigint;
+  readonly configVersion: bigint;
+  readonly nonce: bigint;
+}
+
+export interface AccountSafetyState {
+  readonly kind: "account.safetyState";
+  readonly chainId: number;
+  readonly account: Hex;
+  readonly blockTag: string;
+  readonly status: AccountSafetyStatus;
+  readonly recoveryConfigured: boolean;
+  readonly config: {
+    readonly guardianRoot: Hex;
+    readonly guardianThreshold: number;
+    readonly configVersion: bigint;
+    readonly validatorCount: bigint;
+  };
+  readonly freeze: {
+    readonly frozenUntil: bigint;
+    readonly active: boolean;
+  };
+  readonly pending: {
+    readonly recovery?: PendingRecoveryState;
+    readonly migration: PendingMigrationState;
+  };
+  readonly warnings: readonly string[];
+  readonly review: {
+    readonly title: string;
+    readonly risk: AccountSafetyStatus;
+    readonly summary: string;
+    readonly warnings: readonly string[];
+  };
+}
+
 export interface LoomCall {
   readonly target: Hex;
   readonly value?: bigint | string | number;
@@ -298,6 +372,13 @@ export interface LoomClient {
       pollIntervalMs?: number;
     }
   ): Promise<UserOperationReceipt>;
+  readSafetyState(input?: {
+    stateTransport?: LoomStateReadTransport;
+    transport?: LoomStateReadTransport;
+    recoveryModule?: Hex;
+    blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+    now?: bigint | string | number;
+  }): Promise<AccountSafetyState>;
   grantSession(input: AppSessionGrantInput): LoomPreparedIntent & {
     readonly intent: AppSessionGrantIntent;
   };
@@ -331,6 +412,7 @@ export function createLoomClient(options: {
   kohaku?: Partial<KohakuHostOptions> & { host?: KohakuHost };
   signer?: LoomSignerAdapter;
   transport?: LoomTransportAdapter;
+  stateTransport?: LoomStateReadTransport;
   middleware?: readonly ((envelope: UserOperationEnvelope) => Promise<UserOperationEnvelope> | UserOperationEnvelope)[];
 }): LoomClient;
 
@@ -360,6 +442,27 @@ export function createBundlerTransport(options: BundlerTransportOptions): LoomTr
   readonly endpoint: string;
   readonly entryPoint: Hex;
 };
+
+export interface RpcStateTransportOptions {
+  endpoint: string;
+  fetch?: typeof fetch;
+  headers?: Record<string, string>;
+  requestId?: number | string;
+}
+
+export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
+  readonly endpoint: string;
+};
+
+export function readAccountSafetyState(input: {
+  chainId: number;
+  account: Hex;
+  stateTransport?: LoomStateReadTransport;
+  transport?: LoomStateReadTransport;
+  recoveryModule?: Hex;
+  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+  now?: bigint | string | number;
+}): Promise<AccountSafetyState>;
 
 export function toViemCalls(
   prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,

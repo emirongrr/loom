@@ -18,6 +18,23 @@ export class InvalidSdkRequestError extends Error {
   }
 }
 
+const ACCOUNT_STATE_SELECTORS = Object.freeze({
+  recoveryConfigured: selector("recoveryConfigured()"),
+  guardianRoot: selector("guardianRoot()"),
+  guardianThreshold: selector("guardianThreshold()"),
+  configVersion: selector("configVersion()"),
+  frozenUntil: selector("frozenUntil()"),
+  validatorCount: selector("validatorCount()"),
+  pendingMigration: selector("pendingMigration()")
+});
+
+const RECOVERY_STATE_SELECTORS = Object.freeze({
+  pendingRecoveries: selector("pendingRecoveries(address)")
+});
+
+const MAX_GUARDIAN_THRESHOLD = 32;
+const MAX_VALIDATORS = 16;
+
 export function createKohakuRuntime(options = {}) {
   if (options.host !== undefined) {
     assertKohakuHost(options.host);
@@ -135,6 +152,7 @@ export function createLoomClient(options = {}) {
     kohaku: options.kohaku
   });
   const transport = options.transport;
+  const stateTransport = options.stateTransport;
   const signer = options.signer;
   const middleware = normalizeMiddleware(options.middleware ?? []);
   const submittedWalletCallIds = new Set();
@@ -293,6 +311,20 @@ export function createLoomClient(options = {}) {
         ...overrides
       });
     },
+    async readSafetyState(input = {}) {
+      const selectedTransport = input.stateTransport ?? input.transport ?? stateTransport;
+      if (!selectedTransport || typeof selectedTransport.ethCall !== "function") {
+        throw new InvalidSdkRequestError("account safety state requires an explicit state transport");
+      }
+      return readAccountSafetyState({
+        chainId,
+        account,
+        stateTransport: selectedTransport,
+        recoveryModule: input.recoveryModule,
+        blockTag: input.blockTag,
+        now: input.now
+      });
+    },
     grantSession(input) {
       const intent = sdk.buildAppSessionGrant({
         chainId,
@@ -439,6 +471,168 @@ export function createBundlerTransport(options = {}) {
         userOpHash,
         timeoutMs
       });
+    }
+  });
+}
+
+export function createRpcStateTransport(options = {}) {
+  if (!options.endpoint) throw new InvalidSdkRequestError("state rpc endpoint is required");
+  new URL(options.endpoint);
+  const endpoint = options.endpoint;
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") throw new InvalidSdkRequestError("state transport requires fetch");
+
+  async function request(method, params) {
+    const body = {
+      jsonrpc: "2.0",
+      id: options.requestId ?? 1,
+      method,
+      params
+    };
+    const response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(options.headers ?? {})
+      },
+      body: JSON.stringify(body)
+    });
+    const payload = await response.json();
+    if (payload.error) {
+      throw new InvalidSdkRequestError("state rpc request failed", {
+        method,
+        code: payload.error.code,
+        message: payload.error.message
+      });
+    }
+    if (typeof payload.result !== "string" || !HEX_PATTERN.test(payload.result)) {
+      throw new InvalidSdkRequestError("state rpc returned malformed hex", { method });
+    }
+    return payload.result;
+  }
+
+  return Object.freeze({
+    endpoint,
+    async ethCall(input) {
+      if (!input || typeof input !== "object") throw new InvalidSdkRequestError("ethCall input is required");
+      const to = normalizeAddress(input.to, "eth_call target");
+      const data = normalizeHex(input.data, "eth_call data");
+      const blockTag = normalizeBlockTag(input.blockTag ?? "latest");
+      return request("eth_call", [{ to, data }, blockTag]);
+    },
+    async getCode(input) {
+      if (!input || typeof input !== "object") throw new InvalidSdkRequestError("getCode input is required");
+      const address = normalizeAddress(input.address, "code address");
+      const blockTag = normalizeBlockTag(input.blockTag ?? "latest");
+      return request("eth_getCode", [address, blockTag]);
+    }
+  });
+}
+
+export async function readAccountSafetyState(input = {}) {
+  const chainId = normalizeChainId(input.chainId);
+  const account = normalizeAddress(input.account, "account");
+  const transport = input.stateTransport ?? input.transport;
+  if (!transport || typeof transport.ethCall !== "function") {
+    throw new InvalidSdkRequestError("account safety state requires an explicit state transport");
+  }
+  const blockTag = normalizeBlockTag(input.blockTag ?? "latest");
+  const now = input.now === undefined ? undefined : normalizeBigInt(input.now, "current timestamp");
+
+  const callAccount = selectorData =>
+    transport.ethCall({ to: account, data: selectorData, blockTag });
+  const [
+    recoveryConfiguredResult,
+    guardianRootResult,
+    guardianThresholdResult,
+    configVersionResult,
+    frozenUntilResult,
+    validatorCountResult,
+    pendingMigrationResult
+  ] = await Promise.all([
+    callAccount(ACCOUNT_STATE_SELECTORS.recoveryConfigured),
+    callAccount(ACCOUNT_STATE_SELECTORS.guardianRoot),
+    callAccount(ACCOUNT_STATE_SELECTORS.guardianThreshold),
+    callAccount(ACCOUNT_STATE_SELECTORS.configVersion),
+    callAccount(ACCOUNT_STATE_SELECTORS.frozenUntil),
+    callAccount(ACCOUNT_STATE_SELECTORS.validatorCount),
+    callAccount(ACCOUNT_STATE_SELECTORS.pendingMigration)
+  ]);
+
+  const recoveryConfigured = decodeBool(recoveryConfiguredResult, "recoveryConfigured");
+  const guardianRoot = decodeBytes32(guardianRootResult, "guardianRoot");
+  const guardianThreshold = Number(decodeUint(guardianThresholdResult, "guardianThreshold"));
+  const configVersion = decodeUint(configVersionResult, "configVersion");
+  const frozenUntil = decodeUint(frozenUntilResult, "frozenUntil");
+  const validatorCount = decodeUint(validatorCountResult, "validatorCount");
+  const pendingMigration = decodePendingMigration(pendingMigrationResult);
+
+  assertGuardianConfigConsistency({
+    recoveryConfigured,
+    guardianRoot,
+    guardianThreshold
+  });
+  if (validatorCount === 0n) {
+    throw new InvalidSdkRequestError("account safety state is invalid: validator count is zero");
+  }
+  if (validatorCount > BigInt(MAX_VALIDATORS)) {
+    throw new InvalidSdkRequestError("account safety state is invalid: validator count exceeds max");
+  }
+
+  const recoveryModule =
+    input.recoveryModule === undefined ? undefined : normalizeAddress(input.recoveryModule, "recovery module");
+  const pendingRecovery = recoveryModule === undefined
+    ? undefined
+    : decodePendingRecovery(await transport.ethCall({
+        to: recoveryModule,
+        data: `${RECOVERY_STATE_SELECTORS.pendingRecoveries}${encodeAddressArgument(account)}`,
+        blockTag
+      }));
+  validatePendingMigration(pendingMigration);
+  if (pendingRecovery !== undefined) validatePendingRecovery(pendingRecovery);
+
+  const freeze = Object.freeze({
+    frozenUntil,
+    active: now === undefined ? frozenUntil !== 0n : frozenUntil > now
+  });
+  const pending = Object.freeze({
+    recovery: pendingRecovery,
+    migration: pendingMigration
+  });
+  const warnings = accountSafetyWarnings({
+    recoveryConfigured,
+    freeze,
+    pendingRecovery,
+    pendingMigration
+  });
+  const status = accountSafetyStatus({
+    recoveryConfigured,
+    freeze,
+    pendingRecovery,
+    pendingMigration
+  });
+
+  return deepFreeze({
+    kind: "account.safetyState",
+    chainId,
+    account,
+    blockTag,
+    status,
+    recoveryConfigured,
+    config: {
+      guardianRoot,
+      guardianThreshold,
+      configVersion,
+      validatorCount
+    },
+    freeze,
+    pending,
+    warnings,
+    review: {
+      title: "Loom account safety state",
+      risk: status,
+      summary: warnings[0] ?? "Guardian recovery is configured and no emergency state is pending.",
+      warnings
     }
   });
 }
@@ -836,6 +1030,160 @@ function normalizePasskeyAssertion(assertion) {
     signature: normalizeHex(assertion.signature, "passkey signature"),
     userHandle: assertion.userHandle === undefined ? undefined : normalizeHex(assertion.userHandle, "userHandle")
   });
+}
+
+function selector(signature) {
+  return `0x${keccak_256(signature).slice(0, 8)}`;
+}
+
+function normalizeBlockTag(value) {
+  if (typeof value === "string") {
+    if (value === "latest" || value === "safe" || value === "finalized" || value === "pending" || value === "earliest") {
+      return value;
+    }
+    if (/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)) return value;
+  }
+  if (typeof value === "number" || typeof value === "bigint") return toRpcQuantity(value);
+  throw new InvalidSdkRequestError("blockTag must be a standard tag or rpc quantity");
+}
+
+function abiWords(result, label, expectedWords) {
+  const hex = normalizeHex(result, label).slice(2);
+  if (hex.length % 64 !== 0) throw new InvalidSdkRequestError(`${label} returned malformed ABI data`);
+  const words = [];
+  for (let offset = 0; offset < hex.length; offset += 64) {
+    words.push(hex.slice(offset, offset + 64));
+  }
+  if (expectedWords !== undefined && words.length !== expectedWords) {
+    throw new InvalidSdkRequestError(`${label} returned unexpected ABI word count`, {
+      expectedWords,
+      actualWords: words.length
+    });
+  }
+  return words;
+}
+
+function decodeUint(result, label) {
+  return BigInt(`0x${abiWords(result, label, 1)[0]}`);
+}
+
+function decodeBool(result, label) {
+  const value = decodeUint(result, label);
+  if (value !== 0n && value !== 1n) throw new InvalidSdkRequestError(`${label} returned malformed bool`);
+  return value === 1n;
+}
+
+function decodeBytes32(result, label) {
+  return normalizeBytes32(`0x${abiWords(result, label, 1)[0]}`, label);
+}
+
+function decodeAddressWord(word, label) {
+  const prefix = word.slice(0, 24);
+  if (!/^0+$/.test(prefix)) throw new InvalidSdkRequestError(`${label} returned malformed address`);
+  return normalizeAddress(`0x${word.slice(24)}`, label);
+}
+
+function decodePendingMigration(result) {
+  const words = abiWords(result, "pendingMigration", 8);
+  return Object.freeze({
+    active: BigInt(`0x${words[4]}`) !== 0n,
+    destination: decodeAddressWord(words[0], "pendingMigration.destination"),
+    destinationCodeHash: normalizeBytes32(`0x${words[1]}`, "pendingMigration.destinationCodeHash"),
+    destinationConfigHash: normalizeBytes32(`0x${words[2]}`, "pendingMigration.destinationConfigHash"),
+    callsHash: normalizeBytes32(`0x${words[3]}`, "pendingMigration.callsHash"),
+    readyAt: BigInt(`0x${words[4]}`),
+    expiresAt: BigInt(`0x${words[5]}`),
+    configVersion: BigInt(`0x${words[6]}`),
+    nonce: BigInt(`0x${words[7]}`)
+  });
+}
+
+function decodePendingRecovery(result) {
+  const words = abiWords(result, "pendingRecoveries", 9);
+  return Object.freeze({
+    active: BigInt(`0x${words[5]}`) !== 0n,
+    oldValidatorsHash: normalizeBytes32(`0x${words[0]}`, "pendingRecovery.oldValidatorsHash"),
+    newValidator: decodeAddressWord(words[1], "pendingRecovery.newValidator"),
+    initDataHash: normalizeBytes32(`0x${words[2]}`, "pendingRecovery.initDataHash"),
+    newGuardianRoot: normalizeBytes32(`0x${words[3]}`, "pendingRecovery.newGuardianRoot"),
+    newGuardianThreshold: Number(BigInt(`0x${words[4]}`)),
+    readyAt: BigInt(`0x${words[5]}`),
+    expiresAt: BigInt(`0x${words[6]}`),
+    configVersion: BigInt(`0x${words[7]}`),
+    nonce: BigInt(`0x${words[8]}`)
+  });
+}
+
+function encodeAddressArgument(address) {
+  return normalizeAddress(address, "address argument").slice(2).padStart(64, "0");
+}
+
+function assertGuardianConfigConsistency({ recoveryConfigured, guardianRoot, guardianThreshold }) {
+  if (!Number.isSafeInteger(guardianThreshold) || guardianThreshold < 0 || guardianThreshold > MAX_GUARDIAN_THRESHOLD) {
+    throw new InvalidSdkRequestError("account safety state is invalid: guardian threshold exceeds max");
+  }
+  const hasRoot = guardianRoot !== `0x${"0".repeat(64)}`;
+  const hasThreshold = guardianThreshold !== 0;
+  if (recoveryConfigured !== (hasRoot && hasThreshold)) {
+    throw new InvalidSdkRequestError("account safety state is invalid: inconsistent recoveryConfigured flag");
+  }
+  if (hasRoot !== hasThreshold) {
+    throw new InvalidSdkRequestError("account safety state is invalid: inconsistent guardian config");
+  }
+}
+
+function validatePendingMigration(pendingMigration) {
+  if (!pendingMigration.active) return;
+  if (pendingMigration.destination === "0x0000000000000000000000000000000000000000") {
+    throw new InvalidSdkRequestError("account safety state is invalid: pending migration destination is zero");
+  }
+  if (pendingMigration.callsHash === `0x${"0".repeat(64)}` || pendingMigration.expiresAt <= pendingMigration.readyAt) {
+    throw new InvalidSdkRequestError("account safety state is invalid: malformed pending migration");
+  }
+}
+
+function validatePendingRecovery(pendingRecovery) {
+  if (!pendingRecovery.active) return;
+  if (
+    pendingRecovery.newValidator === "0x0000000000000000000000000000000000000000"
+      || pendingRecovery.initDataHash === `0x${"0".repeat(64)}`
+      || pendingRecovery.newGuardianRoot === `0x${"0".repeat(64)}`
+      || pendingRecovery.newGuardianThreshold === 0
+      || pendingRecovery.newGuardianThreshold > MAX_GUARDIAN_THRESHOLD
+      || pendingRecovery.expiresAt <= pendingRecovery.readyAt
+  ) {
+    throw new InvalidSdkRequestError("account safety state is invalid: malformed pending recovery");
+  }
+}
+
+function accountSafetyStatus({ recoveryConfigured, freeze, pendingRecovery, pendingMigration }) {
+  if (freeze.active) return "frozen";
+  if (pendingRecovery?.active) return "pending-recovery";
+  if (pendingMigration.active) return "pending-migration";
+  return recoveryConfigured ? "guardian-protected" : "unprotected-recovery";
+}
+
+function accountSafetyWarnings({ recoveryConfigured, freeze, pendingRecovery, pendingMigration }) {
+  const warnings = [];
+  if (!recoveryConfigured) {
+    warnings.push("Guardian recovery is not configured; losing the primary credential can permanently lose access.");
+  }
+  if (freeze.active) {
+    warnings.push("Account is frozen; ordinary execution may be blocked until the freeze expires.");
+  }
+  if (pendingRecovery?.active) {
+    warnings.push("Recovery is pending; verify the proposal or cancel it before the execution window.");
+  }
+  if (pendingMigration.active) {
+    warnings.push("Migration is pending; verify the destination and call hash before execution.");
+  }
+  return Object.freeze(warnings);
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const item of Object.values(value)) deepFreeze(item);
+  return Object.freeze(value);
 }
 
 function toRpcQuantity(value) {
