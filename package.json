@@ -41,6 +41,7 @@
     "privacy:railgun:rehearsal": "node scripts/privacy/run-railgun-rehearsal.mjs",
     "account:test": "npm --prefix packages/account test",
     "guardian:test": "npm --prefix packages/guardian test",
+    "guardian:evidence:build": "node scripts/guardian/build-onboarding-evidence.mjs",
     "privacy:test": "npm --prefix packages/privacy test",
     "sdk:test": "npm --prefix packages/sdk test",
     "rehearsal:local": "node tools/rehearse-local-lifecycle.mjs",
