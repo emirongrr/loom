@@ -135,7 +135,12 @@ async function fixtureFiles(rootPath) {
   const names = await readdir(rootPath, { withFileTypes: true });
   const files = [];
   for (const entry of names) {
-    if (entry.isFile() && entry.name !== "schema.json" && entry.name !== "matrix.json") {
+    if (
+      entry.isFile()
+        && entry.name !== "schema.json"
+        && entry.name !== "negative-case-manifest.schema.json"
+        && entry.name !== "matrix.json"
+    ) {
       files.push(entry.name);
     }
   }

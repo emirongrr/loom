@@ -22,3 +22,13 @@ Before adding a fixture, verify:
   user-verification flag, signature, and payload-length negative tests pass;
 - the matrix entry remains `captured` until both positive and negative
   contract tests are reviewed, then moves to `verified`.
+
+Generate the negative-case manifest with:
+
+```sh
+node tools/webauthn-fixture/negative-cases.mjs fixtures/webauthn/corpus/<fixture>.json
+```
+
+The manifest schema is `fixtures/webauthn/negative-case-manifest.schema.json`.
+Its hash is review evidence; it is not a substitute for running the negative
+mutation tests against the Solidity verifier.
