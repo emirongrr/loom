@@ -72,6 +72,26 @@ npm run deployment:manifest:check -- evidence/deployments/<network>.json
 
 The evidence directory is intentionally not pre-populated with fake data.
 
+## Candidate Workflow
+
+Production-candidate deployment manifests should be validated with the manual
+`deployment-manifest-candidate` GitHub workflow after the evidence PR is
+opened. Provide the committed manifest path, for example:
+
+```text
+evidence/deployments/sepolia.json
+```
+
+The workflow performs a clean checkout, installs pinned dependencies, rebuilds
+Foundry artifacts, refuses local-only config paths, and runs:
+
+```sh
+npm run deployment:manifest:check -- "$MANIFEST_PATH"
+```
+
+It does not fetch private RPC endpoints or explorer API keys. Explorer
+verification links in the manifest must be public, credential-free URLs.
+
 ## Release Procedure
 
 1. Freeze the audited source commit.

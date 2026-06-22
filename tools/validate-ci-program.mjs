@@ -139,6 +139,24 @@ function validateSupplyChainWorkflow() {
   }
 }
 
+function validateDeploymentManifestCandidateWorkflow() {
+  const file = ".github/workflows/deployment-manifest-candidate.yml";
+  assertWorkflowSecurityDefaults(file);
+  for (const required of [
+    "workflow_dispatch:",
+    "manifest_path:",
+    "persist-credentials: false",
+    "foundry-rs/foundry-toolchain@v1",
+    "version: v1.7.1",
+    "npm ci",
+    "forge build --sizes",
+    "*.local.json|*.config.json|*.config.local.json",
+    "npm run deployment:manifest:check -- \"$MANIFEST_PATH\"",
+  ]) {
+    assertIncludes(file, required, `missing deployment manifest candidate workflow step: ${required}`);
+  }
+}
+
 function validateFormalProgramInPackage() {
   const packageJson = JSON.parse(read("package.json"));
   assert(packageJson.scripts["ci:program:check"] === "node tools/validate-ci-program.mjs", "missing ci:program:check script");
@@ -169,6 +187,7 @@ validateNightlyWorkflow();
 validateKontrolWorkflow();
 validateSupplyChainWorkflow();
 validateCertoraWorkflow();
+validateDeploymentManifestCandidateWorkflow();
 validateFormalProgramInPackage();
 validateRepositoryMergePolicyDocs();
 
