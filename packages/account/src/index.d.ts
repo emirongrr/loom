@@ -19,6 +19,7 @@ export type AccountLifecycleKind =
 export interface LifecycleAuthority {
   risk:
     | "deployment"
+    | "unprotected-recovery"
     | "bounded-session"
     | "permission-revocation"
     | "account-recovery"
@@ -41,6 +42,7 @@ export interface LifecycleAuthority {
   metadataBudgetRequired?: boolean;
   exactPendingOperationRequired?: boolean;
   cancelsPendingHighRiskOperation?: boolean;
+  recoveryAvailable?: boolean;
 }
 
 export interface SessionScope {
@@ -68,6 +70,7 @@ export interface AccountLifecycleClient {
     factory: Hex;
     salt: Hex;
     initCode?: Hex;
+    recoveryStatus?: "guardian-protected" | "unprotected";
   }): LifecycleIntent;
 
   buildSessionGrant(input: {
@@ -97,6 +100,7 @@ export interface AccountLifecycleClient {
     newConfigHash: Hex;
     configVersion: bigint | string | number;
     executeAfter: bigint | string | number;
+    recoveryConfigured?: boolean;
     callData?: Hex;
   }): LifecycleIntent;
 

@@ -12,6 +12,7 @@ interface ILoomAccount {
     function configVersion() external view returns (uint64);
     function guardianRoot() external view returns (bytes32);
     function guardianThreshold() external view returns (uint8);
+    function recoveryConfigured() external view returns (bool);
     function validatorCount() external view returns (uint256);
     function validatorAt(uint256 index) external view returns (address);
     function frozenUntil() external view returns (uint48);

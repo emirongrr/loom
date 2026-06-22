@@ -65,11 +65,15 @@ test("loom client prepares deploy and user operation envelopes without broadcast
   const deploy = client.prepareDeployAccount({
     factory,
     salt,
-    initCode: "0x1234"
+    initCode: "0x1234",
+    recoveryStatus: "unprotected"
   });
   const prepared = client.prepareUserOperation(deploy);
 
   assert.equal(deploy.intent.kind, "account.deploy");
+  assert.equal(deploy.recoveryStatus, "unprotected");
+  assert.equal(deploy.review.risk, "unprotected-recovery");
+  assert.match(deploy.review.summary, /without guardian recovery/);
   assert.equal(prepared.kind, "userOperation.prepare");
   assert.equal(prepared.intentHash, deploy.intentHash);
   assert.equal(prepared.userOperation.sender, account);

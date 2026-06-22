@@ -26,6 +26,30 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         assert(account.configVersion() == versionBefore);
     }
 
+    function test_GuardianlessBootstrapHasNoGuardianAuthority() public {
+        check_GuardianlessBootstrapHasNoGuardianAuthority();
+    }
+
+    function check_GuardianlessBootstrapHasNoGuardianAuthority() public {
+        (LoomAccount account,) = _unprotectedAccount();
+        uint64 versionBefore = account.configVersion();
+
+        (bool setOk,) =
+            address(account).call(abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("new-root"), uint8(1))));
+        (bool freezeOk,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.freeze,
+                    (address(new FormalGuardianVerifier()), keccak256("key"), keccak256("salt"), new bytes32[](0), "")
+                )
+            );
+
+        assert(!setOk);
+        assert(!freezeOk);
+        assert(!account.recoveryConfigured());
+        assert(account.configVersion() == versionBefore);
+    }
+
     function test_ExternalCannotRecoverConfiguration() public {
         check_ExternalCannotRecoverConfiguration();
     }

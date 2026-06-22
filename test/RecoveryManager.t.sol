@@ -91,6 +91,35 @@ contract RecoveryManagerTest {
         require(account.configVersion() == version + 1, "config version not advanced once");
     }
 
+    function testGuardianlessAccountCannotProposeRecovery() public {
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(oldValidator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        LoomAccount unprotected = new LoomAccount(address(this), bytes32(0), 0, keccak256("bootstrap-config"), modules);
+
+        address[] memory oldValidators = new address[](1);
+        oldValidators[0] = address(oldValidator);
+        RecoveryManager.GuardianApproval[] memory approvals = new RecoveryManager.GuardianApproval[](0);
+        (bool accepted,) = address(recovery)
+            .call(
+                abi.encodeCall(
+                    RecoveryManager.proposeRecovery,
+                    (
+                        address(unprotected),
+                        oldValidators,
+                        address(newValidator),
+                        keccak256(""),
+                        NEW_GUARDIAN_ROOT,
+                        1,
+                        approvals
+                    )
+                )
+            );
+        require(!accepted, "guardianless recovery proposed");
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(unprotected));
+        require(readyAt == 0, "guardianless recovery stored");
+    }
+
     function testRecoveryRejectsPartialOrUnsortedValidatorSet() public {
         bytes memory initData = "";
         address[] memory subset = new address[](1);

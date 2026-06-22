@@ -52,6 +52,9 @@
   delay. Scheduling removal of an already-installed hook has a narrow
   hook-bypass recovery path, so the denial is not permanent.
 - Guardian devices and social relationships are sufficiently independent.
+- Accounts created in guardianless bootstrap mode are not recoverable if the
+  primary credential is lost. This is an explicit onboarding tradeoff, not a
+  production-safe recovery claim.
 - P-256 precompile or configured fallback verifier behaves correctly.
 - MFA credentials described as independent are controlled through genuinely
   independent devices or security domains.
@@ -100,6 +103,9 @@
   binding, and chain before signing a delegation authorization.
 - Multiple passkeys improve authentication availability and compromise
   resistance but do not replace guardian recovery.
+- Guardianless bootstrap disables guardian recovery, guardian freeze, and
+  guardian-threshold cancellation until a non-zero guardian root and threshold
+  are added through the delayed configuration path.
 - Recovery replaces every validator committed in the visible proposal and
   requires an atomic fresh guardian-root rotation. A guardian acting only to
   freeze still reveals its leaf without rotating the tree.

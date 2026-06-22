@@ -23,17 +23,20 @@ export function createAccountLifecycleClient(defaults = {}) {
     buildAccountDeployment(input) {
       const chainId = input?.chainId === undefined ? defaultChainId : normalizeChainId(input.chainId);
       if (chainId === undefined) throw new InvalidLifecycleRequestError("chainId is required");
+      const recoveryStatus = normalizeRecoveryStatus(input?.recoveryStatus ?? "guardian-protected");
       return freezeIntent({
         kind: "account.deploy",
         chainId,
         factory: normalizeAddress(input?.factory, "factory"),
         salt: normalizeBytes32(input?.salt, "salt"),
         initCode: normalizeHex(input?.initCode ?? "0x", "initCode"),
+        recoveryStatus,
         authority: Object.freeze({
-          risk: "deployment",
+          risk: recoveryStatus === "unprotected" ? "unprotected-recovery" : "deployment",
           requiresUserSignature: true,
           requiresGuardianApproval: false,
-          delayRequired: false
+          delayRequired: false,
+          recoveryAvailable: recoveryStatus === "guardian-protected"
         })
       });
     },
@@ -68,6 +71,9 @@ export function createAccountLifecycleClient(defaults = {}) {
       });
     },
     buildRecoveryProposal(input) {
+      if (input?.recoveryConfigured === false) {
+        throw new InvalidLifecycleRequestError("guardian recovery is not configured for this account");
+      }
       return freezeIntent({
         kind: "recovery.propose",
         ...base(input),
@@ -387,6 +393,13 @@ function normalizeSessionScope(input) {
 function normalizeCancellationRoute(value) {
   if (value !== "account" && value !== "guardian") {
     throw new InvalidLifecycleRequestError("cancellation route must be account or guardian");
+  }
+  return value;
+}
+
+function normalizeRecoveryStatus(value) {
+  if (value !== "guardian-protected" && value !== "unprotected") {
+    throw new InvalidLifecycleRequestError("recoveryStatus must be guardian-protected or unprotected");
   }
   return value;
 }

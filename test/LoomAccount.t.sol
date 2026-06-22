@@ -167,6 +167,67 @@ contract LoomAccountTest {
         require(account.configVersion() == 1, "config changed");
     }
 
+    function testGuardianlessBootstrapIsExplicitlyUnprotected() public {
+        LoomAccount unprotected =
+            new LoomAccount(address(this), bytes32(0), 0, keccak256("bootstrap-config"), _modules(validator));
+        require(unprotected.guardianRoot() == bytes32(0), "unexpected guardian root");
+        require(unprotected.guardianThreshold() == 0, "unexpected guardian threshold");
+        require(!unprotected.recoveryConfigured(), "guardianless account reported recovery");
+
+        ExecutionLib.Execution memory item =
+            ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (13)));
+        unprotected.execute(bytes32(0), abi.encode(item));
+        require(target.value() == 13, "guardianless execution failed");
+    }
+
+    function testGuardianlessBootstrapRejectsPartialGuardianConfig() public {
+        try new LoomAccount(address(this), bytes32(0), 1, keccak256("bad-root"), _modules(validator)) {
+            revert("zero root accepted nonzero threshold");
+        } catch {}
+
+        try new LoomAccount(address(this), keccak256("guardians"), 0, keccak256("bad-threshold"), _modules(validator)) {
+            revert("nonzero root accepted zero threshold");
+        } catch {}
+
+        try new LoomAccount(
+            address(this),
+            keccak256("guardians"),
+            account.MAX_GUARDIAN_THRESHOLD() + 1,
+            keccak256("bad-max"),
+            _modules(validator)
+        ) {
+            revert("excessive threshold accepted");
+        } catch {}
+    }
+
+    function testGuardianlessAccountCanAddGuardiansAfterDelay() public {
+        LoomAccount unprotected =
+            new LoomAccount(address(this), bytes32(0), 0, keccak256("bootstrap-config"), _modules(validator));
+        bytes32 newRoot = keccak256("new-guardians");
+        bytes memory update = abi.encodeCall(LoomAccount.setGuardianConfig, (newRoot, uint8(1)));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(unprotected), 0, update, unprotected.MIN_CONFIG_DELAY()));
+        unprotected.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(unprotected), 0, schedule)));
+
+        vm.warp(block.timestamp + unprotected.MIN_CONFIG_DELAY());
+        unprotected.executeScheduled(address(unprotected), 0, update);
+        require(unprotected.recoveryConfigured(), "recovery not configured");
+        require(unprotected.guardianRoot() == newRoot, "guardian root not set");
+        require(unprotected.guardianThreshold() == 1, "guardian threshold not set");
+    }
+
+    function testGuardianConfigCannotBeClearedAfterBootstrap() public {
+        bytes memory clear = abi.encodeCall(LoomAccount.setGuardianConfig, (bytes32(0), uint8(0)));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, clear, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, clear)));
+        require(!ok, "guardian config cleared");
+        require(account.recoveryConfigured(), "protected account lost recovery status");
+    }
+
     function testNoExecutorOrFallbackModules() public view {
         require(!account.isModuleInstalled(ModuleType.EXECUTOR, address(validator)), "executor installed");
         require(!account.isModuleInstalled(ModuleType.FALLBACK, address(validator)), "fallback installed");
@@ -624,6 +685,28 @@ contract LoomDirectExecutionTest {
             );
         require(!executed, "frozen direct execution succeeded");
         require(target.value() == 0, "frozen direct execution changed state");
+    }
+
+    function testGuardianlessAccountCannotBeFrozen() public {
+        DirectExecutionGuardianVerifier guardianVerifier = new DirectExecutionGuardianVerifier();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(hook)))
+        );
+        LoomAccount unprotected =
+            new LoomAccount(address(new MockEntryPoint()), bytes32(0), 0, keccak256("bootstrap-config"), modules);
+
+        (bool frozen,) = address(unprotected)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.freeze,
+                    (address(guardianVerifier), keccak256("key"), keccak256("salt"), new bytes32[](0), "")
+                )
+            );
+        require(!frozen, "guardianless account froze");
     }
 
     function _sign(bytes32 mode, bytes memory executionCalldata, uint256 nonce, uint48 validUntil)
