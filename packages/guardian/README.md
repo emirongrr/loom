@@ -18,6 +18,9 @@ show, sign, back up, and compare against deployed account configuration.
 - Proof-of-possession challenge digest and human-readable message.
 - Ceremony evidence hash for deployment records.
 - AES-256-GCM encrypted local backup envelope using `scrypt`.
+- Redacted onboarding evidence that proves possession, backup usability,
+  threshold reachability, and privacy-preserving ceremony construction without
+  publishing salts, key commitments, backup ciphertext, or guardian graphs.
 
 ## Design rules
 
@@ -30,3 +33,49 @@ show, sign, back up, and compare against deployed account configuration.
   construct or verify the ceremony artifacts.
 - This package is client/deployment infrastructure. It does not change account
   authority.
+
+## Production ceremony flow
+
+The production ceremony has two files:
+
+- a local sensitive input file, kept by the deploying wallet/client team;
+- a redacted public evidence file, committed only after review.
+
+The local input contains guardian verifier addresses, verifier runtime code
+hashes, salted key commitments, salts, proof-of-possession records, encrypted
+backup hashes, usability proof, and privacy proof. It must not contain private
+keys, seed phrases, passkey private material, or viewing/scanning keys.
+
+Generate the public evidence with:
+
+```sh
+npm run guardian:evidence:build -- ceremony-input.json evidence/guardians/<network>-<account>.json
+npm run guardian:test
+```
+
+Real ceremony data comes from:
+
+- `verifier`: the deployed guardian verifier contract address for that
+  guardian type;
+- `verifierCodeHash`: the runtime code hash from the deployment manifest or
+  `eth_getCode` + `keccak256`;
+- `keyCommitment`: a verifier-specific hash of the guardian public key or
+  contract identity, never the private key;
+- `salt`: locally generated 32-byte randomness, stored only in encrypted
+  backups and with the guardian;
+- `proofsOfPossession`: signatures over
+  `createGuardianPossessionChallenge(...)`, verified by the wallet/client with
+  the matching ECDSA, WebAuthn P-256, ERC-1271, hardware, or institutional
+  verifier logic;
+- `encryptedBackups`: hashes of encrypted recovery packages after a
+  decryption drill succeeds;
+- `usabilityProof`: evidence that the client rebuilt the root, verified all
+  proofs, can reach threshold, and decrypted backups;
+- `privacyProof`: evidence that onboarding used salted commitments, produced
+  redacted public output, required no central Loom service, and did not upload
+  a guardian social graph.
+
+The public evidence intentionally includes leaf hashes, proof hashes,
+challenge digests, backup envelope hashes, and boolean review results. It does
+not include salts, key commitments, backup ciphertext, guardian private data,
+or any Loom-operated recovery dependency.
