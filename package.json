@@ -29,6 +29,8 @@
     "kontrol:program:check": "node tools/validate-kontrol-program.mjs",
     "bundler:qualification:test": "node --test tools/validate-bundler-qualification.test.mjs",
     "bundler:qualification:check": "node tools/validate-bundler-qualification.mjs",
+    "bundler:qualification:run": "node tools/run-bundler-qualification.mjs",
+    "bundler:qualification:runner:test": "node --test tools/run-bundler-qualification.test.mjs",
     "bundler:smoke:test": "node --test tools/bundler-smoke.test.mjs",
     "deployment:manifest:test": "node --test tools/validate-deployment-manifest.test.mjs",
     "deployment:manifest:check": "node tools/validate-deployment-manifest.mjs",

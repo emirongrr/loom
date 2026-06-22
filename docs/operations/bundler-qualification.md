@@ -41,6 +41,21 @@ Release candidates must add a real evidence manifest and validate it with:
 node tools/validate-bundler-qualification.mjs evidence/bundlers/<network>.json
 ```
 
+Live qualification evidence should be generated from a local, uncommitted
+runner config:
+
+```sh
+node tools/run-bundler-qualification.mjs \
+  evidence/bundlers/<network>.config.local.json \
+  evidence/bundlers/<network>.json
+```
+
+The runner performs live `eth_supportedEntryPoints` and `eth_chainId` smoke
+checks for every configured bundler before writing evidence. The config may
+contain full endpoint URLs because it stays local. The output evidence records
+only RPC origins and the validated lifecycle receipts. Do not commit local
+runner configs.
+
 The manifest intentionally records only RPC origins, not full URLs. Do not
 commit API keys, endpoint paths, query strings, bearer tokens, private keys, or
 wallet secrets. The validator requires:
