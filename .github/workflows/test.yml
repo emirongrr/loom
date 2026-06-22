@@ -67,6 +67,8 @@ jobs:
         run: npm run fixtures:test
       - name: Test bundler qualification evidence
         run: npm run bundler:qualification:test
+      - name: Test live bundler qualification runner
+        run: npm run bundler:qualification:runner:test
       - name: Test deployment manifest evidence
         run: npm run deployment:manifest:test
       - name: Test keystore proof profile evidence
