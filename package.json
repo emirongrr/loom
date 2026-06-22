@@ -54,7 +54,7 @@
     "verify": "node tools/verify.mjs --full"
   },
   "devDependencies": {
-    "js-sha3": "0.8.0",
+    "js-sha3": "0.9.3",
     "solc": "0.8.35"
   },
   "optionalDependencies": {
