@@ -4,6 +4,7 @@ import {
   InvalidGuardianCeremonyError,
   buildGuardianCeremony,
   buildGuardianOnboardingEvidence,
+  buildProgressiveGuardianSetupPlan,
   buildGuardianTree,
   createGuardianPossessionChallenge,
   decryptGuardianBackup,
@@ -242,6 +243,165 @@ test("guardian onboarding evidence rejects bad possession and missing backup pro
   );
 });
 
+test("progressive guardian setup planner builds delayed self-config calldata from redacted evidence", () => {
+  const ceremony = buildGuardianCeremony({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId
+  });
+  const evidence = onboardingEvidence(ceremony);
+  const plan = buildProgressiveGuardianSetupPlan({
+    account,
+    chainId: 1,
+    evidence
+  });
+
+  assert.equal(plan.kind, "guardian.progressiveSetup.plan");
+  assert.equal(plan.account, account);
+  assert.equal(plan.guardianRoot, ceremony.guardianRoot);
+  assert.equal(plan.guardianThreshold, 2);
+  assert.equal(plan.guardianCount, 3);
+  assert.equal(plan.delaySeconds, 259200);
+  assert.equal(plan.call.target, account);
+  assert.equal(plan.call.value, 0n);
+  assert.equal(plan.call.data.slice(0, 10), "0xdcfe7ea7");
+  assert.equal(plan.innerCall.target, account);
+  assert.equal(plan.innerCall.data.slice(0, 10), "0xd4c87899");
+  assert.equal(plan.authority.requiresUserSignature, true);
+  assert.equal(plan.authority.requiresGuardianApproval, false);
+  assert.equal(plan.authority.delayRequired, true);
+  assert.match(plan.planHash, /^0x[0-9a-f]{64}$/);
+  assert.match(plan.review.summary, /2\/3/);
+  const publicPlan = JSON.stringify(plan, (_key, value) => (typeof value === "bigint" ? value.toString() : value))
+    .toLowerCase();
+  assert.equal(publicPlan.includes("keycommitment"), false);
+  assert.equal(publicPlan.includes('"salt"'), false);
+});
+
+test("progressive guardian setup planner can build evidence and rejects unsafe setup paths", () => {
+  const ceremony = buildGuardianCeremony({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId
+  });
+  const proofInputs = ceremony.leaves.map(leaf => {
+    const challenge = createGuardianPossessionChallenge({
+      ...leaf,
+      account,
+      chainId: 1,
+      ceremonyId,
+      expiresAt: 2000000000
+    });
+    return {
+      leaf: leaf.leaf,
+      challengeDigest: challenge.digest,
+      signature: `0x${"ab".repeat(65)}`,
+      verifierKind: "p256-webauthn",
+      verified: true,
+      expiresAt: 2000000000
+    };
+  });
+  const plan = buildProgressiveGuardianSetupPlan({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId,
+    proofsOfPossession: proofInputs,
+    encryptedBackups: ceremony.leaves.map((leaf, index) => ({
+      leaf: leaf.leaf,
+      envelopeHash: bytes32(`backup-${index}`),
+      decryptionTested: true
+    })),
+    usabilityProof,
+    privacyProof
+  });
+
+  assert.equal(plan.guardianRoot, ceremony.guardianRoot);
+  assert.throws(
+    () =>
+      buildProgressiveGuardianSetupPlan({
+        account,
+        chainId: 1,
+        evidence: onboardingEvidence(ceremony),
+        currentRecoveryConfigured: true
+      }),
+    /only for guardianless accounts/
+  );
+  assert.throws(
+    () =>
+      buildProgressiveGuardianSetupPlan({
+        account,
+        chainId: 1,
+        evidence: onboardingEvidence(ceremony),
+        delaySeconds: 60
+      }),
+    /below Loom config delay/
+  );
+  assert.throws(
+    () =>
+      buildProgressiveGuardianSetupPlan({
+        account: "0x9999999999999999999999999999999999999999",
+        chainId: 1,
+        evidence: onboardingEvidence(ceremony)
+      }),
+    /account mismatch/
+  );
+});
+
 function bytes32(seed) {
   return `0x${"00".repeat(16)}${Buffer.from(seed).toString("hex").padEnd(32, "0").slice(0, 32)}`;
+}
+
+const usabilityProof = {
+  client: "@loom/guardian test client",
+  rootRebuilt: true,
+  proofsVerified: true,
+  thresholdReachable: true,
+  backupDecryptionTested: true
+};
+
+const privacyProof = {
+  saltedCommitments: true,
+  publicEvidenceRedacted: true,
+  noCentralService: true,
+  noGuardianGraphUpload: true
+};
+
+function onboardingEvidence(ceremony) {
+  return buildGuardianOnboardingEvidence({
+    guardians,
+    threshold: 2,
+    account,
+    chainId: 1,
+    ceremonyId,
+    proofsOfPossession: ceremony.leaves.map(leaf => {
+      const challenge = createGuardianPossessionChallenge({
+        ...leaf,
+        account,
+        chainId: 1,
+        ceremonyId,
+        expiresAt: 2000000000
+      });
+      return {
+        leaf: leaf.leaf,
+        challengeDigest: challenge.digest,
+        signature: `0x${"ab".repeat(65)}`,
+        verifierKind: "p256-webauthn",
+        verified: true,
+        expiresAt: 2000000000
+      };
+    }),
+    encryptedBackups: ceremony.leaves.map((leaf, index) => ({
+      leaf: leaf.leaf,
+      envelopeHash: bytes32(`backup-${index}`),
+      decryptionTested: true
+    })),
+    usabilityProof,
+    privacyProof
+  });
 }
