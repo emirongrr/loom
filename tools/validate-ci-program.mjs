@@ -132,7 +132,7 @@ function validateSupplyChainWorkflow() {
     "actions/dependency-review-action@v4",
     "fail-on-severity: high",
     "allow-dependencies-licenses: pkg:pypi/certora-cli",
-    "ossf/scorecard-action@v2.4.2",
+    "ossf/scorecard-action@v2.4.3",
     "publish_results: false",
   ]) {
     assertIncludes(file, required, `missing required supply-chain step: ${required}`);
