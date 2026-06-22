@@ -283,6 +283,12 @@ export interface KohakuShieldedPoolPlugin {
   prepareUnshield?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
   prepareTransfer?(request: PrivateOperationRequest, host: KohakuHost): Promise<unknown>;
   broadcastPrivateOperation?(operation: unknown, host: KohakuHost): Promise<unknown>;
+  instanceId?(): Promise<string>;
+  balance?(assets?: readonly unknown[]): Promise<readonly unknown[]>;
+  prepareShieldMulti?(assets: readonly unknown[], to?: string): Promise<unknown>;
+  prepareTransferMulti?(assets: readonly unknown[], to: string): Promise<unknown>;
+  prepareUnshieldMulti?(assets: readonly unknown[], to: Hex): Promise<unknown>;
+  broadcast?(operation: unknown): Promise<unknown>;
 }
 
 export function createKohakuShieldedPoolAdapter(options: {
@@ -318,6 +324,135 @@ export function createRailgunAdapterProfile(options: {
     }>;
   }>;
 }): Promise<RailgunAdapterProfile>;
+
+export interface RailgunRehearsalOperationInput extends PrivateOperationRequest {
+  operationId?: string;
+  permissionHash: Hex;
+  expiry: number;
+  maxFeeBound: boolean;
+  receiptStatus: "success";
+  metadataBudgetHash?: Hex;
+  broadcast?: boolean;
+}
+
+export interface RailgunRehearsalOptions {
+  confirmLiveNetwork: true;
+  mockProtocol?: false;
+  providerProfile: KohakuProviderProfile;
+  providerConsentConfirmed: true;
+  context: PrivacyContext;
+  dependency: {
+    version: string;
+    auditReviewed: boolean;
+    licenseReviewed: boolean;
+    lockfilePinned: boolean;
+    reviewReference: string;
+  };
+  provider: {
+    mode: "user-rpc" | "local-node" | "helios" | "colibri" | "custom";
+    defaultEndpoint: false;
+    requiresConsent: boolean;
+    verifiedReads?: boolean;
+    degradedModeDocumented?: boolean;
+  };
+  metadata: {
+    requiredSurfaces: readonly MetadataSurface[];
+    disclosesViewingKey: false;
+    disclosesAccountGraph: false;
+    telemetryDisabled: boolean;
+    budgetTestsPassed: boolean;
+  };
+  scan: {
+    localFirst: boolean;
+    incrementalCheckpoints: boolean;
+    scopedByApplication: boolean;
+    staleStatePolicy: "fail-closed";
+    reindexFromGenesisOnStartup: false;
+    initial?: Partial<PrivateScanState> & { toBlock?: bigint | string | number };
+    final?: Partial<PrivateScanState> & { toBlock?: bigint | string | number };
+  };
+  operations: {
+    shield: RailgunRehearsalOperationInput;
+    privateTransfer: RailgunRehearsalOperationInput;
+    unshield: RailgunRehearsalOperationInput;
+    vaultProtectedUnshield: {
+      privateOperationHash: Hex;
+      vaultIntentHash: Hex;
+      scheduleTxHash: Hex;
+      executeTxHash: Hex;
+      delaySeconds: number;
+    };
+  };
+  operationPolicy: {
+    shield: {
+      enabled: boolean;
+      permissionBound: boolean;
+      maxFeeBound: boolean;
+      expiryBound: boolean;
+    };
+    privateTransfer: {
+      enabled: boolean;
+      permissionBound: boolean;
+      maxFeeBound: boolean;
+      expiryBound: boolean;
+    };
+    unshield: {
+      enabled: boolean;
+      permissionBound: boolean;
+      maxFeeBound: boolean;
+      expiryBound: boolean;
+      vaultDelayForProtectedAssets: boolean;
+      bridgeFinalityDocumented?: boolean;
+    };
+  };
+  failureProbes?: Record<string, (() => Promise<void>) | {
+    tested: boolean;
+    classified: boolean;
+  }>;
+  services: {
+    indexer: {
+      kind: "community" | "self-hosted" | "protocol" | "third-party";
+      mandatory: false;
+      origin: string;
+      failureModeTested: boolean;
+      failureClassified: boolean;
+    };
+    relayer: {
+      kind: "community" | "self-hosted" | "protocol" | "third-party";
+      mandatory: false;
+      origin: string;
+      failureModeTested: boolean;
+      failureClassified: boolean;
+    };
+    prover: {
+      kind: "community" | "self-hosted" | "protocol" | "third-party";
+      mandatory: false;
+      origin: string;
+      failureModeTested: boolean;
+      failureClassified: boolean;
+    };
+  };
+  network: {
+    environment: "testnet" | "mainnet";
+    name: string;
+  };
+  checks: Record<string, boolean>;
+  sdkReference?: string;
+  railgunConfig?: Record<string, unknown>;
+  assets?: readonly unknown[];
+  metadataPolicy?: MetadataPolicy;
+  storage?: KohakuHost["storage"];
+  keystore?: KohakuHost["keystore"];
+  consentStore?: ConsentStore;
+  fetch?: typeof fetch;
+  host?: KohakuHost;
+  now?: () => number;
+  createPlugin?: (host: KohakuHost, config: Record<string, unknown>) => Promise<KohakuShieldedPoolPlugin & {
+    balance?: (assets?: readonly unknown[]) => Promise<readonly unknown[]>;
+  }>;
+}
+
+export function runRailgunLiveRehearsal(options: RailgunRehearsalOptions): Promise<Record<string, unknown>>;
 
 export interface PrivacyPoolsAdapterProfile {
   readonly protocol: "privacy-pool";

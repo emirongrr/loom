@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+
 const DISCLOSING_SURFACES = new Set(["rpc", "indexer", "relayer", "prover", "bridge", "timing"]);
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
+const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const DEFAULT_FORBIDDEN_REVEAL_PATTERNS = [
   /private key/i,
   /viewing key/i,
@@ -519,6 +522,90 @@ export async function createRailgunAdapterProfile(options) {
   });
 }
 
+export async function runRailgunLiveRehearsal(options) {
+  if (!options || typeof options !== "object") throw new TypeError("railgun rehearsal options are required");
+  if (options.confirmLiveNetwork !== true) {
+    throw new ConsentRequiredError("railgun rehearsal requires explicit live-network confirmation");
+  }
+  if (options.mockProtocol === true) {
+    throw new TypeError("railgun production rehearsal must not use a mock protocol");
+  }
+
+  const providerProfile = createProviderProfile(options.providerProfile);
+  const consentStore = options.consentStore ?? createConsentStore();
+  if (options.providerConsentConfirmed === true) consentStore.grantProvider(providerProfile);
+
+  const storage = options.storage ?? createMemoryStorage();
+  const host = options.host ?? createKohakuHost({
+    providerProfile,
+    consentStore,
+    metadataPolicy: options.metadataPolicy,
+    storage,
+    fetch: options.fetch,
+    keystore: options.keystore
+  });
+
+  const context = normalizeContext(options.context);
+  if (context.chainId !== providerProfile.chainId) {
+    throw new TypeError("railgun rehearsal context chain must match provider profile");
+  }
+
+  const railgun = await createRailgunAdapterProfile({
+    host,
+    config: options.railgunConfig ?? {},
+    storage,
+    createPlugin: options.createPlugin
+  });
+
+  const created = await railgun.createAccount(context);
+  const balances = await railgun.balance(context, options.assets ?? []);
+  const scanEvidence = rehearseLocalScan({
+    context,
+    storage,
+    protocol: "railgun",
+    initial: options.scan?.initial,
+    final: options.scan?.final,
+    now: options.now
+  });
+  const operationEvidence = await rehearseRailgunOperations({
+    railgun,
+    context,
+    operations: options.operations,
+    metadataBudget: await host.metadataBudget(context)
+  });
+  const failureEvidence = await rehearseFailureClassification(options.failureProbes);
+
+  return Object.freeze({
+    version: 1,
+    protocol: "railgun",
+    chainId: context.chainId,
+    dependency: normalizeRehearsalDependency(options.dependency, "railgun"),
+    provider: normalizeRehearsalProvider(options.provider),
+    metadata: normalizeRehearsalMetadata(options.metadata),
+    scan: normalizeRehearsalScan(options.scan),
+    operations: normalizeRehearsalOperations(options.operationPolicy),
+    failures: failureEvidence.failures,
+    rehearsal: Object.freeze({
+      network: normalizeRehearsalNetwork(options.network, context.chainId),
+      sdkIntegration: Object.freeze({
+        package: "@kohaku-eth/railgun",
+        version: options.dependency?.version,
+        mockProtocol: false,
+        kohakuHostBoundary: true,
+        reference: options.sdkReference ?? "@loom/privacy runRailgunLiveRehearsal"
+      }),
+      localScan: scanEvidence,
+      operations: operationEvidence,
+      services: normalizeServiceEvidence(options.services)
+    }),
+    checks: normalizeRehearsalChecks(options.checks),
+    observed: Object.freeze({
+      shieldedAddressHash: hashEvidence(created.shieldedAddress),
+      balanceCount: balances.length
+    })
+  });
+}
+
 export async function createPrivacyPoolsAdapterProfile(options) {
   if (!options || typeof options !== "object") throw new TypeError("privacy-pools profile options are required");
   const host = options.host;
@@ -635,6 +722,297 @@ export async function createAztecAdapterProfile(options) {
   });
 }
 
+async function rehearseRailgunOperations({ railgun, context, operations, metadataBudget }) {
+  if (!operations || typeof operations !== "object") throw new TypeError("railgun rehearsal operations are required");
+  const shield = await rehearseRailgunOperation({
+    railgun,
+    context,
+    kind: "shield",
+    request: operations.shield,
+    metadataBudget
+  });
+  const privateTransfer = await rehearseRailgunOperation({
+    railgun,
+    context,
+    kind: "privateTransfer",
+    request: operations.privateTransfer,
+    metadataBudget
+  });
+  const unshield = await rehearseRailgunOperation({
+    railgun,
+    context,
+    kind: "unshield",
+    request: operations.unshield,
+    metadataBudget
+  });
+
+  return Object.freeze({
+    shield,
+    privateTransfer,
+    unshield,
+    vaultProtectedUnshield: normalizeVaultEvidence(operations.vaultProtectedUnshield)
+  });
+}
+
+async function rehearseRailgunOperation({ railgun, context, kind, request, metadataBudget }) {
+  if (!request || typeof request !== "object") throw new TypeError(`railgun ${kind} rehearsal request is required`);
+  const operation = await railgun[kind]({
+    context,
+    asset: request.asset,
+    amount: request.amount,
+    recipient: request.recipient,
+    deadline: request.deadline,
+    maxFee: request.maxFee
+  });
+  if (request.broadcast === true) {
+    await railgun.broadcastPrivateOperation(context, operation.operation);
+  }
+  return Object.freeze({
+    operationId: request.operationId ?? `${kind}:${hashEvidence(operation.operation).slice(2, 18)}`,
+    metadataBudgetHash: request.metadataBudgetHash ?? hashEvidence(metadataBudget),
+    permissionHash: normalizeBytes32(request.permissionHash, `${kind} permission hash`),
+    expiry: normalizePositiveInteger(request.expiry, `${kind} expiry`),
+    maxFeeBound: request.maxFeeBound === true,
+    receiptStatus: normalizeReceiptStatus(request.receiptStatus, `${kind} receipt status`)
+  });
+}
+
+function rehearseLocalScan({ context, storage, protocol, initial, final, now }) {
+  const clock = typeof now === "function" ? now : (() => Date.now());
+  const lifecycle = createPrivateScanLifecycle({
+    protocol,
+    storage,
+    staleAfterMs: 1,
+    now: clock
+  });
+  const initialState = lifecycle.checkpoint(context, {
+    toBlock: initial?.toBlock ?? 1n,
+    latestMerkleRoot: initial?.latestMerkleRoot,
+    updatedAt: initial?.updatedAt ?? clock()
+  });
+  const initialCheckpointHash = hashEvidence(initialState);
+  const finalState = lifecycle.checkpoint(context, {
+    fromBlock: final?.fromBlock ?? initialState.toBlock,
+    toBlock: final?.toBlock ?? BigInt(initialState.toBlock) + 1n,
+    latestMerkleRoot: final?.latestMerkleRoot,
+    updatedAt: final?.updatedAt ?? clock()
+  });
+  const finalCheckpointHash = hashEvidence(finalState);
+  if (initialCheckpointHash === finalCheckpointHash) {
+    throw new PrivateScanStateError("railgun rehearsal scan checkpoint did not advance");
+  }
+
+  const staleLifecycle = createPrivateScanLifecycle({
+    protocol,
+    storage,
+    staleAfterMs: 1,
+    now: () => Number(finalState.updatedAt ?? 0) + 2
+  });
+  let staleCheckpointRejected = false;
+  try {
+    staleLifecycle.requireFresh(context);
+  } catch (error) {
+    staleCheckpointRejected = error instanceof PrivateScanStateError;
+  }
+  lifecycle.reset(context);
+  const resetScopedStateTested = lifecycle.read(context).status === "missing";
+
+  return Object.freeze({
+    storageScopeHash: hashEvidence(createPrivateScanStateStore(storage).key(context, protocol)),
+    initialCheckpointHash,
+    finalCheckpointHash,
+    staleCheckpointRejected,
+    resetScopedStateTested
+  });
+}
+
+async function rehearseFailureClassification(failureProbes = {}) {
+  const failures = {};
+  for (const surface of ["indexer", "relayer", "prover", "rpc", "timing"]) {
+    const probe = failureProbes[surface];
+    let classified = false;
+    let tested = false;
+    if (typeof probe === "function") {
+      tested = true;
+      try {
+        await probe();
+      } catch (error) {
+        const classifiedError = classifyPrivacyAdapterFailure("railgun", surface, error);
+        classified = classifiedError.details.surface === surface ||
+          (surface === "indexer" && classifiedError.details.surface === "timing");
+      }
+    } else if (probe && typeof probe === "object") {
+      tested = probe.tested === true;
+      classified = probe.classified === true;
+    }
+    failures[surface] = Object.freeze({
+      classified,
+      tested,
+      mutatesCheckpointOnFailure: surface === "indexer" ? false : undefined,
+      mandatory: surface === "relayer" ? false : undefined
+    });
+  }
+  return Object.freeze({ failures: Object.freeze(failures) });
+}
+
+function normalizeRehearsalDependency(dependency, protocol) {
+  if (!dependency || typeof dependency !== "object") throw new TypeError("rehearsal dependency evidence is required");
+  const expectedPackage = protocol === "railgun" ? "@kohaku-eth/railgun" : dependency.package;
+  return Object.freeze({
+    package: expectedPackage,
+    version: assertNonEmptyStringReturn(dependency.version, "dependency version"),
+    auditReviewed: dependency.auditReviewed === true,
+    licenseReviewed: dependency.licenseReviewed === true,
+    lockfilePinned: dependency.lockfilePinned === true,
+    reviewReference: assertNonEmptyStringReturn(dependency.reviewReference, "dependency review reference")
+  });
+}
+
+function normalizeRehearsalProvider(provider) {
+  if (!provider || typeof provider !== "object") throw new TypeError("rehearsal provider evidence is required");
+  return Object.freeze({
+    mode: provider.mode,
+    defaultEndpoint: provider.defaultEndpoint === true ? true : false,
+    requiresConsent: provider.requiresConsent === true,
+    verifiedReads: provider.verifiedReads === true,
+    degradedModeDocumented: provider.degradedModeDocumented === true
+  });
+}
+
+function normalizeRehearsalMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") throw new TypeError("rehearsal metadata evidence is required");
+  return Object.freeze({
+    requiredSurfaces: Object.freeze([...(metadata.requiredSurfaces ?? [])]),
+    disclosesViewingKey: metadata.disclosesViewingKey === true,
+    disclosesAccountGraph: metadata.disclosesAccountGraph === true,
+    telemetryDisabled: metadata.telemetryDisabled === true,
+    budgetTestsPassed: metadata.budgetTestsPassed === true
+  });
+}
+
+function normalizeRehearsalScan(scan) {
+  if (!scan || typeof scan !== "object") throw new TypeError("rehearsal scan evidence is required");
+  return Object.freeze({
+    localFirst: scan.localFirst === true,
+    incrementalCheckpoints: scan.incrementalCheckpoints === true,
+    scopedByApplication: scan.scopedByApplication === true,
+    staleStatePolicy: scan.staleStatePolicy ?? "fail-closed",
+    reindexFromGenesisOnStartup: scan.reindexFromGenesisOnStartup === true
+  });
+}
+
+function normalizeRehearsalOperations(operationPolicy) {
+  if (!operationPolicy || typeof operationPolicy !== "object") {
+    throw new TypeError("rehearsal operation policy is required");
+  }
+  return Object.freeze({
+    shield: normalizeOperationPolicy(operationPolicy.shield, "shield"),
+    privateTransfer: normalizeOperationPolicy(operationPolicy.privateTransfer, "privateTransfer"),
+    unshield: Object.freeze({
+      ...normalizeOperationPolicy(operationPolicy.unshield, "unshield"),
+      vaultDelayForProtectedAssets: operationPolicy.unshield?.vaultDelayForProtectedAssets === true,
+      bridgeFinalityDocumented: operationPolicy.unshield?.bridgeFinalityDocumented === true
+    })
+  });
+}
+
+function normalizeOperationPolicy(policy, label) {
+  if (!policy || typeof policy !== "object") throw new TypeError(`operation policy ${label} is required`);
+  return Object.freeze({
+    enabled: policy.enabled === true,
+    permissionBound: policy.permissionBound === true,
+    maxFeeBound: policy.maxFeeBound === true,
+    expiryBound: policy.expiryBound === true
+  });
+}
+
+function normalizeVaultEvidence(vault) {
+  if (!vault || typeof vault !== "object") throw new TypeError("vault-protected unshield evidence is required");
+  return Object.freeze({
+    privateOperationHash: normalizeBytes32(vault.privateOperationHash, "private operation hash"),
+    vaultIntentHash: normalizeBytes32(vault.vaultIntentHash, "vault intent hash"),
+    scheduleTxHash: normalizeBytes32(vault.scheduleTxHash, "vault schedule transaction hash"),
+    executeTxHash: normalizeBytes32(vault.executeTxHash, "vault execute transaction hash"),
+    delaySeconds: normalizePositiveInteger(vault.delaySeconds, "vault delay seconds")
+  });
+}
+
+function normalizeServiceEvidence(services) {
+  if (!services || typeof services !== "object") throw new TypeError("service evidence is required");
+  return Object.freeze({
+    indexer: normalizeService(services.indexer, "indexer"),
+    relayer: normalizeService(services.relayer, "relayer"),
+    prover: normalizeService(services.prover, "prover")
+  });
+}
+
+function normalizeService(service, label) {
+  if (!service || typeof service !== "object") throw new TypeError(`${label} service evidence is required`);
+  return Object.freeze({
+    kind: service.kind,
+    mandatory: service.mandatory === true,
+    origin: assertOriginString(service.origin, `${label} origin`),
+    failureModeTested: service.failureModeTested === true,
+    failureClassified: service.failureClassified === true
+  });
+}
+
+function normalizeRehearsalNetwork(network, chainId) {
+  if (!network || typeof network !== "object") throw new TypeError("rehearsal network evidence is required");
+  return Object.freeze({
+    chainId,
+    environment: network.environment,
+    name: assertNonEmptyStringReturn(network.name, "network name")
+  });
+}
+
+function normalizeRehearsalChecks(checks) {
+  if (!checks || typeof checks !== "object") throw new TypeError("rehearsal checks are required");
+  return Object.freeze({ ...checks });
+}
+
+function normalizeReceiptStatus(value, label) {
+  if (value !== "success") throw new TypeError(`${label} must be success`);
+  return value;
+}
+
+function normalizeBytes32(value, label) {
+  assertNonEmptyString(value, label);
+  if (!BYTES32_PATTERN.test(value)) throw new TypeError(`${label} must be bytes32`);
+  return value;
+}
+
+function assertOriginString(value, label) {
+  assertNonEmptyString(value, label);
+  const url = new URL(value);
+  if (url.origin !== value || url.pathname !== "/" || url.search !== "" || url.hash !== "") {
+    throw new TypeError(`${label} must be a URL origin`);
+  }
+  return value;
+}
+
+function assertNonEmptyStringReturn(value, label) {
+  assertNonEmptyString(value, label);
+  return value;
+}
+
+function hashEvidence(value) {
+  return `0x${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
+}
+
+function stableStringify(value) {
+  return JSON.stringify(value, (_key, item) => {
+    if (typeof item === "bigint") return item.toString();
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.keys(item)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = item[key];
+        return acc;
+      }, {});
+  });
+}
+
 function normalizeBudgetItem(item) {
   if (!item || typeof item !== "object") throw new TypeError("metadata budget item must be an object");
   assertNonEmptyString(item.surface, "metadata surface");
@@ -689,6 +1067,13 @@ async function loadAztecPluginFactory() {
 
 function normalizeRailgunPlugin(plugin) {
   if (!plugin || typeof plugin !== "object") throw new TypeError("railgun plugin is required");
+  const hasKohakuRailgunShape =
+    typeof plugin.instanceId === "function" ||
+    typeof plugin.broadcast === "function" ||
+    typeof plugin.prepareShieldMulti === "function" ||
+    typeof plugin.prepareTransferMulti === "function" ||
+    typeof plugin.prepareUnshieldMulti === "function";
+  if (hasKohakuRailgunShape) return normalizeKohakuRailgunPlugin(plugin);
   return Object.freeze({
     ...plugin,
     createAccount: plugin.createAccount,
@@ -696,6 +1081,79 @@ function normalizeRailgunPlugin(plugin) {
     prepareTransfer: plugin.prepareTransfer,
     prepareUnshield: plugin.prepareUnshield,
     broadcastPrivateOperation: plugin.broadcastPrivateOperation
+  });
+}
+
+function normalizeKohakuRailgunPlugin(plugin) {
+  return Object.freeze({
+    ...plugin,
+    async createAccount() {
+      if (typeof plugin.instanceId !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not expose instanceId", {
+          protocol: "railgun",
+          method: "instanceId"
+        });
+      }
+      return {
+        shieldedAddress: await plugin.instanceId()
+      };
+    },
+    async prepareShield(request) {
+      if (typeof plugin.prepareShield !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareShield", {
+          protocol: "railgun",
+          method: "prepareShield"
+        });
+      }
+      const result = await plugin.prepareShield(toKohakuAssetAmount(request), request.recipient);
+      return {
+        operation: {
+          kind: "railgun-shield",
+          raw: result
+        },
+        calls: normalizeRailgunPublicCalls(result),
+        requiresVaultDelay: false
+      };
+    },
+    async prepareTransfer(request) {
+      if (typeof plugin.prepareTransfer !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareTransfer", {
+          protocol: "railgun",
+          method: "prepareTransfer"
+        });
+      }
+      const recipient = normalizeRailgunRecipient(request.recipient);
+      const result = await plugin.prepareTransfer(toKohakuAssetAmount(request), recipient);
+      return {
+        operation: result,
+        calls: [],
+        requiresVaultDelay: false
+      };
+    },
+    async prepareUnshield(request) {
+      if (typeof plugin.prepareUnshield !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement prepareUnshield", {
+          protocol: "railgun",
+          method: "prepareUnshield"
+        });
+      }
+      const recipient = normalizeAddress(request.recipient, "unshield recipient");
+      const result = await plugin.prepareUnshield(toKohakuAssetAmount(request), recipient);
+      return {
+        operation: result,
+        calls: [],
+        requiresVaultDelay: true
+      };
+    },
+    async broadcastPrivateOperation(operation) {
+      if (typeof plugin.broadcast !== "function") {
+        throw new PrivacyAdapterUnavailableError("railgun plugin does not implement broadcast", {
+          protocol: "railgun",
+          method: "broadcast"
+        });
+      }
+      return plugin.broadcast(operation);
+    }
   });
 }
 
@@ -781,10 +1239,45 @@ function normalizePrivateOperationResult(protocol, chainId, metadataBudget, resu
 function normalizeCall(call) {
   if (!call || typeof call !== "object") throw new InvalidPrivateOperationError("operation call must be an object");
   return Object.freeze({
-    target: normalizeAddress(call.target, "operation target"),
+    target: normalizeAddress(call.target ?? call.to, "operation target"),
     value: normalizeBigInt(call.value ?? 0n, "operation value"),
     data: normalizeHex(call.data, "operation data")
   });
+}
+
+function normalizeRailgunPublicCalls(result) {
+  const calls = Array.isArray(result) ? result : (result?.calls ?? result?.transactions ?? []);
+  return calls.map(call => ({
+    target: call.target ?? call.to,
+    value: call.value ?? 0n,
+    data: call.data
+  }));
+}
+
+function toKohakuAssetAmount(request) {
+  if (!request || typeof request !== "object") {
+    throw new InvalidPrivateOperationError("private operation request is required", { protocol: "railgun" });
+  }
+  return Object.freeze({
+    asset: toKohakuAssetId(request.asset),
+    amount: normalizeBigInt(request.amount ?? 0n, "private operation amount")
+  });
+}
+
+function toKohakuAssetId(asset) {
+  if (asset === undefined || asset === null) return Object.freeze({ __type: "native" });
+  return Object.freeze({
+    __type: "erc20",
+    contract: normalizeAddress(asset, "private operation asset")
+  });
+}
+
+function normalizeRailgunRecipient(recipient) {
+  assertNonEmptyString(recipient, "railgun recipient");
+  if (!recipient.startsWith("0zk")) {
+    throw new TypeError("railgun recipient must be a Railgun address");
+  }
+  return recipient;
 }
 
 function privateScanStateKey(context, protocol) {
