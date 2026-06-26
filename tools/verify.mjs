@@ -25,6 +25,7 @@ function run(name, command, args, env = {}) {
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap(name => {
+    if (name.startsWith(".")) return [];
     const path = join(directory, name);
     return statSync(path).isDirectory() ? sourceFiles(path) : [path];
   });
