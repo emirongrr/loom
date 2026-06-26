@@ -67,6 +67,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
     uint48 public constant FREEZE_DURATION = 2 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
+    uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
     uint256 public constant MAX_VALIDATORS = 16;
     uint256 public constant MAX_HOOKS = 8;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
@@ -607,7 +608,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
             || _modules[ModuleType.HOOK][target] || _modules[ModuleType.RECOVERY][target]
             ? MIN_CONFIG_DELAY
             : MIN_HIGH_RISK_DELAY;
-        if (delay < minimum) revert InvalidDelay();
+        if (delay < minimum || delay > MAX_SCHEDULE_DELAY) revert InvalidDelay();
         operationId = keccak256(abi.encode(target, value, data, configVersion));
         if (scheduledOperations[operationId] != 0) revert OperationAlreadyScheduled();
         // forge-lint: disable-next-line(unsafe-typecast)
