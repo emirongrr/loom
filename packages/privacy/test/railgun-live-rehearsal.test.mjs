@@ -5,6 +5,10 @@ import {
   createMemoryStorage,
   runRailgunLiveRehearsal
 } from "../src/index.js";
+import {
+  buildRailgunRehearsalEvidence,
+  rejectSecrets
+} from "../../../scripts/privacy/run-railgun-rehearsal.mjs";
 import { validatePrivacyAdapterProfile } from "../../../tools/validate-privacy-adapter-profile.mjs";
 
 const bytes32 = `0x${"11".repeat(32)}`;
@@ -250,5 +254,33 @@ test("railgun live rehearsal rejects mock protocol evidence", async () => {
   await assert.rejects(
     runRailgunLiveRehearsal(baseOptions({ mockProtocol: true })),
     /must not use a mock protocol/
+  );
+});
+
+test("railgun rehearsal script validates evidence before writing", async () => {
+  const evidence = await buildRailgunRehearsalEvidence(baseOptions());
+  assert.equal(evidence.protocol, "railgun");
+  validatePrivacyAdapterProfile(evidence);
+
+  const invalid = baseOptions({
+    dependency: {
+      ...baseOptions().dependency,
+      auditReviewed: false
+    }
+  });
+  await assert.rejects(
+    () => buildRailgunRehearsalEvidence(invalid),
+    /dependency.auditReviewed must be true/
+  );
+});
+
+test("railgun rehearsal script rejects secret material in local config", () => {
+  assert.throws(
+    () => rejectSecrets({ nested: { viewingKey: "must-not-commit" } }),
+    /viewingKey must not be present/
+  );
+  assert.throws(
+    () => rejectSecrets({ note: "contains seed phrase material" }),
+    /secret material/
   );
 });

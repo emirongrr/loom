@@ -169,6 +169,11 @@ sync, shield, private transfer, unshield, optional private broadcast, local
 scan checkpointing, and service failure classification, then emits a privacy
 adapter profile that the repository validator can check.
 
+The runner validates the generated adapter profile before writing the evidence
+file. Invalid dependency review, mandatory relayer assumptions, unbounded
+metadata, stale scan behavior, or missing vault-protected unshield evidence
+fail closed instead of producing release evidence.
+
 The config file must not contain private keys, viewing keys, scanning keys,
 seed phrases, guardian salts, or account graphs. Operation evidence records
 permission hashes, expiry bounds, fee bounds, receipt status, local checkpoint
