@@ -29,8 +29,11 @@ library WebAuthnP256 {
         return key.x != bytes32(0) && key.y != bytes32(0) && key.rpIdHash != bytes32(0) && key.originHash != bytes32(0);
     }
 
+    // Excludes rpIdHash/originHash: the same physical authenticator registered
+    // under a different origin must still dedupe to one credential, or a
+    // multi-credential threshold could be satisfied by a single device.
     function fingerprint(PublicKey memory key) internal pure returns (bytes32) {
-        return keccak256(abi.encode(key.x, key.y, key.rpIdHash, key.originHash));
+        return keccak256(abi.encode(key.x, key.y));
     }
 
     function verify(PublicKey memory key, bytes32 hash, Signature memory webAuthn, address fallbackVerifier)

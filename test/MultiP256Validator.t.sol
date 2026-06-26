@@ -118,6 +118,21 @@ contract MultiP256ValidatorTest {
         require(!duplicate, "duplicate credential id accepted");
     }
 
+    function testSameKeyDifferentOriginCannotOccupySeparateCredentialSlot() public {
+        WebAuthnP256.PublicKey memory sameKeyOtherOrigin = WebAuthnP256.PublicKey(
+            _key(1).x,
+            _key(1).y,
+            keccak256(abi.encode("attacker.example", uint256(1))),
+            keccak256(bytes("https://attacker.example"))
+        );
+        bytes memory add = abi.encodeCall(MultiP256Validator.addCredential, (ID_THREE, sameKeyOtherOrigin));
+        _schedule(account, address(validator), add);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool accepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, add)));
+        require(!accepted, "same physical key accepted under a different origin/rpId fingerprint");
+    }
+
     function testInvalidThresholdAndUnknownRemovalRejected() public {
         bytes memory zeroThreshold = abi.encodeCall(MultiP256Validator.setThreshold, (uint8(0)));
         _schedule(account, address(validator), zeroThreshold);
