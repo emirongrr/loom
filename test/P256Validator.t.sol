@@ -138,6 +138,41 @@ contract P256ValidatorTest {
                 == ValidationDataLib.SIG_VALIDATION_FAILED,
             "oversized origin accepted"
         );
+        signature.origin = origin;
+
+        signature.clientDataJSON = bytes.concat(
+            bytes('{"type":"webauthn.get","crossOrigin":false,"challenge":"'),
+            challenge,
+            bytes('","origin":"'),
+            origin,
+            bytes('","tokenBinding":{"status":"supported"}}')
+        );
+        require(
+            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0))
+                != ValidationDataLib.SIG_VALIDATION_FAILED,
+            "reordered fields and extra tokenBinding field rejected"
+        );
+
+        signature.clientDataJSON = bytes.concat(
+            bytes('{"type":"webauthn.get","challenge":"'),
+            challenge,
+            bytes('","origin":"'),
+            origin,
+            bytes('","crossOrigin":true}')
+        );
+        require(
+            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0))
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "crossOrigin true accepted"
+        );
+
+        signature.clientDataJSON =
+            bytes.concat(bytes('{"challenge":"'), challenge, bytes('","origin":"'), origin, bytes('"}'));
+        require(
+            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0))
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "missing type field accepted"
+        );
     }
 
     function testKeyRotationRequiresConfigTimelock() public {
