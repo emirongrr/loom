@@ -521,6 +521,27 @@ contract SecurityRegressionTest {
         require(account.scheduledOperations(operationId) == readyAt, "readyAt changed");
     }
 
+    function testScheduleCallRejectsDelayBeyondMaximum() public {
+        LoomAccount account = _accountWithValidator(address(new MockValidator()));
+        MockTarget target = new MockTarget();
+        bytes memory data = abi.encodeCall(MockTarget.setValue, (1));
+
+        bytes memory excessiveSchedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MAX_SCHEDULE_DELAY() + 1));
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, excessiveSchedule)))
+                )
+            );
+        require(!ok, "delay beyond maximum accepted");
+
+        bytes memory maximalSchedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MAX_SCHEDULE_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, maximalSchedule)));
+    }
+
     function testRevertingHookCannotPermanentlyBrickAccount() public {
         RevertingHook hook = new RevertingHook();
         MockValidator validator = new MockValidator();
