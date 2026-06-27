@@ -8,7 +8,13 @@ import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 import {StdInvariant} from "../lib/openzeppelin-contracts/lib/forge-std/src/StdInvariant.sol";
 
+interface VmInvariant {
+    function warp(uint256 timestamp) external;
+}
+
 contract LoomAccountInvariantHandler {
+    VmInvariant internal constant vm = VmInvariant(address(uint160(uint256(keccak256("hevm cheat code")))));
+
     LoomAccount public account;
     LoomAccount public migrationDestination;
     MockTarget public target;
@@ -76,14 +82,57 @@ contract LoomAccountInvariantHandler {
         _checkVersion(versionBefore);
     }
 
-    function executeMigrationBeforeDelay() external {
-        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+    function attemptExecuteMigration() external {
+        (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) = account.pendingMigration();
         if (pendingCallsHash == bytes32(0)) return;
+        // Timestamp drift is negligible relative to the multi-day security delay.
+        // forge-lint: disable-next-line(block-timestamp)
+        bool shouldBeBlocked = block.timestamp < readyAt;
         uint64 versionBefore = account.configVersion();
+        uint256 valueBefore = migrationTarget.value();
         (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeMigration, (_migrationCalls())));
-        if (ok) violated = true;
-        if (migrationTarget.value() != 0) violated = true;
+        if (shouldBeBlocked && ok) violated = true;
+        if (shouldBeBlocked && migrationTarget.value() != valueBefore) violated = true;
         _checkVersion(versionBefore);
+    }
+
+    function installValidator() external {
+        uint64 versionBefore = account.configVersion();
+        MockValidator newValidator = new MockValidator();
+        bytes memory install =
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.VALIDATOR, address(newValidator), ""));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, install, account.MIN_CONFIG_DELAY()));
+        try account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule))) {
+            vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+            (bool ok,) =
+                address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, install)));
+            if (!ok) revert();
+        } catch {}
+        _checkVersion(versionBefore);
+        if (account.validatorCount() == 0) violated = true;
+    }
+
+    function uninstallValidator(uint256 seed) external {
+        uint256 count = account.validatorCount();
+        if (count == 0) {
+            violated = true;
+            return;
+        }
+        address victim = account.validatorAt(seed % count);
+        uint64 versionBefore = account.configVersion();
+        bytes memory uninstall = abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.VALIDATOR, victim, bytes("")));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, uninstall, account.MIN_CONFIG_DELAY()));
+        try account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule))) {
+            vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+            bool wasLastValidator = count == 1;
+            (bool ok,) =
+                address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, uninstall)));
+            if (wasLastValidator && ok) violated = true;
+        } catch {}
+        _checkVersion(versionBefore);
+        if (account.validatorCount() == 0) violated = true;
     }
 
     function _checkVersion(uint64 versionBefore) internal {
@@ -125,9 +174,7 @@ contract LoomAccountInvariantTest is StdInvariant {
         require(account.configHash() != bytes32(0), "config hash cleared");
         require(account.guardianRoot() != bytes32(0), "guardian root cleared");
         require(account.guardianThreshold() > 0, "guardian threshold cleared");
-        require(account.validatorCount() == 1, "validator count changed");
-        require(account.validatorAt(0) == address(validator), "validator enumeration changed");
-        require(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "last validator removed");
+        require(account.validatorCount() >= 1, "validator count reached zero");
     }
 
     function excludeSelectors() public pure returns (FuzzSelector[] memory selectors) {
