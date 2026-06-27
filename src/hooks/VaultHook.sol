@@ -18,6 +18,8 @@ contract VaultHook is ILoomHook {
     error WithdrawalExpired();
     error LimitExceeded();
 
+    uint48 public constant MIN_VAULT_DELAY = 1 hours;
+
     struct VaultPolicy {
         uint128 dailyLimit;
         uint48 period;
@@ -75,7 +77,7 @@ contract VaultHook is ILoomHook {
     event VaultWithdrawalExecuted(address indexed account, bytes32 indexed withdrawalId);
 
     function setVaultPolicy(address asset, VaultPolicy calldata policy) external {
-        if (policy.period == 0 || policy.delay == 0) revert InvalidPolicy();
+        if (policy.period == 0 || policy.delay < MIN_VAULT_DELAY) revert InvalidPolicy();
         policies[msg.sender][asset] = policy;
         ILoomAccount(msg.sender).notifyConfigChange(keccak256(abi.encode("VAULT_POLICY_SET", asset, policy)));
         emit VaultPolicySet(msg.sender, asset, policy);
