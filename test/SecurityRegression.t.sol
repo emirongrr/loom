@@ -16,6 +16,7 @@ import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 import {RevertingHook} from "./mocks/RevertingHook.sol";
 import {ReentrantModule} from "./mocks/ReentrantModule.sol";
+import {ReentrantHook} from "./mocks/ReentrantHook.sol";
 import {PaymasterAwareValidator} from "./mocks/PaymasterAwareValidator.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
@@ -611,6 +612,32 @@ contract SecurityRegressionTest {
         require(!ok, "reentrant module installation succeeded");
         require(!account.isModuleInstalled(ModuleType.HOOK, address(module)), "failed module remained installed");
         require(account.configVersion() == versionBefore, "failed module installation changed config");
+    }
+
+    function testInstalledHookCannotReenterExecuteFromPreOrPostCheck() public {
+        ReentrantHook hook = new ReentrantHook();
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+
+        hook.setReenterOnPreCheck(true);
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(hook), 0, "")));
+        require(!hook.reenteredInPreCheck(), "hook reentered execute() from preCheck");
+        require(
+            bytes4(hook.preCheckRevertData()) == LoomAccount.Reentrancy.selector,
+            "preCheck reentry failed for the wrong reason"
+        );
+
+        hook.setReenterOnPreCheck(false);
+        hook.setReenterOnPostCheck(true);
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(hook), 0, "")));
+        require(!hook.reenteredInPostCheck(), "hook reentered execute() from postCheck");
+        require(
+            bytes4(hook.postCheckRevertData()) == LoomAccount.Reentrancy.selector,
+            "postCheck reentry failed for the wrong reason"
+        );
     }
 
     function _accountWithValidator(address validator) internal returns (LoomAccount) {
