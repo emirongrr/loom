@@ -98,6 +98,35 @@ contract SovereignMigrationTest {
         require(address(destination).balance == 1 ether, "future account eth migration failed");
     }
 
+    function testMigrationBatchCannotUninstallTheLastValidator() public {
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount source =
+            new LoomAccount(address(this), _guardianLeaf(), 1, keccak256("config-last-validator"), modules);
+        LoomAccount destination = _account(false);
+
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](2);
+        calls[0] = ExecutionLib.Execution(
+            address(source),
+            0,
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.VALIDATOR, address(validator), ""))
+        );
+        calls[1] = ExecutionLib.Execution(
+            address(source),
+            0,
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.VALIDATOR, address(new MockValidator()), ""))
+        );
+
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        (bool ok,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
+
+        require(!ok, "migration batch installed/uninstalled a validator");
+        require(source.validatorCount() == 1, "validator count changed by a reverted migration");
+        require(source.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "original validator removed");
+    }
+
     function testMigrationRejectsUndeployedAndWrongCodehashDestination() public {
         LoomAccount source = _account(false);
         LoomAccount destination = _account(false);
