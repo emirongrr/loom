@@ -13,6 +13,7 @@ import {MockTarget} from "./mocks/MockTarget.sol";
 
 interface VmP256 {
     function warp(uint256) external;
+    function assume(bool) external pure;
 }
 
 contract P256ValidatorTest {
@@ -173,6 +174,57 @@ contract P256ValidatorTest {
                 == ValidationDataLib.SIG_VALIDATION_FAILED,
             "missing type field accepted"
         );
+    }
+
+    function testFuzz_WebAuthnVerifyNeverFalselyAcceptsOrRevertsOnArbitraryClientData(bytes memory clientDataJSON)
+        public
+    {
+        // MockP256Verifier always reports a valid signature, isolating clientDataJSON
+        // parsing as the only thing that can make validateUserOp succeed.
+        MockP256Verifier verifier = new MockP256Verifier();
+        P256Validator validator = new P256Validator(address(verifier));
+        MockPolicyHook hook = new MockPolicyHook();
+        bytes32 hash = keccak256("fuzzed-user-operation");
+        bytes memory origin = bytes("https://wallet.example");
+        bytes memory validClientData = bytes.concat(
+            bytes('{"type":"webauthn.get","challenge":"'),
+            _base64Url(hash),
+            bytes('","origin":"'),
+            origin,
+            bytes('","crossOrigin":false}')
+        );
+        vm.assume(keccak256(clientDataJSON) != keccak256(validClientData));
+        vm.assume(clientDataJSON.length <= 1024);
+
+        P256Validator.WebAuthnSignature memory signature = P256Validator.WebAuthnSignature({
+            authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
+            clientDataJSON: clientDataJSON,
+            origin: origin,
+            r: bytes32(uint256(1)),
+            s: bytes32(uint256(1))
+        });
+
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (
+                    bytes32(uint256(1)),
+                    bytes32(uint256(2)),
+                    keccak256("wallet.example"),
+                    keccak256(origin),
+                    address(hook)
+                )
+            )
+        );
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+
+        uint256 result =
+            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0));
+        require(result == ValidationDataLib.SIG_VALIDATION_FAILED, "fuzzed clientDataJSON falsely accepted");
     }
 
     function testKeyRotationRequiresConfigTimelock() public {
