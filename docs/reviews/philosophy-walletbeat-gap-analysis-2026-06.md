@@ -2,6 +2,15 @@
 
 Review date: 2026-06-20
 
+Citations valid as of commit `d730b8f` (2026-06-28). Several commits after the
+review date touched `src/account/LoomAccount.sol` and `src/hooks/VaultHook.sol`
+with line ranges this review cites (notably the addition of
+`evictHookWithGuardians`, decision 0005, and the `MIN_VAULT_DELAY`/
+`MAX_SCHEDULE_DELAY` constants, decisions 0006-0007). Re-validate specific
+`:line` citations against the current file before treating this review's code
+references as current; the top-level conclusions (no production L1 verifier,
+no live adapter, no production deployment evidence) remain accurate.
+
 Scope: repository state after the wallet-engine SDK merge and before any
 production deployment. This is not an independent security audit. It is a
 source-backed readiness review against Loom's sovereignty principles, Vitalik
