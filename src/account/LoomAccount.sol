@@ -89,6 +89,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 public constant DIRECT_EXECUTION_TYPEHASH = keccak256(
         "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
     );
+    bytes32 public constant EVICT_HOOK_TYPEHASH = keccak256("EvictHook(address hook,uint64 configVersion)");
     bytes32 private constant NAME_HASH = keccak256("LoomAccount");
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
@@ -677,6 +678,24 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function migrationCancelDigest(bytes32 migrationId, uint64 version, uint64 nonce) public view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, version, nonce));
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+    }
+
+    // Hooks gate every unscheduled execute()/executeDirect() call. A hook that
+    // reverts or never returns blocks all ordinary fund movement until the
+    // scheduled removal path clears MIN_CONFIG_DELAY. The guardian threshold
+    // can evict a hook immediately instead, since reaching threshold consensus
+    // to remove (never install) a hook is itself the security bar - this
+    // mirrors cancelMigrationWithGuardians, which is also immediate.
+    function evictHookWithGuardians(address hook, GuardianApproval[] calldata guardianApprovals) external {
+        bytes32 digest = evictHookDigest(hook, configVersion);
+        if (!_guardianApproved(digest, guardianApprovals)) revert InvalidModule();
+        _uninstallModule(ModuleType.HOOK, hook, "");
+        _advanceConfig(keccak256(abi.encode("HOOK_EVICTED_BY_GUARDIANS", hook)));
+    }
+
+    function evictHookDigest(address hook, uint64 version) public view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(EVICT_HOOK_TYPEHASH, hook, version));
         return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
     }
 
