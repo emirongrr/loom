@@ -67,6 +67,27 @@ rules. Validators own only their signer-specific proof of authorization. This
 keeps the EntryPoint liveness escape hatch compatible with Loom's narrow
 authority and walkaway requirements.
 
+`executeDirect` must not be collapsed into an installed-module-trusts-caller
+model (the pattern third-party module systems use for their executor-style
+modules). That pattern authorizes whichever address holds the installed role
+to decide what to execute at call time; `executeDirect` instead authorizes one
+exact, fully-bound call signed in advance by an installed validator, and lets
+any anonymous relayer deliver it. Moving to an installed-executor model would
+require a specific contract to be live and uncensored to publish anything,
+recreating the bundler-dependency problem this path exists to avoid.
+
+## Configuration delay tiers
+
+`scheduleCall` requires `MIN_CONFIG_DELAY` (3 days) for self-calls and calls to
+an installed validator, hook, or recovery module, and the shorter
+`MIN_HIGH_RISK_DELAY` (1 day) for calls to any other target. This is
+intentional: a call to an arbitrary external target is bounded by the
+account's current balance and is over once it executes, while a change to the
+account's module set is a persistent grant of standing authority that a
+guardian or owner has to keep reasoning about indefinitely. Persistent
+authority changes get the longer scrutiny window; one-shot value transfers get
+the shorter one with the same cancellable-during-the-delay guarantee.
+
 ## Supported modes
 
 | Call type | Mode prefix | Calldata encoding | Behavior |
@@ -130,6 +151,20 @@ The SDK does not provide a hosted wallet RPC server, transaction simulation,
 or durable `wallet_getCallsStatus` store. Those remain wallet-client
 responsibilities and must be backed by independent conformance and integration
 tests before a product claims full ERC-5792 wallet-provider support.
+
+## Guardian hook eviction
+
+Hooks run on every unscheduled `execute()`/`executeDirect()` call. A hook that
+reverts or never returns blocks ordinary fund movement until the scheduled
+removal path (`scheduleCall` targeting the hook, gated by `MIN_CONFIG_DELAY`)
+clears. `evictHookWithGuardians` gives the guardian threshold (never a single
+guardian) an immediate alternative: reaching threshold consensus to *remove*
+one hook is itself the security bar, the same way `cancelMigrationWithGuardians`
+needs no additional delay. The function can only uninstall a hook - it cannot
+install one, move funds, or change guardian or validator configuration - and
+works the same way during an active freeze as `cancelMigrationWithGuardians`
+does, since it draws on guardian-threshold authority rather than the
+self-call/freeze-gated `execute()` path.
 
 ## Sovereign migration
 

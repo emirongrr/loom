@@ -10,6 +10,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
 import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
+import {RevertingHook} from "./mocks/RevertingHook.sol";
 
 interface VmMigration {
     function warp(uint256 timestamp) external;
@@ -125,6 +126,37 @@ contract SovereignMigrationTest {
         require(!ok, "migration batch installed/uninstalled a validator");
         require(source.validatorCount() == 1, "validator count changed by a reverted migration");
         require(source.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "original validator removed");
+    }
+
+    function testGuardianThresholdCanEvictAStuckHookImmediately() public {
+        RevertingHook hook = new RevertingHook();
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        LoomAccount source = new LoomAccount(
+            address(this), _guardianRoot(), 2, keccak256(abi.encode("config", address(validator))), modules
+        );
+        MockTarget target = new MockTarget();
+
+        ExecutionLib.Execution memory normal =
+            ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
+        (bool blocked,) = address(source).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(normal))));
+        require(!blocked, "reverting hook did not block normal execution");
+
+        bytes32 digest = source.evictHookDigest(address(hook), source.configVersion());
+        LoomAccount.GuardianApproval[] memory single = new LoomAccount.GuardianApproval[](1);
+        single[0] = _approval(source, GUARDIAN_KEY, "guardian-salt", _secondGuardianLeaf(), digest);
+        (bool acceptedSingle,) =
+            address(source).call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook), single)));
+        require(!acceptedSingle, "below-threshold guardian approval evicted hook");
+
+        source.evictHookWithGuardians(address(hook), _guardianApprovals(source, digest));
+
+        require(!source.isModuleInstalled(ModuleType.HOOK, address(hook)), "stuck hook not evicted");
+        (bool nowAllowed,) = address(source).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(normal))));
+        require(nowAllowed, "execution still blocked after guardian eviction");
+        require(target.value() == 1, "evicted-hook execution did not run");
     }
 
     function testMigrationRejectsUndeployedAndWrongCodehashDestination() public {
