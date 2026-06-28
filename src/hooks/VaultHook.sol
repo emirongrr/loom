@@ -47,7 +47,7 @@ contract VaultHook is ILoomHook {
         bytes32[] proof;
     }
 
-    uint48 public constant DEFAULT_WITHDRAWAL_WINDOW = 7 days;
+    uint48 public constant MAX_WITHDRAWAL_WINDOW = 30 days;
     uint256 public constant MAX_GUARDIAN_THRESHOLD = 32;
     uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
     bytes32 public constant EIP712_DOMAIN_TYPEHASH =
@@ -101,7 +101,7 @@ contract VaultHook is ILoomHook {
         external
         returns (bytes32 withdrawalId)
     {
-        if (executionWindow == 0) revert InvalidWithdrawal();
+        if (executionWindow == 0 || executionWindow > MAX_WITHDRAWAL_WINDOW) revert InvalidWithdrawal();
         ExecutionLib.Execution memory execution = ExecutionLib.Execution(target, value, callData);
         (bool protectedAsset, address asset,) = _protectedSpend(msg.sender, execution);
         if (!protectedAsset) revert InvalidWithdrawal();

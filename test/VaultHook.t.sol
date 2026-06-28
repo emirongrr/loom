@@ -256,6 +256,27 @@ contract VaultHookTest {
         _setPolicy(account, vault, address(token), 10, 1 days, vault.MIN_VAULT_DELAY());
     }
 
+    function testScheduleVaultWithdrawalRejectsExecutionWindowBeyondMaximum() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(1);
+        MockERC20 token = new MockERC20();
+        token.mint(address(account), 100);
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+
+        bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
+        bytes memory overLong = abi.encodeCall(
+            VaultHook.scheduleVaultWithdrawal, (address(token), 0, transfer, vault.MAX_WITHDRAWAL_WINDOW() + 1)
+        );
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(vault), 0, overLong)))
+                )
+            );
+        require(!ok, "execution window beyond maximum accepted");
+
+        _scheduleVaultWithdrawalWindow(account, vault, address(token), 0, transfer, vault.MAX_WITHDRAWAL_WINDOW());
+    }
+
     function testVaultWithdrawalRejectsDuplicateExpiryAndStaleConfig() public {
         (LoomAccount account, VaultHook vault) = _accountWithVault(1);
         MockERC20 token = new MockERC20();
