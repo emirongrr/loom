@@ -10,6 +10,7 @@ import {ModuleType} from "../libraries/ModuleType.sol";
 
 contract VaultHook is ILoomHook {
     error OnlyAccount();
+    error ConfigTimelockRequired();
     error InvalidPolicy();
     error InvalidWithdrawal();
     error WithdrawalAlreadyPending();
@@ -77,6 +78,11 @@ contract VaultHook is ILoomHook {
     event VaultWithdrawalExecuted(address indexed account, bytes32 indexed withdrawalId);
 
     function setVaultPolicy(address asset, VaultPolicy calldata policy) external {
+        // The account's notifyConfigChange also reverts outside a scheduled
+        // self-call, but that is a side effect of a different contract's
+        // gate, not a guarantee this contract makes on its own. Assert it
+        // directly so the delay requirement does not depend on call order.
+        if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
         if (policy.period == 0 || policy.delay < MIN_VAULT_DELAY) revert InvalidPolicy();
         policies[msg.sender][asset] = policy;
         ILoomAccount(msg.sender).notifyConfigChange(keccak256(abi.encode("VAULT_POLICY_SET", asset, policy)));
@@ -84,6 +90,7 @@ contract VaultHook is ILoomHook {
     }
 
     function removeVaultPolicy(address asset) external {
+        if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
         delete policies[msg.sender][asset];
         delete spending[msg.sender][asset];
         ILoomAccount(msg.sender).notifyConfigChange(keccak256(abi.encode("VAULT_POLICY_REMOVE", asset)));

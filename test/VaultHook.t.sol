@@ -202,6 +202,45 @@ contract VaultHookTest {
         require(token.balanceOf(address(0xBEEF)) == 50, "removed policy still protected asset");
     }
 
+    function testSetAndRemoveVaultPolicyRejectUnscheduledCalls() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(1);
+        MockERC20 token = new MockERC20();
+
+        VaultHook.VaultPolicy memory policy = VaultHook.VaultPolicy(10, 1 days, 2 days, true);
+        (bool acceptedSet,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(vault), 0, abi.encodeCall(VaultHook.setVaultPolicy, (address(token), policy))
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedSet, "unscheduled setVaultPolicy accepted");
+
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+        (bool acceptedRemove,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (
+                        bytes32(0),
+                        abi.encode(
+                            ExecutionLib.Execution(
+                                address(vault), 0, abi.encodeCall(VaultHook.removeVaultPolicy, (address(token)))
+                            )
+                        )
+                    )
+                )
+            );
+        require(!acceptedRemove, "unscheduled removeVaultPolicy accepted");
+    }
+
     function testSetVaultPolicyRejectsDelayBelowMinimum() public {
         (LoomAccount account, VaultHook vault) = _accountWithVault(1);
         MockERC20 token = new MockERC20();
