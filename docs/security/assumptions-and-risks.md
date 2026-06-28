@@ -94,10 +94,12 @@ Security claims are valid only under the assumptions listed here and in
   independent audit, gas review, deployment verification, and tests proving
   delayed migration, guardian cancellation, native exit fallback, and
   two-signature verification semantics.
-- Large vault withdrawals require two visible delays when scheduled through
-  the account: the account's configuration delay for creating the pending
-  withdrawal, then the vault withdrawal delay for executing the protected
-  movement.
+- Large vault withdrawals are bound by two independent, visible delays: the
+  account's own delay for scheduling the call (`MIN_HIGH_RISK_DELAY` or
+  `MIN_CONFIG_DELAY`, depending on target) and the vault policy's withdrawal
+  delay. Both can be scheduled back to back rather than strictly one after the
+  other, so the binding wait before execution is the larger of the two, not
+  their sum.
 - Policy periods depend on chain timestamps and configured token selectors.
 - Hook recovery intentionally bypasses hooks only for the exact delayed
   removal of an already-installed hook.
