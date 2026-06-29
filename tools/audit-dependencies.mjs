@@ -6,7 +6,10 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 const targets = [
   { name: "root", args: ["audit", "--audit-level=low"] },
+  { name: "account SDK", args: ["--prefix", "packages/account", "audit", "--audit-level=low"] },
+  { name: "guardian SDK", args: ["--prefix", "packages/guardian", "audit", "--audit-level=low"] },
   { name: "privacy SDK", args: ["--prefix", "packages/privacy", "audit", "--audit-level=low"] },
+  { name: "wallet engine SDK", args: ["--prefix", "packages/sdk", "audit", "--audit-level=low"] },
   { name: "documentation site", args: ["--prefix", "docs/site", "audit", "--audit-level=low"] }
 ];
 
