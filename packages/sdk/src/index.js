@@ -32,6 +32,10 @@ const RECOVERY_STATE_SELECTORS = Object.freeze({
   pendingRecoveries: selector("pendingRecoveries(address)")
 });
 
+const VAULT_STATE_SELECTORS = Object.freeze({
+  policies: selector("policies(address,address)")
+});
+
 const MAX_GUARDIAN_THRESHOLD = 32;
 const MAX_VALIDATORS = 16;
 
@@ -637,6 +641,26 @@ export async function readAccountSafetyState(input = {}) {
   });
 }
 
+export async function readVaultPolicyState(input = {}) {
+  const account = normalizeAddress(input.account, "account");
+  const vaultHook = normalizeAddress(input.vaultHook, "vault hook");
+  const token = normalizeAddress(input.token, "token");
+  const transport = input.stateTransport ?? input.transport;
+  if (!transport || typeof transport.ethCall !== "function") {
+    throw new InvalidSdkRequestError("vault policy state requires an explicit state transport");
+  }
+  const blockTag = normalizeBlockTag(input.blockTag ?? "latest");
+  const data = `${VAULT_STATE_SELECTORS.policies}${encodeAddressArgument(account)}${encodeAddressArgument(token)}`;
+  const result = await transport.ethCall({ to: vaultHook, data, blockTag });
+  const words = abiWords(result, "vaultHook.policies", 4);
+  return Object.freeze({
+    dailyLimit: BigInt(`0x${words[0]}`),
+    period: BigInt(`0x${words[1]}`),
+    delay: BigInt(`0x${words[2]}`),
+    enabled: BigInt(`0x${words[3]}`) === 1n
+  });
+}
+
 export function toViemCalls(prepared, options = {}) {
   const intent = prepared?.intent ?? prepared;
   if (!intent || typeof intent !== "object") throw new InvalidSdkRequestError("prepared intent is required");
@@ -879,15 +903,45 @@ export async function preparePrivateVaultWithdrawal(options) {
     metadataBudgetHash
   });
 
+  // The intent always describes itself as a vault withdrawal (delayRequired:
+  // true), but that only holds on-chain if a VaultPolicy is actually enabled
+  // for this token. Caller-supplied verification is optional, matching the
+  // SDK's no-network-by-default behavior; when supplied, fail closed instead
+  // of returning an intent that claims vault protection it cannot prove.
+  const vaultProtection = await verifyVaultProtection({ vault, context });
+
   return Object.freeze({
     intent,
     operation: normalizedOperation,
+    vaultProtection,
     hashes: Object.freeze({
       privateOperationHash,
       metadataBudgetHash
     }),
     review: explainLifecycleIntent(intent)
   });
+}
+
+async function verifyVaultProtection({ vault, context }) {
+  const transport = vault.stateTransport ?? vault.transport;
+  if (!vault.hook || !transport) {
+    return Object.freeze({ verified: false, reason: "no vault hook or state transport supplied" });
+  }
+  const policy = await readVaultPolicyState({
+    account: context.account,
+    vaultHook: vault.hook,
+    token: vault.token,
+    stateTransport: transport,
+    blockTag: vault.blockTag
+  });
+  if (!policy.enabled) {
+    throw new InvalidSdkRequestError("vault policy is not enabled for this token; withdrawal is not vault-protected", {
+      account: context.account,
+      vaultHook: vault.hook,
+      token: vault.token
+    });
+  }
+  return Object.freeze({ verified: true, policy });
 }
 
 export function explainLifecycleIntent(intent) {
