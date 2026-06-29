@@ -943,17 +943,13 @@ contract LoomAccount is IERC1271, ILoomAccount {
         assembly {
             selector := mload(add(callData, 32))
         }
-        if (_modules[ModuleType.RECOVERY][execution.target]) {
-            if (selector != CANCEL_RECOVERY || callData.length != 36 || execution.value != 0) return false;
-            address recoveryAccount;
-            assembly {
-                recoveryAccount := mload(add(callData, 36))
-            }
-            return recoveryAccount == address(this);
+        if (!_modules[ModuleType.RECOVERY][execution.target]) return false;
+        if (selector != CANCEL_RECOVERY || callData.length != 36 || execution.value != 0) return false;
+        address recoveryAccount;
+        assembly {
+            recoveryAccount := mload(add(callData, 36))
         }
-        if (execution.target != address(this)) return false;
-        return selector == this.setGuardianConfig.selector || selector == this.installModule.selector
-            || selector == this.uninstallModule.selector;
+        return recoveryAccount == address(this);
     }
 
     function _guardianApproved(bytes32 digest, GuardianApproval[] calldata approvals) internal view returns (bool) {

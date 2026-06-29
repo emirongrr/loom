@@ -226,6 +226,56 @@ contract SecurityRegressionTest {
         require(account.frozenUntil() == 0, "expired freeze did not clear");
     }
 
+    function testFrozenAccountRejectsSelfTargetedConfigCallsRegardlessOfSelector() public {
+        uint256 guardianKey = 0xA11CE;
+        address guardian = vm.addr(guardianKey);
+        ECDSAGuardianVerifier guardianVerifier = new ECDSAGuardianVerifier();
+        bytes32 keyCommitment = keccak256(abi.encode(guardian));
+        bytes32 guardianSalt = keccak256("guardian-salt");
+        bytes32 guardianLeaf = keccak256(
+            abi.encode(address(guardianVerifier), address(guardianVerifier).codehash, keyCommitment, guardianSalt)
+        );
+        LoomAccount account = new LoomAccount(
+            address(this), guardianLeaf, 1, keccak256("config"), _modules(address(new MockValidator()))
+        );
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                account.EIP712_DOMAIN_TYPEHASH(),
+                keccak256("LoomAccount"),
+                keccak256("1"),
+                block.chainid,
+                address(account)
+            )
+        );
+        bytes32 structHash = keccak256(
+            abi.encode(
+                account.FREEZE_TYPEHASH(), guardianLeaf, account.freezeNonces(guardianLeaf), account.configVersion()
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(guardianKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        account.freeze(address(guardianVerifier), keyCommitment, guardianSalt, new bytes32[](0), signature);
+        // forge-lint: disable-next-line(block-timestamp)
+        require(account.frozenUntil() > block.timestamp, "account not frozen");
+
+        ExecutionLib.Execution memory setGuardianConfigCall = ExecutionLib.Execution(
+            address(account), 0, abi.encodeCall(LoomAccount.setGuardianConfig, (guardianLeaf, 1))
+        );
+        (bool setGuardianConfigSucceeded,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(setGuardianConfigCall))));
+        require(!setGuardianConfigSucceeded, "frozen account accepted self-targeted setGuardianConfig");
+
+        ExecutionLib.Execution memory uninstallModuleCall = ExecutionLib.Execution(
+            address(account),
+            0,
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.VALIDATOR, address(0xBEEF), ""))
+        );
+        (bool uninstallModuleSucceeded,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(uninstallModuleCall))));
+        require(!uninstallModuleSucceeded, "frozen account accepted self-targeted uninstallModule");
+    }
+
     function testGuardianThresholdIsBounded() public {
         try new LoomAccount(
             address(this),
