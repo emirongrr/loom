@@ -14,7 +14,11 @@ does not make a deployment production-ready.
   run separately because their randomized call distribution is not a stable
   gas benchmark.
 - Unit and official EntryPoint v0.9 integration tests.
-- 10,000-run fuzz tests and 1,000-run stateful invariants.
+- 2,048-run fuzz tests and 256-run/depth-50 stateful invariants on every pull
+  request (`FOUNDRY_PROFILE=ci`). Nightly verification raises this to
+  20,000-run fuzz and 2,000-run/depth-100 stateful invariants
+  (`FOUNDRY_PROFILE=deep`); a release should not be tagged on a commit that
+  has not also passed at least one nightly `deep`-profile run.
 - Paymaster selection forwarding and permission-bound paymaster regression tests.
 - Granular session target, selector, token, counterparty, amount, batch,
   timing, use-limit, enumeration, and revocation tests.
