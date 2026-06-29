@@ -20,6 +20,7 @@ static analysis, review, deployment rehearsals, and audit.
 | `LoomAccountExecutionFormal.t.sol` | Symbolic and fuzz-compatible property tests | Batch atomicity, freeze restrictions, and direct-execution rollback behavior. |
 | `LoomAccountRecoveryFormal.t.sol` | Symbolic property tests | Recovery delay, validator replacement, guardian-root update, and frozen-account emergency carveouts. |
 | `LoomAccountMigrationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Migration delay, scheduled call-hash binding, and migration batch atomicity. |
+| `LoomVaultHookFormal.t.sol` | Symbolic and fuzz-compatible property tests | Vault withdrawal delay enforcement and guardian-threshold cancellation grants no spending authority. |
 
 Functions intended for symbolic execution use the `check_` prefix so Halmos can
 discover them directly. Stateful Foundry invariant tests live outside this
@@ -53,6 +54,7 @@ halmos --contract LoomAccountAuthorityFormal
 halmos --contract LoomAccountExecutionFormal
 halmos --contract LoomAccountRecoveryFormal
 halmos --contract LoomAccountMigrationFormal
+halmos --contract LoomVaultHookFormal
 ```
 
 For deeper local runs, use the Foundry deep profile:
