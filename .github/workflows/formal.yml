@@ -61,3 +61,5 @@ jobs:
         run: timeout 300s halmos --contract LoomAccountRecoveryFormal
       - name: Verify migration properties
         run: timeout 300s halmos --contract LoomAccountMigrationFormal
+      - name: Verify vault hook properties
+        run: timeout 300s halmos --contract LoomVaultHookFormal

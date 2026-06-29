@@ -35,7 +35,9 @@ wallet behavior.
 - Migration destination/config/call-hash binding.
 - Immutable proxy implementation immutability.
 - Registry and factory non-authority.
-- Vault delay and guardian cancellation without spending authority.
+- Vault delay and guardian cancellation without spending authority (covered in
+  Foundry/Halmos via `test/formal/LoomVaultHookFormal.t.sol` until a dedicated
+  CVL rule is added).
 
 ## Claim Boundary
 
