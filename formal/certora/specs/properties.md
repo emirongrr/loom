@@ -38,6 +38,10 @@ wallet behavior.
 - Vault delay and guardian cancellation without spending authority (covered in
   Foundry/Halmos via `test/formal/LoomVaultHookFormal.t.sol` until a dedicated
   CVL rule is added).
+- L1 keystore controller-only updates, sync delay/proof-gating, and
+  guardian-threshold sync cancellation grants no validator authority (covered
+  in Foundry/Halmos via `test/formal/LoomKeystoreSyncFormal.t.sol` until a
+  dedicated CVL rule is added).
 
 ## Claim Boundary
 
