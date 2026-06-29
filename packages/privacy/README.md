@@ -68,15 +68,24 @@ third-party builders can use without changing Loom core contracts.
   mutate local scan checkpoints.
 - `createPrivateScanStateStore`: local scan checkpoint storage scoped by
   protocol, chain, account, application, and scan scope.
-- `PrivateScanner`: local-first discovery of private notes, stealth payments,
-  commitments, nullifiers, and recovery alerts.
-- `PrivateExecutionAdapter`: construction of protocol-specific private
-  operations, bridge messages, and exit transactions.
-- `ShieldedPoolAdapter`: Railgun-like shield, unshield, private transfer, and
-  private DeFi flows.
-- `StealthReceiveAdapter`: per-application and per-contact receiving flows.
 - `MetadataBudget`: typed disclosure accounting for RPC, indexer, relayer,
   prover, bridge, and timing metadata.
+
+### Designed, not implemented
+
+The following are type-only interfaces in `src/index.d.ts` with no runtime
+implementation or tests yet. They document an intended shape for future work
+and must not be treated as available SDK surface until a corresponding
+runtime implementation and test coverage land:
+
+- `PrivateScanner`: local-first discovery of private notes, stealth payments,
+  commitments, nullifiers, and recovery alerts.
+- `PrivateExecutionAdapter` / `ShieldedPoolAdapter`: generic construction of
+  protocol-specific private operations, bridge messages, and exit
+  transactions. The actual runtime entry point today is
+  `createKohakuShieldedPoolAdapter` above, which implements a narrower,
+  concrete Kohaku-plugin-backed wrapper rather than this general interface.
+- `StealthReceiveAdapter`: per-application and per-contact receiving flows.
 - `ViewingKeyStore`: scoped local secret storage and export warnings.
 - `KohakuAccountSecurityProfile`: source-level tracking for Kohaku account
   security tooling that may become a migration or compatibility target after
