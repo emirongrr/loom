@@ -102,6 +102,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
         }
         if (accountSelector != ILoomExecutionSelectors.execute.selector) return "";
         (bytes32 mode, bytes memory executionCalldata) = abi.decode(accountCall[4:], (bytes32, bytes));
+        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) return "";
         (bytes1 callType,) = ExecutionLib.mode(mode);
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             _consumeIfPolicy(account, abi.decode(executionCalldata, (ExecutionLib.Execution)));
