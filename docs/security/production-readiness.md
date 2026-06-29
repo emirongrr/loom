@@ -88,6 +88,10 @@ does not make a deployment production-ready.
 - Source scan confirming experimental account cryptography is absent from
   production contract scope unless an explicit audit-candidate decision has
   moved it into scope.
+- Source scan confirming no SDK package (`packages/account`, `packages/guardian`,
+  `packages/privacy`, `packages/sdk`) hardcodes an RPC endpoint or known
+  provider hostname as a default, consistent with the no-default-provider
+  design principle.
 - Reproducible build from a clean checkout with pinned dependencies.
 - Solidity compiler version must not be affected by a published
   security-relevant compiler bug under the repository's optimizer, IR, and EVM

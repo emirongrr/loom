@@ -45,6 +45,19 @@ function assertExperimentalAccountCryptoAbsentFromContracts() {
   console.log("\n==> Contract source policy\n<== Contract source policy passed");
 }
 
+function assertNoHardcodedPrivacyOrRpcDefaults() {
+  const packageRoots = ["packages/account", "packages/guardian", "packages/privacy", "packages/sdk"];
+  const pattern = /https?:\/\/(?!rpc\.example|pay\.example|defi\.example)\S+|\binfura\b|\balchemy\b|\bankr\b|\bquicknode\b|\bdrpc\b|\bllamarpc\b|cloudflare-eth/i;
+  const violations = packageRoots.flatMap(name =>
+    sourceFiles(join(root, name, "src"))
+      .filter(path => pattern.test(readFileSync(path, "utf8")))
+  );
+  if (violations.length !== 0) {
+    throw new Error(`hardcoded privacy/RPC default found in SDK source:\n${violations.join("\n")}`);
+  }
+  console.log("\n==> No hardcoded privacy/RPC defaults\n<== No hardcoded privacy/RPC defaults passed");
+}
+
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
 run("WebAuthn fixture parser tests", process.execPath, ["--test", "tools/validate-webauthn-fixtures.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/validate-ci-program.mjs"]);
@@ -99,3 +112,4 @@ run("Gas snapshot", forge, [
 run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });
 assertExperimentalAccountCryptoAbsentFromContracts();
+assertNoHardcodedPrivacyOrRpcDefaults();
