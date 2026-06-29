@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  InvalidSdkRequestError,
   createAppScopeManager,
   createLoomSdk,
   hashCanonical,
@@ -11,6 +12,25 @@ const account = "0x1111111111111111111111111111111111111111";
 const token = "0x2222222222222222222222222222222222222222";
 const recipient = "0x3333333333333333333333333333333333333333";
 const target = "0x4444444444444444444444444444444444444444";
+const vaultHook = "0x6666666666666666666666666666666666666666";
+
+function word(value) {
+  return BigInt(value).toString(16).padStart(64, "0");
+}
+
+function abi(...words) {
+  return `0x${words.join("")}`;
+}
+
+function vaultPolicyTransport({ dailyLimit = 0n, period = 86400n, delay = 3600n, enabled }) {
+  return {
+    calls: [],
+    async ethCall(input) {
+      this.calls.push(input);
+      return abi(word(dailyLimit), word(period), word(delay), word(enabled ? 1n : 0n));
+    }
+  };
+}
 
 const providerProfile = {
   mode: "user-rpc",
@@ -136,6 +156,44 @@ test("private vault preparation can be used independently of the full sdk object
 
   assert.equal(prepared.intent.amount, 250n);
   assert.equal(prepared.operation.operation.applicationId, appScope.applicationId);
+});
+
+test("private vault preparation reports unverified vault protection when no hook/transport is supplied", async () => {
+  const prepared = await preparePrivateVaultWithdrawal({
+    adapter: privateAdapter(),
+    context: { account, chainId: 1 },
+    vault: { token, recipient, amount: 100n, executeAfter: 1000n }
+  });
+
+  assert.equal(prepared.vaultProtection.verified, false);
+});
+
+test("private vault preparation verifies an enabled vault policy through the supplied state transport", async () => {
+  const stateTransport = vaultPolicyTransport({ enabled: true, dailyLimit: 10n, delay: 7200n });
+  const prepared = await preparePrivateVaultWithdrawal({
+    adapter: privateAdapter(),
+    context: { account, chainId: 1 },
+    vault: { token, recipient, amount: 100n, executeAfter: 1000n, hook: vaultHook, stateTransport }
+  });
+
+  assert.equal(prepared.vaultProtection.verified, true);
+  assert.equal(prepared.vaultProtection.policy.enabled, true);
+  assert.equal(prepared.vaultProtection.policy.delay, 7200n);
+  assert.equal(stateTransport.calls.length, 1);
+  assert.equal(stateTransport.calls[0].to, vaultHook);
+});
+
+test("private vault preparation fails closed when the vault policy is not actually enabled", async () => {
+  const stateTransport = vaultPolicyTransport({ enabled: false });
+
+  await assert.rejects(
+    preparePrivateVaultWithdrawal({
+      adapter: privateAdapter(),
+      context: { account, chainId: 1 },
+      vault: { token, recipient, amount: 100n, executeAfter: 1000n, hook: vaultHook, stateTransport }
+    }),
+    InvalidSdkRequestError
+  );
 });
 
 test("canonical hashes are stable across object key order and bigint inputs", () => {
