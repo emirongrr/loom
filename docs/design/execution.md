@@ -166,6 +166,30 @@ works the same way during an active freeze as `cancelMigrationWithGuardians`
 does, since it draws on guardian-threshold authority rather than the
 self-call/freeze-gated `execute()` path.
 
+### Why this pattern stops at hooks
+
+`evictHookWithGuardians` is deliberately narrow rather than a template for a
+generic guardian-threshold override. Two adjacent cases were considered and
+rejected for now:
+
+- **A generic `cancelScheduledWithGuardians` for any pending scheduled
+  operation.** Not needed: `scheduleCall`, `scheduleMigration`, and
+  `executeScheduled` are all gated by the same self-call/freeze check `execute()`
+  uses, so a single guardian's `freeze()` already blocks scheduling a new
+  malicious operation and executing an already-scheduled one, with no separate
+  mechanism required. Hooks needed a dedicated path specifically because a bad
+  hook blocks `execute()` itself - the very call freeze relies on to stop
+  things - leaving no lever once the account is in that state.
+- **A guardian-threshold path to evict the sole recovery module.** Not added.
+  Unlike a hook, a broken recovery module does not block ordinary
+  `execute()`/`executeDirect()` calls - it only blocks the opt-in recovery
+  proposal flow. Forcibly evicting the only installed recovery module would
+  also leave the account with zero guardian protection until a new module is
+  installed through the owner's normal timelocked path, which is a more
+  drastic trade-off than removing one hook and deserves its own dedicated
+  decision record if a concrete failure mode justifies it, rather than reusing
+  this precedent informally.
+
 ## Sovereign migration
 
 `scheduleMigration` creates a visible, delayed, cancellable exit intent. The
