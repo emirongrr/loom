@@ -98,6 +98,21 @@
   the account execution reentrancy guard. Every module init path still belongs
   in audit scope.
 - The current account does not implement cross-chain state proof verification.
+  `EthereumL1KeystoreVerifier` is a same-chain L1-to-L1 direct read only
+  (decision 0003); no production verifier exists for OP Stack, Arbitrum, or any
+  other L2. Accounts on those chains are limited to local-only configuration
+  until a chain-specific verifier is built, audited, and rehearsed.
+- The planned OP Stack L2 keystore verifier (decision 0008, draft, not yet
+  implemented) roots its trust in Ethereum L1 state read through the `L1Block`
+  predeploy's `stateRoot()` plus a caller-supplied EIP-1186 proof, with no
+  bridge, oracle, messaging layer, or Loom-operated service in the trust path.
+  Under that design the OP Stack sequencer is a liveness dependency for state
+  root currency, not a safety dependency: a withheld or stale `L1Block` root can
+  only delay keystore sync, and `KeystoreConfig.version` monotonicity plus the
+  `KeystoreSyncRecoveryModule` cancellation window prevent a stale root from
+  validating a config the user did not author. Until that verifier is
+  implemented, audited per `docs/operations/keystore-proof-profile.md`, and
+  rehearsed per target chain, no OP Stack keystore sync safety claim holds.
 - EIP-7702 preserves address and assets but introduces persistent delegation
   phishing risk. Users must verify the template address, bytecode, EntryPoint
   binding, and chain before signing a delegation authorization.
