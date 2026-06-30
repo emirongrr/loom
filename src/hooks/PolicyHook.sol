@@ -102,6 +102,10 @@ contract PolicyHook is ILoomHook, IPolicyHook {
         }
         if (accountSelector != ILoomExecutionSelectors.execute.selector) return "";
         (bytes32 mode, bytes memory executionCalldata) = abi.decode(accountCall[4:], (bytes32, bytes));
+        // Skips policy enforcement rather than reverting on an unrecognized mode. This is safe only
+        // because LoomAccount.execute() already rejects unsupported modes before this hook runs; a
+        // standalone ERC-7579 account that calls this hook without that upstream check would not get
+        // spend-limit enforcement here.
         if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) return "";
         (bytes1 callType,) = ExecutionLib.mode(mode);
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
