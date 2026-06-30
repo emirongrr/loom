@@ -8,7 +8,8 @@ ast = true
 remappings = [
     "account-abstraction/=lib/account-abstraction/contracts/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/"
+    "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
+    "@optimism-trie/=lib/optimism-trie/"
 ]
 solc_version = "0.8.35"
 optimizer = true
