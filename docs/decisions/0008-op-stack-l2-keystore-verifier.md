@@ -98,6 +98,26 @@ Implement `OPStackL2KeystoreVerifier` using **Option A**. The verifier:
 Each deployment instance must pass `docs/operations/keystore-proof-profile.md`
 before being described as production-candidate.
 
+## Trie library
+
+On-chain Merkle-Patricia-trie and RLP verification is not hand-rolled. Loom
+vendors Optimism's audited `MerkleTrie`, `SecureMerkleTrie`, `RLPReader`, and
+supporting `Bytes` libraries (MIT) under `lib/optimism-trie/`, pinned to commit
+`b3e09977c2f1b51a7a351b8ebd4afa4122f55a46`. Rationale: the proof is verified
+against an Ethereum L1 state root surfaced by the OP Stack `L1Block` predeploy,
+so using the same trie/RLP implementation that OP Stack itself relies on in
+production keeps the verification semantics aligned with the chain whose state
+root is trusted, and avoids introducing a fresh, unaudited trie implementation —
+which the residual-risk section below flags as a primary audit hazard.
+
+The only modification from upstream is import-path rewriting to the
+`@optimism-trie/` remapping (upstream uses `src/libraries/...`, which collides
+with Loom's own `src/`). No trie or RLP logic is changed. Provenance and the
+re-vendoring procedure are recorded in `lib/optimism-trie/README.md` and in each
+vendored file's header. A storage-layout pin test and proof fixture tests
+(see acceptance conditions) still gate any production use; vendoring audited
+code does not by itself discharge the per-deployment audit requirement.
+
 ## Acceptance conditions
 
 - `verifyKeystoreConfig` returns true for a valid proof and matching config.
