@@ -3,6 +3,20 @@ pragma solidity 0.8.35;
 
 import {ILoomKeystore} from "../interfaces/ILoomKeystore.sol";
 
+/// @notice L1 keystore of per-identity configuration (validator/guardian/app-account
+/// roots, guardian threshold, version). It has no Loom administrator, bridge
+/// operator, relayer role, or upgrade authority.
+///
+/// Each identity's `controller` is its sole authority: it is the only party that
+/// can `updateConfig` or `transferController` for that identity, and config
+/// changes are read cross-chain by `KeystoreSyncRecoveryModule`. The controller
+/// is therefore security-critical. The recommended controller is the user's own
+/// L1 Loom account (or another user-controlled account with its own recovery and
+/// delay model), NOT a bare hot EOA: a compromised controller can rewrite the
+/// keystore config and, after the L1 version advances, drive an L2 keystore sync.
+/// This is a deployment convention, not a contract-enforced restriction — the
+/// contract intentionally accepts any non-zero controller to preserve
+/// permissionless use. See docs/design/keystore.md.
 contract LoomKeystore is ILoomKeystore {
     error InvalidIdentity();
     error InvalidController();
@@ -37,6 +51,11 @@ contract LoomKeystore is ILoomKeystore {
         bytes32 indexed identityId, address indexed oldController, address indexed newController
     );
 
+    /// @notice Registers a new identity. The caller must be the `controller`.
+    /// @param controller Sole authority over this identity (see contract notice):
+    /// it alone can later `updateConfig` or `transferController`. Use a
+    /// user-controlled account with its own recovery and delay model rather than a
+    /// bare hot EOA; this is a convention, not enforced here.
     function register(
         bytes32 identityId,
         address controller,
