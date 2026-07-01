@@ -1,19 +1,40 @@
+import { Steps } from 'vocs/components'
+
 # Getting Started
 
-Start with the contracts, then add SDK and client layers.
+Loom is contracts-first. Clone the repository, verify the build, then add the SDK
+and client layers on top.
+
+:::info
+Node.js 22 and Foundry v1.7.1 are the supported development baseline.
+:::
+
+## Set up the repository
+
+<Steps>
+
+### Clone and install
 
 ```sh
 git clone https://github.com/emirongrr/loom.git
 cd loom
 npm ci
+```
+
+### Run the fast verification suite
+
+```sh
 npm run verify:quick
 ```
 
-Node.js 22 and Foundry v1.7.1 are the supported development baseline.
+`verify:quick` runs documentation and website checks; account, guardian,
+privacy, and wallet-engine SDK tests; formatting; Solidity lint; production size
+checks; gas snapshot checks; contract tests; invariants; and source-policy
+checks.
 
-## Build the docs site
+### Build the docs site (optional)
 
-Loom uses a Vocs docs app under `docs/site`.
+The site is a Vocs app under `docs/site`.
 
 ```sh
 npm --prefix docs/site ci
@@ -21,7 +42,12 @@ npm run site:dev
 npm run site:build
 ```
 
+</Steps>
+
 ## Launching a wallet on Loom
+
+Loom draws a firm line between what the immutable engine enforces and what a
+wallet client is responsible for.
 
 | Step | Engine responsibility | Client responsibility |
 | --- | --- | --- |
@@ -33,14 +59,16 @@ npm run site:build
 
 ## Repository checks
 
+Run the focused suites while iterating:
+
 ```sh
 npm run site:check
 npm run privacy:test
 npm run sdk:test
-npm run verify:quick
 ```
 
-`verify:quick` runs documentation checks, website checks, account, guardian,
-privacy, and wallet-engine SDK tests, formatting, Solidity lint, production
-size checks, gas snapshot checks, contract tests, invariants, and source-policy
-checks.
+Run the full gate before opening a pull request:
+
+```sh
+npm run verify:quick
+```
