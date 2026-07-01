@@ -1,8 +1,10 @@
 # SDK
 
-Loom currently ships three early SDK packages:
+Loom currently ships four early SDK packages:
 
 - `@loom/account` for account lifecycle intent builders.
+- `@loom/guardian` for guardian Merkle-tree construction, inclusion proofs, and
+  the guardian setup ceremony.
 - `@loom/privacy` for a Kohaku-compatible privacy runtime boundary.
 - `@loom/sdk` for the local wallet-engine client surface that joins account,
   privacy, passkey, bundler, and app-scoped session helpers.
@@ -33,6 +35,19 @@ For first-run onboarding, a wallet may build a passkey-only deployment with
 `recoveryStatus: 'unprotected'`. This improves onboarding but must be shown as
 no guardian recovery: if the primary credential is lost before guardians are
 added, access may be lost.
+
+## Guardian tooling
+
+`@loom/guardian` builds the guardian set off-chain. Guardians are committed
+on-chain only as a Merkle root, so guardian addresses stay private until a
+guardian participates (privacy-until-participation). The package computes each
+guardian leaf, assembles the tree, derives the root a wallet configures on the
+account, and produces the single-guardian inclusion proof that `freeze` and
+recovery consume. Leaf and proof construction match the account's on-chain
+`guardianLeaf` and Merkle verification, including the verifier code hash.
+
+It also covers the setup ceremony: guardian possession challenges, a progressive
+threshold setup plan, and encrypted guardian backup and onboarding evidence.
 
 ## Wallet engine client
 
@@ -200,6 +215,7 @@ await host.network.fetch(profile.endpoint)
 | Package | Purpose | Status |
 | --- | --- | --- |
 | `@loom/account` | Account deploy, session grant/revoke, recovery proposal, migration, vault withdrawal, private vault binding, and paymaster policy builders. | Implemented boundary |
+| `@loom/guardian` | Guardian Merkle-tree and inclusion-proof construction, setup ceremony, possession challenges, and encrypted backup. | Implemented boundary |
 | `@loom/privacy` | Kohaku host, provider profiles, metadata budgets, local scan lifecycle, shielded-pool wrapper, and Railgun profile boundary. | Implemented boundary |
 | `@loom/sdk` | Wallet engine client, app-scoped sessions, passkey signer boundary, bundler transport, gas estimation, receipt waiting, middleware, and private-vault binding. | Implemented boundary |
 | Production wallet client | Mobile/web app with verified state, browser WebAuthn implementation, simulation, clear signing, live bundler qualification, and concrete privacy protocol flows. | Planned |
