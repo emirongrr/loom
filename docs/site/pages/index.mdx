@@ -1,18 +1,29 @@
-# Loom
+---
+layout: landing
+showSidebar: false
+---
 
-**Self-sovereign wallet infrastructure for Ethereum.**
+import { HomePage } from 'vocs/components'
 
-Loom is a contracts-first account stack for teams that want fintech-grade user
-experience without giving a company, recovery provider, RPC, bundler,
-paymaster, or module registry permanent authority over user funds.
-
-Loom is not another closed wallet application. It is an open wallet engine:
-immutable accounts, passkeys, social recovery, bounded permissions, vault
-safety, L1-rooted identity direction, and a Kohaku-backed privacy SDK boundary.
+<HomePage.Root>
+  <HomePage.Tagline>Self-sovereign wallet infrastructure for Ethereum</HomePage.Tagline>
+  <HomePage.Description>
+    Loom is a contracts-first account stack for teams that want fintech-grade user experience without handing a
+    company, recovery provider, RPC, bundler, paymaster, or module registry permanent authority over user funds.
+  </HomePage.Description>
+  <HomePage.Buttons>
+    <HomePage.Button href="/getting-started" variant="accent">Get started</HomePage.Button>
+    <HomePage.Button href="https://github.com/emirongrr/loom">View on GitHub</HomePage.Button>
+  </HomePage.Buttons>
+</HomePage.Root>
 
 :::warning
 Loom is pre-audit software. Do not use it to secure production assets.
 :::
+
+Loom is not a closed wallet application. It is an open wallet engine: immutable
+accounts, passkeys, social recovery, bounded permissions, vault safety, L1-rooted
+identity direction, and a Kohaku-backed privacy SDK boundary.
 
 ## What Loom provides
 
@@ -39,7 +50,14 @@ Loom is pre-audit software. Do not use it to secure production assets.
 
 If Loom's frontend, RPC, bundler, paymaster, indexer, notification service, and
 recovery coordinator disappear, users should still be able to discover account
-state, verify it, recover access, publish authorized operations, and migrate
-away with independent software.
+state, verify it, recover access, publish authorized operations, and migrate away
+with independent software.
 
 That test is the product.
+
+## Explore
+
+- [Getting started](/getting-started) — clone the repository, build, and run the checks.
+- [SDK](/sdk) — the account, guardian, privacy, and wallet-engine packages.
+- [Security](/security) — the pre-audit posture and the gates that remain before production.
+- [Comparisons](/comparisons) — how Loom's choices differ from other account stacks.
