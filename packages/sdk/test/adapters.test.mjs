@@ -301,3 +301,23 @@ test("passkey signer rejects malformed authenticator responses", async () => {
 
   await assert.rejects(signer.signUserOperation(envelope), InvalidSdkRequestError);
 });
+
+// Walkaway / WalletBeat "custom endpoints, no default provider": the transports
+// must never assume a Loom-operated endpoint. Construction fails without an
+// explicit, well-formed endpoint rather than silently reaching for a default.
+
+test("bundler transport requires an explicit endpoint and never assumes a default", () => {
+  assert.throws(
+    () => createBundlerTransport({ entryPoint }),
+    error => error instanceof InvalidSdkRequestError
+  );
+  // A malformed endpoint is rejected rather than silently rewritten to a default.
+  assert.throws(() => createBundlerTransport({ endpoint: "not-a-url", entryPoint }));
+});
+
+test("state rpc transport requires an explicit endpoint and never assumes a default", () => {
+  assert.throws(
+    () => createRpcStateTransport({}),
+    error => error instanceof InvalidSdkRequestError
+  );
+});
