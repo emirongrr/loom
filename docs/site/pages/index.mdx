@@ -27,15 +27,52 @@ identity direction, and a Kohaku-backed privacy SDK boundary.
 
 ## What Loom provides
 
-| Layer | Status | Purpose |
-| --- | --- | --- |
-| Immutable account core | Implemented | ERC-4337 validation, ERC-1271, direct execution, atomic calls, timelocks, and migration. |
-| Authentication | Implemented | Passkeys, P-256/WebAuthn, multi-passkey threshold/MFA, and ECDSA onboarding. |
-| Permissions | Implemented | Sessions bounded by target, selector, token, amount, time, use count, and paymaster. |
-| Recovery | Implemented, pre-audit | Guardian threshold, visible delay, expiry, cancellation, and complete validator-set replacement. |
-| Vault safety | Implemented, pre-audit | Daily spending path plus delayed long-term withdrawal path. |
-| Kohaku privacy SDK | Implemented boundary, pre-audit | Provider consent, metadata budgets, local scan state, shielded-pool wrapper, and Railgun profile boundary. |
-| Verified wallet client | Designed | Future light-client backed reads for balances, nonces, recovery, vaults, validators, and keystore state. |
+<style>{`
+  .loom-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 16px; margin-top: 24px; }
+  .loom-card { padding: 20px 22px; border-radius: 14px; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); background: color-mix(in srgb, currentColor 3%, transparent); transition: border-color 150ms ease, transform 150ms ease; }
+  .loom-card:hover { border-color: var(--vocs-color_borderAccent); transform: translateY(-2px); }
+  .loom-tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--vocs-color_textAccent) 14%, transparent); color: var(--vocs-color_textAccent); }
+  .loom-card-title { font-weight: 600; font-size: 15px; margin-top: 12px; }
+  .loom-card-desc { font-size: 14px; line-height: 1.55; opacity: 0.72; margin-top: 6px; }
+`}</style>
+
+<div className="loom-features">
+  <div className="loom-card">
+    <span className="loom-tag">Implemented</span>
+    <div className="loom-card-title">Immutable account core</div>
+    <div className="loom-card-desc">ERC-4337 validation, ERC-1271, direct execution, atomic calls, timelocks, and migration.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Implemented</span>
+    <div className="loom-card-title">Authentication</div>
+    <div className="loom-card-desc">Passkeys, P-256/WebAuthn, multi-passkey threshold/MFA, and ECDSA onboarding.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Implemented</span>
+    <div className="loom-card-title">Permissions</div>
+    <div className="loom-card-desc">Sessions bounded by target, selector, token, amount, time, use count, and paymaster.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Implemented · pre-audit</span>
+    <div className="loom-card-title">Recovery</div>
+    <div className="loom-card-desc">Guardian threshold, visible delay, expiry, cancellation, and complete validator-set replacement.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Implemented · pre-audit</span>
+    <div className="loom-card-title">Vault safety</div>
+    <div className="loom-card-desc">A daily spending path plus a delayed long-term withdrawal path.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Boundary · pre-audit</span>
+    <div className="loom-card-title">Kohaku privacy SDK</div>
+    <div className="loom-card-desc">Provider consent, metadata budgets, local scan state, shielded-pool wrapper, and Railgun profile boundary.</div>
+  </div>
+  <div className="loom-card">
+    <span className="loom-tag">Designed</span>
+    <div className="loom-card-title">Verified wallet client</div>
+    <div className="loom-card-desc">Future light-client backed reads for balances, nonces, recovery, vaults, validators, and keystore state.</div>
+  </div>
+</div>
 
 ## Principles
 
