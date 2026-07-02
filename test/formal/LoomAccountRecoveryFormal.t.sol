@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../../src/account/LoomAccount.sol";
 import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
@@ -27,8 +28,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         LoomAccount account = new LoomAccount(_entryPointAddress(), leaf, 1, keccak256("config"), modules);
         address[] memory oldValidators = new address[](1);
         oldValidators[0] = address(oldValidator);
-        RecoveryManager.GuardianApproval[] memory approvals = new RecoveryManager.GuardianApproval[](1);
-        approvals[0] = RecoveryManager.GuardianApproval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
         bytes32 newGuardianRoot = keccak256("new-guardians");
         recovery.proposeRecovery(
             address(account), oldValidators, address(newValidator), keccak256(bytes("")), newGuardianRoot, 1, approvals
@@ -59,8 +60,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         LoomAccount account = new LoomAccount(_entryPointAddress(), leaf, 1, keccak256("config"), modules);
         address[] memory oldValidators = new address[](1);
         oldValidators[0] = address(oldValidator);
-        RecoveryManager.GuardianApproval[] memory approvals = new RecoveryManager.GuardianApproval[](1);
-        approvals[0] = RecoveryManager.GuardianApproval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
         bytes32 newGuardianRoot = keccak256("new-guardians");
         recovery.proposeRecovery(
             address(account), oldValidators, address(newValidator), keccak256(bytes("")), newGuardianRoot, 1, approvals
@@ -100,8 +101,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
 
         address[] memory oldValidators = new address[](1);
         oldValidators[0] = address(oldValidator);
-        RecoveryManager.GuardianApproval[] memory approvals = new RecoveryManager.GuardianApproval[](1);
-        approvals[0] = RecoveryManager.GuardianApproval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
         recovery.proposeRecovery(
             address(account),
             oldValidators,

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../../src/account/LoomAccount.sol";
 import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";
@@ -82,10 +83,8 @@ contract LoomKeystoreSyncFormal is FormalAccountBase {
         _registerConfig(keystore, sync, address(account), newValidator);
         _propose(sync, keystore, account, oldValidator, newValidator);
 
-        KeystoreSyncRecoveryModule.GuardianApproval[] memory approvals =
-            new KeystoreSyncRecoveryModule.GuardianApproval[](1);
-        approvals[0] =
-            KeystoreSyncRecoveryModule.GuardianApproval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
         sync.cancelSyncWithGuardians(address(account), approvals);
 
         (,,,,,,, uint48 readyAt,,,) = sync.pendingSyncs(address(account));

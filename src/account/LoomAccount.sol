@@ -13,6 +13,7 @@ import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
+import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 
 contract LoomAccount is IERC1271, ILoomAccount {
     error OnlyEntryPoint();
@@ -53,14 +54,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint48 expiresAt;
         uint64 configVersion;
         uint64 nonce;
-    }
-
-    struct GuardianApproval {
-        address verifier;
-        bytes32 keyCommitment;
-        bytes32 salt;
-        bytes signature;
-        bytes32[] proof;
     }
 
     uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
@@ -551,7 +544,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     function guardianLeaf(address verifier, bytes32 keyCommitment, bytes32 salt) public view returns (bytes32) {
-        return keccak256(abi.encode(verifier, verifier.codehash, keyCommitment, salt));
+        return GuardianVerificationLib.guardianLeaf(verifier, keyCommitment, salt);
     }
 
     function freeze(
@@ -661,12 +654,14 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _cancelMigration(migration);
     }
 
-    function cancelMigrationWithGuardians(GuardianApproval[] calldata guardianApprovals) external {
+    function cancelMigrationWithGuardians(GuardianVerificationLib.Approval[] calldata guardianApprovals) external {
         PendingMigration memory migration = pendingMigration;
         if (migration.readyAt == 0) revert MigrationNotPending();
         bytes32 migrationId = migrationIdFor(migration);
         bytes32 digest = migrationCancelDigest(migrationId, migration.configVersion, migration.nonce);
-        if (!_guardianApproved(digest, guardianApprovals)) revert InvalidModule();
+        if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
+            revert InvalidModule();
+        }
         _cancelMigration(migration);
     }
 
@@ -681,9 +676,13 @@ contract LoomAccount is IERC1271, ILoomAccount {
     // can evict a hook immediately instead, since reaching threshold consensus
     // to remove (never install) a hook is itself the security bar - this
     // mirrors cancelMigrationWithGuardians, which is also immediate.
-    function evictHookWithGuardians(address hook, GuardianApproval[] calldata guardianApprovals) external {
+    function evictHookWithGuardians(address hook, GuardianVerificationLib.Approval[] calldata guardianApprovals)
+        external
+    {
         bytes32 digest = evictHookDigest(hook, configVersion);
-        if (!_guardianApproved(digest, guardianApprovals)) revert InvalidModule();
+        if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
+            revert InvalidModule();
+        }
         _uninstallModule(ModuleType.HOOK, hook, "");
         _advanceConfig(keccak256(abi.encode("HOOK_EVICTED_BY_GUARDIANS", hook)));
     }
@@ -944,29 +943,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
             recoveryAccount := mload(add(callData, 36))
         }
         return recoveryAccount == address(this);
-    }
-
-    function _guardianApproved(bytes32 digest, GuardianApproval[] calldata approvals) internal view returns (bool) {
-        uint256 threshold = guardianThreshold;
-        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_GUARDIAN_THRESHOLD) return false;
-
-        bytes32 previous = bytes32(0);
-        for (uint256 i; i < approvals.length; ++i) {
-            GuardianApproval calldata item = approvals[i];
-            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
-            bytes32 leaf = guardianLeaf(item.verifier, item.keyCommitment, item.salt);
-            if (leaf <= previous || item.proof.length > MAX_GUARDIAN_PROOF_LENGTH) return false;
-            previous = leaf;
-            if (!MerkleProof.verify(item.proof, guardianRoot, leaf)) return false;
-            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
-                bool valid
-            ) {
-                if (!valid) return false;
-            } catch {
-                return false;
-            }
-        }
-        return true;
     }
 
     function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {

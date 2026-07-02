@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../src/account/LoomAccount.sol";
 import {EthereumL1KeystoreVerifier} from "../src/keystore/EthereumL1KeystoreVerifier.sol";
@@ -366,17 +367,15 @@ contract KeystoreSyncTest {
         _registerConfig(keystore, sync, address(account), newValidator, initData, 2);
         bytes32 syncId = _propose(sync, keystore, account, oldValidator, newValidator, initData);
         bytes32 digest = sync.cancelDigest(address(account), syncId, account.configVersion(), 0);
-        KeystoreSyncRecoveryModule.GuardianApproval[] memory approvals = _guardianApprovals(digest);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
 
-        KeystoreSyncRecoveryModule.GuardianApproval[] memory missing =
-            new KeystoreSyncRecoveryModule.GuardianApproval[](1);
+        GuardianVerificationLib.Approval[] memory missing = new GuardianVerificationLib.Approval[](1);
         missing[0] = approvals[0];
         (bool rejectedMissing,) = address(sync)
             .call(abi.encodeCall(KeystoreSyncRecoveryModule.cancelSyncWithGuardians, (address(account), missing)));
         require(!rejectedMissing, "missing guardian threshold accepted");
 
-        KeystoreSyncRecoveryModule.GuardianApproval[] memory duplicate =
-            new KeystoreSyncRecoveryModule.GuardianApproval[](2);
+        GuardianVerificationLib.Approval[] memory duplicate = new GuardianVerificationLib.Approval[](2);
         duplicate[0] = approvals[0];
         duplicate[1] = approvals[0];
         (bool rejectedDuplicate,) = address(sync)
@@ -910,13 +909,10 @@ contract KeystoreSyncTest {
         return first <= second ? keccak256(abi.encodePacked(first, second)) : keccak256(abi.encodePacked(second, first));
     }
 
-    function _guardianApprovals(bytes32 digest)
-        internal
-        returns (KeystoreSyncRecoveryModule.GuardianApproval[] memory approvals)
-    {
+    function _guardianApprovals(bytes32 digest) internal returns (GuardianVerificationLib.Approval[] memory approvals) {
         bytes32 first = _guardianLeaf();
         bytes32 second = _secondGuardianLeaf();
-        approvals = new KeystoreSyncRecoveryModule.GuardianApproval[](2);
+        approvals = new GuardianVerificationLib.Approval[](2);
         if (first <= second) {
             approvals[0] = _approval(GUARDIAN_KEY, "guardian-salt", second, digest);
             approvals[1] = _approval(SECOND_GUARDIAN_KEY, "second-guardian-salt", first, digest);
@@ -928,12 +924,12 @@ contract KeystoreSyncTest {
 
     function _approval(uint256 privateKey, string memory saltText, bytes32 sibling, bytes32 digest)
         internal
-        returns (KeystoreSyncRecoveryModule.GuardianApproval memory approval)
+        returns (GuardianVerificationLib.Approval memory approval)
     {
         address guardian = vm.addr(privateKey);
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = sibling;
-        approval = KeystoreSyncRecoveryModule.GuardianApproval({
+        approval = GuardianVerificationLib.Approval({
             verifier: address(guardianVerifier),
             keyCommitment: keccak256(abi.encode(guardian)),
             salt: keccak256(bytes(saltText)),

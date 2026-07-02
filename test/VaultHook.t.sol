@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../src/account/LoomAccount.sol";
 import {VaultHook} from "../src/hooks/VaultHook.sol";
@@ -113,9 +114,9 @@ contract VaultHookTest {
         bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
         (,, uint64 version) = vault.pendingWithdrawals(address(account), withdrawalId);
         bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version);
-        VaultHook.GuardianApproval[] memory approvals = _guardianApprovals(digest);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
 
-        VaultHook.GuardianApproval[] memory missing = new VaultHook.GuardianApproval[](1);
+        GuardianVerificationLib.Approval[] memory missing = new GuardianVerificationLib.Approval[](1);
         missing[0] = approvals[0];
         (bool acceptedMissing,) = address(vault)
             .call(
@@ -123,7 +124,7 @@ contract VaultHookTest {
             );
         require(!acceptedMissing, "missing guardian threshold accepted");
 
-        VaultHook.GuardianApproval[] memory duplicate = new VaultHook.GuardianApproval[](2);
+        GuardianVerificationLib.Approval[] memory duplicate = new GuardianVerificationLib.Approval[](2);
         duplicate[0] = approvals[0];
         duplicate[1] = approvals[0];
         (bool acceptedDuplicate,) = address(vault)
@@ -482,10 +483,10 @@ contract VaultHookTest {
         return first <= second ? keccak256(abi.encodePacked(first, second)) : keccak256(abi.encodePacked(second, first));
     }
 
-    function _guardianApprovals(bytes32 digest) internal returns (VaultHook.GuardianApproval[] memory approvals) {
+    function _guardianApprovals(bytes32 digest) internal returns (GuardianVerificationLib.Approval[] memory approvals) {
         bytes32 first = _guardianLeaf();
         bytes32 second = _secondGuardianLeaf();
-        approvals = new VaultHook.GuardianApproval[](2);
+        approvals = new GuardianVerificationLib.Approval[](2);
         if (first <= second) {
             approvals[0] = _approval(GUARDIAN_KEY, "guardian-salt", second, digest);
             approvals[1] = _approval(SECOND_GUARDIAN_KEY, "second-guardian-salt", first, digest);
@@ -497,12 +498,12 @@ contract VaultHookTest {
 
     function _approval(uint256 privateKey, string memory saltText, bytes32 sibling, bytes32 digest)
         internal
-        returns (VaultHook.GuardianApproval memory approval)
+        returns (GuardianVerificationLib.Approval memory approval)
     {
         address guardian = vm.addr(privateKey);
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = sibling;
-        approval = VaultHook.GuardianApproval({
+        approval = GuardianVerificationLib.Approval({
             verifier: address(guardianVerifier),
             keyCommitment: keccak256(abi.encode(guardian)),
             salt: keccak256(bytes(saltText)),
