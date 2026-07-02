@@ -284,7 +284,9 @@ contract VaultHook is ILoomHook {
         for (uint256 i; i < approvals.length; ++i) {
             GuardianApproval calldata item = approvals[i];
             if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
-            bytes32 leaf = keccak256(abi.encode(item.verifier, item.verifier.codehash, item.keyCommitment, item.salt));
+            // Use the account's guardianLeaf so this cancel path and the account's own
+            // freeze/recovery share one leaf definition and cannot drift.
+            bytes32 leaf = loom.guardianLeaf(item.verifier, item.keyCommitment, item.salt);
             if (leaf <= previous || item.proof.length > MAX_GUARDIAN_PROOF_LENGTH) return false;
             previous = leaf;
             if (!MerkleProof.verify(item.proof, root, leaf)) return false;

@@ -21,6 +21,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     error InvalidPeriod();
     error LimitExceeded();
     error CounterpartyNotAllowed();
+    error ConfigTimelockRequired();
 
     struct Policy {
         uint128 maxPerCall;
@@ -50,6 +51,9 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     bytes32 private constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
 
     function setPolicy(address target, bytes4 selector, Policy calldata policy) external {
+        // Assert the timelock directly rather than relying on notifyConfigChange's
+        // gate, so the delay requirement does not depend on call order.
+        if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
         if (policy.period == 0) revert InvalidPeriod();
         bytes32 id = policyId(target, selector);
         policies[msg.sender][id] = policy;
@@ -58,6 +62,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     }
 
     function removePolicy(address target, bytes4 selector) external {
+        if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
         bytes32 id = policyId(target, selector);
         delete policies[msg.sender][id];
         ILoomAccount(msg.sender).notifyConfigChange(keccak256(abi.encode("POLICY_REMOVE", id)));
