@@ -15,10 +15,12 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
     error ConfigTimelockRequired();
     error InvalidPolicyHook();
 
-    uint256 public constant MAX_AUTHENTICATOR_DATA_LENGTH = 1024;
-    uint256 public constant MAX_CLIENT_DATA_JSON_LENGTH = 1024;
-    uint256 public constant MAX_ORIGIN_LENGTH = 256;
-    uint256 public constant P256_HALF_ORDER = 0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8;
+    // Re-exported from WebAuthnP256 (the single source of truth that enforces
+    // them) so external callers and tests read the same bounds the library applies.
+    uint256 public constant MAX_AUTHENTICATOR_DATA_LENGTH = WebAuthnP256.MAX_AUTHENTICATOR_DATA_LENGTH;
+    uint256 public constant MAX_CLIENT_DATA_JSON_LENGTH = WebAuthnP256.MAX_CLIENT_DATA_JSON_LENGTH;
+    uint256 public constant MAX_ORIGIN_LENGTH = WebAuthnP256.MAX_ORIGIN_LENGTH;
+    uint256 public constant P256_HALF_ORDER = WebAuthnP256.P256_HALF_ORDER;
 
     struct PublicKey {
         bytes32 x;
