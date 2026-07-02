@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../src/account/LoomAccount.sol";
 import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
@@ -99,7 +100,7 @@ contract RecoveryManagerTest {
 
         address[] memory oldValidators = new address[](1);
         oldValidators[0] = address(oldValidator);
-        RecoveryManager.GuardianApproval[] memory approvals = new RecoveryManager.GuardianApproval[](0);
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](0);
         (bool accepted,) = address(recovery)
             .call(
                 abi.encodeCall(
@@ -124,7 +125,7 @@ contract RecoveryManagerTest {
         bytes memory initData = "";
         address[] memory subset = new address[](1);
         subset[0] = address(oldValidator);
-        RecoveryManager.GuardianApproval[] memory approvals = _proposalApprovals(subset, initData, 0, 1);
+        GuardianVerificationLib.Approval[] memory approvals = _proposalApprovals(subset, initData, 0, 1);
         (bool partialAccepted,) = address(recovery)
             .call(
                 abi.encodeCall(
@@ -166,7 +167,7 @@ contract RecoveryManagerTest {
     function testGuardianApprovalBindsSaltVerifierCodeAndKeyCommitment() public {
         bytes memory initData = "";
         address[] memory validators = _sortedValidators();
-        RecoveryManager.GuardianApproval[] memory approvals = _proposalApprovals(validators, initData, 0, 1);
+        GuardianVerificationLib.Approval[] memory approvals = _proposalApprovals(validators, initData, 0, 1);
         approvals[0].salt = keccak256("wrong-salt");
         (bool wrongSalt,) = address(recovery)
             .call(
@@ -286,7 +287,7 @@ contract RecoveryManagerTest {
                         keccak256(bytes("")),
                         NEW_GUARDIAN_ROOT,
                         uint8(1),
-                        new RecoveryManager.GuardianApproval[](0)
+                        new GuardianVerificationLib.Approval[](0)
                     )
                 )
             );
@@ -334,7 +335,7 @@ contract RecoveryManagerTest {
     function testRecoveryRequiresFreshValidGuardianConfiguration() public {
         address[] memory validators = _sortedValidators();
         bytes memory initData = "";
-        RecoveryManager.GuardianApproval[] memory approvals =
+        GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovals(validators, initData, 0, account.configVersion());
 
         require(!_tryPropose(validators, initData, account.guardianRoot(), 1, approvals), "same guardian root accepted");
@@ -350,7 +351,7 @@ contract RecoveryManagerTest {
         bytes memory initData = "";
         address[] memory validators = _sortedValidators();
         _propose(initData);
-        RecoveryManager.GuardianApproval[] memory approvals =
+        GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovals(validators, initData, 0, account.configVersion());
         require(!_tryPropose(validators, initData, NEW_GUARDIAN_ROOT, 1, approvals), "second pending recovery accepted");
 
@@ -372,14 +373,14 @@ contract RecoveryManagerTest {
     function testGuardianApprovalRejectsMalformedAndInvalidSignature() public {
         bytes memory initData = "";
         address[] memory validators = _sortedValidators();
-        RecoveryManager.GuardianApproval[] memory approvals =
+        GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovals(validators, initData, 0, account.configVersion());
 
         approvals[0].keyCommitment = bytes32(0);
         require(!_tryPropose(validators, initData, NEW_GUARDIAN_ROOT, 1, approvals), "zero commitment accepted");
 
         approvals = _proposalApprovals(validators, initData, 0, account.configVersion());
-        approvals[0].proof = new bytes32[](recovery.MAX_PROOF_LENGTH() + 1);
+        approvals[0].proof = new bytes32[](GuardianVerificationLib.MAX_PROOF_LENGTH + 1);
         require(!_tryPropose(validators, initData, NEW_GUARDIAN_ROOT, 1, approvals), "oversized proof accepted");
 
         approvals = _proposalApprovals(validators, initData, 0, account.configVersion());
@@ -390,7 +391,7 @@ contract RecoveryManagerTest {
     function _propose(bytes memory initData) internal returns (bytes32) {
         address[] memory validators = _sortedValidators();
         uint64 nonce = recovery.recoveryNonces(address(account));
-        RecoveryManager.GuardianApproval[] memory approvals =
+        GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovals(validators, initData, nonce, account.configVersion());
         return recovery.proposeRecovery(
             address(account), validators, address(newValidator), keccak256(initData), NEW_GUARDIAN_ROOT, 1, approvals
@@ -399,7 +400,7 @@ contract RecoveryManagerTest {
 
     function _proposalApprovals(address[] memory validators, bytes memory initData, uint64 nonce, uint64 version)
         internal
-        returns (RecoveryManager.GuardianApproval[] memory)
+        returns (GuardianVerificationLib.Approval[] memory)
     {
         bytes32 digest = recovery.proposalDigest(
             address(account),
@@ -414,9 +415,9 @@ contract RecoveryManagerTest {
         return _guardianApprovals(digest);
     }
 
-    function _guardianApprovals(bytes32 digest) internal returns (RecoveryManager.GuardianApproval[] memory approvals) {
-        approvals = new RecoveryManager.GuardianApproval[](1);
-        approvals[0] = RecoveryManager.GuardianApproval({
+    function _guardianApprovals(bytes32 digest) internal returns (GuardianVerificationLib.Approval[] memory approvals) {
+        approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval({
             verifier: address(guardianVerifier),
             keyCommitment: keyCommitment,
             salt: guardianSalt,
@@ -435,7 +436,7 @@ contract RecoveryManagerTest {
         bytes memory initData,
         bytes32 newGuardianRoot,
         uint8 newGuardianThreshold,
-        RecoveryManager.GuardianApproval[] memory approvals
+        GuardianVerificationLib.Approval[] memory approvals
     ) internal returns (bool ok) {
         (ok,) = address(recovery)
             .call(

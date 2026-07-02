@@ -3,8 +3,7 @@ pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomModule} from "../interfaces/ILoomModule.sol";
-import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
-import {MerkleProof} from "../libraries/MerkleProof.sol";
+import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 
 contract RecoveryManager is ILoomModule {
@@ -26,18 +25,8 @@ contract RecoveryManager is ILoomModule {
         uint64 nonce;
     }
 
-    struct GuardianApproval {
-        address verifier;
-        bytes32 keyCommitment;
-        bytes32 salt;
-        bytes signature;
-        bytes32[] proof;
-    }
-
     uint48 public constant RECOVERY_DELAY = 3 days;
     uint48 public constant RECOVERY_WINDOW = 7 days;
-    uint256 public constant MAX_SIGNATURES = 32;
-    uint256 public constant MAX_PROOF_LENGTH = 32;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
     bytes32 public constant EIP712_DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -70,7 +59,7 @@ contract RecoveryManager is ILoomModule {
         bytes32 initDataHash,
         bytes32 newGuardianRoot,
         uint8 newGuardianThreshold,
-        GuardianApproval[] calldata guardianApprovals
+        GuardianVerificationLib.Approval[] calldata guardianApprovals
     ) external returns (bytes32 recoveryId) {
         if (pendingRecoveries[account].readyAt != 0) {
             revert RecoveryAlreadyPending();
@@ -97,7 +86,12 @@ contract RecoveryManager is ILoomModule {
             configVersion,
             nonce
         );
-        if (!_guardianApproved(account, digest, guardianApprovals)) revert InvalidRecovery();
+        if (!GuardianVerificationLib.approved(
+                ILoomAccount(account).guardianRoot(),
+                ILoomAccount(account).guardianThreshold(),
+                digest,
+                guardianApprovals
+            )) revert InvalidRecovery();
 
         recoveryId = keccak256(
             abi.encode(
@@ -135,12 +129,18 @@ contract RecoveryManager is ILoomModule {
         _cancel(account, pending);
     }
 
-    function cancelRecoveryWithGuardians(address account, GuardianApproval[] calldata guardianApprovals) external {
+    function cancelRecoveryWithGuardians(address account, GuardianVerificationLib.Approval[] calldata guardianApprovals)
+        external
+    {
         PendingRecovery memory pending = pendingRecoveries[account];
         if (pending.readyAt == 0) revert InvalidRecovery();
         bytes32 recoveryId = recoveryIdFor(account, pending);
         bytes32 digest = cancelDigest(account, recoveryId, pending.configVersion, pending.nonce);
-        if (!_guardianApproved(account, digest, guardianApprovals)) revert UnauthorizedCancellation();
+        ILoomAccount loom = ILoomAccount(account);
+        if (!GuardianVerificationLib.approved(loom.guardianRoot(), loom.guardianThreshold(), digest, guardianApprovals))
+        {
+            revert UnauthorizedCancellation();
+        }
         _cancel(account, pending);
     }
 
@@ -226,37 +226,6 @@ contract RecoveryManager is ILoomModule {
         delete pendingRecoveries[account];
         recoveryNonces[account] = pending.nonce + 1;
         emit RecoveryCancelled(account, recoveryId);
-    }
-
-    function _guardianApproved(address account, bytes32 digest, GuardianApproval[] calldata approvals)
-        internal
-        view
-        returns (bool)
-    {
-        ILoomAccount loom = ILoomAccount(account);
-        uint256 threshold = loom.guardianThreshold();
-        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_SIGNATURES) return false;
-
-        bytes32 root = loom.guardianRoot();
-        bytes32 previous = bytes32(0);
-        for (uint256 i; i < approvals.length; ++i) {
-            GuardianApproval calldata item = approvals[i];
-            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
-            // Share the account's guardian leaf definition so recovery approvals and
-            // the account's own freeze/recovery cannot drift.
-            bytes32 leaf = loom.guardianLeaf(item.verifier, item.keyCommitment, item.salt);
-            if (leaf <= previous || item.proof.length > MAX_PROOF_LENGTH) return false;
-            previous = leaf;
-            if (!MerkleProof.verify(item.proof, root, leaf)) return false;
-            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
-                bool valid
-            ) {
-                if (!valid) return false;
-            } catch {
-                return false;
-            }
-        }
-        return true;
     }
 
     function _validCompleteValidatorSet(address account, address[] calldata validators) internal view returns (bool) {

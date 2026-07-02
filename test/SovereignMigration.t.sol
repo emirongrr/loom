@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../src/account/LoomAccount.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
@@ -145,7 +146,7 @@ contract SovereignMigrationTest {
         require(!blocked, "reverting hook did not block normal execution");
 
         bytes32 digest = source.evictHookDigest(address(hook), source.configVersion());
-        LoomAccount.GuardianApproval[] memory single = new LoomAccount.GuardianApproval[](1);
+        GuardianVerificationLib.Approval[] memory single = new GuardianVerificationLib.Approval[](1);
         single[0] = _approval(source, GUARDIAN_KEY, "guardian-salt", _secondGuardianLeaf(), digest);
         (bool acceptedSingle,) =
             address(source).call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook), single)));
@@ -431,14 +432,14 @@ contract SovereignMigrationTest {
         bytes32 migrationId = source.migrationIdFor(pending);
         bytes32 digest = source.migrationCancelDigest(migrationId, pending.configVersion, pending.nonce);
 
-        LoomAccount.GuardianApproval[] memory missing = new LoomAccount.GuardianApproval[](1);
-        LoomAccount.GuardianApproval[] memory approvals = _guardianApprovals(source, digest);
+        GuardianVerificationLib.Approval[] memory missing = new GuardianVerificationLib.Approval[](1);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(source, digest);
         missing[0] = approvals[0];
         (bool acceptedMissing,) =
             address(source).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (missing)));
         require(!acceptedMissing, "missing guardian threshold accepted");
 
-        LoomAccount.GuardianApproval[] memory duplicate = new LoomAccount.GuardianApproval[](2);
+        GuardianVerificationLib.Approval[] memory duplicate = new GuardianVerificationLib.Approval[](2);
         duplicate[0] = approvals[0];
         duplicate[1] = approvals[0];
         (bool acceptedDuplicate,) =
@@ -627,11 +628,11 @@ contract SovereignMigrationTest {
 
     function _guardianApprovals(LoomAccount account, bytes32 digest)
         internal
-        returns (LoomAccount.GuardianApproval[] memory approvals)
+        returns (GuardianVerificationLib.Approval[] memory approvals)
     {
         bytes32 first = _guardianLeaf();
         bytes32 second = _secondGuardianLeaf();
-        approvals = new LoomAccount.GuardianApproval[](2);
+        approvals = new GuardianVerificationLib.Approval[](2);
         if (first <= second) {
             approvals[0] = _approval(account, GUARDIAN_KEY, "guardian-salt", second, digest);
             approvals[1] = _approval(account, SECOND_GUARDIAN_KEY, "second-guardian-salt", first, digest);
@@ -643,12 +644,12 @@ contract SovereignMigrationTest {
 
     function _approval(LoomAccount, uint256 privateKey, string memory saltText, bytes32 sibling, bytes32 digest)
         internal
-        returns (LoomAccount.GuardianApproval memory approval)
+        returns (GuardianVerificationLib.Approval memory approval)
     {
         address guardian = vm.addr(privateKey);
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = sibling;
-        approval = LoomAccount.GuardianApproval({
+        approval = GuardianVerificationLib.Approval({
             verifier: address(guardianVerifier),
             keyCommitment: keccak256(abi.encode(guardian)),
             salt: keccak256(bytes(saltText)),

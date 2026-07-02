@@ -2,10 +2,9 @@
 pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
-import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
 import {ILoomHook} from "../interfaces/ILoomHook.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
-import {MerkleProof} from "../libraries/MerkleProof.sol";
+import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 
 contract VaultHook is ILoomHook {
@@ -39,17 +38,7 @@ contract VaultHook is ILoomHook {
         uint64 configVersion;
     }
 
-    struct GuardianApproval {
-        address verifier;
-        bytes32 keyCommitment;
-        bytes32 salt;
-        bytes signature;
-        bytes32[] proof;
-    }
-
     uint48 public constant MAX_WITHDRAWAL_WINDOW = 30 days;
-    uint256 public constant MAX_GUARDIAN_THRESHOLD = 32;
-    uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
     bytes32 public constant EIP712_DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant CANCEL_WITHDRAWAL_TYPEHASH =
@@ -128,12 +117,16 @@ contract VaultHook is ILoomHook {
     function cancelVaultWithdrawalWithGuardians(
         address account,
         bytes32 withdrawalId,
-        GuardianApproval[] calldata guardianApprovals
+        GuardianVerificationLib.Approval[] calldata guardianApprovals
     ) external {
         PendingWithdrawal memory pending = pendingWithdrawals[account][withdrawalId];
         if (pending.readyAt == 0) revert WithdrawalNotPending();
         bytes32 digest = cancelWithdrawalDigest(account, withdrawalId, pending.configVersion);
-        if (!_guardianApproved(account, digest, guardianApprovals)) revert InvalidWithdrawal();
+        ILoomAccount loom = ILoomAccount(account);
+        if (!GuardianVerificationLib.approved(loom.guardianRoot(), loom.guardianThreshold(), digest, guardianApprovals))
+        {
+            revert InvalidWithdrawal();
+        }
         _cancel(account, withdrawalId);
     }
 
@@ -268,37 +261,6 @@ contract VaultHook is ILoomHook {
         if (pendingWithdrawals[account][withdrawalId].readyAt == 0) revert WithdrawalNotPending();
         delete pendingWithdrawals[account][withdrawalId];
         emit VaultWithdrawalCancelled(account, withdrawalId);
-    }
-
-    function _guardianApproved(address account, bytes32 digest, GuardianApproval[] calldata approvals)
-        internal
-        view
-        returns (bool)
-    {
-        ILoomAccount loom = ILoomAccount(account);
-        uint256 threshold = loom.guardianThreshold();
-        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_GUARDIAN_THRESHOLD) return false;
-
-        bytes32 root = loom.guardianRoot();
-        bytes32 previous = bytes32(0);
-        for (uint256 i; i < approvals.length; ++i) {
-            GuardianApproval calldata item = approvals[i];
-            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
-            // Use the account's guardianLeaf so this cancel path and the account's own
-            // freeze/recovery share one leaf definition and cannot drift.
-            bytes32 leaf = loom.guardianLeaf(item.verifier, item.keyCommitment, item.salt);
-            if (leaf <= previous || item.proof.length > MAX_GUARDIAN_PROOF_LENGTH) return false;
-            previous = leaf;
-            if (!MerkleProof.verify(item.proof, root, leaf)) return false;
-            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
-                bool valid
-            ) {
-                if (!valid) return false;
-            } catch {
-                return false;
-            }
-        }
-        return true;
     }
 
     function _domainSeparator() internal view returns (bytes32) {

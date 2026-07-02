@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../../src/account/LoomAccount.sol";
 import {VaultHook} from "../../src/hooks/VaultHook.sol";
@@ -67,8 +68,8 @@ contract LoomVaultHookFormal is FormalAccountBase {
         bytes32 withdrawalId = vault.withdrawalIdFor(
             address(account), address(token), 0, keccak256(transferCall), account.configVersion()
         );
-        VaultHook.GuardianApproval[] memory approvals = new VaultHook.GuardianApproval[](1);
-        approvals[0] = VaultHook.GuardianApproval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
 
         vault.cancelVaultWithdrawalWithGuardians(address(account), withdrawalId, approvals);
 

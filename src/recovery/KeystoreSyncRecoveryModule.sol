@@ -2,10 +2,10 @@
 pragma solidity 0.8.35;
 
 import {IKeystoreProofVerifier} from "../interfaces/IKeystoreProofVerifier.sol";
-import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomKeystore} from "../interfaces/ILoomKeystore.sol";
 import {ILoomModule} from "../interfaces/ILoomModule.sol";
+import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 
@@ -31,18 +31,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         uint64 nonce;
     }
 
-    struct GuardianApproval {
-        address verifier;
-        bytes32 keyCommitment;
-        bytes32 salt;
-        bytes signature;
-        bytes32[] proof;
-    }
-
     uint48 public constant SYNC_DELAY = 3 days;
     uint48 public constant SYNC_WINDOW = 7 days;
-    uint256 public constant MAX_SIGNATURES = 32;
-    uint256 public constant MAX_PROOF_LENGTH = 32;
     uint256 public constant MAX_VALIDATORS = 16;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
     bytes32 public constant SINGLE_VALIDATOR_ROOT_TYPEHASH =
@@ -150,12 +140,18 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         _cancel(account, pending);
     }
 
-    function cancelSyncWithGuardians(address account, GuardianApproval[] calldata guardianApprovals) external {
+    function cancelSyncWithGuardians(address account, GuardianVerificationLib.Approval[] calldata guardianApprovals)
+        external
+    {
         PendingSync memory pending = pendingSyncs[account];
         if (pending.readyAt == 0) revert SyncNotPending();
         bytes32 syncId = syncIdFor(account, pending);
         bytes32 digest = cancelDigest(account, syncId, pending.accountConfigVersion, pending.nonce);
-        if (!_guardianApproved(account, digest, guardianApprovals)) revert UnauthorizedCancellation();
+        ILoomAccount loom = ILoomAccount(account);
+        if (!GuardianVerificationLib.approved(loom.guardianRoot(), loom.guardianThreshold(), digest, guardianApprovals))
+        {
+            revert UnauthorizedCancellation();
+        }
         _cancel(account, pending);
     }
 
@@ -237,37 +233,6 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         delete pendingSyncs[account];
         syncNonces[account] = pending.nonce + 1;
         emit KeystoreSyncCancelled(account, syncId);
-    }
-
-    function _guardianApproved(address account, bytes32 digest, GuardianApproval[] calldata approvals)
-        internal
-        view
-        returns (bool)
-    {
-        ILoomAccount loom = ILoomAccount(account);
-        uint256 threshold = loom.guardianThreshold();
-        if (threshold == 0 || approvals.length < threshold || approvals.length > MAX_SIGNATURES) return false;
-
-        bytes32 root = loom.guardianRoot();
-        bytes32 previous = bytes32(0);
-        for (uint256 i; i < approvals.length; ++i) {
-            GuardianApproval calldata item = approvals[i];
-            if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
-            // Share the account's guardian leaf definition so sync approvals and the
-            // account's own freeze/recovery cannot drift.
-            bytes32 leaf = loom.guardianLeaf(item.verifier, item.keyCommitment, item.salt);
-            if (leaf <= previous || item.proof.length > MAX_PROOF_LENGTH) return false;
-            previous = leaf;
-            if (!MerkleProof.verify(item.proof, root, leaf)) return false;
-            try IGuardianVerifier(item.verifier).verify(item.keyCommitment, digest, item.signature) returns (
-                bool valid
-            ) {
-                if (!valid) return false;
-            } catch {
-                return false;
-            }
-        }
-        return true;
     }
 
     function _validCompleteValidatorSet(address account, address[] calldata validators) internal view returns (bool) {
