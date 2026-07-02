@@ -243,6 +243,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
             validationData = ValidationDataLib.SIG_VALIDATION_FAILED;
         }
         if (missingAccountFunds != 0) {
+            // Best-effort EntryPoint prefund. The EntryPoint enforces sufficient
+            // payment and reverts the operation if this account underpays, so the
+            // transfer result is intentionally not asserted here.
             (bool sent,) = payable(msg.sender).call{value: missingAccountFunds}("");
             sent;
         }
@@ -448,24 +451,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _modules[moduleTypeId][module] = false;
         if (moduleTypeId == ModuleType.VALIDATOR) --_validatorCount;
         if (moduleTypeId == ModuleType.RECOVERY) --_recoveryModuleCount;
-        if (moduleTypeId == ModuleType.HOOK) {
-            for (uint256 i; i < _hooks.length; ++i) {
-                if (_hooks[i] == module) {
-                    _hooks[i] = _hooks[_hooks.length - 1];
-                    _hooks.pop();
-                    break;
-                }
-            }
-        }
-        if (moduleTypeId == ModuleType.VALIDATOR) {
-            for (uint256 i; i < _validators.length; ++i) {
-                if (_validators[i] == module) {
-                    _validators[i] = _validators[_validators.length - 1];
-                    _validators.pop();
-                    break;
-                }
-            }
-        }
+        if (moduleTypeId == ModuleType.HOOK) _removeFromArray(_hooks, module);
+        if (moduleTypeId == ModuleType.VALIDATOR) _removeFromArray(_validators, module);
         if (deInitData.length != 0) {
             (bool ok, bytes memory result) = module.call(deInitData);
             if (!ok) revert CallFailed(result);
@@ -477,14 +464,21 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (!_modules[ModuleType.VALIDATOR][module]) revert InvalidModule();
         _modules[ModuleType.VALIDATOR][module] = false;
         --_validatorCount;
-        for (uint256 i; i < _validators.length; ++i) {
-            if (_validators[i] == module) {
-                _validators[i] = _validators[_validators.length - 1];
-                _validators.pop();
+        _removeFromArray(_validators, module);
+        emit ModuleUninstalled(ModuleType.VALIDATOR, module);
+    }
+
+    /// @dev Removes the first occurrence of `value` from `array` with a swap-and-pop.
+    /// Order is not preserved, which is fine for the validator and hook sets.
+    function _removeFromArray(address[] storage array, address value) internal {
+        uint256 length = array.length;
+        for (uint256 i; i < length; ++i) {
+            if (array[i] == value) {
+                array[i] = array[length - 1];
+                array.pop();
                 break;
             }
         }
-        emit ModuleUninstalled(ModuleType.VALIDATOR, module);
     }
 
     function _validateCompleteValidatorSet(address[] calldata validators) internal view {
@@ -711,6 +705,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (migration.readyAt == 0 || keccak256(abi.encode(calls)) != migration.callsHash) {
             revert InvalidMigration();
         }
+        if (calls.length == 0) revert EmptyBatch();
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < frozenUntil) revert AccountFrozen();
@@ -735,7 +730,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bytes memory executionCalldata = abi.encode(calls);
         bytes memory accountCall = abi.encodeCall(this.execute, (BATCH_EXECUTION_MODE, executionCalldata));
         (address[] memory checkedHooks, bytes[] memory hookData) = _preCheck(msg.sender, accountCall);
-        if (calls.length == 0) revert EmptyBatch();
         for (uint256 i; i < calls.length; ++i) {
             _execute(calls[i]);
         }
