@@ -33,9 +33,7 @@ contract LoomAccountFactory {
         if (msg.sender != address(entryPoint.senderCreator())) revert InvalidFactory();
         address predicted = getAddress(salt, guardianRoot, guardianThreshold, configHash, modules);
         if (predicted.code.length != 0) return LoomAccount(payable(predicted));
-        bytes memory initData = abi.encodeCall(
-            LoomAccount.initialize, (address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
-        );
+        bytes memory initData = _initData(guardianRoot, guardianThreshold, configHash, modules);
         account = LoomAccount(payable(address(new LoomAccountProxy{salt: salt}(accountImplementation, initData))));
         registry.registerAccount(address(account));
         emit LoomAccountCreated(address(account));
@@ -48,14 +46,25 @@ contract LoomAccountFactory {
         bytes32 configHash,
         LoomAccount.ModuleInit[] calldata modules
     ) public view returns (address) {
-        bytes memory initData = abi.encodeCall(
-            LoomAccount.initialize, (address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
-        );
+        bytes memory initData = _initData(guardianRoot, guardianThreshold, configHash, modules);
         bytes memory initCode =
             abi.encodePacked(type(LoomAccountProxy).creationCode, abi.encode(accountImplementation, initData));
         return
             address(
                 uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(initCode)))))
             );
+    }
+
+    /// @dev Single source for the account initializer calldata so createAccount and
+    /// getAddress cannot diverge (a divergence would break counterfactual address prediction).
+    function _initData(
+        bytes32 guardianRoot,
+        uint8 guardianThreshold,
+        bytes32 configHash,
+        LoomAccount.ModuleInit[] calldata modules
+    ) private view returns (bytes memory) {
+        return abi.encodeCall(
+            LoomAccount.initialize, (address(entryPoint), guardianRoot, guardianThreshold, configHash, modules)
+        );
     }
 }

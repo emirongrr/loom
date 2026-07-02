@@ -10,7 +10,6 @@ library ExecutionLib {
 
     bytes1 internal constant CALLTYPE_SINGLE = 0x00;
     bytes1 internal constant CALLTYPE_BATCH = 0x01;
-    bytes1 internal constant EXECTYPE_DEFAULT = 0x00;
 
     function mode(bytes32 executionMode) internal pure returns (bytes1 callType, bytes1 execType) {
         // ERC-7579 stores callType and execType in the first two bytes.
