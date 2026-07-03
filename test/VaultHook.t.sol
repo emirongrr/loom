@@ -8,6 +8,7 @@ import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockPayableERC20} from "./mocks/MockPayableERC20.sol";
 import {MockTarget} from "./mocks/MockTarget.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 
@@ -389,6 +390,58 @@ contract VaultHookTest {
                 )
             );
         require(!rejectedByToken, "mock token unexpectedly allowed transferFrom");
+    }
+
+    function testEthAttachedTokenCallCannotReclassifyProtectedTokenSpend() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(1);
+        MockPayableERC20 token = new MockPayableERC20();
+        token.mint(address(account), 100);
+        payable(address(account)).transfer(1 ether);
+        // Token policy only; deliberately no ETH policy, so a reclassified
+        // spend would be entirely unmetered.
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+
+        // Attaching 1 wei to a transfer on a payable token must not dodge the
+        // token policy: even an amount under the daily limit is metered as
+        // unbounded and requires the scheduled withdrawal path.
+        bytes memory smallTransfer = abi.encodeCall(MockPayableERC20.transfer, (address(0xBEEF), 5));
+        (bool smallMixed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(token), 1, smallTransfer)))
+                )
+            );
+        require(!smallMixed, "ETH-attached token call bypassed token policy");
+
+        bytes memory largeTransfer = abi.encodeCall(MockPayableERC20.transfer, (address(0xBEEF), 50));
+        (bool largeMixed,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(token), 1, largeTransfer)))
+                )
+            );
+        require(!largeMixed, "ETH-attached over-limit token call bypassed token policy");
+        require(token.balanceOf(address(0xBEEF)) == 0, "protected token moved without withdrawal");
+
+        // The mixed spend is delayed and visible, not permanently blocked: the
+        // scheduled withdrawal path still executes it exactly.
+        bytes memory withdrawal =
+            abi.encodeCall(VaultHook.scheduleVaultWithdrawal, (address(token), 1, largeTransfer, uint48(7 days)));
+        _schedule(account, address(vault), withdrawal, account.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(vault), 0, withdrawal);
+
+        _scheduleValue(account, address(token), 1, largeTransfer, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + 2 days);
+        account.executeScheduled(address(token), 1, largeTransfer);
+        require(token.balanceOf(address(0xBEEF)) == 50, "scheduled mixed withdrawal failed");
+
+        // A plain token transfer under the daily limit still flows freely.
+        bytes memory plainTransfer = abi.encodeCall(MockPayableERC20.transfer, (address(0xBEEF), 5));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(token), 0, plainTransfer)));
+        require(token.balanceOf(address(0xBEEF)) == 55, "plain token transfer under limit blocked");
     }
 
     function _accountWithVault(uint8 guardianThreshold) internal returns (LoomAccount account, VaultHook vault) {

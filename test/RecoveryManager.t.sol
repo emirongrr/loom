@@ -249,6 +249,47 @@ contract RecoveryManagerTest {
         require(readyAt == 0, "frozen cancellation failed");
     }
 
+    /// @dev Adversarial race: a compromised primary validator schedules a
+    /// guardian-config rewrite whose config-version bump would invalidate the
+    /// pending guardian recovery (both paths take 3 days, so without a defense
+    /// the attacker wins by executing first - see
+    /// testConfigChangeInvalidatesAndExpiryBlocksRecovery). A single guardian
+    /// freeze covering the ready moment blocks executeScheduled but not
+    /// recovery execution, so the guardians win the race, and the recovery's
+    /// own config advance permanently invalidates the attacker's operation.
+    function testGuardianFreezeProtectsRecoveryFromScheduledConfigBump() public {
+        bytes memory initData = "";
+        address[] memory validators = _sortedValidators();
+
+        bytes memory bump = abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("attacker-root"), uint8(1)));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, bump, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+
+        _propose(initData);
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+
+        // FREEZE_DURATION is 2 days, so freezing one day before readiness
+        // covers the moment both operations become executable.
+        vm.warp(readyAt - 1 days);
+        _freeze();
+
+        vm.warp(readyAt);
+        (bool bumped,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, bump)));
+        require(!bumped, "frozen account executed the scheduled config bump");
+
+        recovery.executeRecovery(address(account), validators, initData);
+        require(account.validatorCount() == 1, "recovery did not replace validators during freeze");
+        require(account.validatorAt(0) == address(newValidator), "new validator missing after race");
+        require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "guardian root not rotated during freeze");
+
+        vm.warp(uint256(account.frozenUntil()) + 1);
+        (bool late,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, bump)));
+        require(!late, "stale scheduled config bump executed after recovery");
+        require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "attacker rotated guardians after recovery");
+    }
+
     function testConfigChangeInvalidatesAndExpiryBlocksRecovery() public {
         bytes memory initData = "";
         address[] memory validators = _sortedValidators();
@@ -424,6 +465,25 @@ contract RecoveryManagerTest {
             signature: _guardianSignature(digest),
             proof: new bytes32[](0)
         });
+    }
+
+    function _freeze() internal {
+        uint256 freezeNonce = account.freezeNonces(guardianLeaf);
+        bytes32 freezeStruct =
+            keccak256(abi.encode(account.FREEZE_TYPEHASH(), guardianLeaf, freezeNonce, account.configVersion()));
+        bytes32 domain = keccak256(
+            abi.encode(
+                account.EIP712_DOMAIN_TYPEHASH(),
+                keccak256("LoomAccount"),
+                keccak256("1"),
+                block.chainid,
+                address(account)
+            )
+        );
+        bytes32 freezeDigest = keccak256(abi.encodePacked("\x19\x01", domain, freezeStruct));
+        account.freeze(
+            address(guardianVerifier), keyCommitment, guardianSalt, new bytes32[](0), _guardianSignature(freezeDigest)
+        );
     }
 
     function _guardianSignature(bytes32 digest) internal returns (bytes memory) {
