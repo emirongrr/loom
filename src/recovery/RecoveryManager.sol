@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomModule} from "../interfaces/ILoomModule.sol";
+import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 
@@ -28,8 +29,7 @@ contract RecoveryManager is ILoomModule {
     uint48 public constant RECOVERY_DELAY = 3 days;
     uint48 public constant RECOVERY_WINDOW = 7 days;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant PROPOSE_TYPEHASH = keccak256(
         "ProposeRecovery(address account,bytes32 oldValidatorsHash,address newValidator,bytes32 initDataHash,bytes32 newGuardianRoot,uint8 newGuardianThreshold,uint64 configVersion,uint64 nonce)"
     );
@@ -205,7 +205,7 @@ contract RecoveryManager is ILoomModule {
                 nonce
             )
         );
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function cancelDigest(address account, bytes32 recoveryId, uint64 configVersion, uint64 nonce)
@@ -214,7 +214,7 @@ contract RecoveryManager is ILoomModule {
         returns (bytes32)
     {
         bytes32 structHash = keccak256(abi.encode(CANCEL_TYPEHASH, account, recoveryId, configVersion, nonce));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
@@ -242,6 +242,6 @@ contract RecoveryManager is ILoomModule {
     }
 
     function _domainSeparator() internal view returns (bytes32) {
-        return keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)));
+        return EIP712Lib.domainSeparator(NAME_HASH, VERSION_HASH);
     }
 }

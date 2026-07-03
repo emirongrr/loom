@@ -45,8 +45,6 @@ contract PolicyHook is ILoomHook, IPolicyHook {
 
     bytes4 private constant REVOKE_PERMISSION = bytes4(keccak256("revokePermission(bytes32)"));
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
-    bytes32 private constant SINGLE_EXECUTION_MODE = bytes32(0);
-    bytes32 private constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
 
     function setPolicy(address target, bytes4 selector, Policy calldata policy) external {
         // Assert the timelock directly rather than relying on notifyConfigChange's
@@ -76,7 +74,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
             return false;
         }
         (bytes32 mode, bytes memory executionCalldata) = abi.decode(accountCall[4:], (bytes32, bytes));
-        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) return false;
+        if (mode != ExecutionLib.SINGLE_EXECUTION_MODE && mode != ExecutionLib.BATCH_EXECUTION_MODE) return false;
         (bytes1 callType,) = ExecutionLib.mode(mode);
 
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
@@ -109,7 +107,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
         // because LoomAccount.execute() already rejects unsupported modes before this hook runs; a
         // standalone ERC-7579 account that calls this hook without that upstream check would not get
         // spend-limit enforcement here.
-        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) return "";
+        if (mode != ExecutionLib.SINGLE_EXECUTION_MODE && mode != ExecutionLib.BATCH_EXECUTION_MODE) return "";
         (bytes1 callType,) = ExecutionLib.mode(mode);
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             _consumeIfPolicy(account, abi.decode(executionCalldata, (ExecutionLib.Execution)));

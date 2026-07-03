@@ -33,8 +33,8 @@ contract GranularSessionValidator is ILoomValidator {
         uint16 maxCallsPerUserOp;
     }
 
-    bytes32 public constant SINGLE_EXECUTION_MODE = bytes32(0);
-    bytes32 public constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
+    bytes32 public constant SINGLE_EXECUTION_MODE = ExecutionLib.SINGLE_EXECUTION_MODE;
+    bytes32 public constant BATCH_EXECUTION_MODE = ExecutionLib.BATCH_EXECUTION_MODE;
     uint256 public constant MAX_PERMISSION_IDS = 256;
 
     mapping(address account => mapping(bytes32 permissionId => Permission)) public permissions;
