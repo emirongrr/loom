@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {ILoomHook} from "../interfaces/ILoomHook.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
+import {ERC20CallLib} from "../libraries/ERC20CallLib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
@@ -42,9 +43,6 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     event PolicySet(address indexed account, bytes32 indexed policyId, Policy policy);
     event PolicyRemoved(address indexed account, bytes32 indexed policyId);
 
-    bytes4 private constant ERC20_TRANSFER = 0xa9059cbb;
-    bytes4 private constant ERC20_TRANSFER_FROM = 0x23b872dd;
-    bytes4 private constant ERC20_APPROVE = 0x095ea7b3;
     bytes4 private constant REVOKE_PERMISSION = bytes4(keccak256("revokePermission(bytes32)"));
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     bytes32 private constant SINGLE_EXECUTION_MODE = bytes32(0);
@@ -133,7 +131,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     }
 
     function _isLowRiskExecution(address account, ExecutionLib.Execution memory item) internal view returns (bool) {
-        bytes4 selector = _selector(item.callData);
+        bytes4 selector = ERC20CallLib.selector(item.callData);
         if (
             item.target == account
                 && (selector == ILoomExecutionSelectors.scheduleCall.selector
@@ -162,7 +160,7 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     }
 
     function _consumeIfPolicy(address account, ExecutionLib.Execution memory item) internal {
-        bytes4 selector = _selector(item.callData);
+        bytes4 selector = ERC20CallLib.selector(item.callData);
         bytes32 id = policyId(item.target, selector);
         Policy memory policy = policies[account][id];
         if (!policy.enabled) return;
@@ -185,31 +183,12 @@ contract PolicyHook is ILoomHook, IPolicyHook {
         used.amount = uint128(next);
     }
 
-    function _selector(bytes memory data) internal pure returns (bytes4 selector) {
-        if (data.length < 4) return bytes4(0);
-        assembly {
-            selector := mload(add(data, 32))
-        }
-    }
-
-    function _spendAmount(ExecutionLib.Execution memory item) internal pure returns (uint256 amount) {
-        bytes4 selector = _selector(item.callData);
-        bytes memory callData = item.callData;
-        if (selector == ERC20_TRANSFER || selector == ERC20_APPROVE) {
-            if (callData.length != 68) return type(uint256).max;
-            assembly {
-                amount := mload(add(callData, 68))
-            }
-            return amount;
-        }
-        if (selector == ERC20_TRANSFER_FROM) {
-            if (callData.length != 100) return type(uint256).max;
-            assembly {
-                amount := mload(add(callData, 100))
-            }
-            return amount;
-        }
-        return item.value;
+    function _spendAmount(ExecutionLib.Execution memory item) internal pure returns (uint256) {
+        if (!ERC20CallLib.isTokenSelector(ERC20CallLib.selector(item.callData))) return item.value;
+        (bool parsed,,, uint256 amount) = ERC20CallLib.decodeTokenCall(item.callData);
+        // Malformed token calldata meters as an unbounded spend so it can never
+        // slip under a per-call or per-period limit.
+        return parsed ? amount : type(uint256).max;
     }
 
     function _isCounterpartyAllowed(Policy memory policy, ExecutionLib.Execution memory item)
@@ -222,23 +201,11 @@ contract PolicyHook is ILoomHook, IPolicyHook {
         return parsed && counterparty == policy.allowedCounterparty;
     }
 
+    /// @dev The policy counterparty is the recipient or spender: `to` for
+    /// transfer, the spender for approve, and the recipient for transferFrom.
     function _counterparty(bytes memory callData) internal pure returns (bool parsed, address counterparty) {
-        bytes4 selector = _selector(callData);
-        if (selector == ERC20_TRANSFER || selector == ERC20_APPROVE) {
-            if (callData.length != 68) return (false, address(0));
-            assembly {
-                counterparty := mload(add(callData, 36))
-            }
-            return (true, counterparty);
-        }
-        if (selector == ERC20_TRANSFER_FROM) {
-            if (callData.length != 100) return (false, address(0));
-            assembly {
-                counterparty := mload(add(callData, 68))
-            }
-            return (true, counterparty);
-        }
-        return (false, address(0));
+        (bool decoded,, address to,) = ERC20CallLib.decodeTokenCall(callData);
+        return (decoded, to);
     }
 
     function _addressArgument(bytes memory callData) internal pure returns (address value) {

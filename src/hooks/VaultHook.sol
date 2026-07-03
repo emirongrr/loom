@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomHook} from "../interfaces/ILoomHook.sol";
+import {ERC20CallLib} from "../libraries/ERC20CallLib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
@@ -46,9 +47,6 @@ contract VaultHook is ILoomHook {
 
     bytes4 private constant EXECUTE = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant EXECUTE_SCHEDULED = bytes4(keccak256("executeScheduled(address,uint256,bytes)"));
-    bytes4 private constant ERC20_TRANSFER = 0xa9059cbb;
-    bytes4 private constant ERC20_TRANSFER_FROM = 0x23b872dd;
-    bytes4 private constant ERC20_APPROVE = 0x095ea7b3;
     bytes32 private constant SINGLE_EXECUTION_MODE = bytes32(0);
     bytes32 private constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
     bytes32 private constant NAME_HASH = keccak256("LoomVaultHook");
@@ -235,26 +233,18 @@ contract VaultHook is ILoomHook {
             return (policies[account][asset].enabled, asset, amount);
         }
 
-        bytes4 selector = _selector(execution.callData);
-        if (selector == ERC20_TRANSFER || selector == ERC20_APPROVE) {
-            if (execution.callData.length != 68) {
-                return (policies[account][execution.target].enabled, execution.target, type(uint256).max);
-            }
-            amount = _uintArgument(execution.callData, 68);
-            asset = execution.target;
-            return (policies[account][asset].enabled, asset, amount);
+        bytes4 selector = ERC20CallLib.selector(execution.callData);
+        if (!ERC20CallLib.isTokenSelector(selector)) return (false, address(0), 0);
+        (bool parsed, address from,, uint256 tokenAmount) = ERC20CallLib.decodeTokenCall(execution.callData);
+        if (!parsed) {
+            // Malformed token calldata meters as an unbounded spend so it can
+            // never slip under the daily limit.
+            return (policies[account][execution.target].enabled, execution.target, type(uint256).max);
         }
-        if (selector == ERC20_TRANSFER_FROM) {
-            if (execution.callData.length != 100) {
-                return (policies[account][execution.target].enabled, execution.target, type(uint256).max);
-            }
-            address from = _addressArgument(execution.callData, 36);
-            if (from != account) return (false, address(0), 0);
-            amount = _uintArgument(execution.callData, 100);
-            asset = execution.target;
-            return (policies[account][asset].enabled, asset, amount);
-        }
-        return (false, address(0), 0);
+        // Only transferFrom pulls from a `from` address; the vault meters it
+        // solely when the account's own balance is the source.
+        if (selector == ERC20CallLib.TRANSFER_FROM && from != account) return (false, address(0), 0);
+        return (policies[account][execution.target].enabled, execution.target, tokenAmount);
     }
 
     function _cancel(address account, bytes32 withdrawalId) internal {
@@ -265,24 +255,5 @@ contract VaultHook is ILoomHook {
 
     function _domainSeparator() internal view returns (bytes32) {
         return keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)));
-    }
-
-    function _selector(bytes memory data) internal pure returns (bytes4 selector) {
-        if (data.length < 4) return bytes4(0);
-        assembly {
-            selector := mload(add(data, 32))
-        }
-    }
-
-    function _addressArgument(bytes memory callData, uint256 offset) internal pure returns (address value) {
-        assembly {
-            value := mload(add(callData, offset))
-        }
-    }
-
-    function _uintArgument(bytes memory callData, uint256 offset) internal pure returns (uint256 value) {
-        assembly {
-            value := mload(add(callData, offset))
-        }
     }
 }
