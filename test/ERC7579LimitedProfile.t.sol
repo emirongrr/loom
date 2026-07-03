@@ -134,7 +134,7 @@ contract ERC7579LimitedProfileTest {
 
         bytes memory recoveryCall = abi.encodeCall(RecoveryManager.cancelRecovery, (address(recoveryAccount)));
         bytes memory shortSchedule = abi.encodeCall(
-            LoomAccount.scheduleCall, (address(recovery), 0, recoveryCall, recoveryAccount.MIN_HIGH_RISK_DELAY())
+            LoomAccount.scheduleCall, (address(recovery), 0, recoveryCall, recoveryAccount.MIN_EXTERNAL_DELAY())
         );
         (bool shortAccepted,) = address(recoveryAccount)
             .call(

@@ -95,7 +95,7 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         FormalTarget target = new FormalTarget();
         bytes memory targetCall = abi.encodeCall(FormalTarget.setValue, (uint256(7)));
         bytes memory scheduleTarget =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_EXTERNAL_DELAY()));
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, scheduleTarget));
         bytes32 scheduledId = keccak256(abi.encode(address(target), uint256(0), targetCall, account.configVersion()));
 

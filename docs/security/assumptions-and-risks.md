@@ -95,7 +95,7 @@ Security claims are valid only under the assumptions listed here and in
   delayed migration, guardian cancellation, native exit fallback, and
   two-signature verification semantics.
 - Large vault withdrawals are bound by two independent, visible delays: the
-  account's own delay for scheduling the call (`MIN_HIGH_RISK_DELAY` or
+  account's own delay for scheduling the call (`MIN_EXTERNAL_DELAY` or
   `MIN_CONFIG_DELAY`, depending on target) and the vault policy's withdrawal
   delay. Both can be scheduled back to back rather than strictly one after the
   other, so the binding wait before execution is the larger of the two, not
