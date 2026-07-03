@@ -4,6 +4,7 @@ pragma solidity 0.8.35;
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ECDSA} from "../libraries/ECDSA.sol";
+import {ERC20CallLib} from "../libraries/ERC20CallLib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
@@ -35,10 +36,6 @@ contract GranularSessionValidator is ILoomValidator {
     bytes32 public constant SINGLE_EXECUTION_MODE = bytes32(0);
     bytes32 public constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
     uint256 public constant MAX_PERMISSION_IDS = 256;
-
-    bytes4 private constant ERC20_TRANSFER = 0xa9059cbb;
-    bytes4 private constant ERC20_TRANSFER_FROM = 0x23b872dd;
-    bytes4 private constant ERC20_APPROVE = 0x095ea7b3;
 
     mapping(address account => mapping(bytes32 permissionId => Permission)) public permissions;
     mapping(address account => mapping(bytes32 permissionId => bool)) public revoked;
@@ -82,7 +79,7 @@ contract GranularSessionValidator is ILoomValidator {
                 || permission.maxAmountPerUserOp < permission.maxAmountPerCall
                 || (permission.token != address(0) && permission.token != permission.target)
                 || (permission.token == address(0) && permission.counterparty != address(0))
-                || (permission.token != address(0) && !_isSupportedTokenSelector(permission.selector))
+                || (permission.token != address(0) && !ERC20CallLib.isTokenSelector(permission.selector))
         ) revert InvalidPermission();
 
         if (!_knownPermission[account][permissionId]) {
@@ -169,7 +166,7 @@ contract GranularSessionValidator is ILoomValidator {
         pure
         returns (bool allowed, uint256 amount)
     {
-        if (execution.target != permission.target || _selector(execution.callData) != permission.selector) {
+        if (execution.target != permission.target || ERC20CallLib.selector(execution.callData) != permission.selector) {
             return (false, 0);
         }
 
@@ -178,7 +175,9 @@ contract GranularSessionValidator is ILoomValidator {
             amount = execution.value;
         } else {
             if (execution.value != 0) return (false, 0);
-            (bool parsed, address counterparty, uint256 tokenAmount) = _tokenCall(execution.callData);
+            // The session counterparty is the recipient or spender: `to` for
+            // transfer, the spender for approve, and the recipient for transferFrom.
+            (bool parsed,, address counterparty, uint256 tokenAmount) = ERC20CallLib.decodeTokenCall(execution.callData);
             if (!parsed || permission.counterparty != address(0) && counterparty != permission.counterparty) {
                 return (false, 0);
             }
@@ -186,41 +185,5 @@ contract GranularSessionValidator is ILoomValidator {
         }
 
         return (amount <= permission.maxAmountPerCall && amount <= permission.maxAmountPerUserOp, amount);
-    }
-
-    function _selector(bytes memory callData) internal pure returns (bytes4 selector) {
-        if (callData.length < 4) return bytes4(0);
-        assembly {
-            selector := mload(add(callData, 32))
-        }
-    }
-
-    function _tokenCall(bytes memory callData)
-        internal
-        pure
-        returns (bool parsed, address counterparty, uint256 amount)
-    {
-        bytes4 selector = _selector(callData);
-        if (selector == ERC20_TRANSFER || selector == ERC20_APPROVE) {
-            if (callData.length != 68) return (false, address(0), 0);
-            assembly {
-                counterparty := mload(add(callData, 36))
-                amount := mload(add(callData, 68))
-            }
-            return (true, counterparty, amount);
-        }
-        if (selector == ERC20_TRANSFER_FROM) {
-            if (callData.length != 100) return (false, address(0), 0);
-            assembly {
-                counterparty := mload(add(callData, 68))
-                amount := mload(add(callData, 100))
-            }
-            return (true, counterparty, amount);
-        }
-        return (false, address(0), 0);
-    }
-
-    function _isSupportedTokenSelector(bytes4 selector) internal pure returns (bool) {
-        return selector == ERC20_TRANSFER || selector == ERC20_TRANSFER_FROM || selector == ERC20_APPROVE;
     }
 }
