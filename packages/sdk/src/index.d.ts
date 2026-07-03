@@ -464,6 +464,22 @@ export function readAccountSafetyState(input: {
   now?: bigint | string | number;
 }): Promise<AccountSafetyState>;
 
+export interface VaultPolicyState {
+  readonly dailyLimit: bigint;
+  readonly period: bigint;
+  readonly delay: bigint;
+  readonly enabled: boolean;
+}
+
+export function readVaultPolicyState(input: {
+  account: Hex;
+  vaultHook: Hex;
+  token: Hex;
+  stateTransport?: LoomStateReadTransport;
+  transport?: LoomStateReadTransport;
+  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+}): Promise<VaultPolicyState>;
+
 export function toViemCalls(
   prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
   options?: { account?: Hex }
@@ -552,8 +568,16 @@ export interface PrivateVaultWithdrawalPreparationInput {
     executeAfter: bigint | string | number;
     expiry?: bigint | string | number;
     callData?: Hex;
+    hook?: Hex;
+    stateTransport?: LoomStateReadTransport;
+    transport?: LoomStateReadTransport;
+    blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
   };
 }
+
+export type VaultProtectionResult =
+  | { readonly verified: false; readonly reason: string }
+  | { readonly verified: true; readonly policy: VaultPolicyState };
 
 export interface PrivateVaultWithdrawalPreparation {
   readonly intent: LifecycleIntent;
@@ -570,6 +594,7 @@ export interface PrivateVaultWithdrawalPreparation {
     readonly requiresVaultDelay: boolean;
     readonly requiresBridgeFinality?: string;
   };
+  readonly vaultProtection: VaultProtectionResult;
   readonly hashes: {
     readonly privateOperationHash: Hex;
     readonly metadataBudgetHash: Hex;
