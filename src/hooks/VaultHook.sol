@@ -226,6 +226,17 @@ contract VaultHook is ILoomHook {
         returns (bool protectedAsset, address asset, uint256 amount)
     {
         if (execution.value != 0) {
+            if (
+                policies[account][execution.target].enabled
+                    && ERC20CallLib.isTokenSelector(ERC20CallLib.selector(execution.callData))
+            ) {
+                // Attaching ETH to a token-shaped call on a protected token must
+                // not reclassify the spend as plain ETH: some tokens accept value
+                // on transfer, which would bypass the token policy entirely when
+                // no ETH policy is set. Fail closed: mixed spends are metered as
+                // unbounded and must use the scheduled withdrawal path.
+                return (true, execution.target, type(uint256).max);
+            }
             asset = address(0);
             amount = execution.value;
             return (policies[account][asset].enabled, asset, amount);
