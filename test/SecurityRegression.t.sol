@@ -183,9 +183,8 @@ contract SecurityRegressionTest {
 
         MockTarget target = new MockTarget();
         bytes memory scheduledCall = abi.encodeCall(MockTarget.setValue, (1));
-        bytes memory schedule = abi.encodeCall(
-            LoomAccount.scheduleCall, (address(target), 0, scheduledCall, account.MIN_HIGH_RISK_DELAY())
-        );
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, scheduledCall, account.MIN_EXTERNAL_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
         bytes32 operationId = keccak256(abi.encode(address(target), uint256(0), scheduledCall, account.configVersion()));
 
@@ -535,9 +534,9 @@ contract SecurityRegressionTest {
 
         bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xBEEF), 11));
         bytes memory schedule =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(token), 0, transfer, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(token), 0, transfer, account.MIN_EXTERNAL_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
-        vm.warp(block.timestamp + account.MIN_HIGH_RISK_DELAY());
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
 
         (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, transfer)));
 
@@ -551,7 +550,7 @@ contract SecurityRegressionTest {
         bytes memory data = abi.encodeCall(MockTarget.setValue, (1));
 
         bytes memory firstSchedule =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, data, account.MIN_EXTERNAL_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, firstSchedule)));
 
         bytes32 operationId = keccak256(abi.encode(address(target), uint256(0), data, account.configVersion()));
@@ -608,7 +607,7 @@ contract SecurityRegressionTest {
         require(!ok, "reverting hook did not block normal execution");
 
         bytes memory arbitrarySchedule =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, bytes(""), account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, bytes(""), account.MIN_EXTERNAL_DELAY()));
         (ok,) = address(account)
             .call(
                 abi.encodeCall(

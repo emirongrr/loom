@@ -80,7 +80,7 @@ recreating the bundler-dependency problem this path exists to avoid.
 
 `scheduleCall` requires `MIN_CONFIG_DELAY` (3 days) for self-calls and calls to
 an installed validator, hook, or recovery module, and the shorter
-`MIN_HIGH_RISK_DELAY` (1 day) for calls to any other target. This is
+`MIN_EXTERNAL_DELAY` (1 day) for calls to any other target. This is
 intentional: a call to an arbitrary external target is bounded by the
 account's current balance and is over once it executes, while a change to the
 account's module set is a persistent grant of standing authority that a

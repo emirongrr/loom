@@ -68,8 +68,8 @@ contract VaultHookTest {
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, transfer)));
         require(!early, "vault withdrawal executed before account schedule");
 
-        _schedule(account, address(token), transfer, account.MIN_HIGH_RISK_DELAY());
-        vm.warp(block.timestamp + account.MIN_HIGH_RISK_DELAY());
+        _schedule(account, address(token), transfer, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
         (bool beforeVaultDelay,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, transfer)));
         require(!beforeVaultDelay, "vault withdrawal executed before vault delay");
@@ -96,7 +96,7 @@ contract VaultHookTest {
 
         (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt == 0, "guardian cancellation failed");
-        _schedule(account, address(token), transfer, account.MIN_HIGH_RISK_DELAY());
+        _schedule(account, address(token), transfer, account.MIN_EXTERNAL_DELAY());
         vm.warp(block.timestamp + 3 days);
         (bool executed,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, transfer)));
@@ -155,7 +155,7 @@ contract VaultHookTest {
         _setPolicy(account, vault, address(0), 0.1 ether, 1 days, 2 days);
 
         bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(0xBEEF), 1 ether, "");
-        _scheduleValue(account, address(0xBEEF), 1 ether, "", account.MIN_HIGH_RISK_DELAY());
+        _scheduleValue(account, address(0xBEEF), 1 ether, "", account.MIN_EXTERNAL_DELAY());
         vm.warp(block.timestamp + 3 days);
         account.executeScheduled(address(0xBEEF), 1 ether, "");
 
@@ -172,7 +172,7 @@ contract VaultHookTest {
 
         bytes memory failing = abi.encodeCall(MockTarget.fail, ());
         bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(target), 1 ether, failing);
-        _scheduleValue(account, address(target), 1 ether, failing, account.MIN_HIGH_RISK_DELAY());
+        _scheduleValue(account, address(target), 1 ether, failing, account.MIN_EXTERNAL_DELAY());
         vm.warp(block.timestamp + 3 days);
 
         (bool executed,) =
@@ -303,8 +303,8 @@ contract VaultHookTest {
 
         bytes memory expiredTransfer = abi.encodeCall(MockERC20.transfer, (address(0xD00D), 40));
         _scheduleVaultWithdrawalWindow(account, vault, address(token), 0, expiredTransfer, 1 days);
-        _schedule(account, address(token), expiredTransfer, account.MIN_HIGH_RISK_DELAY());
-        vm.warp(block.timestamp + account.MIN_HIGH_RISK_DELAY() + 2 days + 1);
+        _schedule(account, address(token), expiredTransfer, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY() + 2 days + 1);
         (bool rejectedExpired,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, expiredTransfer)));
         require(!rejectedExpired, "expired withdrawal executed");
@@ -312,8 +312,8 @@ contract VaultHookTest {
         bytes memory staleTransfer = abi.encodeCall(MockERC20.transfer, (address(0xF00D), 30));
         _scheduleVaultWithdrawal(account, vault, address(token), 0, staleTransfer);
         _setPolicy(account, vault, address(token), 11, 1 days, 2 days);
-        _schedule(account, address(token), staleTransfer, account.MIN_HIGH_RISK_DELAY());
-        vm.warp(block.timestamp + account.MIN_HIGH_RISK_DELAY());
+        _schedule(account, address(token), staleTransfer, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
         (bool rejectedStale,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(token), 0, staleTransfer)));
         require(!rejectedStale, "stale-config withdrawal executed");

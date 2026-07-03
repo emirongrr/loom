@@ -121,7 +121,7 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         FormalTarget target = new FormalTarget();
         bytes memory targetCall = abi.encodeCall(FormalTarget.setValue, (uint256(7)));
         bytes memory scheduleTarget =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_EXTERNAL_DELAY()));
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, scheduleTarget));
 
         bytes memory guardianUpdate = abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("new-root"), uint8(1)));

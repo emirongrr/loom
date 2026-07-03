@@ -254,13 +254,13 @@ contract LoomAccountTest {
     function testScheduledCallCanBeCancelled() public {
         bytes memory callData = abi.encodeCall(MockTarget.setValue, (99));
         bytes memory schedule =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, callData, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, callData, account.MIN_EXTERNAL_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
         bytes32 operationId = keccak256(abi.encode(address(target), 0, callData, account.configVersion()));
 
         bytes memory cancel = abi.encodeCall(LoomAccount.cancelScheduled, (operationId));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, cancel)));
-        vm.warp(block.timestamp + account.MIN_HIGH_RISK_DELAY());
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
         (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, callData)));
         require(!ok, "cancelled operation executed");
     }
@@ -268,7 +268,7 @@ contract LoomAccountTest {
     function testConfigChangeInvalidatesPreviouslyScheduledOperation() public {
         bytes memory targetCall = abi.encodeCall(MockTarget.setValue, (99));
         bytes memory scheduleTarget =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_HIGH_RISK_DELAY()));
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, targetCall, account.MIN_EXTERNAL_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, scheduleTarget)));
 
         bytes memory update = abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("new-guardians"), uint8(1)));

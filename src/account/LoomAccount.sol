@@ -57,7 +57,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint64 nonce;
     }
 
-    uint48 public constant MIN_HIGH_RISK_DELAY = 1 days;
+    /// @notice Minimum schedule delay for calls to external targets.
+    /// @dev Configuration targets (the account itself or an installed module)
+    /// use the longer MIN_CONFIG_DELAY; see scheduleCall.
+    uint48 public constant MIN_EXTERNAL_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
     uint48 public constant FREEZE_DURATION = 2 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
@@ -260,6 +263,14 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _executeAuthorized(mode, executionCalldata, msg.sender, msg.data);
     }
 
+    /// @notice Executes a validator-authorized operation without going through
+    /// the EntryPoint or any bundler.
+    /// @dev This is the constitution's independently executable account-control
+    /// path: if every bundler censors or 4337 infrastructure is unavailable,
+    /// any EOA can still submit this transaction and the account remains
+    /// controllable. Authorization is identical in strength to the 4337 path
+    /// (an installed validator signs an EIP-712 digest bound to this account,
+    /// nonce, config version, and expiry); only the transport differs.
     function executeDirect(
         address validator,
         bytes32 mode,
@@ -595,7 +606,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint48 minimum = target == address(this) || _modules[ModuleType.VALIDATOR][target]
             || _modules[ModuleType.HOOK][target] || _modules[ModuleType.RECOVERY][target]
             ? MIN_CONFIG_DELAY
-            : MIN_HIGH_RISK_DELAY;
+            : MIN_EXTERNAL_DELAY;
         if (delay < minimum || delay > MAX_SCHEDULE_DELAY) revert InvalidDelay();
         operationId = keccak256(abi.encode(target, value, data, configVersion));
         if (scheduledOperations[operationId] != 0) revert OperationAlreadyScheduled();

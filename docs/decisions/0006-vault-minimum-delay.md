@@ -21,7 +21,7 @@ mistake, not a privilege-escalation fix.
 
 Add `MIN_VAULT_DELAY` (1 hour) and enforce it in `setVaultPolicy`, mirroring
 the existing minimum-delay pattern already used for `scheduleCall`
-(`MIN_HIGH_RISK_DELAY`/`MIN_CONFIG_DELAY`) and `scheduleMigration`
+(`MIN_EXTERNAL_DELAY`/`MIN_CONFIG_DELAY`) and `scheduleMigration`
 (`MIN_CONFIG_DELAY`).
 
 ## Consequences
