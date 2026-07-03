@@ -63,6 +63,8 @@ jobs:
         run: npm run privacy:test
       - name: Test wallet engine SDK
         run: npm run sdk:test
+      - name: Check SDK type integrity
+        run: npm run sdk:types:check
       - name: Test WebAuthn fixture parser
         run: npm run fixtures:test
       - name: Test bundler qualification evidence
