@@ -17,6 +17,8 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@loom/account": "file:../account",
+    "@loom/privacy": "file:../privacy",
     "js-sha3": "0.8.0"
   }
 }

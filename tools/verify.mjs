@@ -94,7 +94,9 @@ run("Privacy adapter profile tests", process.execPath, [
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
+run("Wallet engine SDK install", npm, ["--prefix", "packages/sdk", "ci"]);
 run("Wallet engine SDK tests", npm, ["--prefix", "packages/sdk", "test"]);
+run("SDK type integrity", npm, ["run", "sdk:types:check"]);
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);

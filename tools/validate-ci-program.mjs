@@ -55,6 +55,7 @@ function validateTestWorkflow() {
     "npm run guardian:test",
     "npm run privacy:test",
     "npm run sdk:test",
+    "npm run sdk:types:check",
     "npm run fixtures:test",
     "npm run formal:program:test",
     "npm run ci:program:test",

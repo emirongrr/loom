@@ -1,11 +1,11 @@
 import sha3 from "js-sha3";
-import { createAccountLifecycleClient, createLifecycleCallEncoder } from "../../account/src/index.js";
+import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
 import {
   createConsentStore,
   createKohakuHost,
   createMemoryStorage,
   providerConsentKey
-} from "../../privacy/src/index.js";
+} from "@loom/privacy";
 
 const { keccak_256 } = sha3;
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;

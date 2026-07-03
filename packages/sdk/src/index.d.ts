@@ -3,7 +3,7 @@ import type {
   LifecycleCallEncoder,
   LifecycleIntent,
   Hex
-} from "../../account/src/index.js";
+} from "@loom/account";
 import type {
   KohakuHost,
   KohakuHostOptions,
@@ -11,7 +11,7 @@ import type {
   MetadataBudget,
   PrivacyContext,
   ShieldedPoolAdapter
-} from "../../privacy/src/index.js";
+} from "@loom/privacy";
 
 export class InvalidSdkRequestError extends Error {
   readonly details: Record<string, unknown>;

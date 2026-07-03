@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "skipLibCheck": false,
+    "baseUrl": ".",
+    "paths": {
+      "@loom/sdk": ["../../packages/sdk/src/index.d.ts"],
+      "@loom/account": ["../../packages/account/src/index.d.ts"],
+      "@loom/guardian": ["../../packages/guardian/src/index.d.ts"],
+      "@loom/privacy": ["../../packages/privacy/src/index.d.ts"]
+    }
+  },
+  "include": ["consumer.ts"]
+}
