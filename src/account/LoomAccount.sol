@@ -9,6 +9,7 @@ import {ILoomModule} from "../interfaces/ILoomModule.sol";
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
@@ -66,15 +67,14 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint256 public constant MAX_RECOVERY_MODULES = 1;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
     uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
-    bytes32 public constant SINGLE_EXECUTION_MODE = bytes32(0);
-    bytes32 public constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
+    bytes32 public constant SINGLE_EXECUTION_MODE = ExecutionLib.SINGLE_EXECUTION_MODE;
+    bytes32 public constant BATCH_EXECUTION_MODE = ExecutionLib.BATCH_EXECUTION_MODE;
     bytes4 public constant ERC1271_MAGIC_VALUE = 0x1626ba7e;
     bytes4 public constant ERC1271_INVALID = 0xffffffff;
     bytes4 public constant ERC165_INTERFACE_ID = 0x01ffc9a7;
     bytes4 public constant ERC721_RECEIVER_INTERFACE_ID = 0x150b7a02;
     bytes4 public constant ERC1155_RECEIVER_INTERFACE_ID = 0x4e2312e0;
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant FREEZE_TYPEHASH =
         keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)");
     bytes32 public constant CANCEL_MIGRATION_TYPEHASH =
@@ -304,7 +304,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
                 validUntil
             )
         );
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function _executeAuthorized(
@@ -560,7 +560,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (!MerkleProof.verify(proof, guardianRoot, leaf)) revert InvalidModule();
         if (lastFreezeConfigVersion[leaf] == configVersion) revert InvalidModule();
         bytes32 structHash = keccak256(abi.encode(FREEZE_TYPEHASH, leaf, freezeNonces[leaf], configVersion));
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        bytes32 digest = EIP712Lib.digest(_domainSeparator(), structHash);
         try IGuardianVerifier(verifier).verify(keyCommitment, digest, signature) returns (bool valid) {
             if (!valid) revert InvalidModule();
         } catch {
@@ -667,7 +667,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function migrationCancelDigest(bytes32 migrationId, uint64 version, uint64 nonce) public view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, version, nonce));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     // Hooks gate every unscheduled execute()/executeDirect() call. A hook that
@@ -689,7 +689,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function evictHookDigest(address hook, uint64 version) public view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(EVICT_HOOK_TYPEHASH, hook, version));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function _cancelMigration(PendingMigration memory migration) internal {
@@ -855,7 +855,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     function _domainSeparator() internal view returns (bytes32) {
-        return keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)));
+        return EIP712Lib.domainSeparator(NAME_HASH, VERSION_HASH);
     }
 
     function decodeSignature(bytes calldata signature)

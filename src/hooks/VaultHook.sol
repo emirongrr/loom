@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomHook} from "../interfaces/ILoomHook.sol";
+import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {ERC20CallLib} from "../libraries/ERC20CallLib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
@@ -40,15 +41,12 @@ contract VaultHook is ILoomHook {
     }
 
     uint48 public constant MAX_WITHDRAWAL_WINDOW = 30 days;
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant CANCEL_WITHDRAWAL_TYPEHASH =
         keccak256("CancelVaultWithdrawal(address account,bytes32 withdrawalId,uint64 configVersion)");
 
     bytes4 private constant EXECUTE = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant EXECUTE_SCHEDULED = bytes4(keccak256("executeScheduled(address,uint256,bytes)"));
-    bytes32 private constant SINGLE_EXECUTION_MODE = bytes32(0);
-    bytes32 private constant BATCH_EXECUTION_MODE = bytes32(uint256(1) << 248);
     bytes32 private constant NAME_HASH = keccak256("LoomVaultHook");
     bytes32 private constant VERSION_HASH = keccak256("1");
 
@@ -134,7 +132,7 @@ contract VaultHook is ILoomHook {
         returns (bytes32)
     {
         bytes32 structHash = keccak256(abi.encode(CANCEL_WITHDRAWAL_TYPEHASH, account, withdrawalId, configVersion));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function withdrawalIdFor(address account, address target, uint256 value, bytes32 callDataHash, uint64 configVersion)
@@ -156,7 +154,7 @@ contract VaultHook is ILoomHook {
         }
         if (selector != EXECUTE) return "";
         (bytes32 mode, bytes memory executionCalldata) = abi.decode(accountCall[4:], (bytes32, bytes));
-        if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) return "";
+        if (mode != ExecutionLib.SINGLE_EXECUTION_MODE && mode != ExecutionLib.BATCH_EXECUTION_MODE) return "";
         (bytes1 callType,) = ExecutionLib.mode(mode);
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             _checkExecution(account, abi.decode(executionCalldata, (ExecutionLib.Execution)));
@@ -254,6 +252,6 @@ contract VaultHook is ILoomHook {
     }
 
     function _domainSeparator() internal view returns (bytes32) {
-        return keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)));
+        return EIP712Lib.domainSeparator(NAME_HASH, VERSION_HASH);
     }
 }

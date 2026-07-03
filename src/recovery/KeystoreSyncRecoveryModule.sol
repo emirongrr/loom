@@ -5,6 +5,7 @@ import {IKeystoreProofVerifier} from "../interfaces/IKeystoreProofVerifier.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomKeystore} from "../interfaces/ILoomKeystore.sol";
 import {ILoomModule} from "../interfaces/ILoomModule.sol";
+import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
@@ -40,8 +41,7 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
     bytes32 public constant VALIDATOR_SET_ROOT_TYPEHASH = keccak256("LoomValidatorSetRoot(bytes32 validatorsHash)");
     bytes32 public constant APP_ACCOUNT_LEAF_TYPEHASH =
         keccak256("LoomAppAccount(uint256 chainId,address account,address syncModule)");
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant CANCEL_TYPEHASH =
         keccak256("CancelKeystoreSync(address account,bytes32 syncId,uint64 accountConfigVersion,uint64 nonce)");
 
@@ -209,7 +209,7 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         returns (bytes32)
     {
         bytes32 structHash = keccak256(abi.encode(CANCEL_TYPEHASH, account, syncId, accountConfigVersion, nonce));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     function singleValidatorRoot(address validator, bytes32 initDataHash) public pure returns (bytes32) {
@@ -272,6 +272,6 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
     }
 
     function _domainSeparator() internal view returns (bytes32) {
-        return keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, address(this)));
+        return EIP712Lib.domainSeparator(NAME_HASH, VERSION_HASH);
     }
 }
