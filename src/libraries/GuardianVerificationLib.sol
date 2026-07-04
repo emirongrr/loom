@@ -26,6 +26,10 @@ library GuardianVerificationLib {
     /// @notice Maximum guardian approvals accepted in one call.
     uint256 internal constant MAX_SIGNATURES = 32;
 
+    /// @notice Maximum guardian threshold accepted anywhere guardian
+    /// configuration is committed (account, recovery modules, keystore).
+    uint8 internal constant MAX_GUARDIAN_THRESHOLD = 32;
+
     /// @notice Maximum Merkle proof length accepted per guardian.
     uint256 internal constant MAX_PROOF_LENGTH = 32;
 

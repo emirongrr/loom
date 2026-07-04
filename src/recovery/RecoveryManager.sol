@@ -6,6 +6,7 @@ import {ILoomModule} from "../interfaces/ILoomModule.sol";
 import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
+import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
 
 contract RecoveryManager is ILoomModule {
     error InvalidRecovery();
@@ -28,7 +29,7 @@ contract RecoveryManager is ILoomModule {
 
     uint48 public constant RECOVERY_DELAY = 3 days;
     uint48 public constant RECOVERY_WINDOW = 7 days;
-    uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
+    uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
     bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant PROPOSE_TYPEHASH = keccak256(
         "ProposeRecovery(address account,bytes32 oldValidatorsHash,address newValidator,bytes32 initDataHash,bytes32 newGuardianRoot,uint8 newGuardianThreshold,uint64 configVersion,uint64 nonce)"
@@ -70,7 +71,7 @@ contract RecoveryManager is ILoomModule {
                 || newGuardianThreshold == 0 || newGuardianThreshold > MAX_GUARDIAN_THRESHOLD
                 || !ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, address(this))
                 || ILoomAccount(account).isModuleInstalled(ModuleType.VALIDATOR, newValidator)
-                || !_validCompleteValidatorSet(account, oldValidators)
+                || !ValidatorSetLib.isCompleteSortedSet(ILoomAccount(account), oldValidators)
         ) revert InvalidRecovery();
 
         uint64 nonce = recoveryNonces[account];
@@ -226,19 +227,6 @@ contract RecoveryManager is ILoomModule {
         delete pendingRecoveries[account];
         recoveryNonces[account] = pending.nonce + 1;
         emit RecoveryCancelled(account, recoveryId);
-    }
-
-    function _validCompleteValidatorSet(address account, address[] calldata validators) internal view returns (bool) {
-        ILoomAccount loom = ILoomAccount(account);
-        if (validators.length == 0 || validators.length != loom.validatorCount()) return false;
-        address previous = address(0);
-        for (uint256 i; i < validators.length; ++i) {
-            if (validators[i] <= previous || !loom.isModuleInstalled(ModuleType.VALIDATOR, validators[i])) {
-                return false;
-            }
-            previous = validators[i];
-        }
-        return true;
     }
 
     function _domainSeparator() internal view returns (bytes32) {

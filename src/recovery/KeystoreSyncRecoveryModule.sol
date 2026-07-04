@@ -9,6 +9,7 @@ import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
+import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
 
 contract KeystoreSyncRecoveryModule is ILoomModule {
     error InvalidSync();
@@ -34,8 +35,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
 
     uint48 public constant SYNC_DELAY = 3 days;
     uint48 public constant SYNC_WINDOW = 7 days;
-    uint256 public constant MAX_VALIDATORS = 16;
-    uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
+    uint256 public constant MAX_VALIDATORS = ValidatorSetLib.MAX_VALIDATORS;
+    uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
     bytes32 public constant SINGLE_VALIDATOR_ROOT_TYPEHASH =
         keccak256("LoomSingleValidatorRoot(address validator,bytes32 initDataHash)");
     bytes32 public constant VALIDATOR_SET_ROOT_TYPEHASH = keccak256("LoomValidatorSetRoot(bytes32 validatorsHash)");
@@ -95,7 +96,8 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
                 || config.guardianThreshold > MAX_GUARDIAN_THRESHOLD || config.validatorRoot != newValidatorRoot
                 || !MerkleProof.verify(appAccountProof, config.appAccountRoot, appAccountLeaf(account))
                 || !ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, address(this))
-                || !_validCompleteValidatorSet(account, oldValidators) || !_validNewValidatorSet(account, newValidators)
+                || !ValidatorSetLib.isCompleteSortedSet(ILoomAccount(account), oldValidators)
+                || !ValidatorSetLib.isValidNewSet(ILoomAccount(account), newValidators)
                 || !proofVerifier.verifyKeystoreConfig(l1Keystore, identityId, config.version, config, l1Proof)
         ) revert InvalidSync();
 
@@ -233,42 +235,6 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         delete pendingSyncs[account];
         syncNonces[account] = pending.nonce + 1;
         emit KeystoreSyncCancelled(account, syncId);
-    }
-
-    function _validCompleteValidatorSet(address account, address[] calldata validators) internal view returns (bool) {
-        ILoomAccount loom = ILoomAccount(account);
-        if (validators.length == 0 || validators.length != loom.validatorCount()) return false;
-        address previous = address(0);
-        for (uint256 i; i < validators.length; ++i) {
-            if (validators[i] <= previous || !loom.isModuleInstalled(ModuleType.VALIDATOR, validators[i])) {
-                return false;
-            }
-            previous = validators[i];
-        }
-        return true;
-    }
-
-    function _validNewValidatorSet(address account, ILoomAccount.RecoveryModuleInit[] calldata validators)
-        internal
-        view
-        returns (bool)
-    {
-        ILoomAccount loom = ILoomAccount(account);
-        if (validators.length == 0 || validators.length > MAX_VALIDATORS) return false;
-        address previous = address(0);
-        for (uint256 i; i < validators.length; ++i) {
-            ILoomAccount.RecoveryModuleInit calldata validator = validators[i];
-            if (
-                validator.moduleTypeId != ModuleType.VALIDATOR || validator.module <= previous
-                    || validator.module.code.length == 0
-                    || loom.isModuleInstalled(ModuleType.VALIDATOR, validator.module)
-                    || !ILoomModule(validator.module).isModuleType(ModuleType.VALIDATOR)
-            ) {
-                return false;
-            }
-            previous = validator.module;
-        }
-        return true;
     }
 
     function _domainSeparator() internal view returns (bytes32) {
