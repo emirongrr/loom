@@ -27,7 +27,7 @@ const CRITICAL_MODULES = [
   "src/validators/GranularSessionValidator.sol",
   "src/validators/MultiP256Validator.sol",
   "src/validators/P256Validator.sol",
-  "src/validators/SessionKeyValidator.sol"
+  "src/validators/ExactCallSessionValidator.sol"
 ];
 
 const CRITICAL_GROUPS = [
@@ -51,7 +51,7 @@ const CRITICAL_GROUPS = [
   },
   {
     name: "session",
-    files: ["src/validators/GranularSessionValidator.sol", "src/validators/SessionKeyValidator.sol"]
+    files: ["src/validators/GranularSessionValidator.sol", "src/validators/ExactCallSessionValidator.sol"]
   }
 ];
 
@@ -203,7 +203,7 @@ function selfTest() {
 | src/validators/GranularSessionValidator.sol | 93.33% (70/75) | 90.00% (117/130) | 68.75% (22/32) | 100.00% (9/9) |
 | src/validators/MultiP256Validator.sol | 91.67% (77/84) | 89.16% (115/129) | 64.29% (18/28) | 100.00% (14/14) |
 | src/validators/P256Validator.sol | 91.30% (42/46) | 84.91% (45/53) | 62.50% (5/8) | 100.00% (9/9) |
-| src/validators/SessionKeyValidator.sol | 92.31% (36/39) | 86.00% (43/50) | 60.00% (6/10) | 100.00% (8/8) |
+| src/validators/ExactCallSessionValidator.sol | 92.31% (36/39) | 86.00% (43/50) | 60.00% (6/10) | 100.00% (8/8) |
 `);
   assert.equal(summary.files.length, 17);
   assert.equal(Math.round(summary.lines * 100) / 100, 93.81);
@@ -226,9 +226,9 @@ function selfTest() {
     () =>
       assertGate({
         ...summary,
-        files: summary.files.filter(row => row.file !== "src/validators/SessionKeyValidator.sol")
+        files: summary.files.filter(row => row.file !== "src/validators/ExactCallSessionValidator.sol")
       }),
-    /critical module coverage missing for src\/validators\/SessionKeyValidator\.sol/u
+    /critical module coverage missing for src\/validators\/ExactCallSessionValidator\.sol/u
   );
 }
 

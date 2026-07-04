@@ -3,7 +3,7 @@ pragma solidity 0.8.35;
 
 import {P256Validator} from "../src/validators/P256Validator.sol";
 import {MultiP256Validator} from "../src/validators/MultiP256Validator.sol";
-import {SessionKeyValidator} from "../src/validators/SessionKeyValidator.sol";
+import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
 import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
@@ -21,9 +21,9 @@ contract DeployPasskeyValidators {
 contract DeployAuthorizationValidators {
     function deploy()
         external
-        returns (SessionKeyValidator sessionKeyValidator, GranularSessionValidator granularSessionValidator)
+        returns (ExactCallSessionValidator sessionKeyValidator, GranularSessionValidator granularSessionValidator)
     {
-        sessionKeyValidator = new SessionKeyValidator();
+        sessionKeyValidator = new ExactCallSessionValidator();
         granularSessionValidator = new GranularSessionValidator();
     }
 }

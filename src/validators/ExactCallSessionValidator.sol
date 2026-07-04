@@ -7,7 +7,16 @@ import {ECDSA} from "../libraries/ECDSA.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 
-contract SessionKeyValidator is ILoomValidator {
+/// @notice Session validator that pins a permission to the hash of ONE complete
+/// account call: the session key may submit exactly that operation, up to
+/// maxUses times, inside its validity window.
+/// @dev This is the narrowest session profile - prefer it whenever the
+/// operation is known and pre-constructed at grant time. For reusable
+/// capability ranges (per-target/selector/token/amount bounds) use
+/// GranularSessionValidator instead; the two are deliberately separate because
+/// merging exact-call pinning into the granular permission struct would fatten
+/// every grant with fields most sessions never use.
+contract ExactCallSessionValidator is ILoomValidator {
     error InvalidPermission();
     error ConfigTimelockRequired();
 

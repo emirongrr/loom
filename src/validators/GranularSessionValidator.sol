@@ -13,6 +13,12 @@ interface ILoomSessionExecution {
     function execute(bytes32 mode, bytes calldata executionCalldata) external payable;
 }
 
+/// @notice Session validator that grants reusable capability ranges: a session
+/// key may perform calls bounded by target, selector, token, counterparty,
+/// per-call and per-userOp amounts, uses, and validity window.
+/// @dev For approving one known, pre-constructed operation, prefer
+/// ExactCallSessionValidator - it pins the exact calldata hash and is the
+/// narrowest possible session profile.
 contract GranularSessionValidator is ILoomValidator {
     error InvalidPermission();
     error ConfigTimelockRequired();
