@@ -171,6 +171,23 @@ The SDK deliberately does not choose a default RPC, bundler, paymaster,
 relayer, signer, recovery coordinator, or privacy provider. Those adapters must
 be supplied by the wallet developer or user.
 
+## Examples
+
+Runnable, self-verifying scripts in [`examples/`](examples/README.md) show how
+to build a client on the SDK without any Loom-operated service:
+
+- [`examples/enterprise-onboarding.mjs`](examples/enterprise-onboarding.mjs) — a
+  fintech embeds a self-custody wallet into its own product: the institution
+  owns onboarding, KYC, fiat rails, and infrastructure, while the user's passkey
+  keeps authority and the account stays controllable even if the institution
+  disappears. See the [enterprise integration guide](docs/guides/enterprise-integration.md).
+- [`examples/individual-passkey-wallet.mjs`](examples/individual-passkey-wallet.mjs) —
+  the same core serving one person with a passkey and self-chosen guardian
+  recovery.
+
+Each script installs a global-`fetch` trap, so a hidden default-provider call
+would fail the run — the walkaway guarantee, demonstrated.
+
 ## What Is Intentionally Not In Core
 
 These are important, but they should not be embedded into the immutable account
