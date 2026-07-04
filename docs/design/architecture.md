@@ -21,6 +21,14 @@ and hook modules plus one narrowly scoped recovery module are supported.
 Executor, fallback, and delegatecall execution modes are deliberately
 rejected.
 
+Two optional adapter directions bridge the standard without widening the core.
+Outbound, `ERC7579ModuleAdapter` gives Loom-native modules the standard module
+lifecycle. Inbound, `ERC7579ValidatorShim` and `ERC7579HookShim` (decision 0010)
+let one foreign ERC-7579 validator or hook run on one account through a per-
+account binding, translating Loom's narrower profile to and from the standard
+surface. The shims are optional; the account runs identically without them and
+never depends on them.
+
 The core can receive ETH and accepts safe ERC-721 and ERC-1155 transfers
 through stateless receiver callbacks. These callbacks do not grant execution
 authority.

@@ -90,6 +90,18 @@
 - Codehash-only migration targets support future account standards that do not
   expose Loom's `configHash()` interface, but they do not prove destination
   owner, guardian, policy, or recovery configuration.
+- Inbound ERC-7579 module shims (`ERC7579ValidatorShim`, `ERC7579HookShim`,
+  decision 0010) let one foreign validator or hook run on one account. A shimmed
+  module is external code in a validation or hook slot, exactly as trusted as any
+  native validator or hook, entering only through the timelocked `installModule`
+  path with the same guardian-eviction and scheduled-removal escape hatches. The
+  shim reconstructs a narrower profile than native ERC-7579: gas fields,
+  `initCode`, and paymaster data beyond the address are zeroed for validators,
+  and hook `msgValue` is zero. Modules that read those fields fail closed rather
+  than corrupt state, but the incompatibility is silent and must be checked
+  against the documented boundary. Each shim binds one account; correct
+  target-side state isolation depends on that 1:1 binding. Executor and fallback
+  modules and delegatecall remain rejected and are not shimmable.
 - Migration is blocked while frozen. A guardian freeze can delay but not
   permanently veto a migration because freeze duration is shorter than the
   configuration delay and cancellation remains available while frozen.
