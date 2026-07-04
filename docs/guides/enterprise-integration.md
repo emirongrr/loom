@@ -87,7 +87,8 @@ institution surviving.
   guardians.
 - The core enforces this by construction: no admin, no upgrade proxy, no
   mandatory Loom or institution service, and at least one independently
-  executable control path (see [`ARCHITECTURE.md`](../../ARCHITECTURE.md)).
+  executable control path (see
+  [`docs/design/architecture.md`](../design/architecture.md)).
 
 The example script proves this concretely: it runs the whole flow with a
 global-`fetch` trap installed, so any hidden default-provider call would fail the
@@ -124,5 +125,5 @@ iterating the cohort; the registry supplies the set, not the balances.
   the same core serving a solo user with guardian recovery.
 - [`docs/design/permissions.md`](../design/permissions.md) — session-key and
   spend-policy models an institution can layer on top.
-- [`ARCHITECTURE.md`](../../ARCHITECTURE.md) — the invariants this integration
-  relies on.
+- [`docs/design/architecture.md`](../design/architecture.md) — the architecture
+  and invariants this integration relies on.

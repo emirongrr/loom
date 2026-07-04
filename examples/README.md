@@ -52,5 +52,5 @@ individual experiences are the same engine, not two codebases.
 
 - [Enterprise integration guide](../docs/guides/enterprise-integration.md) — the
   architecture and trust boundaries behind `enterprise-onboarding.mjs`.
-- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — the binding invariants these examples
-  rely on.
+- [`docs/design/architecture.md`](../docs/design/architecture.md) — the
+  architecture and invariants these examples rely on.
