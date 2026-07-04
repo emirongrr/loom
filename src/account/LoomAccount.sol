@@ -13,6 +13,7 @@ import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {ExecutionLib} from "../libraries/ExecutionLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
+import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 
@@ -65,10 +66,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint48 public constant FREEZE_DURATION = 2 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
-    uint256 public constant MAX_VALIDATORS = 16;
+    uint256 public constant MAX_VALIDATORS = ValidatorSetLib.MAX_VALIDATORS;
     uint256 public constant MAX_HOOKS = 8;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
-    uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
+    uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
     uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
     bytes32 public constant SINGLE_EXECUTION_MODE = ExecutionLib.SINGLE_EXECUTION_MODE;
     bytes32 public constant BATCH_EXECUTION_MODE = ExecutionLib.BATCH_EXECUTION_MODE;
@@ -485,6 +486,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
+    /// @dev Authoritative in-storage enforcement of the rules that
+    /// ValidatorSetLib pre-checks module-side; keep the two in sync.
     function _validateCompleteValidatorSet(address[] calldata validators) internal view {
         if (validators.length == 0 || validators.length != _validatorCount) revert InvalidModule();
         address previous = address(0);

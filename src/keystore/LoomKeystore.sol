@@ -2,6 +2,7 @@
 pragma solidity 0.8.35;
 
 import {ILoomKeystore} from "../interfaces/ILoomKeystore.sol";
+import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 
 /// @notice L1 keystore of per-identity configuration (validator/guardian/app-account
 /// roots, guardian threshold, version). It has no Loom administrator, bridge
@@ -25,7 +26,7 @@ contract LoomKeystore is ILoomKeystore {
     error IdentityNotRegistered();
     error Unauthorized();
 
-    uint8 public constant MAX_GUARDIAN_THRESHOLD = 32;
+    uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
 
     mapping(bytes32 identityId => address controller) public controllerOf;
     mapping(bytes32 identityId => KeystoreConfig config) private _configs;
