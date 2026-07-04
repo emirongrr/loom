@@ -2,7 +2,7 @@
 pragma solidity 0.8.35;
 
 import {LoomAccount} from "../../src/account/LoomAccount.sol";
-import {LoomAccountProxy} from "../../src/proxy/LoomAccountProxy.sol";
+import {LoomAccountProxy} from "../../src/account/LoomAccountProxy.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
