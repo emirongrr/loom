@@ -23,6 +23,9 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 - `src/validators/MultiP256Validator.sol`
 - `src/validators/SessionKeyValidator.sol`
 - `src/validators/GranularSessionValidator.sol`
+- `src/adapters/ERC7579ModuleAdapter.sol`
+- `src/adapters/ERC7579ValidatorShim.sol`
+- `src/adapters/ERC7579HookShim.sol`
 - All interfaces and libraries under `src/`
 - Deployment scripts and constructor configuration under `script/`
 
