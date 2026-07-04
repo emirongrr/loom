@@ -2,8 +2,8 @@
 pragma solidity 0.8.35;
 
 import {LoomAccount} from "./LoomAccount.sol";
-import {AppAccountRegistry} from "../factory/AppAccountRegistry.sol";
-import {LoomAccountProxy} from "../proxy/LoomAccountProxy.sol";
+import {AppAccountRegistry} from "./AppAccountRegistry.sol";
+import {LoomAccountProxy} from "./LoomAccountProxy.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
 contract LoomAccountFactory {
