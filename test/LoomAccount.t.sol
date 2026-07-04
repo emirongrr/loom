@@ -11,7 +11,7 @@ import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
 import {Base64Url} from "../src/libraries/Base64Url.sol";
-import {SessionKeyValidator} from "../src/validators/SessionKeyValidator.sol";
+import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
 import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
@@ -491,7 +491,7 @@ contract LoomDirectExecutionTest {
             );
         require(!expired, "expired direct execution accepted");
 
-        SessionKeyValidator session = new SessionKeyValidator();
+        ExactCallSessionValidator session = new ExactCallSessionValidator();
         LoomAccount.ModuleInit[] memory sessionModules = new LoomAccount.ModuleInit[](1);
         sessionModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(session), "");
         LoomAccount sessionAccount = new LoomAccount(
@@ -719,13 +719,13 @@ contract LoomDirectExecutionTest {
     }
 }
 
-contract SessionKeyValidatorTest {
+contract ExactCallSessionValidatorTest {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     function testPermissionBindsCallAndUseLimit() public {
         uint256 sessionKey = 0xB0B;
         address signer = vm.addr(sessionKey);
-        SessionKeyValidator validator = new SessionKeyValidator();
+        ExactCallSessionValidator validator = new ExactCallSessionValidator();
         MockTarget target = new MockTarget();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
@@ -735,9 +735,9 @@ contract SessionKeyValidatorTest {
             ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (3)));
         bytes memory accountCall = abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(item)));
         bytes32 permissionId = keccak256("permission");
-        SessionKeyValidator.Permission memory permission =
-            SessionKeyValidator.Permission(signer, 0, type(uint48).max, keccak256(accountCall), 2, address(0));
-        bytes memory grant = abi.encodeCall(SessionKeyValidator.grantPermission, (permissionId, permission));
+        ExactCallSessionValidator.Permission memory permission =
+            ExactCallSessionValidator.Permission(signer, 0, type(uint48).max, keccak256(accountCall), 2, address(0));
+        bytes memory grant = abi.encodeCall(ExactCallSessionValidator.grantPermission, (permissionId, permission));
         ExecutionLib.Execution memory directGrant = ExecutionLib.Execution(address(validator), 0, grant);
         (bool immediate,) =
             address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(directGrant))));
@@ -785,7 +785,7 @@ contract SessionKeyValidatorTest {
             bytes32(0),
             abi.encode(
                 ExecutionLib.Execution(
-                    address(validator), 0, abi.encodeCall(SessionKeyValidator.revokePermission, (permissionId))
+                    address(validator), 0, abi.encodeCall(ExactCallSessionValidator.revokePermission, (permissionId))
                 )
             )
         );
@@ -798,13 +798,13 @@ contract SessionKeyValidatorTest {
     }
 
     function testZeroPermissionIdRejected() public {
-        SessionKeyValidator validator = new SessionKeyValidator();
+        ExactCallSessionValidator validator = new ExactCallSessionValidator();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
-        SessionKeyValidator.Permission memory permission =
-            SessionKeyValidator.Permission(address(1), 0, type(uint48).max, keccak256("call"), 1, address(0));
-        bytes memory grant = abi.encodeCall(SessionKeyValidator.grantPermission, (bytes32(0), permission));
+        ExactCallSessionValidator.Permission memory permission =
+            ExactCallSessionValidator.Permission(address(1), 0, type(uint48).max, keccak256("call"), 1, address(0));
+        bytes memory grant = abi.encodeCall(ExactCallSessionValidator.grantPermission, (bytes32(0), permission));
         bytes memory schedule =
             abi.encodeCall(LoomAccount.scheduleCall, (address(validator), 0, grant, account.MIN_CONFIG_DELAY()));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));

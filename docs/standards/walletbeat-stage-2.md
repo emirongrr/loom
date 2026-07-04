@@ -18,7 +18,7 @@ client enablers, and what genuinely remains **client/operational** work.
 | Account unruggability | Non-upgradeable immutable proxy, no admin, no mutable implementation, and no developer recovery authority | Proxy, account, and factory constructors |
 | Account portability | ERC-1271 and ERC-4337; Loom-specific limited module profile | Public interfaces |
 | Account recovery | Visible guardian-threshold proposal, delay, cancellation, expiry, and atomic validator/guardian rotation | `RecoveryManager`, account recovery module |
-| Permissions management | Exact-call and granular enumerable revocable session permissions plus allowance revoke | `SessionKeyValidator`, `GranularSessionValidator`, `revokeTokenAllowance` |
+| Permissions management | Exact-call and granular enumerable revocable session permissions plus allowance revoke | `ExactCallSessionValidator`, `GranularSessionValidator`, `revokeTokenAllowance` |
 | Impact mitigation | Low-risk policy limits, vault delays, timelocks, and freeze | `PolicyHook`, `VaultHook`, scheduled calls, `freeze` |
 | Cross-chain readiness | L1-rooted identity config plus proof-gated optional sync; no bridge or service authority | `LoomKeystore`, `KeystoreSyncRecoveryModule`, `configHash`, `configVersion` |
 

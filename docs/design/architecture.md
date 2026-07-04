@@ -64,7 +64,7 @@ will invoke the validator only when it is installed.
   credentials and requires a configurable threshold of sorted, unique
   credential signatures. Credential identity and public-key fingerprints are
   both unique. Credential and threshold changes are timelocked.
-- `SessionKeyValidator` grants revocable, time-bounded, use-limited permissions
+- `ExactCallSessionValidator` grants revocable, time-bounded, use-limited permissions
   bound to an exact account call commitment and an explicitly selected
   paymaster. The zero address means the session must use native account-funded
   gas. Grants require the 72-hour config timelock; revocation remains

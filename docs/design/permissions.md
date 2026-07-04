@@ -6,7 +6,7 @@ reject arbitrary ERC-1271 messages.
 
 ## Exact-call sessions
 
-`SessionKeyValidator` binds a permission to the hash of one complete account
+`ExactCallSessionValidator` binds a permission to the hash of one complete account
 call. It is the narrowest profile and should be preferred for known,
 pre-constructed operations.
 

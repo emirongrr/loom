@@ -5,7 +5,7 @@ import {LoomAccount} from "../src/account/LoomAccount.sol";
 import {LoomAccountFactory} from "../src/account/LoomAccountFactory.sol";
 import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
-import {SessionKeyValidator} from "../src/validators/SessionKeyValidator.sol";
+import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
@@ -33,7 +33,7 @@ contract SecurityRegressionTest {
     VmSecurity internal constant vm = VmSecurity(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     function testSessionValidatorCannotAuthorizeERC1271() public {
-        SessionKeyValidator validator = new SessionKeyValidator();
+        ExactCallSessionValidator validator = new ExactCallSessionValidator();
         LoomAccount account = _accountWithValidator(address(validator));
         bytes32 permissionId = keccak256("permission");
 
