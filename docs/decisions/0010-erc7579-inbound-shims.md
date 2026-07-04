@@ -101,6 +101,20 @@ Risks:
 - Correct state isolation depends on the 1:1 binding. Installing one shim on the
   wrong account is prevented by the bound-account checks; sharing a target across
   accounts is safe only because each account gets its own shim.
+- The foreign target may be stateful, and it treats `msg.sender == shim` as the
+  account's authority. The shim therefore gates `validateUserOp` (and lifecycle)
+  to the bound account: without that gate, any third party could mutate
+  target-side state (usage counters, replay markers) in the account's name.
+  Loom's native validators do not need this gate because their `validateUserOp`
+  is `view`.
+- ERC-4337 simulation rules: during EntryPoint validation the target reads
+  storage keyed by the shim's address, which is not storage associated with the
+  userOp sender. Under the canonical unstaked-entity rules, bundlers may reject
+  such operations unless the relevant entity is staked or the bundler relaxes
+  the rule. This is a bundler-acceptance/liveness concern, not a safety one, and
+  it does not affect `executeDirect`, which bypasses bundlers entirely.
+  Deployments relying on shimmed validators for 4337 flows must rehearse against
+  their target bundlers.
 
 Required controls:
 

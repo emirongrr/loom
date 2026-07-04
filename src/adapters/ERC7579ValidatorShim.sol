@@ -69,9 +69,14 @@ contract ERC7579ValidatorShim is ILoomValidator {
         bytes calldata callData,
         address paymaster
     ) external returns (uint256) {
-        // The account passes itself as account_ and is the caller; a reverting
-        // target is caught by the account and mapped to SIG_VALIDATION_FAILED.
-        if (account_ != account) revert OnlyBoundAccount();
+        // Native Loom validators are view functions, so their ungated
+        // validateUserOp is harmless. The foreign target may be stateful (the
+        // standard allows usage counters etc.) and treats msg.sender == shim as
+        // the account's authority, so only the bound account may drive it: an
+        // ungated shim would let anyone mutate target state in the account's
+        // name. A reverting target is caught by the account and mapped to
+        // SIG_VALIDATION_FAILED.
+        if (msg.sender != account || account_ != account) revert OnlyBoundAccount();
         PackedUserOperation memory userOp = PackedUserOperation({
             sender: account,
             nonce: nonce,

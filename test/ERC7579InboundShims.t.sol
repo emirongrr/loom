@@ -123,6 +123,18 @@ contract ERC7579InboundShimsTest {
             );
         require(!wrongAccount, "shim served an unbound account");
         require(!shim.isInitialized(address(0xBEEF)), "shim initialized for an unbound account");
+
+        // Even with the correct bound account named, a caller other than the
+        // account itself cannot drive the (possibly stateful) foreign target.
+        (bool foreignDriver,) = address(shim)
+            .call(
+                abi.encodeCall(
+                    ERC7579ValidatorShim.validateUserOp,
+                    (address(account), keccak256("h"), 0, _sign(OWNER_KEY, keccak256("h")), bytes(""), address(0))
+                )
+            );
+        require(!foreignDriver, "non-account caller drove the foreign validator through the shim");
+        require(target.lastObservedSender() == address(0), "foreign caller mutated target state via shim");
     }
 
     function testShimConstructorRejectsWrongModuleTypeAndZeroAccount() public {
