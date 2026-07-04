@@ -101,7 +101,11 @@
   than corrupt state, but the incompatibility is silent and must be checked
   against the documented boundary. Each shim binds one account; correct
   target-side state isolation depends on that 1:1 binding. Executor and fallback
-  modules and delegatecall remain rejected and are not shimmable.
+  modules and delegatecall remain rejected and are not shimmable. Because the
+  foreign target keys its state by the shim address rather than the userOp
+  sender, canonical ERC-4337 unstaked-entity storage rules may lead bundlers to
+  reject shimmed-validator operations unless staking or bundler policy allows
+  them; this is a liveness concern only, and `executeDirect` is unaffected.
 - Migration is blocked while frozen. A guardian freeze can delay but not
   permanently veto a migration because freeze duration is shorter than the
   configuration delay and cancellation remains available while frozen.
