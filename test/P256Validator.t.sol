@@ -2,7 +2,7 @@
 pragma solidity 0.8.35;
 
 import {P256Validator} from "../src/validators/P256Validator.sol";
-import {LoomAccount} from "../src/account/LoomAccount.sol";
+import {LoomAccount} from "../src/LoomAccount.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";

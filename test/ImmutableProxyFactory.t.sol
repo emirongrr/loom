@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/account/LoomAccount.sol";
-import {LoomAccountFactory} from "../src/account/LoomAccountFactory.sol";
-import {AppAccountRegistry} from "../src/account/AppAccountRegistry.sol";
-import {LoomAccountProxy} from "../src/account/LoomAccountProxy.sol";
+import {LoomAccount} from "../src/LoomAccount.sol";
+import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
+import {AppAccountRegistry} from "../src/AppAccountRegistry.sol";
+import {LoomAccountProxy} from "../src/LoomAccountProxy.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";

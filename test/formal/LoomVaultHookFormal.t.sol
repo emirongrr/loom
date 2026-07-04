@@ -2,7 +2,7 @@
 pragma solidity 0.8.35;
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../../src/account/LoomAccount.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
 import {VaultHook} from "../../src/hooks/VaultHook.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";

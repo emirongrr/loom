@@ -7,10 +7,10 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 
 ## In-scope production contracts
 
-- `src/account/LoomAccount.sol`
-- `src/account/LoomAccountFactory.sol`
-- `src/account/LoomAccountProxy.sol`
-- `src/account/AppAccountRegistry.sol`
+- `src/LoomAccount.sol`
+- `src/LoomAccountFactory.sol`
+- `src/LoomAccountProxy.sol`
+- `src/AppAccountRegistry.sol`
 - `src/hooks/PolicyHook.sol`
 - `src/hooks/VaultHook.sol`
 - `src/keystore/EthereumL1KeystoreVerifier.sol`

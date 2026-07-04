@@ -11,8 +11,8 @@ const forge = existsSync(localForge) ? localForge : "forge";
 const MIN_LINES = 80;
 const MIN_BRANCHES = 60;
 const CRITICAL_MODULES = [
-  "src/account/LoomAccount.sol",
-  "src/account/LoomAccountFactory.sol",
+  "src/LoomAccount.sol",
+  "src/LoomAccountFactory.sol",
   "src/adapters/ERC7579ModuleAdapter.sol",
   "src/hooks/PolicyHook.sol",
   "src/hooks/VaultHook.sol",
@@ -33,7 +33,7 @@ const CRITICAL_MODULES = [
 const CRITICAL_GROUPS = [
   {
     name: "account-core",
-    files: ["src/account/LoomAccount.sol", "src/account/LoomAccountFactory.sol"]
+    files: ["src/LoomAccount.sol", "src/LoomAccountFactory.sol"]
   },
   {
     name: "recovery",
@@ -187,8 +187,8 @@ function summarizeGroup(group, byFile, failures) {
 function selfTest() {
   const summary = parseCoverageSummary(`
 | script/DeployCore.s.sol | 0.00% (0/3) | 0.00% (0/2) | 100.00% (0/0) | 0.00% (0/1) |
-| src/account/LoomAccount.sol | 87.50% (7/8) | 88.89% (8/9) | 60.00% (3/5) | 100.00% (1/1) |
-| src/account/LoomAccountFactory.sol | 100.00% (3/3) | 100.00% (3/3) | 75.00% (3/4) | 100.00% (1/1) |
+| src/LoomAccount.sol | 87.50% (7/8) | 88.89% (8/9) | 60.00% (3/5) | 100.00% (1/1) |
+| src/LoomAccountFactory.sol | 100.00% (3/3) | 100.00% (3/3) | 75.00% (3/4) | 100.00% (1/1) |
 | src/adapters/ERC7579ModuleAdapter.sol | 84.62% (11/13) | 71.43% (10/14) | 75.00% (3/4) | 75.00% (3/4) |
 | src/hooks/PolicyHook.sol | 90.00% (9/10) | 90.00% (9/10) | 66.67% (2/3) | 100.00% (1/1) |
 | src/hooks/VaultHook.sol | 93.02% (120/129) | 90.40% (160/177) | 63.16% (24/38) | 94.74% (18/19) |
@@ -215,7 +215,7 @@ function selfTest() {
       assertGate({
         ...summary,
         files: summary.files.map(row =>
-          row.file === "src/account/LoomAccount.sol"
+          row.file === "src/LoomAccount.sol"
             ? { ...row, branches: { ...row.branches, percent: 59.99 } }
             : row
         )
