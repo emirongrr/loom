@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {IERC1271} from "../interfaces/IERC1271.sol";
-import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
-import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
-import {ILoomHook} from "../interfaces/ILoomHook.sol";
-import {ILoomModule} from "../interfaces/ILoomModule.sol";
-import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
-import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
+import {IERC1271} from "./interfaces/IERC1271.sol";
+import {ILoomAccount} from "./interfaces/ILoomAccount.sol";
+import {ILoomDirectValidator} from "./interfaces/ILoomDirectValidator.sol";
+import {ILoomHook} from "./interfaces/ILoomHook.sol";
+import {ILoomModule} from "./interfaces/ILoomModule.sol";
+import {ILoomValidator} from "./interfaces/ILoomValidator.sol";
+import {IGuardianVerifier} from "./interfaces/IGuardianVerifier.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
-import {EIP712Lib} from "../libraries/EIP712Lib.sol";
-import {ExecutionLib} from "../libraries/ExecutionLib.sol";
-import {ModuleType} from "../libraries/ModuleType.sol";
-import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
-import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
-import {MerkleProof} from "../libraries/MerkleProof.sol";
-import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
+import {EIP712Lib} from "./libraries/EIP712Lib.sol";
+import {ExecutionLib} from "./libraries/ExecutionLib.sol";
+import {ModuleType} from "./libraries/ModuleType.sol";
+import {ValidationDataLib} from "./libraries/ValidationDataLib.sol";
+import {ValidatorSetLib} from "./libraries/ValidatorSetLib.sol";
+import {MerkleProof} from "./libraries/MerkleProof.sol";
+import {GuardianVerificationLib} from "./libraries/GuardianVerificationLib.sol";
 
 contract LoomAccount is IERC1271, ILoomAccount {
     error OnlyEntryPoint();

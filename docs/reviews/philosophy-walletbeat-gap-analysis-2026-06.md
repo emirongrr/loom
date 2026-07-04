@@ -3,7 +3,7 @@
 Review date: 2026-06-20
 
 Citations valid as of commit `d730b8f` (2026-06-28). Several commits after the
-review date touched `src/account/LoomAccount.sol` and `src/hooks/VaultHook.sol`
+review date touched `src/LoomAccount.sol` and `src/hooks/VaultHook.sol`
 with line ranges this review cites (notably the addition of
 `evictHookWithGuardians`, decision 0005, and the `MIN_VAULT_DELAY`/
 `MAX_SCHEDULE_DELAY` constants, decisions 0006-0007). Re-validate specific
@@ -25,9 +25,9 @@ ERC-1271, delayed configuration, guardian-threshold recovery, guardian freeze,
 vault withdrawal delays, granular sessions, L1-rooted keystore direction, and a
 young SDK that requires explicit signer and bundler adapters. Evidence:
 `LoomAccount` stores an immutable EntryPoint and mutable user-owned
-configuration only (`src/account/LoomAccount.sol:98-104`), rejects unsupported
-execution modes (`src/account/LoomAccount.sol:329-357`), requires delayed
-module/config operations (`src/account/LoomAccount.sol:614-630`), and exposes
+configuration only (`src/LoomAccount.sol:98-104`), rejects unsupported
+execution modes (`src/LoomAccount.sol:329-357`), requires delayed
+module/config operations (`src/LoomAccount.sol:614-630`), and exposes
 SDK send paths that fail without caller-supplied signer and transport
 (`packages/sdk/src/index.js:195-213`).
 
@@ -75,7 +75,7 @@ root, guardian approvals, a 3-day delay, and a 7-day execution window
 config version, old validator hash, and init data hash before calling account
 recovery (`src/recovery/RecoveryManager.sol:147-167`). The account also
 supports complete validator-set replacement and guardian-root rotation
-(`src/account/LoomAccount.sol:426-458`).
+(`src/LoomAccount.sol:426-458`).
 
 Gap: the deployment-time guardian ceremony is still not implemented in the
 client/deployment tooling. The contracts can verify guardian commitments, but
@@ -156,13 +156,13 @@ Engineering gaps:
 
 | Area | Current Estimate | Evidence | Minimum Change For Stage 2 Direction |
 |---|---:|---|---|
-| Account abstraction | Stage 2-ready contract base | ERC-4337 validation path in `src/account/LoomAccount.sol:236-264` | Live two-bundler testnet qualification and public evidence |
-| Atomic batching | Strong contract support | Batch loop reverts atomically on subcall revert in `src/account/LoomAccount.sol:347-357` and `_execute` bubbles revert in `src/account/LoomAccount.sol:868-878` | ERC-5792 capability/reporting in client and vectors |
+| Account abstraction | Stage 2-ready contract base | ERC-4337 validation path in `src/LoomAccount.sol:236-264` | Live two-bundler testnet qualification and public evidence |
+| Atomic batching | Strong contract support | Batch loop reverts atomically on subcall revert in `src/LoomAccount.sol:347-357` and `_execute` bubbles revert in `src/LoomAccount.sol:868-878` | ERC-5792 capability/reporting in client and vectors |
 | Unruggability | Strong | Immutable proxy implementation pointer, no admin/upgrade selector, delayed module install, and no privileged factory path | Deployment manifests proving implementation/proxy/factory/registry code hashes and no upgrade authority |
-| Portability | Partial | ERC-1271 in `src/account/LoomAccount.sol:266-275`; limited module profile documented in `docs/standards/walletbeat-stage-2.md:8-17` | More standard ERC-7579 adapters and independent client examples |
+| Portability | Partial | ERC-1271 in `src/LoomAccount.sol:266-275`; limited module profile documented in `docs/standards/walletbeat-stage-2.md:8-17` | More standard ERC-7579 adapters and independent client examples |
 | Recovery | Strong contract base | Proposal/cancel/execute state machine in `src/recovery/RecoveryManager.sol:66-167` | Guardian ceremony tooling and real-device tests |
 | Permissions | Good contract base | Granular scope fields in `src/validators/GranularSessionValidator.sol:20-33`; revoke/enumeration in `src/validators/GranularSessionValidator.sol:98-109` | ERC-7715/permission RPC translation and wallet UX evidence |
-| Impact mitigation | Strong contract base | Vault policy/delay/cancel paths in `src/hooks/VaultHook.sol:77-146`; guardian freeze in `src/account/LoomAccount.sol:574-608` | Live token portfolio rehearsal and monitoring evidence |
+| Impact mitigation | Strong contract base | Vault policy/delay/cancel paths in `src/hooks/VaultHook.sol:77-146`; guardian freeze in `src/LoomAccount.sol:574-608` | Live token portfolio rehearsal and monitoring evidence |
 | Verified wallet | Roadmap only | Client requirements listed in `docs/standards/walletbeat-stage-2.md:19-34` | Light-client backed reads and degraded-mode UX |
 | Privacy | Boundary only | Consent/metadata checks in `packages/privacy/src/index.js:132-273` | Real privacy protocol adapter and local scanning |
 | Governance/release maturity | Pre-audit | Pre-audit status in `docs/security/production-readiness.md:1-4` | Audit, bug bounty, signed reproducible release |

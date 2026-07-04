@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/account/LoomAccount.sol";
+import {LoomAccount} from "../src/LoomAccount.sol";
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";

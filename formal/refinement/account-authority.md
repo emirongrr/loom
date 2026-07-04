@@ -8,7 +8,7 @@ model, Halmos properties, and Solidity implementation from drifting apart.
 
 Target contracts:
 
-- `src/account/LoomAccount.sol`
+- `src/LoomAccount.sol`
 - `src/recovery/RecoveryManager.sol`
 - `src/modules/VaultHook.sol`
 - `src/modules/KeystoreSyncRecoveryModule.sol`

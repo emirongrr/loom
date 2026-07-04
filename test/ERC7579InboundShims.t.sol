@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/account/LoomAccount.sol";
+import {LoomAccount} from "../src/LoomAccount.sol";
 import {ERC7579ValidatorShim} from "../src/adapters/ERC7579ValidatorShim.sol";
 import {ERC7579HookShim} from "../src/adapters/ERC7579HookShim.sol";
 import {IERC7579Validator} from "../src/interfaces/IERC7579Validator.sol";

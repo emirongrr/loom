@@ -41,7 +41,7 @@ const strip = hex => hex.slice(2).toLowerCase();
 const keccakHex = hex => `0x${keccak256(Buffer.from(hex, "hex"))}`;
 
 // Independent reimplementation of LoomAccount.guardianLeaf
-// (src/account/LoomAccount.sol:559-561):
+// (src/LoomAccount.sol:559-561):
 //   keccak256(abi.encode(verifier, verifier.codehash, keyCommitment, salt))
 // abi.encode left-pads the address to a full word; the three bytes32 follow.
 function onchainLeaf({ verifier, verifierCodeHash, keyCommitment, salt }) {

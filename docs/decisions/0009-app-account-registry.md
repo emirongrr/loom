@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-An architecture review flagged `src/account/AppAccountRegistry.sol` as a
+An architecture review flagged `src/AppAccountRegistry.sol` as a
 candidate for deletion, on the grounds that everything it records is already
 derivable from the account codehash or the factory's `LoomAccountCreated`
 event, while it costs gas on every deployment and adds a contract to the audit

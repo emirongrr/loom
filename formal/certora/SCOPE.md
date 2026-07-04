@@ -4,12 +4,12 @@ This scope keeps Certora work reviewable before any CVL rule is enabled in CI.
 
 ## Initial Contracts
 
-- `src/account/LoomAccount.sol`
+- `src/LoomAccount.sol`
 - `src/recovery/RecoveryManager.sol`
 - `src/hooks/VaultHook.sol`
-- `src/account/LoomAccountProxy.sol`
-- `src/account/LoomAccountFactory.sol`
-- `src/account/AppAccountRegistry.sol`
+- `src/LoomAccountProxy.sol`
+- `src/LoomAccountFactory.sol`
+- `src/AppAccountRegistry.sol`
 
 ## First Rule Group
 

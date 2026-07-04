@@ -2,7 +2,7 @@
 pragma solidity 0.8.35;
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../../src/account/LoomAccount.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
 import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";
 import {KeystoreSyncRecoveryModule} from "../../src/recovery/KeystoreSyncRecoveryModule.sol";
 import {ILoomAccount} from "../../src/interfaces/ILoomAccount.sol";
