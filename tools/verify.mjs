@@ -107,7 +107,7 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  "LoomAccountInvariantTest",
+  "LoomAccount(Extended)?InvariantTest",
   "--no-match-path",
   "test/formal/**"
 ]);
