@@ -18,6 +18,7 @@ import {MerkleProof} from "./libraries/MerkleProof.sol";
 import {GuardianVerificationLib} from "./libraries/GuardianVerificationLib.sol";
 
 contract LoomAccount is IERC1271, ILoomAccount {
+    // --- Errors ---
     error OnlyEntryPoint();
     error OnlySelf();
     error InvalidModule();
@@ -41,6 +42,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error InvalidMigration();
     error OperationAlreadyScheduled();
 
+    // --- Types ---
     struct ModuleInit {
         uint256 moduleTypeId;
         address module;
@@ -58,6 +60,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint64 nonce;
     }
 
+    // --- Constants ---
     /// @notice Minimum schedule delay for calls to external targets.
     /// @dev Configuration targets (the account itself or an installed module)
     /// use the longer MIN_CONFIG_DELAY; see scheduleCall.
@@ -94,6 +97,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
+    // --- Storage (layout is append-only; order is consensus-critical) ---
     address public entryPoint;
     bytes32 public configHash;
     uint64 public configVersion;
@@ -115,6 +119,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bool private _executingScheduled;
     bool private _executionLocked;
 
+    // --- Events ---
     event ModuleInstalled(uint256 indexed moduleTypeId, address indexed module);
     event ModuleUninstalled(uint256 indexed moduleTypeId, address indexed module);
     event ConfigUpdated(bytes32 indexed configHash, uint64 indexed configVersion);
@@ -137,6 +142,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event MigrationCancelled(bytes32 indexed migrationId);
     event MigrationExecuted(bytes32 indexed migrationId, address indexed destination);
 
+    // --- Initialization ---
     constructor(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -172,6 +178,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
+    // --- ERC-165 and token receiver hooks ---
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return interfaceId == ERC165_INTERFACE_ID || interfaceId == ERC721_RECEIVER_INTERFACE_ID
             || interfaceId == ERC1155_RECEIVER_INTERFACE_ID;
@@ -193,6 +200,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return this.onERC1155BatchReceived.selector;
     }
 
+    // --- Modifiers ---
     modifier onlyEntryPoint() {
         if (msg.sender != entryPoint) revert OnlyEntryPoint();
         _;
@@ -215,6 +223,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _executionLocked = false;
     }
 
+    // --- ERC-4337 validation and ERC-1271 signatures ---
     function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash, uint256 missingAccountFunds)
         external
         onlyEntryPoint
@@ -259,6 +268,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
+    // --- Execution ---
     function execute(bytes32 mode, bytes calldata executionCalldata) external payable nonReentrantExecution {
         if (msg.sender != entryPoint && msg.sender != address(this)) revert OnlyEntryPoint();
         _executeAuthorized(mode, executionCalldata, msg.sender, msg.data);
@@ -369,6 +379,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         revert UnsupportedModuleType();
     }
 
+    // --- Module installation ---
     function installModule(uint256 moduleTypeId, address module, bytes calldata initData) external onlyScheduledSelf {
         _installModule(moduleTypeId, module, initData);
     }
@@ -381,6 +392,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         _advanceConfig(keccak256(abi.encode("MODULE_UNINSTALLED", moduleTypeId, module)));
     }
 
+    // --- Recovery (module-driven authority replacement) ---
     function recoverConfiguration(
         address[] calldata oldValidators,
         address newValidator,
@@ -519,6 +531,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         ) revert InvalidModule();
     }
 
+    // --- Module and validator views ---
     function isModuleInstalled(uint256 moduleTypeId, address module) external view returns (bool) {
         return _modules[moduleTypeId][module];
     }
@@ -535,6 +548,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return _validators[index];
     }
 
+    // --- Guardian configuration and freeze ---
     function setGuardianConfig(bytes32 newRoot, uint8 newThreshold) external onlyScheduledSelf {
         if (!_validProtectedGuardianConfig(newRoot, newThreshold)) {
             revert InvalidGuardianConfig();
@@ -601,6 +615,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return _executingScheduled;
     }
 
+    // --- Timelocked call scheduling ---
     function scheduleCall(address target, uint256 value, bytes calldata data, uint48 delay)
         external
         onlySelf
@@ -625,6 +640,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         emit OperationCancelled(operationId);
     }
 
+    // --- Sovereign migration ---
     function scheduleMigration(
         address destination,
         bytes32 destinationCodeHash,
@@ -767,6 +783,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         );
     }
 
+    // --- Scheduled execution and allowance revocation ---
     function executeScheduled(address target, uint256 value, bytes calldata data) external nonReentrantExecution {
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -797,6 +814,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         emit AllowanceRevoked(token, spender);
     }
 
+    // --- Internal helpers ---
     function _installModule(uint256 moduleTypeId, address module, bytes memory initData) internal {
         if (
             moduleTypeId != ModuleType.VALIDATOR && moduleTypeId != ModuleType.HOOK
