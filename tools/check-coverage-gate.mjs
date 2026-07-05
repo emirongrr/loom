@@ -220,7 +220,7 @@ function selfTest() {
             : row
         )
       }),
-    /src\/account\/LoomAccount\.sol branch coverage 59\.99% < 60%/u
+    /src\/LoomAccount\.sol branch coverage 59\.99% < 60%/u
   );
   assert.throws(
     () =>
