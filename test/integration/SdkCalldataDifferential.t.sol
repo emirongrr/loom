@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
 
 interface VmSdkCalldata {
     function readFile(string calldata path) external view returns (string memory);

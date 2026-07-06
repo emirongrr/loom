@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
-import {EIP712Lib} from "../src/libraries/EIP712Lib.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {ReentrantHook} from "./mocks/ReentrantHook.sol";
-import {RevertingHook} from "./mocks/RevertingHook.sol";
-import {GasGriefingHook} from "./mocks/GasGriefingHook.sol";
-import {StorageModifyingHook} from "./mocks/StorageModifyingHook.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
+import {EIP712Lib} from "../../src/libraries/EIP712Lib.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {ReentrantHook} from "../mocks/ReentrantHook.sol";
+import {RevertingHook} from "../mocks/RevertingHook.sol";
+import {GasGriefingHook} from "../mocks/GasGriefingHook.sol";
+import {StorageModifyingHook} from "../mocks/StorageModifyingHook.sol";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Adversarial Hooks — Phase 7 of the verification plan

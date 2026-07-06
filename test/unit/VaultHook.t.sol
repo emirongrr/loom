@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {VaultHook} from "../src/hooks/VaultHook.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockPayableERC20} from "./mocks/MockPayableERC20.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {VaultHook} from "../../src/hooks/VaultHook.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockPayableERC20} from "../mocks/MockPayableERC20.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 
 interface VmVault {
     function warp(uint256 timestamp) external;

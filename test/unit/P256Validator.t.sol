@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {P256Validator} from "../src/validators/P256Validator.sol";
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
-import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
-import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
-import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
+import {P256Validator} from "../../src/validators/P256Validator.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
+import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface VmP256 {
     function warp(uint256) external;

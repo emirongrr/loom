@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ERC7579ValidatorShim} from "../src/adapters/ERC7579ValidatorShim.sol";
-import {ERC7579HookShim} from "../src/adapters/ERC7579HookShim.sol";
-import {IERC7579Validator} from "../src/interfaces/IERC7579Validator.sol";
-import {IERC7579Hook} from "../src/interfaces/IERC7579Hook.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ERC7579ValidatorShim} from "../../src/adapters/ERC7579ValidatorShim.sol";
+import {ERC7579HookShim} from "../../src/adapters/ERC7579HookShim.sol";
+import {IERC7579Validator} from "../../src/interfaces/IERC7579Validator.sol";
+import {IERC7579Hook} from "../../src/interfaces/IERC7579Hook.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
-import {MockERC7579Validator} from "./mocks/MockERC7579Validator.sol";
-import {MockERC7579Hook} from "./mocks/MockERC7579Hook.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
+import {MockERC7579Validator} from "../mocks/MockERC7579Validator.sol";
+import {MockERC7579Hook} from "../mocks/MockERC7579Hook.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface Vm {
     function warp(uint256 timestamp) external;

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {PolicyHook} from "../src/hooks/PolicyHook.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {RevertingHook} from "./mocks/RevertingHook.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {RevertingHook} from "../mocks/RevertingHook.sol";
 
 interface VmMigration {
     function warp(uint256 timestamp) external;

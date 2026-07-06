@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {EthereumL1KeystoreVerifier} from "../src/keystore/EthereumL1KeystoreVerifier.sol";
-import {LoomKeystore} from "../src/keystore/LoomKeystore.sol";
-import {ILoomKeystore} from "../src/interfaces/ILoomKeystore.sol";
+import {EthereumL1KeystoreVerifier} from "../../src/keystore/EthereumL1KeystoreVerifier.sol";
+import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";
+import {ILoomKeystore} from "../../src/interfaces/ILoomKeystore.sol";
 
 contract EthereumL1KeystoreVerifierTest {
     bytes32 internal constant IDENTITY_ID = keccak256("loom.identity.l1");

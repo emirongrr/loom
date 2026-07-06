@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {StdInvariant} from "../lib/openzeppelin-contracts/lib/forge-std/src/StdInvariant.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {StdInvariant} from "../../lib/openzeppelin-contracts/lib/forge-std/src/StdInvariant.sol";
 
 interface VmInvariant {
     function warp(uint256 timestamp) external;

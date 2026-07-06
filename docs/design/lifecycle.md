@@ -71,7 +71,7 @@ Recovery execution is deliberately **not** blocked by a freeze: the freeze exist
 so a single guardian can buy the window for the full guardian threshold to
 recover a compromised account. Blocking recovery during a freeze would let a
 compromised primary validator freeze the account to stall its own replacement.
-See `test/RecoveryManager.t.sol:testGuardianFreezeProtectsRecoveryFromScheduledConfigBump`.
+See `test/integration/RecoveryManager.t.sol:testGuardianFreezeProtectsRecoveryFromScheduledConfigBump`.
 
 ## configVersion is the anti-stale-authority spine
 
@@ -87,7 +87,7 @@ at proposal time and re-check it at execution:
 
 This is the mechanism behind the "config version never drifts / no stale
 authorization" property and is checked by
-`test/LoomAccountInvariant.t.sol` (monotonicity) and the per-feature Halmos
+`test/invariant/LoomAccountInvariant.t.sol` (monotonicity) and the per-feature Halmos
 proofs under `test/formal/`.
 
 ## What "Migrated" is and is not
@@ -104,5 +104,5 @@ returns to `Operational`. Sovereignty comes from the destination binding and the
 - [`docs/design/recovery.md`](recovery.md) — guardian recovery details.
 - [`docs/design/execution.md`](execution.md) — execution modes and scheduling.
 - [`docs/design/guardians.md`](guardians.md) — the guardian Merkle model and freeze.
-- [`test/LoomAccountInvariant.t.sol`](../../test/LoomAccountInvariant.t.sol) —
+- [`test/invariant/LoomAccountInvariant.t.sol`](../../test/invariant/LoomAccountInvariant.t.sol) —
   the stateful invariants that enforce this model.

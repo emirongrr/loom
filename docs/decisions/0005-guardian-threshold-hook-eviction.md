@@ -50,7 +50,7 @@ Required controls:
 
 - Test coverage proving a below-threshold approval is rejected and a
   threshold approval evicts the hook and restores normal execution
-  immediately (`test/SovereignMigration.t.sol:testGuardianThresholdCanEvictAStuckHookImmediately`).
+  immediately (`test/integration/SovereignMigration.t.sol:testGuardianThresholdCanEvictAStuckHookImmediately`).
 
 ## Rejected Alternatives
 

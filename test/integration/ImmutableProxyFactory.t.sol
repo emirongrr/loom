@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
-import {AppAccountRegistry} from "../src/AppAccountRegistry.sol";
-import {LoomAccountProxy} from "../src/LoomAccountProxy.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {LoomAccountFactory} from "../../src/LoomAccountFactory.sol";
+import {AppAccountRegistry} from "../../src/AppAccountRegistry.sol";
+import {LoomAccountProxy} from "../../src/LoomAccountProxy.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
-import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
+import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 
 interface VmProxyFactory {
     function deal(address account, uint256 amount) external;

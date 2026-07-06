@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
-import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
+import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 
 interface Vm7702 {
     function addr(uint256 privateKey) external returns (address);

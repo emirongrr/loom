@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
-import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
-import {P256Validator} from "../src/validators/P256Validator.sol";
-import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
-import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
-import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
+import {P256Validator} from "../../src/validators/P256Validator.sol";
+import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
+import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
 
 interface VmValidatorCoverage {
     function warp(uint256 timestamp) external;

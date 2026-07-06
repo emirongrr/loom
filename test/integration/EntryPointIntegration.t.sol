@@ -4,13 +4,13 @@ pragma solidity 0.8.35;
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {MockPaymaster} from "./mocks/MockPaymaster.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {LoomAccountFactory} from "../../src/LoomAccountFactory.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {MockPaymaster} from "../mocks/MockPaymaster.sol";
 
 interface VmEntryPoint {
     function deal(address account, uint256 amount) external;

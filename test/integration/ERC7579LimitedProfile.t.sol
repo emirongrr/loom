@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockEntryPoint} from "./mocks/MockEntryPoint.sol";
-import {MockERC7579HookAdapter} from "./mocks/MockERC7579HookAdapter.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
+import {MockERC7579HookAdapter} from "../mocks/MockERC7579HookAdapter.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
 
 interface Vm {
     function warp(uint256 timestamp) external;

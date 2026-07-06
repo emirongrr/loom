@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {MultiP256Validator} from "../src/validators/MultiP256Validator.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
-import {WebAuthnP256} from "../src/libraries/WebAuthnP256.sol";
-import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
-import {MockPolicyHook} from "./mocks/MockPolicyHook.sol";
-import {DenyPolicyHook} from "./mocks/DenyPolicyHook.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MultiP256Validator} from "../../src/validators/MultiP256Validator.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
+import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
+import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface VmMultiP256 {
     function warp(uint256) external;

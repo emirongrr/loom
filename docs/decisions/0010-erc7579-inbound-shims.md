@@ -122,7 +122,7 @@ Required controls:
   keyed by `msg.sender`) and a foreign hook through a real `LoomAccount`,
   proving install/validate/ERC-1271/uninstall and the reconstruction of
   `userOp.sender`, plus rejection of foreign callers, unbound accounts, and
-  wrong-type targets. (`test/ERC7579InboundShims.t.sol`.)
+  wrong-type targets. (`test/integration/ERC7579InboundShims.t.sol`.)
 - The compatibility boundary (unsupported gas/initCode/paymaster/`msgValue`
   reads, no executor/fallback) must be documented in the shim NatSpec and the
   threat model.

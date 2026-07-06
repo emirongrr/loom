@@ -32,7 +32,7 @@ Risks:
 Required controls:
 
 - Test coverage proving a delay above the maximum is rejected and the maximum
-  itself is accepted (`test/SecurityRegression.t.sol:testScheduleCallRejectsDelayBeyondMaximum`).
+  itself is accepted (`test/regression/SecurityRegression.t.sol:testScheduleCallRejectsDelayBeyondMaximum`).
 
 ## Rejected Alternatives
 

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {OPStackL2KeystoreVerifier} from "../src/keystore/OPStackL2KeystoreVerifier.sol";
-import {LoomKeystore} from "../src/keystore/LoomKeystore.sol";
-import {ILoomKeystore} from "../src/interfaces/ILoomKeystore.sol";
+import {OPStackL2KeystoreVerifier} from "../../src/keystore/OPStackL2KeystoreVerifier.sol";
+import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";
+import {ILoomKeystore} from "../../src/interfaces/ILoomKeystore.sol";
 
 interface VmOPStack {
     function load(address target, bytes32 slot) external view returns (bytes32);

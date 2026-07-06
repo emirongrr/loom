@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {EthereumL1KeystoreVerifier} from "../src/keystore/EthereumL1KeystoreVerifier.sol";
-import {LoomKeystore} from "../src/keystore/LoomKeystore.sol";
-import {KeystoreSyncRecoveryModule} from "../src/recovery/KeystoreSyncRecoveryModule.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {ILoomAccount} from "../src/interfaces/ILoomAccount.sol";
-import {ILoomKeystore} from "../src/interfaces/ILoomKeystore.sol";
-import {ILoomModule} from "../src/interfaces/ILoomModule.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockKeystoreProofVerifier} from "./mocks/MockKeystoreProofVerifier.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {EthereumL1KeystoreVerifier} from "../../src/keystore/EthereumL1KeystoreVerifier.sol";
+import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";
+import {KeystoreSyncRecoveryModule} from "../../src/recovery/KeystoreSyncRecoveryModule.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {ILoomAccount} from "../../src/interfaces/ILoomAccount.sol";
+import {ILoomKeystore} from "../../src/interfaces/ILoomKeystore.sol";
+import {ILoomModule} from "../../src/interfaces/ILoomModule.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockKeystoreProofVerifier} from "../mocks/MockKeystoreProofVerifier.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 
 contract RecoverySetCaller is ILoomModule {
     function recoverSet(

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {ERC1271GuardianVerifier} from "../src/recovery/ERC1271GuardianVerifier.sol";
-import {P256GuardianVerifier} from "../src/recovery/P256GuardianVerifier.sol";
-import {WebAuthnP256} from "../src/libraries/WebAuthnP256.sol";
-import {MockERC1271Signer} from "./mocks/MockERC1271Signer.sol";
-import {MockP256Verifier} from "./mocks/MockP256Verifier.sol";
+import {ERC1271GuardianVerifier} from "../../src/recovery/ERC1271GuardianVerifier.sol";
+import {P256GuardianVerifier} from "../../src/recovery/P256GuardianVerifier.sol";
+import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
+import {MockERC1271Signer} from "../mocks/MockERC1271Signer.sol";
+import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 
 contract GuardianVerifierTest {
     function testP256GuardianVerifierBindsPublicKeyCommitmentAndWebAuthnFields() public {

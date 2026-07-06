@@ -27,17 +27,17 @@ pragma solidity 0.8.35;
 // thousands of randomized cross-feature sequences.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
-import {EIP712Lib} from "../src/libraries/EIP712Lib.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {RevertingHook} from "./mocks/RevertingHook.sol";
-import {StdInvariant} from "../lib/openzeppelin-contracts/lib/forge-std/src/StdInvariant.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
+import {EIP712Lib} from "../../src/libraries/EIP712Lib.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {RevertingHook} from "../mocks/RevertingHook.sol";
+import {StdInvariant} from "../../lib/openzeppelin-contracts/lib/forge-std/src/StdInvariant.sol";
 
 interface VmExtInvariant {
     function warp(uint256 timestamp) external;

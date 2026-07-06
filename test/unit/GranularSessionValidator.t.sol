@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {ValidationDataLib} from "../src/libraries/ValidationDataLib.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {GranularSessionValidator} from "../../src/validators/GranularSessionValidator.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface Vm {
     function warp(uint256) external;

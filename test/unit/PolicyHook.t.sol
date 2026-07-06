@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
 
-import {PolicyHook} from "../src/hooks/PolicyHook.sol";
+import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
 
 // Acts as the calling account: PolicyHook reads isExecutingScheduled() on
 // msg.sender, so this test contract toggles the scheduled state and calls the

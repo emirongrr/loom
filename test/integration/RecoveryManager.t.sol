@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.35;
-import {GuardianVerificationLib} from "../src/libraries/GuardianVerificationLib.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
-import {LoomAccount} from "../src/LoomAccount.sol";
-import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
-import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
-import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
-import {ModuleType} from "../src/libraries/ModuleType.sol";
-import {MockValidator} from "./mocks/MockValidator.sol";
-import {MockTarget} from "./mocks/MockTarget.sol";
-import {ReentrantModule} from "./mocks/ReentrantModule.sol";
+import {LoomAccount} from "../../src/LoomAccount.sol";
+import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
+import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
+import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
+import {MockTarget} from "../mocks/MockTarget.sol";
+import {ReentrantModule} from "../mocks/ReentrantModule.sol";
 
 interface VmRecovery {
     function warp(uint256) external;
