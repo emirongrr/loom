@@ -198,6 +198,37 @@ Loom treats recovery as a modular capability with explicit authority, observable
 
 Recovery mechanisms can evolve independently while preserving the same underlying account.
 
+### Account Lifecycle
+
+A `LoomAccount` is deliberately **not** a single linear state machine. Its
+observable state is the product of several mostly-orthogonal dimensions, tied
+together by a monotonic `configVersion` that invalidates any stale pending
+operation. An account can be frozen while a migration and a recovery are both
+pending.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    Uninitialized --> Operational: initialize()<br/>configVersion 0→1
+
+    Operational --> Operational: execute / executeDirect<br/>scheduleCall→executeScheduled<br/>install/uninstall (timelocked, configVersion++)
+
+    Operational --> Frozen: guardian freeze() (2d window)
+    Frozen --> Operational: unfreeze() after expiry
+
+    Operational --> MigrationPending: scheduleMigration()
+    MigrationPending --> Operational: cancel / executeMigration<br/>(account persists, migrationNonce++)
+
+    Operational --> RecoveryPending: proposeRecovery() (threshold guardians)
+    RecoveryPending --> Operational: cancel / executeRecovery<br/>(validators replaced, configVersion++)
+```
+
+`Frozen`, `MigrationPending`, and `RecoveryPending` are drawn as branches off
+`Operational` for readability, but they overlay independently. The authoritative,
+code-derived model — including the freeze carve-out for recovery, the exact
+interaction rules, and the stateful invariants that enforce them — lives in
+[`docs/design/lifecycle.md`](docs/design/lifecycle.md).
+
 ### Privacy Direction
 
 Privacy is treated as a security property rather than a cosmetic feature.
