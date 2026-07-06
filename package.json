@@ -60,7 +60,7 @@
   "devDependencies": {
     "js-sha3": "0.9.3",
     "solc": "0.8.35",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "optionalDependencies": {
     "@foundry-rs/forge-win32-amd64": "1.7.1"
