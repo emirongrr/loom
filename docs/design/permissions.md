@@ -36,6 +36,12 @@ timelock and advance `configVersion`. Revocation is immediate. Permission IDs
 are enumerable for wallet permission-management interfaces and capped per
 account to keep queries bounded.
 
+Both session validators derive the ERC-4337 nonce key from the first 192 bits
+of the permission ID. A second permission that would share an existing nonce
+key is rejected, even if the full 32-byte permission ID differs. This avoids a
+footgun where two visibly different permissions compete for the same EntryPoint
+nonce sequence.
+
 ## Deliberate limits
 
 - A granular permission does not authorize delegatecall, executors, fallback
@@ -43,8 +49,8 @@ account to keep queries bounded.
 - Token amount parsing supports only canonical ERC-20 calldata. Non-standard
   token methods require a separately reviewed validator profile.
 - The use limit relies on EntryPoint nonce uniqueness. Wallet clients must use
-  the permission ID as the ERC-4337 nonce key and must not present the limit as
-  a spend counter.
+  the validator-reported nonce key for the permission and must not present the
+  limit as a spend counter.
 - ERC-7715 request translation and ERC-5792 capability reporting belong to a
   future wallet client. The client must display the exact on-chain permission,
   not a broader or friendlier approximation.

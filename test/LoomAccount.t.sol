@@ -812,6 +812,40 @@ contract ExactCallSessionValidatorTest {
         (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, grant)));
         require(!ok, "zero permission id accepted");
     }
+
+    function testExactCallPermissionIdsCannotShareNonceKey() public {
+        ExactCallSessionValidator validator = new ExactCallSessionValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        ExactCallSessionValidator.Permission memory permission =
+            ExactCallSessionValidator.Permission(address(1), 0, type(uint48).max, keccak256("call"), 1, address(0));
+
+        bytes32 permissionId = keccak256("exact-session-nonce-owner");
+        bytes32 collidingPermissionId = bytes32(uint256(permissionId) ^ 1);
+        require(
+            validator.nonceKeyFor(permissionId) == validator.nonceKeyFor(collidingPermissionId),
+            "test ids do not collide"
+        );
+
+        bytes memory grant = abi.encodeCall(ExactCallSessionValidator.grantPermission, (permissionId, permission));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(validator), 0, grant, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, grant);
+
+        bytes memory collidingGrant =
+            abi.encodeCall(ExactCallSessionValidator.grantPermission, (collidingPermissionId, permission));
+        schedule = abi.encodeCall(
+            LoomAccount.scheduleCall, (address(validator), 0, collidingGrant, account.MIN_CONFIG_DELAY())
+        );
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool ok,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, collidingGrant)));
+        require(!ok, "colliding exact-call permission nonce key accepted");
+    }
 }
 
 contract ECDSAValidatorTest {

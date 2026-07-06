@@ -31,6 +31,7 @@ contract ExactCallSessionValidator is ILoomValidator {
 
     mapping(address account => mapping(bytes32 permissionId => Permission)) public permissions;
     mapping(address account => mapping(bytes32 permissionId => bool)) public revoked;
+    mapping(address account => mapping(uint192 nonceKey => bytes32 permissionId)) private _permissionIdByNonceKey;
 
     event PermissionGranted(address indexed account, bytes32 indexed permissionId, address indexed signer);
     event PermissionRevoked(address indexed account, bytes32 indexed permissionId);
@@ -43,6 +44,11 @@ contract ExactCallSessionValidator is ILoomValidator {
         ) {
             revert InvalidPermission();
         }
+        uint192 nonceKey = _nonceKey(permissionId);
+        bytes32 existingPermission = _permissionIdByNonceKey[msg.sender][nonceKey];
+        if (existingPermission != bytes32(0) && existingPermission != permissionId) revert InvalidPermission();
+        _permissionIdByNonceKey[msg.sender][nonceKey] = permissionId;
+
         permissions[msg.sender][permissionId] = permission;
         revoked[msg.sender][permissionId] = false;
         ILoomAccount(msg.sender)
@@ -70,13 +76,17 @@ contract ExactCallSessionValidator is ILoomValidator {
             revoked[account][permissionId] || permission.signer == address(0)
                 // The ERC-4337 nonce layout deliberately truncates to a 192-bit key and 64-bit sequence.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                || uint192(nonce >> 64) != uint192(bytes24(permissionId))
+                || uint192(nonce >> 64) != _nonceKey(permissionId)
                 // forge-lint: disable-next-line(unsafe-typecast)
                 || uint64(nonce) >= permission.maxUses || keccak256(callData) != callHash
                 || permission.callHash != callHash || paymaster != permission.allowedPaymaster
                 || ECDSA.recover(userOpHash, signerSignature) != permission.signer
         ) return ValidationDataLib.SIG_VALIDATION_FAILED;
         return ValidationDataLib.pack(false, permission.validUntil, permission.validAfter);
+    }
+
+    function nonceKeyFor(bytes32 permissionId) external pure returns (uint192) {
+        return _nonceKey(permissionId);
     }
 
     function isValidSignature(address, bytes32, bytes calldata) external pure returns (bool) {
@@ -86,5 +96,12 @@ contract ExactCallSessionValidator is ILoomValidator {
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
         return moduleTypeId == ModuleType.VALIDATOR;
+    }
+
+    function _nonceKey(bytes32 permissionId) internal pure returns (uint192) {
+        // The ERC-4337 nonce key is exactly 192 bits; Loom binds each permission
+        // ID to this truncated key and rejects any second permission sharing it.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint192(bytes24(permissionId));
     }
 }
