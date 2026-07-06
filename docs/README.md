@@ -8,6 +8,7 @@ implementation details.
 
 - [Product principles](project/principles.md)
 - [Design foundations](project/foundations.md)
+- [Who Loom is for](project/audiences.md)
 - [Engineering practices](project/engineering.md)
 - [Release plan](project/release-plan.md)
 - [Roadmap](project/roadmap.md)
