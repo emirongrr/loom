@@ -238,6 +238,39 @@ contract GranularSessionValidatorTest {
         );
     }
 
+    function testPermissionIdsCannotShareNonceKey() public {
+        bytes32 permissionId = keccak256("nonce-key-owner");
+        bytes32 collidingPermissionId = bytes32(uint256(permissionId) ^ 1);
+        require(
+            validator.nonceKeyFor(permissionId) == validator.nonceKeyFor(collidingPermissionId),
+            "test ids do not collide"
+        );
+
+        _grant(permissionId, _tokenPermission(address(0), 60, 100, 2, 3));
+
+        bytes memory collidingGrant = abi.encodeCall(
+            GranularSessionValidator.grantPermission,
+            (collidingPermissionId, _tokenPermission(address(0), 25, 50, 2, 3))
+        );
+        _schedule(collidingGrant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool accepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, collidingGrant)));
+        require(!accepted, "colliding permission nonce key accepted");
+        require(validator.permissionCount(address(account)) == 1, "colliding permission mutated enumeration");
+
+        bytes memory update = abi.encodeCall(
+            GranularSessionValidator.grantPermission, (permissionId, _tokenPermission(address(0), 30, 30, 1, 3))
+        );
+        _scheduleAndExecute(update);
+        require(validator.permissionCount(address(account)) == 1, "permission update duplicated id");
+        require(
+            _validate(permissionId, _singleTokenCall(recipient, 31), address(0), 0)
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "permission update did not apply"
+        );
+    }
+
     function testMalformedAndUnsupportedCallsFailClosed() public {
         bytes32 permissionId = keccak256("malformed-permission");
         _grant(permissionId, _tokenPermission(address(0), 60, 100, 2, 3));

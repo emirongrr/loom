@@ -8,6 +8,7 @@ import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {ExecutionLib} from "../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {MockValidator} from "./mocks/MockValidator.sol";
+import {MockTarget} from "./mocks/MockTarget.sol";
 import {ReentrantModule} from "./mocks/ReentrantModule.sol";
 
 interface VmRecovery {
@@ -288,6 +289,51 @@ contract RecoveryManagerTest {
         (bool late,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, bump)));
         require(!late, "stale scheduled config bump executed after recovery");
         require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "attacker rotated guardians after recovery");
+    }
+
+    function testCompositeFreezeRecoveryAndMigrationState() public {
+        bytes memory initData = "";
+        address[] memory validators = _sortedValidators();
+        MockTarget target = new MockTarget();
+
+        LoomAccount.ModuleInit[] memory destinationModules = new LoomAccount.ModuleInit[](1);
+        destinationModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(new MockValidator()), "");
+        LoomAccount destination =
+            new LoomAccount(address(this), guardianLeaf, 1, keccak256("destination-config"), destinationModules);
+
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (9)));
+        bytes memory scheduleMigration = abi.encodeCall(
+            LoomAccount.scheduleMigration,
+            (
+                address(destination),
+                address(destination).codehash,
+                destination.configHash(),
+                keccak256(abi.encode(calls)),
+                account.MIN_CONFIG_DELAY(),
+                1 days
+            )
+        );
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, scheduleMigration)));
+        _propose(initData);
+
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+        vm.warp(readyAt - 1 days);
+        _freeze();
+        vm.warp(readyAt);
+
+        (bool migratedWhileFrozen,) = address(account).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
+        require(!migratedWhileFrozen, "frozen account executed pending migration");
+        require(target.value() == 0, "migration mutated target during freeze");
+
+        recovery.executeRecovery(address(account), validators, initData);
+        require(account.validatorCount() == 1, "recovery did not replace validators in composite state");
+        require(account.validatorAt(0) == address(newValidator), "new validator missing in composite state");
+
+        vm.warp(uint256(account.frozenUntil()) + 1);
+        (bool staleMigration,) = address(account).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
+        require(!staleMigration, "stale migration survived recovery config change");
+        require(target.value() == 0, "stale migration executed calls");
     }
 
     function testConfigChangeInvalidatesAndExpiryBlocksRecovery() public {

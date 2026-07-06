@@ -144,6 +144,50 @@ contract MaliciousHookTest {
     /// hook forces users to wait MIN_CONFIG_DELAY (3 days). If the hook is
     /// hostile and the user has configured guardians, they should not have to
     /// wait 3 days — reaching guardian consensus is itself the security bar.
+    // Hook-bypass negative cases.
+    /// @notice Only the exact installed-hook removal schedule may bypass a
+    ///         blocking hook. Malformed schedule calldata must fail closed.
+    function testHookBypassRejectsMalformedSchedulePayload() public {
+        RevertingHook hook = new RevertingHook();
+        (LoomAccount account,,) = _accountWithHook(address(hook));
+
+        bytes memory malformedSchedule = abi.encodePacked(LoomAccount.scheduleCall.selector, keccak256("malformed"));
+        bytes memory accountCall = abi.encodeCall(
+            LoomAccount.execute,
+            (bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, malformedSchedule)))
+        );
+        (bool accepted,) = address(account).call(accountCall);
+
+        require(!accepted, "malformed schedule bypassed hook checks");
+        require(account.isModuleInstalled(ModuleType.HOOK, address(hook)), "malformed schedule removed hook");
+    }
+
+    /// @notice The hook-removal bypass is limited to hooks already installed on
+    ///         the account. Attempts to shape calldata around another hook still
+    ///         run normal hook checks and fail closed.
+    function testHookBypassRequiresInstalledHookRemoval() public {
+        RevertingHook hook = new RevertingHook();
+        RevertingHook uninstalledHook = new RevertingHook();
+        (LoomAccount account,,) = _accountWithHook(address(hook));
+
+        bytes memory uninstall =
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.HOOK, address(uninstalledHook), bytes("")));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, uninstall, account.MIN_CONFIG_DELAY()));
+        bytes memory accountCall = abi.encodeCall(
+            LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)))
+        );
+        (bool accepted,) = address(account).call(accountCall);
+
+        require(!accepted, "non-installed hook removal bypassed hook checks");
+        require(account.isModuleInstalled(ModuleType.HOOK, address(hook)), "installed hook was mutated");
+        require(
+            !account.isModuleInstalled(ModuleType.HOOK, address(uninstalledHook)), "uninstalled hook became installed"
+        );
+    }
+
+    /// @notice Guardian threshold can evict a reverting hook immediately,
+    ///         without waiting for the MIN_CONFIG_DELAY schedule.
     function testRevertingHookCanBeEvictedByGuardians() public {
         RevertingHook hook = new RevertingHook();
         (LoomAccount account,,) = _accountWithHook(address(hook));
