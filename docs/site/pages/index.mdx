@@ -8,7 +8,7 @@ import { HomePage } from 'vocs/components'
 <HomePage.Root>
   <HomePage.Tagline>Self-sovereign wallet infrastructure for Ethereum</HomePage.Tagline>
   <HomePage.Description>
-    Loom is a contracts-first account stack for teams that want fintech-grade user experience without handing a
+    Loom is a contracts-first account stack for teams that want modern wallet UX without handing a
     company, recovery provider, RPC, bundler, paymaster, or module registry permanent authority over user funds.
   </HomePage.Description>
   <HomePage.Buttons>
@@ -21,80 +21,40 @@ import { HomePage } from 'vocs/components'
 Loom is pre-audit software. Do not use it to secure production assets.
 :::
 
-Loom is not a closed wallet application. It is an open wallet engine: immutable
-accounts, passkeys, social recovery, bounded permissions, vault safety, L1-rooted
-identity direction, and a Kohaku-backed privacy SDK boundary.
+Loom is not a closed wallet application. It is the account and SDK foundation
+below wallets: immutable accounts, Passkeys, bounded permissions, Recovery,
+vault policy, keystore direction, and a privacy boundary that requires Provider consent before network access.
 
-## What Loom provides
+## What matters
 
 <style>{`
-  .loom-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 16px; margin-top: 24px; }
-  .loom-card { padding: 20px 22px; border-radius: 14px; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); background: color-mix(in srgb, currentColor 3%, transparent); transition: border-color 150ms ease, transform 150ms ease; }
-  .loom-card:hover { border-color: var(--vocs-color_borderAccent); transform: translateY(-2px); }
-  .loom-tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--vocs-color_textAccent) 14%, transparent); color: var(--vocs-color_textAccent); }
-  .loom-card-title { font-weight: 600; font-size: 15px; margin-top: 12px; }
-  .loom-card-desc { font-size: 14px; line-height: 1.55; opacity: 0.72; margin-top: 6px; }
+  .loom-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 20px; }
+  .loom-panel { padding: 18px 20px; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); border-radius: 8px; background: color-mix(in srgb, currentColor 3%, transparent); }
+  .loom-panel h3 { margin: 0 0 8px; font-size: 15px; }
+  .loom-panel p { margin: 0; font-size: 14px; line-height: 1.55; opacity: 0.76; }
 `}</style>
 
-<div className="loom-features">
-  <div className="loom-card">
-    <span className="loom-tag">Implemented</span>
-    <div className="loom-card-title">Immutable account core</div>
-    <div className="loom-card-desc">ERC-4337 validation, ERC-1271, direct execution, atomic calls, timelocks, and migration.</div>
+<div className="loom-strip">
+  <div className="loom-panel">
+    <h3>No admin keys</h3>
+    <p>No proxy admin, factory authority, developer recovery path, or mandatory module registry.</p>
   </div>
-  <div className="loom-card">
-    <span className="loom-tag">Implemented</span>
-    <div className="loom-card-title">Authentication</div>
-    <div className="loom-card-desc">Passkeys, P-256/WebAuthn, multi-passkey threshold/MFA, and ECDSA onboarding.</div>
+  <div className="loom-panel">
+    <h3>Narrow authority</h3>
+    <p>Validators authenticate, hooks restrict execution, and guardians recover without ordinary spending power.</p>
   </div>
-  <div className="loom-card">
-    <span className="loom-tag">Implemented</span>
-    <div className="loom-card-title">Permissions</div>
-    <div className="loom-card-desc">Sessions bounded by target, selector, token, amount, time, use count, and paymaster.</div>
-  </div>
-  <div className="loom-card">
-    <span className="loom-tag">Implemented · pre-audit</span>
-    <div className="loom-card-title">Recovery</div>
-    <div className="loom-card-desc">Guardian threshold, visible delay, expiry, cancellation, and complete validator-set replacement.</div>
-  </div>
-  <div className="loom-card">
-    <span className="loom-tag">Implemented · pre-audit</span>
-    <div className="loom-card-title">Vault safety</div>
-    <div className="loom-card-desc">A daily spending path plus a delayed long-term withdrawal path.</div>
-  </div>
-  <div className="loom-card">
-    <span className="loom-tag">Boundary · pre-audit</span>
-    <div className="loom-card-title">Kohaku privacy SDK</div>
-    <div className="loom-card-desc">Provider consent, metadata budgets, local scan state, shielded-pool wrapper, and Railgun profile boundary.</div>
-  </div>
-  <div className="loom-card">
-    <span className="loom-tag">Designed</span>
-    <div className="loom-card-title">Verified wallet client</div>
-    <div className="loom-card-desc">Future light-client backed reads for balances, nonces, recovery, vaults, validators, and keystore state.</div>
+  <div className="loom-panel">
+    <h3>Walkaway operation</h3>
+    <p>Optional infrastructure can improve UX, but the account model is designed to remain independently executable.</p>
   </div>
 </div>
 
-## Principles
+## Read in order
 
-- **No admin keys:** no proxy upgrade path, factory authority, or developer recovery path.
-- **Passkeys first:** hardware-backed credentials instead of seed phrases for daily use.
-- **Recovery without custody:** guardians can recover or cancel but cannot spend.
-- **Privacy as security:** only the user's local wallet should need the global account graph.
-- **Permissionless exit:** users can migrate clients, validators, guardians, infrastructure, and future account systems.
-- **Verification over trust:** RPCs, indexers, relayers, and paymasters are convenience layers, not authority roots.
+- [Getting started](/getting-started) - clone, install, and run repository checks.
+- [SDK](/sdk) - account, guardian, privacy, and wallet-engine package boundaries.
+- [Security](/security) - pre-audit posture and release gates.
+- [Comparisons](/comparisons) - how Loom's design differs from common account stacks.
 
-## The walkaway test
-
-If Loom's frontend, RPC, bundler, paymaster, indexer, notification service, and
-recovery coordinator disappear, users should still be able to discover account
-state, verify it, recover access, publish authorized operations, and migrate away
-with independent software.
-
-That test is the product.
-
-## Explore
-
-- [Getting started](/getting-started) — clone the repository, build, and run the checks.
-- [SDK](/sdk) — the account, guardian, privacy, and wallet-engine packages.
-- [Security](/security) — the pre-audit posture and the gates that remain before production.
-- [Comparisons](/comparisons) — how Loom's choices differ from other account stacks.
+For the code-vs-roadmap truth table, read
+[Implementation status](https://github.com/emirongrr/loom/blob/main/docs/status.md).

@@ -7,14 +7,12 @@ production readiness. Do not use it to secure production assets.
 
 ## Current evidence
 
-- unit tests;
-- EntryPoint integration tests;
-- fuzz tests;
-- stateful invariants;
-- gas snapshots;
-- static checks;
-- selected Halmos symbolic properties;
-- website and documentation validation.
+The repository has unit and integration tests, fuzz tests, stateful invariants,
+gas snapshots, static checks, SDK boundary tests, selected symbolic workflows,
+and website/documentation validation.
+
+That evidence is useful for review, but the authoritative release checklist is
+[Production readiness](https://github.com/emirongrr/loom/blob/main/docs/security/production-readiness.md).
 
 ## Production gates
 
@@ -24,7 +22,7 @@ production readiness. Do not use it to secure production assets.
 | Browser/device WebAuthn fixtures | Missing | Passkey compatibility must be proven across real authenticators. |
 | Live bundler qualification | Missing | ERC-4337 liveness must not depend on one hosted path. |
 | Privacy adapter review | Pending | ZK systems still leak metadata through providers, relayers, timing, and scanning choices. |
-| L1 proof verifier audit | Pending | Cross-chain authority must be proven, not trusted through a service. |
+| L2 proof verifier audit | Pending | Cross-chain authority must be proven, not trusted through a service. |
 
 ## Never allowed
 
