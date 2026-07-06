@@ -24,24 +24,26 @@ version.
 
 ```mermaid
 stateDiagram-v2
+    direction TB
     [*] --> Uninitialized
-    Uninitialized --> Operational: initialize()/constructor<br/>configVersion 0→1
+    Uninitialized --> Operational: initialize() · configVersion 0→1
 
-    Operational --> Operational: execute / executeDirect<br/>(validator-authorized)
-    Operational --> Operational: scheduleCall then executeScheduled<br/>(after MIN_EXTERNAL/CONFIG_DELAY)
-    Operational --> Operational: installModule / uninstallModule<br/>setGuardianConfig (timelocked, configVersion++)
-
-    Operational --> Frozen: guardian freeze()<br/>frozenUntil = now + FREEZE_DURATION (2d)
-    Frozen --> Frozen: freeze() extends the window
-    Frozen --> Operational: unfreeze() after expiry<br/>OR window lapses
+    Operational --> Frozen: guardian freeze() · frozenUntil = now + 2d
+    Frozen --> Operational: unfreeze() once the window lapses
 
     Operational --> MigrationPending: scheduleMigration()
-    MigrationPending --> Operational: cancelMigration()<br/>cancelMigrationWithGuardians()
-    MigrationPending --> Operational: executeMigration()<br/>(after readyAt; assets moved,<br/>account persists, migrationNonce++)
+    MigrationPending --> Operational: cancel · or executeMigration after readyAt · migrationNonce++
 
-    Operational --> RecoveryPending: RecoveryManager.proposeRecovery()<br/>(threshold guardians, in the module)
-    RecoveryPending --> Operational: cancelRecovery()<br/>cancelRecoveryWithGuardians()
-    RecoveryPending --> Operational: executeRecovery()<br/>(after RECOVERY_DELAY 3d;<br/>validators replaced, configVersion++)
+    Operational --> RecoveryPending: proposeRecovery() · threshold guardians
+    RecoveryPending --> Operational: cancel · or executeRecovery after 3d · validators replaced · configVersion++
+
+    note right of Operational
+        Self-transitions (stay Operational):
+        execute / executeDirect, scheduleCall → executeScheduled,
+        installModule / uninstallModule, setGuardianConfig.
+        Each timelocked config change advances configVersion.
+        A further freeze() extends an active freeze window.
+    end note
 ```
 
 `Frozen`, `MigrationPending`, and `RecoveryPending` are drawn as branches off
