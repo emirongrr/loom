@@ -907,6 +907,8 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
             salt
         );
 
+        // Fuzz every external handler action. configure() self-guards against a
+        // second call, so it needs no selector exclusion.
         targetContract(address(handler));
     }
 
