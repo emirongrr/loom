@@ -1,208 +1,438 @@
 # Loom
 
-**Self-sovereign wallet infrastructure for Ethereum**
+**Loom is an immutable self-sovereign account infrastructure for Ethereum that enables modern wallet experiences without sacrificing user ownership**
 
-Loom is a contracts-first wallet infrastructure project for users and teams
-that should not have to choose between mainstream usability and self-custody.
+Loom provides the immutable account layer that underpins wallets, fintech platforms, institutions, and developer applications across Ethereum. It standardizes the account's security model while allowing each product to define its own user experience, infrastructure, and operational architecture.
 
-The goal is not to build another closed wallet application. The goal is to
-build an open, modular account stack that remains usable, recoverable, and
-verifiable even if the original Loom team, frontend, bundler, paymaster, RPC,
-or recovery coordinator disappears.
+A fintech can integrate Loom into its existing application, allowing users to authenticate with passkeys while abstracting away the complexity of blockchain. A privacy-focused wallet can build on the same account layer to deliver a fully self-sovereign experience. Both inherit the same immutable security guarantees while remaining free to design entirely different user experiences.
 
-Loom starts with immutable smart accounts and grows outward through narrowly
-scoped validators, policies, recovery modules, client software, SDKs, and
-eventually privacy and cross-chain verification layers. The core rule is
-simple: convenience may improve, but user sovereignty must not weaken.
+Loom intentionally keeps the immutable core as small as possible. Everything that does not need to live forever—authentication methods, recovery mechanisms, permission systems, privacy layers, and future capabilities—is built as modular, replaceable components. This allows accounts to remain stable while security models evolve, giving users control over how their accounts adapt over time rather than locking them into a single platform's decisions.
+
+A user's account should outlive every product and infrastructure provider built around it.
+
+## Vision
+
+Ethereum gave users ownership of digital assets.
+
+The next step is giving them ownership of their digital accounts.
+
+An account should not belong to a wallet application, an infrastructure provider, or a company. It should belong to the person who created it.
+
+Applications should compete on user experience—not on controlling user accounts.
+
+Institutions should be able to deliver familiar consumer experiences without becoming custodians.
+
+Users should be able to change wallets, infrastructure providers, authentication methods, recovery mechanisms, and future security models without replacing the account they ultimately trust.
+
+Loom exists to make that future practical.
+
+## The Problem
+
+Custodial platforms simplify onboarding by introducing trust.
+
+Traditional self-custody preserves ownership but transfers operational complexity to users through seed phrases, fragmented tooling, difficult recovery, and inconsistent security models.
+
+Replacing seed phrases with company accounts, hosted recovery services, or mandatory infrastructure dependencies does not eliminate trust—it simply changes who users are required to trust.
+
+Developers repeatedly solve the same account problems while applications become tightly coupled to specific wallets, providers, and infrastructure.
+
+As a result, accounts are often less durable than the products built around them.
+
+Loom treats this as an architectural problem—not a user experience problem.
+
+## Principles
+
+Every design decision in Loom is derived from a small set of principles.
+
+### Users own accounts
+
+Accounts belong to users—not applications, companies, or infrastructure providers.
+
+### Security before convenience
+
+Convenience may improve, but security guarantees must not weaken.
+
+### Keep the trusted core small
+
+The immutable foundation should remain as small and as simple as possible. Everything else should evolve independently.
+
+### Modular over monolithic
+
+Capabilities should be composed through narrowly scoped modules rather than embedded into a permanently trusted core.
+
+### Infrastructure must remain replaceable
+
+Wallets, SDKs, bundlers, paymasters, RPC providers, recovery coordinators, and hosted services should all be replaceable without changing the account.
+
+### Explicit authority
+
+Every validator, policy, recovery module, and execution path should have a clearly defined scope.
+
+Nothing should receive more authority than it requires.
+
+### Explicit trust assumptions
+
+Every security assumption should be visible, understandable, and independently auditable.
+
+### Privacy is part of security
+
+Ownership is weakened when users are forced to reveal more information than necessary.
+
+Privacy should be achieved through explicit, auditable mechanisms—not trusted intermediaries.
+
+### Open ecosystems over closed platforms
+
+Products should compete through user experience—not by locking users into proprietary account infrastructure.
+
+### Exit must always remain possible
+
+No application, infrastructure provider, recovery service, or organization should become a permanent dependency.
+
+Users should always be able to migrate, replace providers, and continue using their accounts without asking for permission.
+
+### Reference implementations are not requirements
+
+Loom may provide implementations for common account capabilities, but they are never the only valid implementations.
+
+Builders are free to replace them.
+
+Users are free to leave them.
 
 ## What Loom Is
 
-Loom is an Ethereum account layer designed around:
+Loom is an account infrastructure for Ethereum.
 
-- passkeys instead of seed phrases for everyday access;
-- social recovery without custodians;
-- visible delays for high-risk actions;
-- bounded session permissions for apps and agents;
-- policy-controlled spending and paymaster use;
-- provider-independent account operation;
-- open standards where they preserve user exit;
-- privacy as a security property, not a cosmetic feature.
+It provides the immutable foundation upon which wallets, fintechs, institutions, and developer applications can build secure account experiences without inheriting ownership of user accounts.
+
+Rather than prescribing wallet interfaces, authentication flows, recovery experiences, or infrastructure choices, Loom standardizes the security boundaries every product depends on while leaving product design entirely to the builder.
+
+At its core, Loom consists of immutable smart accounts and a deliberately small trusted foundation. Authentication, authorization, recovery, spending policies, privacy capabilities, and future extensions are designed as independent modules that can evolve without changing the account itself.
+
+This separation allows products to innovate rapidly while the account users ultimately trust remains stable, auditable, and predictable.
+
+Loom is infrastructure—not an application.
+
+It provides the account.
+
+Builders create the experience.
+
+Users remain in control.
+
+## What Loom Is Not
+
+Loom is not a wallet application.
+
+It is not a hosted service.
+
+It does not require a Loom-operated frontend, SDK, bundler, paymaster, RPC provider, recovery coordinator, or infrastructure provider.
+
+Loom defines the account—not the application built around it.
+
+## Who It Is For
+
+Loom is designed for builders who believe account ownership should remain with the user, regardless of the product built around it.
+
+### Individuals
+
+Build privacy-first, self-sovereign wallets with passkeys, modular recovery, explicit permissions, and long-term account ownership without relying on custodial services or proprietary infrastructure.
+
+### Wallet Developers
+
+Focus on user experience instead of rebuilding account security. Loom provides the immutable account foundation while remaining compatible with different interfaces, authentication methods, infrastructure providers, and future security models.
+
+### Fintechs
+
+Embed self-custody into existing products without exposing users to the complexity of blockchain. Users can authenticate with familiar technologies such as passkeys while institutions retain full control over onboarding, compliance, payments, and customer experience—without becoming custodians.
+
+### Institutions
+
+Build secure account experiences on an auditable, open foundation without introducing permanent platform dependencies. Integrate existing compliance, operational, and security workflows while allowing users to retain authority over their accounts.
+
+### Developers & Infrastructure Providers
+
+Build validators, recovery modules, policy engines, privacy systems, SDKs, and other account capabilities as independent, composable components rather than extensions of a closed ecosystem.
+
+### Autonomous Agents
+
+Execute narrowly scoped operations through explicit, revocable permissions without granting unrestricted access to user accounts.
+
+## Privacy
+
+Loom treats privacy as a security property, not an optional feature.
+
+Ownership is weakened when every application relationship, balance query, recovery contact, or transaction history becomes permanently observable. A secure account should minimize unnecessary information disclosure while remaining transparent about its trust assumptions.
+
+For this reason, Loom avoids embedding provider-controlled identity systems, mandatory global registries, or other irreversible sources of account linkage into the account layer itself. Privacy capabilities should evolve through modular, auditable components rather than permanent protocol assumptions.
+
+As privacy technologies mature, Loom aims to support them without requiring users to replace the accounts they already trust.
+
+## Architecture
+
+Loom is intentionally designed around a small immutable account core.
+
+Long-term account authority belongs to the account itself. Capabilities that naturally evolve over time—authentication, recovery, permissions, privacy, and future security models—remain independent from that core.
+
+Rather than continuously expanding the trusted computing base, Loom minimizes it.
+
+### Immutable Account Layer
+
+The account is the permanent trust anchor.
+
+It defines ownership, execution, and the security boundaries that should remain stable throughout the account's lifetime.
+
+The account should survive changes in wallets, authentication methods, infrastructure providers, recovery mechanisms, and future protocol evolution.
+
+### Authorization Layer
+
+Authentication is independent from ownership.
+
+Validators, passkeys, session permissions, spending policies, and future authorization models exist as narrowly scoped components with explicit authority.
+
+New authentication methods should not require redesigning the account itself.
+
+### Recovery Layer
+
+Recovery is a security policy—not an ownership transfer.
+
+Loom treats recovery as a modular capability with explicit authority, observable state transitions, and bounded permissions.
+
+Recovery mechanisms can evolve independently while preserving the same underlying account.
+
+### Account Lifecycle
+
+A `LoomAccount` is deliberately **not** a single linear state machine. Its
+observable state is the product of several mostly-orthogonal dimensions, tied
+together by a monotonic `configVersion` that invalidates any stale pending
+operation. An account can be frozen while a migration and a recovery are both
+pending.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    Uninitialized --> Operational: initialize()<br/>configVersion 0→1
+
+    Operational --> Operational: execute / executeDirect<br/>scheduleCall→executeScheduled<br/>install/uninstall (timelocked, configVersion++)
+
+    Operational --> Frozen: guardian freeze() (2d window)
+    Frozen --> Operational: unfreeze() after expiry
+
+    Operational --> MigrationPending: scheduleMigration()
+    MigrationPending --> Operational: cancel / executeMigration<br/>(account persists, migrationNonce++)
+
+    Operational --> RecoveryPending: proposeRecovery() (threshold guardians)
+    RecoveryPending --> Operational: cancel / executeRecovery<br/>(validators replaced, configVersion++)
+```
+
+`Frozen`, `MigrationPending`, and `RecoveryPending` are drawn as branches off
+`Operational` for readability, but they overlay independently. The authoritative,
+code-derived model — including the freeze carve-out for recovery, the exact
+interaction rules, and the stateful invariants that enforce them — lives in
+[`docs/design/lifecycle.md`](docs/design/lifecycle.md).
+
+### Privacy Direction
+
+Privacy is treated as a security property rather than a cosmetic feature.
+
+The immutable account layer intentionally avoids embedding provider-controlled identity systems, mandatory global registries, or irreversible account-linking mechanisms.
+
+Future privacy capabilities should remain modular, independently auditable, and explicit about their guarantees, assumptions, and limitations.
+
+### Verification Direction
+
+Ethereum L1 is intended to remain the long-term root of account authority.
+
+As the ecosystem evolves, trust-minimized verification across execution environments can be added without changing the underlying account model.
+
+Cross-chain verification should be based on cryptographic proofs—not trusted operators, multisigs, or proprietary infrastructure.
+
+Until that proof layer is specified and audited, Loom keeps account configuration local per chain. That is less magical, but safer.
+
+### Everything Else
+
+Wallets, mobile applications, browser extensions, SDKs, frontends, bundlers,
+paymasters, RPC providers, relayers, hosted recovery services, analytics,
+compliance systems, and enterprise integrations are not part of Loom's trusted
+architecture.
+
+Loom defines the account. Everything around it belongs to the ecosystem.
+
+## Design Guarantees
+
+Loom intentionally limits what the protocol is allowed to do.
+
+These constraints are architectural guarantees rather than implementation details.
+
+### Immutable Core
+
+The account implementation is immutable.
+
+There are no privileged upgrade paths, mutable implementation slots, administrator-controlled execution logic, or hidden ownership transfers.
+
+### User Ownership
+
+Users remain the ultimate authority over their accounts.
+
+No company, application, infrastructure provider, or recovery service should become a permanent dependency.
+
+### Explicit Authority
+
+Every validator, recovery module, permission system, and policy operates within a clearly defined scope.
+
+Authority should always be explicit, observable, and independently auditable.
+
+### Least Privilege
+
+Every component should receive only the authority necessary to perform its task.
+
+Capabilities are intentionally separated to minimize the impact of compromise.
+
+### Replaceable Infrastructure
+
+Wallets, SDKs, frontends, bundlers, paymasters, RPC providers, and recovery coordinators are implementation choices—not trust assumptions.
+
+Users should be able to replace them without replacing their accounts.
+
+### Fail Closed
+
+Unsupported execution modes, unknown authorization flows, invalid permissions,
+and unexpected execution paths all fail safely.
+
+Loom prefers rejecting behavior over interpreting undefined behavior.
+
+### Independent Verification
+
+Account state should remain independently verifiable.
+
+Users should never need to trust Loom-operated infrastructure to determine the security of their own accounts.
+
+### Walkaway Guarantee
+
+The strongest guarantee Loom aims to provide is simple.
+
+A user's account should remain usable, recoverable, and verifiable even if:
+
+- the Loom organization disappears;
+- every official wallet disappears;
+- every official SDK disappears;
+- every official frontend disappears;
+- every Loom-operated service disappears.
+
+The account—not the platform—is the permanent trust anchor.
+
+## Current Status
+
+Loom is under active development.
+
+The immutable account layer, authorization framework, recovery architecture, migration system, and developer SDKs are implemented and continuously refined through extensive testing and security review.
 
 This repository contains the on-chain account and authorization layer plus
 early local SDK packages for wallet builders. It does not contain the future
 mobile wallet, fintech-style user experience, production private transfer
 system, light client, cross-chain router, or hosted infrastructure.
 
-## Why It Exists
+The project intentionally prioritizes architectural correctness over feature velocity.
 
-Most users cannot safely manage seed phrases, but replacing seed phrases with
-a company account, hosted recovery, or invisible infrastructure dependency is
-not self-custody. Loom is built for a different path:
+Security, simplicity, and long-term maintainability take precedence over shipping features quickly.
 
-- users create and use accounts with hardware-backed passkeys;
-- recovery is distributed across independently chosen guardians;
-- high-risk changes are delayed and cancelable;
-- permissions are explicit, bounded, queryable, and revocable;
-- no developer key, factory key, module registry, paymaster, RPC, frontend, or
-  recovery service can permanently control funds;
-- independent clients can read state and publish authorized operations.
+Every new capability is evaluated against the project's core principles before becoming part of the trusted ecosystem.
 
-The product should feel simple, but the escape hatch must stay real.
+### Implemented Today
 
-## Privacy Direction
+#### Account Layer
 
-Financial privacy is part of account security. A wallet that reveals every
-application relationship, balance query, recovery contact, and payment graph
-does not give users meaningful autonomy.
+- Immutable smart accounts with no developer, factory, admin, or proxy upgrade authority
+- ERC-4337 v0.9 validation and atomic single or batch execution
+- ERC-1271 signature validation with policy-aware restrictions
+- Provider-independent direct execution for supported validators
+- Limited ERC-7579 adapter surface with unsupported modes rejected
 
-Loom's contract core therefore avoids mandatory global registries, mandatory
-identity providers, public account-linking mechanisms, and provider-controlled
-recovery paths. Privacy protocols, viewing systems, private state reads, and
-cross-chain proof systems belong behind optional, audited interfaces rather
-than inside the immutable core before their assumptions are understood.
+#### Authentication
 
-The long-term wallet stack should support:
+- WebAuthn / P-256 passkeys
+- Multi-passkey threshold/MFA validation
 
-- separate application identities;
-- metadata-minimizing account discovery;
-- private or privacy-preserving transfers where available;
-- user-held viewing capability rather than provider-held surveillance;
-- local or verified state reads instead of trusting hosted RPC responses;
-- no unnecessary public linkage between L1 roots and L2 activity.
+#### Authorization
 
-Privacy features must be explicit about what they hide, what they reveal, who
-can block them, and which assumptions remain.
+- Bounded and granular session permissions
+- Granular execution policies
+- Spending policies
+- Paymaster restrictions
 
-## L1 Root, L2 UX
+#### Recovery
 
-Loom is designed around Ethereum L1 as the long-term trust root for account
-authority, while users should eventually interact across L2s without feeling
-the fragmentation.
+- Guardian recovery with visible delay, cancellation, and expiry
+- Complete validator-set replacement
+- Single-guardian emergency freeze without spending authority
 
-The intended architecture is:
+#### Migration
 
-- L1 remains the root for durable account and recovery authority.
-- L2 accounts remain usable directly and locally.
-- Cross-chain configuration sync is added only through trustless proofs with
-  documented finality, latency, and privacy assumptions.
-- Bridges, sequencer promises, multisigs, or Loom-operated signers must not
-  become account-authority roots.
-- The user experience can abstract chains, gas, routes, and settlement, but it
-  must still expose the trust assumptions when they matter.
+- Delayed sovereign migration with destination code/config binding
+- Cancellation and expiry
+- Atomic migration execution with hook enforcement
 
-Until that proof layer is specified and audited, Loom keeps configuration
-local per chain. That is less magical, but safer.
+#### SDK
 
-## Modularity Without Capture
-
-Loom should be extensible without turning extensibility into a hidden upgrade
-system.
-
-The account core is immutable and intentionally narrow. New capabilities should
-arrive as:
-
-- validators with explicit authentication profiles;
-- hooks that enforce bounded execution policy;
-- recovery modules with narrow authority;
-- adapters for standards compatibility where they do not widen authority;
-- client and SDK layers that improve UX without becoming mandatory.
-
-Unsupported execution modes fail closed. There is no arbitrary delegatecall
-execution, no proxy upgrade key, no mutable implementation slot, no privileged
-factory path, and no permanent Loom administrator.
-
-## Vault Direction
-
-Not all assets should have the same security model. Loom is moving toward a
-vault-oriented account architecture where daily spending, app sessions, and
-long-term storage can have different policies.
-
-The intended direction is:
-
-- daily accounts use passkeys, spending policies, and session permissions;
-- vaults use stronger delays, guardian visibility, and stricter withdrawal
-  paths;
-- large balance movement is delayed, cancelable, and observable;
-- migration remains possible without asking Loom for permission;
-- asset movement should be atomic where the underlying assets allow it.
-
-The current contracts provide the account, permission, recovery, policy,
-delayed migration, and optional vault hook foundations. Vault behavior still
-requires independent audit, live token rehearsal, and production monitoring
-before large balances are trusted to it.
-
-## Implemented Contract Layer
-
-- Immutable shared implementation proxy deployment with no developer, factory,
-  admin, or proxy upgrade authority.
-- ERC-4337 v0.9 validation and atomic single or batch execution.
-- ERC-1271 signature validation with policy-aware restrictions.
-- P-256/WebAuthn passkey validator.
-- Multi-passkey threshold/MFA validator.
-- Bounded session permissions and granular session permissions.
-- Policy hook for low-risk classification, token limits, and paymaster
-  restrictions.
-- Guardian recovery with visible delay, cancellation, expiry, and complete
-  validator-set replacement.
-- Single-guardian emergency freeze without spending authority.
-- Provider-independent direct execution for supported validators.
-- Delayed sovereign migration with destination code/config binding,
-  cancellation, expiry, hook enforcement, and atomic execution.
-- Limited ERC-7579 adapter surface with unsupported modes rejected.
-
-## Implemented SDK Layer
-
-Loom now includes early wallet-engine SDK packages for developers who want to
-build clients without depending on Loom-operated infrastructure:
-
-- `@loom/account` builds local lifecycle intents for deployment, sessions,
-  recovery, migration, vault withdrawal, private vault binding, paymaster
-  policy, and typed lifecycle calldata encoding.
-- `@loom/privacy` provides a Kohaku-compatible host boundary with explicit
-  provider consent, metadata budgets, local scan state, and privacy adapter
-  wrappers.
-- `@loom/sdk` combines the account and privacy layers into a developer-facing
-  wallet engine with `createLoomClient`, app-scoped sessions,
-  `sendCalls`, `sendCallsAndWait`, gas estimation, receipt waiting,
-  explicit bundler transport, passkey signer boundary, middleware hooks,
-  viem-compatible call shaping, and private-vault operation binding.
+- Local account SDK (`@loom/account`)
+- Wallet engine SDK (`@loom/sdk`)
+- Privacy SDK foundations (`@loom/privacy`)
 
 The SDK deliberately does not choose a default RPC, bundler, paymaster,
 relayer, signer, recovery coordinator, or privacy provider. Those adapters must
 be supplied by the wallet developer or user.
 
+## Roadmap
+
+Loom's long-term direction follows a simple principle:
+
+> **Expand capabilities without expanding trust.**
+
+Future work includes:
+
+- vault-oriented account architecture;
+- privacy-preserving account capabilities;
+- trust-minimized cross-chain verification;
+- verified local state access;
+- additional authorization primitives;
+- additional recovery mechanisms;
+- broader Ethereum standards support;
+- broader interoperability across execution environments.
+
+Whenever possible, new functionality should be implemented as modular, independently auditable components rather than expanding the immutable core.
+
+Roadmap items are direction, not shipped capability. Each one still requires
+independent audit and rehearsal before production trust — vault behavior in
+particular needs independent audit, live token rehearsal, and production
+monitoring before large balances are trusted to it.
+
 ## Examples
 
-Runnable, self-verifying scripts in [`examples/`](examples/README.md) show how
-to build a client on the SDK without any Loom-operated service:
+The [`examples/`](examples/README.md) directory demonstrates how the same Loom
+account can power fundamentally different products while preserving the same
+security model:
 
-- [`examples/enterprise-onboarding.mjs`](examples/enterprise-onboarding.mjs) — a
-  fintech embeds a self-custody wallet into its own product: the institution
-  owns onboarding, KYC, fiat rails, and infrastructure, while the user's passkey
-  keeps authority and the account stays controllable even if the institution
-  disappears. See the [enterprise integration guide](docs/guides/enterprise-integration.md).
-- [`examples/individual-passkey-wallet.mjs`](examples/individual-passkey-wallet.mjs) —
-  the same core serving one person with a passkey and self-chosen guardian
-  recovery.
+- **Embedded Fintech** — integrate self-sovereign accounts into an existing
+  application while abstracting blockchain complexity behind familiar
+  authentication such as passkeys. Implemented:
+  [`examples/enterprise-onboarding.mjs`](examples/enterprise-onboarding.mjs)
+  ([integration guide](docs/guides/enterprise-integration.md)).
+- **Consumer Wallet** — build a privacy-first wallet focused on individual
+  ownership and modular recovery. Implemented:
+  [`examples/individual-passkey-wallet.mjs`](examples/individual-passkey-wallet.mjs).
+- **Enterprise Integration** — combine institutional onboarding and compliance
+  workflows with user-controlled account ownership. Partially covered by the
+  fintech example; a dedicated example is
+  [planned](examples/README.md#planned-examples).
+- **Custom Authorization** — compose validators, policies, and recovery modules
+  to create application-specific security models.
+  [Planned](examples/README.md#planned-examples).
 
-Each script installs a global-`fetch` trap, so a hidden default-provider call
-would fail the run — the walkaway guarantee, demonstrated.
+Each implemented script is runnable and self-verifying, and installs a
+global-`fetch` trap: a hidden default-provider call would fail the run — the
+walkaway guarantee, demonstrated.
 
-## What Is Intentionally Not In Core
+Every example demonstrates the same architectural principle:
 
-These are important, but they should not be embedded into the immutable account
-core before their trust and privacy assumptions are mature:
-
-- privacy protocol adapters;
-- viewing key systems;
-- cross-chain config synchronization;
-- L1 keystore proof verifiers;
-- ZK guardian setup proofs;
-- hosted recovery coordination;
-- default paymaster logic;
-- mandatory module registries.
-
-Each can become an optional, audited layer when it preserves the walkaway test.
+> **Different products. Different user experiences. The same account.**
 
 ## Security Status
 
@@ -227,6 +457,11 @@ Node.js 22 and Foundry v1.7.1 are the supported development baseline.
 `npm run verify:quick` runs formatting, linting, production size checks, gas
 snapshot checks, tests, and source-policy checks. `npm run verify` additionally
 runs the CI fuzz and invariant profile.
+
+Every change is expected to include appropriate testing, documentation, and
+review before becoming part of the immutable account layer. Contributions that
+simplify the trusted core, improve auditability, strengthen modularity, or
+reduce unnecessary trust assumptions are strongly encouraged.
 
 ## Documentation
 

@@ -48,6 +48,24 @@ wallet plus self-chosen guardian social recovery, built and verified
 client-side with `@loom/guardian`. It shows that the institutional and
 individual experiences are the same engine, not two codebases.
 
+## Planned examples
+
+The examples aim to cover four product archetypes on the same account. Two are
+implemented; two are tracked here so they can be built incrementally, following
+the same conventions: self-verifying `node:assert` steps, a global-`fetch`
+trap, and no Loom-operated service.
+
+- [x] **Embedded fintech** — `enterprise-onboarding.mjs`.
+- [x] **Consumer wallet** — `individual-passkey-wallet.mjs`.
+- [ ] **Enterprise integration** — extend the fintech flow with institutional
+      operations workflows: scheduled/timelocked treasury calls, policy-hook
+      spending limits for operators, and guardian oversight, while the user's
+      passkey keeps account authority throughout.
+- [ ] **Custom authorization** — compose `ExactCallSessionValidator`, granular
+      session permissions, and a spending-policy hook into an
+      application-specific security model, e.g. a narrowly scoped autonomous
+      agent or a subscription payment flow with revocable, bounded permissions.
+
 ## Further reading
 
 - [Enterprise integration guide](../docs/guides/enterprise-integration.md) — the
