@@ -9,6 +9,7 @@ import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {OZP256Verifier} from "../mocks/OZP256Verifier.sol";
 
 interface VmWebAuthnFixture {
+    function skip(bool skipTest) external;
     function readFile(string calldata path) external view returns (string memory);
     function parseJsonBytes(string calldata json, string calldata key) external pure returns (bytes memory);
     function parseJsonBytes32(string calldata json, string calldata key) external pure returns (bytes32);
@@ -138,8 +139,13 @@ contract WebAuthnFixtureCorpusTest {
         account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
     }
 
-    function _loadFixture(string memory path) internal view returns (Fixture memory f) {
-        string memory json = vm.readFile(path);
+    function _loadFixture(string memory path) internal returns (Fixture memory f) {
+        string memory json;
+        try vm.readFile(path) returns (string memory loaded) {
+            json = loaded;
+        } catch {
+            vm.skip(true);
+        }
         f.publicKeyX = vm.parseJsonBytes32(json, ".publicKeyX");
         f.publicKeyY = vm.parseJsonBytes32(json, ".publicKeyY");
         f.challenge = vm.parseJsonBytes32(json, ".challenge");

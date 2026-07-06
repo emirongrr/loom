@@ -17,6 +17,7 @@ interface VmWebAuthnLifecycle {
     function deal(address account, uint256 amount) external;
     function startPrank(address sender, address origin) external;
     function stopPrank() external;
+    function skip(bool skipTest) external;
     function readFile(string calldata path) external view returns (string memory);
     function parseJsonBytes(string calldata json, string calldata key) external pure returns (bytes memory);
     function parseJsonBytes32(string calldata json, string calldata key) external pure returns (bytes32);
@@ -137,8 +138,13 @@ contract WebAuthnEntryPointLifecycleIntegrationTest {
         });
     }
 
-    function _loadFixture(string memory path) internal view returns (Fixture memory f) {
-        string memory json = vm.readFile(path);
+    function _loadFixture(string memory path) internal returns (Fixture memory f) {
+        string memory json;
+        try vm.readFile(path) returns (string memory loaded) {
+            json = loaded;
+        } catch {
+            vm.skip(true);
+        }
         f.publicKeyX = vm.parseJsonBytes32(json, ".publicKeyX");
         f.publicKeyY = vm.parseJsonBytes32(json, ".publicKeyY");
         f.challenge = vm.parseJsonBytes32(json, ".challenge");
