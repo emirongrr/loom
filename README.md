@@ -2,41 +2,38 @@
 
 **Immutable, self-sovereign account infrastructure for Ethereum.**
 
-Loom is the immutable account layer that underpins wallets, fintech platforms,
-institutions, and developer applications. It standardizes the account's security
-model while leaving each product free to define its own user experience,
-infrastructure, and operational architecture.
-
-A fintech can embed Loom into an existing app so users authenticate with
-passkeys while blockchain complexity stays hidden. A privacy-focused wallet can
-build on the same account layer for a fully self-sovereign experience. Both
-inherit the same immutable guarantees while designing entirely different
-products.
-
-Everything that does not need to live forever — authentication, recovery,
-permissions, privacy, and future capabilities — is a modular, replaceable
-component. The account users ultimately trust stays stable while the security
-models around it evolve.
+Loom is the immutable account layer beneath wallets, fintech platforms,
+institutions, and developer applications. It fixes the account's security model
+and leaves every product free to build its own experience on top: a fintech can
+embed it behind passkeys, and a privacy wallet can offer a fully self-sovereign
+experience — both inherit the same guarantees.
 
 > **A user's account should outlive every product and infrastructure provider
 > built around it.**
 
+## Highlights
+
+- **Immutable core** — no admin, no upgrade proxy, no developer or factory authority.
+- **Passkey-native** — WebAuthn / P-256 validation with multi-passkey MFA.
+- **Guardian recovery** — threshold guardians, visible delay, and freeze, with no guardian spending power.
+- **Sovereign migration** — move an account forward with no custodian in the loop.
+- **Walkaway guarantee** — the account stays usable and recoverable even if every Loom service disappears.
+- **SDK-first** — headless packages that choose no default RPC, bundler, or paymaster.
+
 ## Why Loom
 
 Custodial platforms simplify onboarding by reintroducing trust. Traditional
-self-custody preserves ownership but pushes operational complexity onto users
-through seed phrases, fragmented tooling, and fragile recovery. Replacing seed
-phrases with company accounts or mandatory infrastructure does not remove trust
-— it only changes who users are forced to trust.
+self-custody preserves ownership but pushes seed phrases, fragmented tooling, and
+fragile recovery onto users. Replacing seed phrases with company accounts or
+mandatory infrastructure does not remove trust — it only changes who users are
+forced to trust.
 
-Loom treats this as an architectural problem. Applications should compete on user
-experience, not on controlling user accounts; institutions should deliver
-familiar experiences without becoming custodians; and users should be able to
-change wallets, providers, authentication methods, and recovery models without
-replacing the account they trust.
-
-The deeper rationale lives in [Design foundations](docs/project/foundations.md)
-and [Product principles](docs/project/principles.md).
+Loom treats this as an architectural problem: applications should compete on
+experience, not on owning user accounts, and users should be able to change
+wallets, providers, authentication, and recovery models without replacing the
+account they trust. The deeper rationale is in
+[Design foundations](docs/project/foundations.md) and
+[Product principles](docs/project/principles.md).
 
 ## Principles
 

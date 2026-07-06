@@ -13,9 +13,9 @@ no live adapter, no production deployment evidence) remain accurate.
 
 Scope: repository state after the wallet-engine SDK merge and before any
 production deployment. This is not an independent security audit. It is a
-source-backed readiness review against Loom's sovereignty principles, Vitalik
-Buterin's wallet/privacy writings, WalletBeat Stage 2 direction, and current
-smart-account competitors.
+source-backed readiness review against Loom's sovereignty principles,
+established wallet and privacy design writing, WalletBeat Stage 2 direction, and
+current smart-account competitors.
 
 ## Executive Summary
 
@@ -62,11 +62,11 @@ Top five release-blocking gaps:
    EntryPoint/P-256 checks, and live rehearsal (`docs/security/production-readiness.md:168-176`).
    The repo has manifest requirements, but not signed production manifests.
 
-## Vitalik-Aligned Findings
+## Principle-Aligned Findings
 
 ### Social Recovery And Graded Access
 
-Vitalik's social recovery model uses a normal signing key plus guardian
+The social-recovery model uses a normal signing key plus guardian
 majority key changes, with guardian/config changes delayed and high-value
 actions protected by delay or threshold. Loom mostly matches this. Recovery
 proposals require a complete old validator set, a new validator, a new guardian
@@ -84,7 +84,7 @@ possession, and guardian contact path are usable.
 
 ### Wallet Security And Privacy
 
-Vitalik's 2024 wallet essay argues that wallet decentralization, censorship
+The wallet-decentralization argument holds that decentralization, censorship
 resistance, security, and privacy matter only if the wallet itself preserves
 them. Loom's core has strong unruggability: immutable shared implementation
 proxy dispatch with no upgrade/admin selector, no factory-controlled ownership
@@ -102,7 +102,7 @@ live private payments.
 
 ### Cross-L2 Reading And L1 Keystore
 
-Vitalik's cross-L2 reading proposal favors asset/keystore separation: a
+The cross-L2 reading proposal favors asset/keystore separation: a
 keystore stores verification keys in one location and wallets on L1/L2 update
 or read from it. Loom's `LoomKeystore` stores `validatorRoot`, `guardianRoot`,
 `appAccountRoot`, `guardianThreshold`, and monotonic `version`

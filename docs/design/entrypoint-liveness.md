@@ -66,7 +66,6 @@ therefore does not remove safety delays.
 ## References
 
 - https://eips.ethereum.org/EIPS/eip-4337
-- https://vitalik.eth.limo/general/2024/12/03/wallets.html
 - https://github.com/zerodevapp/kernel
 - https://github.com/coinbase/smart-wallet
 - https://github.com/safe-fndn/safe-modules
