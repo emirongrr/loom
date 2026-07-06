@@ -1,9 +1,8 @@
 # Global Cross-L2 Keystore
 
-Loom follows the L1-rooted keystore direction described by Vitalik: validation
-configuration should live in one canonical place and L2 accounts should apply
-it only after verifying that canonical state. The root chain for Loom is
-Ethereum L1.
+Loom follows an L1-rooted keystore direction: validation configuration should
+live in one canonical place and L2 accounts should apply it only after verifying
+that canonical state. The root chain for Loom is Ethereum L1.
 
 ## Components
 
