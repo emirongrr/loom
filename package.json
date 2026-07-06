@@ -47,6 +47,7 @@
     "privacy:test": "npm --prefix packages/privacy test",
     "sdk:test": "npm --prefix packages/sdk ci && npm --prefix packages/sdk test",
     "sdk:types:check": "tsc -p tools/sdk-type-fixture",
+    "sdk:calldata:generate": "node tools/generate-sdk-calldata-fixture.mjs",
     "rehearsal:local": "node tools/rehearse-local-lifecycle.mjs",
     "rehearsal:live:test": "node --test tools/validate-live-rehearsal.test.mjs",
     "rehearsal:live:check": "node tools/validate-live-rehearsal.mjs",

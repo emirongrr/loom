@@ -165,6 +165,8 @@ contract LoomAccountInvariantTest is StdInvariant {
             address(handler), keccak256("guardians"), 1, keccak256("destination-config"), destinationModules
         );
         handler.configure(account, migrationDestination, new MockTarget(), new MockTarget());
+        // Fuzz every external handler action. configure() self-guards against a
+        // second call, so it needs no selector exclusion.
         targetContract(address(handler));
     }
 
@@ -175,9 +177,5 @@ contract LoomAccountInvariantTest is StdInvariant {
         require(account.guardianRoot() != bytes32(0), "guardian root cleared");
         require(account.guardianThreshold() > 0, "guardian threshold cleared");
         require(account.validatorCount() >= 1, "validator count reached zero");
-    }
-
-    function excludeSelectors() public pure returns (FuzzSelector[] memory selectors) {
-        selectors = new FuzzSelector[](0);
     }
 }
