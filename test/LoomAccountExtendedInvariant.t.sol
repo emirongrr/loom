@@ -696,6 +696,157 @@ contract LoomAccountExtendedHandler {
         _checkVersion(versionBefore);
         if (account.validatorCount() == 0) violated = true;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Handler 17: proposeRecovery
+    //
+    // WHY: Recovery was set up (the module is installed) but never *driven* by
+    //      the fuzzer, so a pending recovery never coexisted with a freeze, a
+    //      pending migration, an installed hook, or a bumped configVersion. This
+    //      action proposes a guardian-threshold recovery so those interleavings
+    //      become reachable and the existing invariants are checked in them.
+    //
+    //      Scope: proposal + cancellation only. executeRecovery rotates the
+    //      guardian root to a key this single-guardian handler cannot re-sign
+    //      for, so it is covered by RecoveryManager.t.sol and the Halmos
+    //      recovery proof rather than driven here.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function proposeRecovery() external {
+        (,,,,, uint48 pendingReadyAt,,,) = recovery.pendingRecoveries(address(account));
+        if (pendingReadyAt != 0) return; // one recovery pending at a time
+
+        address[] memory oldValidators = _currentSortedValidators();
+        if (oldValidators.length == 0) return;
+
+        // A fresh validator-typed module, never installed on the account.
+        MockValidator newValidator = new MockValidator();
+        bytes memory initData = "";
+        bytes32 initDataHash = keccak256(initData);
+        uint64 nonce = recovery.recoveryNonces(address(account));
+        // Non-zero and distinct from the current root, as _validateRecoveryGuardianConfig requires.
+        bytes32 newRoot = keccak256(abi.encode("recovery-root", account.configVersion(), nonce));
+        if (newRoot == bytes32(0) || newRoot == account.guardianRoot()) return;
+
+        uint64 versionBefore = account.configVersion();
+        bytes32 digest = recovery.proposalDigest(
+            address(account),
+            keccak256(abi.encode(oldValidators)),
+            address(newValidator),
+            initDataHash,
+            newRoot,
+            1,
+            versionBefore,
+            nonce
+        );
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
+        (bool ok,) = address(recovery)
+            .call(
+                abi.encodeCall(
+                    RecoveryManager.proposeRecovery,
+                    (address(account), oldValidators, address(newValidator), initDataHash, newRoot, 1, approvals)
+                )
+            );
+        if (ok) {
+            recoveryPending = true;
+            // A proposal is a *pending* record in the module; it must not touch
+            // the account's live authority or advance its configVersion.
+            if (account.configVersion() != versionBefore) violated = true;
+        }
+        _checkVersion(versionBefore);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Handler 18: cancelRecoveryDirect
+    //
+    // WHY: The account cancels its own pending recovery through execute(). This
+    //      is the frozen-safe carve-out (_isRecoveryExecution): it must succeed
+    //      even while the account is frozen, unlike ordinary execution. Driving
+    //      it under fuzzing exercises that exact carve-out in arbitrary states.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function cancelRecoveryDirect() external {
+        (,,,,, uint48 pendingReadyAt,,,) = recovery.pendingRecoveries(address(account));
+        if (pendingReadyAt == 0) return;
+        uint64 versionBefore = account.configVersion();
+        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)))
+                )
+            );
+        if (ok) {
+            recoveryPending = false;
+            (,,,,, uint48 cleared,,,) = recovery.pendingRecoveries(address(account));
+            if (cleared != 0) violated = true;
+        }
+        _checkVersion(versionBefore);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Handler 19: cancelRecoveryWithGuardians
+    //
+    // WHY: Guardians can cancel a pending recovery immediately (no timelock),
+    //      mirroring cancelMigrationWithGuardians. Verifies the cancel digest
+    //      binds recoveryId + configVersion + nonce and clears the pending slot.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function cancelRecoveryWithGuardians() external {
+        (
+            bytes32 oldValidatorsHash,
+            address newValidator,
+            bytes32 initDataHash,
+            bytes32 newGuardianRoot,
+            uint8 newGuardianThreshold,
+            uint48 readyAt,
+            uint48 expiresAt,
+            uint64 configVersion,
+            uint64 nonce
+        ) = recovery.pendingRecoveries(address(account));
+        if (readyAt == 0) return;
+        RecoveryManager.PendingRecovery memory pending = RecoveryManager.PendingRecovery({
+            oldValidatorsHash: oldValidatorsHash,
+            newValidator: newValidator,
+            initDataHash: initDataHash,
+            newGuardianRoot: newGuardianRoot,
+            newGuardianThreshold: newGuardianThreshold,
+            readyAt: readyAt,
+            expiresAt: expiresAt,
+            configVersion: configVersion,
+            nonce: nonce
+        });
+        uint64 versionBefore = account.configVersion();
+        bytes32 recoveryId = recovery.recoveryIdFor(address(account), pending);
+        bytes32 digest = recovery.cancelDigest(address(account), recoveryId, configVersion, nonce);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
+        (bool ok,) = address(recovery)
+            .call(abi.encodeCall(RecoveryManager.cancelRecoveryWithGuardians, (address(account), approvals)));
+        if (ok) {
+            recoveryPending = false;
+            (,,,,, uint48 cleared,,,) = recovery.pendingRecoveries(address(account));
+            if (cleared != 0) violated = true;
+        }
+        _checkVersion(versionBefore);
+    }
+
+    /// @dev Reconstructs the account's complete validator set in strictly
+    ///      ascending order, as proposeRecovery's completeness check requires.
+    ///      The account's internal array is not sorted (swap-and-pop), so we
+    ///      read every entry and insertion-sort it here.
+    function _currentSortedValidators() internal view returns (address[] memory sorted) {
+        uint256 count = account.validatorCount();
+        sorted = new address[](count);
+        for (uint256 i; i < count; ++i) {
+            address v = account.validatorAt(i);
+            uint256 j = i;
+            while (j != 0 && sorted[j - 1] > v) {
+                sorted[j] = sorted[j - 1];
+                --j;
+            }
+            sorted[j] = v;
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -828,5 +979,37 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
         // explicitly cleared by unfreeze(). We assert the value is non-trivially
         // small — i.e., it represents a valid future (or past) timestamp.
         require(frozen >= account.FREEZE_DURATION(), "frozenUntil must be at least FREEZE_DURATION if set");
+    }
+
+    /// @notice A pending recovery snapshots the account's configVersion at
+    ///         proposal time. WHY: executeRecovery re-checks that snapshot and
+    ///         reverts if the account's configVersion has since advanced, so the
+    ///         snapshot is the anti-stale-authority binding. It must never
+    ///         exceed the account's live version (that would imply a proposal
+    ///         from a future config) and must be a real initialized version.
+    function invariantPendingRecoverySnapshotNotFuture() public view {
+        (,,,,, uint48 readyAt,, uint64 snapVersion,) = recovery.pendingRecoveries(address(account));
+        if (readyAt == 0) return;
+        require(snapVersion >= 1, "pending recovery snapshot must be initialized");
+        require(
+            snapVersion <= account.configVersion(), "pending recovery snapshot must not exceed account configVersion"
+        );
+    }
+
+    /// @notice Guards against the new recovery handler actions silently always
+    ///         early-returning (which would make them dead fuzz coverage). This
+    ///         drives the actual success path once and asserts the module state
+    ///         transitions, so a regression that breaks the proposal wiring
+    ///         fails here rather than passing vacuously in the fuzzer.
+    function test_RecoveryHandlerActionsReachSuccessPath() public {
+        handler.proposeRecovery();
+        (,,,,, uint48 readyAtAfterPropose,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAtAfterPropose != 0, "proposeRecovery action did not reach the success path");
+        require(handler.recoveryPending(), "handler did not record the pending recovery");
+
+        handler.cancelRecoveryDirect();
+        (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAtAfterCancel == 0, "cancelRecoveryDirect action did not clear the pending recovery");
+        require(!handler.violated(), "recovery handler actions observed an invariant violation");
     }
 }
