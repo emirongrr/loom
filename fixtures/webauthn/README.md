@@ -24,10 +24,22 @@ Each fixture records:
   fixture-only credential, passed PII review, and is bound to a negative-case
   manifest hash.
 
-The corpus is intentionally empty until a real browser/device assertion is
-captured. Do not commit generated examples as release evidence. A fixture only
-becomes release evidence when the matrix entry, positive assertion, negative
-case manifest, and reviewed mutation results all agree.
+The fixture tree has three evidence tiers:
+
+- `reference/` contains deterministic standard-shape vectors. These prove the
+  parser, fixture validator, and Solidity verification harness understand the
+  WebAuthn wire format. They are not real-device evidence.
+- `virtual/` is reserved for generated virtual-authenticator output. PR CI may
+  generate this evidence in a temporary directory. It is not real-device
+  evidence.
+- `corpus/` contains reviewed real browser/device assertions. Only this
+  directory can satisfy release evidence for Windows Hello, Android passkeys,
+  Apple passkeys, YubiKey, or other physical authenticators.
+
+The real-device corpus is intentionally empty until a real browser/device
+assertion is captured. Do not commit generated examples as release evidence. A
+fixture only becomes release evidence when the matrix entry, positive
+assertion, negative case manifest, and reviewed mutation results all agree.
 
 Every accepted positive fixture must have generated negative tests that alter
 the challenge, origin, RP ID hash, flags, signature, and payload lengths.
@@ -47,15 +59,46 @@ combination is marked verified after its positive and mutation-negative
 contract tests pass.
 
 `tools/webauthn-fixture/collector.html` creates a fresh local-only credential
-and assertion. Serve it from a local secure context, inspect the output, and
-keep only the anonymous metadata required by `schema.json`. Set `matrixId`,
-`browser`, `platform`, `authenticator`, `authenticatorClass`, and
-`transports` to the matching matrix entry. Fill `negativeMutations` only after
-tests cover challenge, origin, RP ID hash, user-verification flag, signature,
-and payload-length mutations. Set `provenance.reviewedForPII` only after
-checking that no raw credential identifier, user handle, username, display
-name, raw user-agent, attestation object, account address, or persistent
-device identifier is present.
+and assertion for local evidence capture. Start it with:
+
+```sh
+npm run webauthn:capture
+```
+
+Open the printed `http://localhost:<port>/...` URL in a normal Chrome, Edge,
+Safari, or Firefox window, not an embedded browser. Inspect the output and keep
+only the anonymous metadata required by `schema.json`. Set `matrixId`,
+`browser`, `platform`, `authenticator`, `authenticatorClass`, and `transports`
+to the matching matrix entry. Fill `negativeMutations` only after tests cover
+challenge, origin, RP ID hash, user-verification flag, signature, and
+payload-length mutations. Set `provenance.reviewedForPII` only after checking
+that no raw credential identifier, user handle, username, display name, raw
+user-agent, attestation object, account address, or persistent device
+identifier is present.
+
+For account lifecycle evidence, the WebAuthn challenge must be the exact
+ERC-4337 `userOpHash` (or the exact direct-execution digest) that the account
+will validate. Random challenge fixtures prove browser/authenticator
+compatibility, but they cannot honestly prove deploy-and-spend behavior. After
+constructing the account/user operation, open the collector with:
+
+```text
+http://localhost:<port>/tools/webauthn-fixture/collector.html?challenge=0x<32-byte-userOpHash>
+```
+
+Commit lifecycle fixtures only after the resulting assertion is exercised
+through the same account path it claims to cover: counterfactual deployment,
+prefunding, EntryPoint validation, execution, balance or target-state change,
+and negative mutation rollback/no-spend checks.
+
+Run the virtual evidence path locally with:
+
+```sh
+npm run webauthn:virtual
+```
+
+This keeps the e2e fixture tooling alive in CI but does not mark any real
+browser/device matrix entry as verified.
 
 Generate the negative-case manifest from the reviewed positive fixture:
 

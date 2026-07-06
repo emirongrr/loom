@@ -10,6 +10,24 @@
   ],
   "required": [
     {
+      "id": "brave-windows-hello",
+      "platform": "Windows",
+      "browser": "Brave",
+      "authenticator": "Windows Hello",
+      "authenticatorClass": "platform",
+      "transports": ["internal"],
+      "status": "missing"
+    },
+    {
+      "id": "edge-windows-hello",
+      "platform": "Windows",
+      "browser": "Edge",
+      "authenticator": "Windows Hello",
+      "authenticatorClass": "platform",
+      "transports": ["internal"],
+      "status": "missing"
+    },
+    {
       "id": "chrome-android-passkey",
       "platform": "Android",
       "browser": "Chrome",

@@ -33,6 +33,7 @@
   ],
   "properties": {
     "version": { "const": 1 },
+    "evidenceKind": { "enum": ["corpus", "reference", "virtual"] },
     "matrixId": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 80 },
     "collectorVersion": { "type": "string", "pattern": "^webauthn-fixture-collector@[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 40 },
     "capturedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
@@ -96,8 +97,14 @@
         "negativeCaseManifestHash"
       ],
       "properties": {
-        "captureMode": { "const": "local-secure-context" },
-        "collectorSource": { "const": "tools/webauthn-fixture/collector.html" },
+        "captureMode": { "enum": ["local-secure-context", "reference-vector", "virtual-authenticator"] },
+        "collectorSource": {
+          "enum": [
+            "tools/webauthn-fixture/collector.html",
+            "tools/webauthn-fixture/generate-reference-fixture.mjs",
+            "tools/webauthn-fixture/virtual-runner.mjs"
+          ]
+        },
         "collectorSourceHash": { "$ref": "#/$defs/hex32" },
         "requiresFreshCredential": { "const": true },
         "reviewedForPII": { "const": true },

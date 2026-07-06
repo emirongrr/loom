@@ -46,9 +46,10 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
   const fixtureIds = new Set();
   for (const name of files) {
     const fixture = JSON.parse(await readFile(join(rootPath, name), "utf8"));
+    const evidenceKind = fixture.evidenceKind ?? "corpus";
     rejectForbiddenMetadata(name, fixture);
-    if (!matrixById.has(fixture.matrixId)) {
-      throw new Error(`${name}: fixture matrixId is not required: ${fixture.matrixId}`);
+    if (!["corpus", "reference", "virtual"].includes(evidenceKind)) {
+      throw new Error(`${name}: invalid evidenceKind: ${evidenceKind}`);
     }
     if (fixtureIds.has(fixture.matrixId)) throw new Error(`${name}: duplicate fixture matrixId: ${fixture.matrixId}`);
     fixtureIds.add(fixture.matrixId);
@@ -79,24 +80,27 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
     if (fixture.privacy?.containsAttestationObject !== false) {
       throw new Error(`${name}: fixture must not include attestation object metadata`);
     }
-    assertProvenance(name, fixture.provenance);
+    assertProvenance(name, evidenceKind, fixture.provenance);
 
     const matrixItem = matrixById.get(fixture.matrixId);
-    if (fixture.browser !== matrixItem.browser) throw new Error(`${name}: browser does not match matrix item`);
-    if (fixture.platform !== matrixItem.platform) throw new Error(`${name}: platform does not match matrix item`);
-    if (fixture.authenticator !== matrixItem.authenticator) {
-      throw new Error(`${name}: authenticator does not match matrix item`);
-    }
-    if (fixture.authenticatorClass !== matrixItem.authenticatorClass) {
-      throw new Error(`${name}: authenticator class does not match matrix item`);
-    }
-    const missingTransports = matrixItem.transports.filter(item => !fixture.transports.includes(item));
-    if (missingTransports.length !== 0) {
-      throw new Error(`${name}: missing matrix transport evidence: ${missingTransports.join(", ")}`);
+    if (evidenceKind === "corpus") {
+      if (!matrixItem) throw new Error(`${name}: fixture matrixId is not required: ${fixture.matrixId}`);
+      if (fixture.browser !== matrixItem.browser) throw new Error(`${name}: browser does not match matrix item`);
+      if (fixture.platform !== matrixItem.platform) throw new Error(`${name}: platform does not match matrix item`);
+      if (fixture.authenticator !== matrixItem.authenticator) {
+        throw new Error(`${name}: authenticator does not match matrix item`);
+      }
+      if (fixture.authenticatorClass !== matrixItem.authenticatorClass) {
+        throw new Error(`${name}: authenticator class does not match matrix item`);
+      }
+      const missingTransports = matrixItem.transports.filter(item => !fixture.transports.includes(item));
+      if (missingTransports.length !== 0) {
+        throw new Error(`${name}: missing matrix transport evidence: ${missingTransports.join(", ")}`);
+      }
     }
 
     const missingMutations = requiredNegativeMutations.filter(item => !fixture.negativeMutations?.includes(item));
-    if (matrixItem.status === "verified" && missingMutations.length !== 0) {
+    if ((evidenceKind !== "corpus" || matrixItem?.status === "verified") && missingMutations.length !== 0) {
       throw new Error(`${name}: missing negative mutation evidence: ${missingMutations.join(", ")}`);
     }
 
@@ -144,13 +148,15 @@ async function fixtureFiles(rootPath) {
       files.push(entry.name);
     }
   }
-  const corpusPath = join(rootPath, "corpus");
-  try {
-    for (const name of await walkJsonFiles(corpusPath)) {
-      files.push(relative(rootPath, name));
+  for (const directory of ["reference", "virtual", "corpus"]) {
+    const path = join(rootPath, directory);
+    try {
+      for (const name of await walkJsonFiles(path)) {
+        files.push(relative(rootPath, name));
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
     }
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
   }
   return files;
 }
@@ -178,14 +184,24 @@ function rejectForbiddenMetadata(name, value, path = "") {
   }
 }
 
-function assertProvenance(name, provenance) {
+function assertProvenance(name, evidenceKind, provenance) {
   if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) {
     throw new Error(`${name}: provenance must be an object`);
   }
-  if (provenance.captureMode !== "local-secure-context") {
-    throw new Error(`${name}: provenance.captureMode must be local-secure-context`);
+  const expectedCaptureMode = evidenceKind === "corpus"
+    ? "local-secure-context"
+    : evidenceKind === "virtual"
+      ? "virtual-authenticator"
+      : "reference-vector";
+  if (provenance.captureMode !== expectedCaptureMode) {
+    throw new Error(`${name}: provenance.captureMode must be ${expectedCaptureMode}`);
   }
-  if (provenance.collectorSource !== "tools/webauthn-fixture/collector.html") {
+  const validCollector = evidenceKind === "corpus"
+    ? "tools/webauthn-fixture/collector.html"
+    : evidenceKind === "virtual"
+      ? "tools/webauthn-fixture/virtual-runner.mjs"
+      : "tools/webauthn-fixture/generate-reference-fixture.mjs";
+  if (provenance.collectorSource !== validCollector) {
     throw new Error(`${name}: provenance.collectorSource is invalid`);
   }
   if (provenance.requiresFreshCredential !== true) {

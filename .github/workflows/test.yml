@@ -67,6 +67,8 @@ jobs:
         run: npm run sdk:types:check
       - name: Test WebAuthn fixture parser
         run: npm run fixtures:test
+      - name: Run virtual WebAuthn fixture evidence
+        run: npm run webauthn:virtual
       - name: Test bundler qualification evidence
         run: npm run bundler:qualification:test
       - name: Test live bundler qualification runner
