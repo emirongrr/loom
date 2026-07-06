@@ -27,10 +27,9 @@ npm ci
 npm run verify:quick
 ```
 
-`verify:quick` runs documentation and website checks; account, guardian,
-privacy, and wallet-engine SDK tests; formatting; Solidity lint; production size
-checks; gas snapshot checks; contract tests; invariants; and source-policy
-checks.
+`verify:quick` runs the fast local evidence suite: documentation and website
+checks, SDK tests, formatting, Solidity lint, production size checks, gas
+snapshot checks, contract tests, invariants, and source-policy checks.
 
 ### Build the docs site (optional)
 
@@ -57,6 +56,9 @@ wallet client is responsible for.
 | Recovery | Require guardian threshold, visibility, delay, expiry, and cancellation. | Coordinate guardian ceremony without becoming a recovery custodian. |
 | Privacy | Keep core usable without privacy providers. | Use Kohaku-backed adapters, local scanning, and metadata budgets. |
 
+For the full code-vs-roadmap split, use the repository
+[implementation status](https://github.com/emirongrr/loom/blob/main/docs/status.md).
+
 ## Repository checks
 
 Run the focused suites while iterating:
@@ -70,5 +72,5 @@ npm run sdk:test
 Run the full gate before opening a pull request:
 
 ```sh
-npm run verify:quick
+npm run verify
 ```
