@@ -122,6 +122,30 @@ export interface LoomStateReadTransport {
   }): Promise<Hex>;
 }
 
+export interface VerificationProfile {
+  readonly status: "verified" | "unverified";
+  readonly source: string;
+  readonly blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+  readonly assumptions: readonly string[];
+}
+
+export interface VerifiedState<T> {
+  readonly status: "verified";
+  readonly value: T;
+  readonly verification: VerificationProfile & { readonly status: "verified" };
+}
+
+export interface UnverifiedState<T = unknown> {
+  readonly status: "unverified";
+  readonly value?: T;
+  readonly reason: string;
+  readonly verification: VerificationProfile & { readonly status: "unverified" };
+}
+
+export interface Eip1193Provider {
+  request(input: { method: string; params?: readonly unknown[] }): Promise<unknown>;
+}
+
 export type AccountSafetyStatus =
   | "guardian-protected"
   | "unprotected-recovery"
@@ -459,6 +483,23 @@ export interface RpcStateTransportOptions {
 export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
   readonly endpoint: string;
 };
+
+export function createEip1193StateTransport(options: {
+  provider: Eip1193Provider;
+  verification?: Partial<VerificationProfile>;
+}): LoomStateReadTransport & {
+  readonly provider: Eip1193Provider;
+  readonly verification: VerificationProfile;
+  describeVerification(): VerificationProfile;
+};
+
+export function verified<T>(value: T, profile?: Partial<VerificationProfile>): VerifiedState<T>;
+
+export function unverified<T = unknown>(
+  reason: string,
+  value?: T,
+  profile?: Partial<VerificationProfile>
+): UnverifiedState<T>;
 
 export function readAccountSafetyState(input: {
   chainId: number;

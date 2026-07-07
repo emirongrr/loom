@@ -3,15 +3,16 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { readEnvironmentConfiguration } from "../config/environment";
 import { CapabilityCard } from "../components/CapabilityCard";
+import { stateReadinessGate } from "../verified/stateTransport";
 
 const config = readEnvironmentConfiguration();
 
 export default function App() {
-  const rpcConfigured = Boolean(config.network.rpcUrl);
   const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
   const deploymentConfigured = Boolean(
     config.deployment.accountFactory && config.deployment.passkeyValidator
   );
+  const stateGate = stateReadinessGate(config);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -36,9 +37,13 @@ export default function App() {
           body="Requires explicit factory, validator, EntryPoint, and bundler configuration."
         />
         <CapabilityCard
-          title="State reads"
-          status={rpcConfigured ? "configured" : "not-configured"}
-          body="Reads require a user or integrator supplied RPC/state transport."
+          title="Verified state reads"
+          status={stateGate.status === "passed" ? "configured" : stateGate.status}
+          body={
+            config.verifiedState.mode === "helios"
+              ? "Helios verifies state from user-supplied execution and consensus transports after a checkpoint sync."
+              : stateGate.summary
+          }
         />
         <CapabilityCard
           title="Recovery"
@@ -85,4 +90,3 @@ const styles = StyleSheet.create({
     lineHeight: 24
   }
 });
-

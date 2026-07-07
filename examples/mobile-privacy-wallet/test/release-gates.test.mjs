@@ -32,7 +32,27 @@ test("configuration does not contain default RPC or bundler endpoints", () => {
   const env = read(".env.example");
   assert.match(env, /EXPO_PUBLIC_LOOM_RPC_URL=\n/);
   assert.match(env, /EXPO_PUBLIC_LOOM_BUNDLER_URL=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_STATE_MODE=helios\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_EXECUTION_RPC=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_CONSENSUS_RPC=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_CHECKPOINT=\n/);
   assert.doesNotMatch(env, /https?:\/\//);
+});
+
+test("verified state reads are Helios-first and fail closed without evidence", () => {
+  const helios = read("src/verified/helios.ts");
+  const stateTransport = read("src/verified/stateTransport.ts");
+  const packageJson = JSON.parse(read("package.json"));
+
+  assert.equal(packageJson.dependencies["@a16z/helios"], "^0.11.1");
+  assert.match(helios, /createHeliosProvider/);
+  assert.match(helios, /waitSynced/);
+  assert.match(helios, /executionRpc/);
+  assert.match(helios, /consensusRpc/);
+  assert.match(helios, /checkpoint/);
+  assert.match(helios, /weak-subjectivity checkpoint/);
+  assert.match(stateTransport, /plain RPC reads are not light-client verified/);
+  assert.match(stateTransport, /verifiedState\.mode === "helios"/);
 });
 
 test("native passkey modules enforce platform verification and do not expose raw credentials", () => {

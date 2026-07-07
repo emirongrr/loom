@@ -17,9 +17,10 @@ export function createExplicitTransports(config: MobileWalletConfiguration) {
         })
       : undefined;
 
-  const stateTransport = config.network.rpcUrl
-    ? createRpcStateTransport({ endpoint: config.network.rpcUrl })
-    : undefined;
+  const stateTransport =
+    config.network.rpcUrl && config.verifiedState.mode === "rpc"
+      ? createRpcStateTransport({ endpoint: config.network.rpcUrl })
+      : config.stateTransport;
 
   return { transport, stateTransport };
 }
@@ -53,4 +54,3 @@ export function requireAccountDeploymentConfig(config: MobileWalletConfiguration
     entryPoint: config.network.entryPoint
   };
 }
-

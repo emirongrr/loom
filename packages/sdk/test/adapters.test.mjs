@@ -3,9 +3,12 @@ import test from "node:test";
 import {
   InvalidSdkRequestError,
   createBundlerTransport,
+  createEip1193StateTransport,
   createPasskeySigner,
   createRpcStateTransport,
-  prepareUserOperationEnvelope
+  prepareUserOperationEnvelope,
+  unverified,
+  verified
 } from "../src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
@@ -232,6 +235,63 @@ test("state transport rejects rpc errors and malformed hex", async () => {
 
   await assert.rejects(failing.ethCall({ to: account, data: "0x12345678" }), InvalidSdkRequestError);
   await assert.rejects(malformed.ethCall({ to: account, data: "0x12345678" }), InvalidSdkRequestError);
+});
+
+test("EIP-1193 state transport wraps verified providers without endpoint defaults", async () => {
+  const requests = [];
+  const transport = createEip1193StateTransport({
+    provider: {
+      async request(input) {
+        requests.push(input);
+        return "0x" + "00".repeat(32);
+      }
+    },
+    verification: {
+      status: "verified",
+      source: "helios",
+      blockTag: "safe",
+      assumptions: ["weak subjectivity checkpoint supplied by user"]
+    }
+  });
+
+  const result = await transport.ethCall({ to: account, data: "0x12345678" });
+
+  assert.equal(result, "0x" + "00".repeat(32));
+  assert.equal(transport.describeVerification().status, "verified");
+  assert.equal(transport.describeVerification().source, "helios");
+  assert.deepEqual(requests, [
+    {
+      method: "eth_call",
+      params: [{ to: account, data: "0x12345678" }, "safe"]
+    }
+  ]);
+});
+
+test("EIP-1193 state transport rejects missing providers and malformed results", async () => {
+  assert.throws(
+    () => createEip1193StateTransport({}),
+    error => error instanceof InvalidSdkRequestError
+  );
+
+  const malformed = createEip1193StateTransport({
+    provider: {
+      async request() {
+        return "not-hex";
+      }
+    }
+  });
+
+  await assert.rejects(malformed.getCode({ address: account }), InvalidSdkRequestError);
+});
+
+test("verified state wrappers make proof status explicit", () => {
+  const known = verified({ balance: 1n }, { source: "helios", assumptions: ["safe head"] });
+  const unknown = unverified("light client unavailable", undefined, { source: "missing-helios" });
+
+  assert.equal(known.status, "verified");
+  assert.equal(known.verification.source, "helios");
+  assert.equal(unknown.status, "unverified");
+  assert.equal(unknown.reason, "light client unavailable");
 });
 
 test("passkey signer construction has no credential side effects", () => {

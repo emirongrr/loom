@@ -39,6 +39,12 @@ Helios still needs a trusted weak-subjectivity checkpoint and an execution RPC
 that serves required proof data. Those assumptions must be visible and
 replaceable by the user.
 
+The mobile example currently exposes this as a Helios-first state-read boundary:
+the SDK can wrap an EIP-1193 Helios provider as verified state transport, while
+plain RPC remains an explicitly unverified fallback. This is not yet production
+mobile evidence; target devices still need Helios sync, checkpoint-source,
+runtime, and failure-mode rehearsals.
+
 ## Verified state
 
 | State | Source | Verification requirement | Failure behavior |

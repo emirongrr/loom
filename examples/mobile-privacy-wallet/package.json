@@ -15,6 +15,7 @@
     "test:gates": "node --test test/release-gates.test.mjs"
   },
   "dependencies": {
+    "@a16z/helios": "^0.11.1",
     "@loom/guardian": "file:../../packages/guardian",
     "@loom/privacy": "file:../../packages/privacy",
     "@loom/sdk": "file:../../packages/sdk",

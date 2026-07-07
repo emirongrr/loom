@@ -58,6 +58,24 @@ export interface NetworkConfiguration {
   readonly entryPoint?: Hex;
 }
 
+export type VerifiedStateMode = "helios" | "rpc" | "disabled";
+
+export type HeliosNetworkKind = "ethereum" | "opstack" | "linea";
+
+export interface HeliosStateConfiguration {
+  readonly networkKind: HeliosNetworkKind;
+  readonly network: string;
+  readonly executionRpc?: string;
+  readonly consensusRpc?: string;
+  readonly checkpoint?: string;
+  readonly verifiableApi?: string;
+}
+
+export interface VerifiedStateConfiguration {
+  readonly mode: VerifiedStateMode;
+  readonly helios: HeliosStateConfiguration;
+}
+
 export interface DeploymentConfiguration {
   readonly accountFactory?: Hex;
   readonly passkeyValidator?: Hex;
@@ -75,6 +93,7 @@ export interface MobileWalletConfiguration {
   readonly rpId: string;
   readonly origin: string;
   readonly network: NetworkConfiguration;
+  readonly verifiedState: VerifiedStateConfiguration;
   readonly deployment: DeploymentConfiguration;
   readonly privacy: PrivacyConfiguration;
   readonly transport?: LoomTransportAdapter;
@@ -122,4 +141,3 @@ export interface PrivateSendDraft {
   readonly deadline: bigint;
   readonly metadataBudget?: MetadataBudget;
 }
-

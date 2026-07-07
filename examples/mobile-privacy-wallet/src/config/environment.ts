@@ -1,4 +1,10 @@
-import type { Hex, MobileWalletConfiguration, WalletEnvironment } from "../types/wallet";
+import type {
+  HeliosNetworkKind,
+  Hex,
+  MobileWalletConfiguration,
+  VerifiedStateMode,
+  WalletEnvironment
+} from "../types/wallet";
 import { blockedGate } from "../platform/errors";
 
 function optionalHex(value: string | undefined): Hex | undefined {
@@ -29,6 +35,20 @@ function walletEnvironment(value: string | undefined): WalletEnvironment {
   return "development";
 }
 
+function verifiedStateMode(value: string | undefined): VerifiedStateMode {
+  if (value === "helios" || value === "rpc" || value === "disabled") {
+    return value;
+  }
+  return "helios";
+}
+
+function heliosNetworkKind(value: string | undefined): HeliosNetworkKind {
+  if (value === "ethereum" || value === "opstack" || value === "linea") {
+    return value;
+  }
+  return "ethereum";
+}
+
 export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   const chainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_CHAIN_ID) ?? 1;
   const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 1;
@@ -43,6 +63,17 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
       rpcUrl: process.env.EXPO_PUBLIC_LOOM_RPC_URL || undefined,
       bundlerUrl: process.env.EXPO_PUBLIC_LOOM_BUNDLER_URL || undefined,
       entryPoint: optionalHex(process.env.EXPO_PUBLIC_LOOM_ENTRYPOINT)
+    },
+    verifiedState: {
+      mode: verifiedStateMode(process.env.EXPO_PUBLIC_LOOM_STATE_MODE),
+      helios: {
+        networkKind: heliosNetworkKind(process.env.EXPO_PUBLIC_LOOM_HELIOS_KIND),
+        network: process.env.EXPO_PUBLIC_LOOM_HELIOS_NETWORK || "sepolia",
+        executionRpc: process.env.EXPO_PUBLIC_LOOM_HELIOS_EXECUTION_RPC || undefined,
+        consensusRpc: process.env.EXPO_PUBLIC_LOOM_HELIOS_CONSENSUS_RPC || undefined,
+        checkpoint: process.env.EXPO_PUBLIC_LOOM_HELIOS_CHECKPOINT || undefined,
+        verifiableApi: process.env.EXPO_PUBLIC_LOOM_HELIOS_VERIFIABLE_API || undefined
+      }
     },
     deployment: {
       accountFactory: optionalHex(process.env.EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY),
@@ -59,4 +90,3 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
     }
   };
 }
-

@@ -63,13 +63,17 @@ runtime path.
 - **Proposed fix PR:** Add a production Railgun mobile adapter profile and only
   enable private send when the profile is verified.
 
-## G-006: Verified Reads Are Not Implemented In The Mobile Client
+## G-006: Helios Verified Reads Need Mobile Evidence
 
-- **Missing API or behavior:** The app can use explicit RPC/state transports,
-  but light-client verified wallet reads are not implemented in this example.
+- **Missing API or behavior:** The app exposes a Helios-first verified
+  state-read runtime and keeps plain RPC as an explicitly unverified fallback.
+  Store release still requires physical iOS/Android Helios sync evidence,
+  checkpoint-source review, WASM/runtime compatibility evidence, stale
+  checkpoint handling, and failure-mode tests.
 - **Affected flow:** Balance, nonce, recovery state, guardian roots, vault
   state, validator state.
-- **Security/privacy impact:** RPC providers remain transport trust assumptions
-  unless verified reads are added.
-- **Proposed fix PR:** Add a verified read adapter boundary and mobile light
-  client integration.
+- **Security/privacy impact:** Without device evidence, the app can wire Helios
+  correctly but cannot claim production verified wallet state on mobile.
+- **Proposed fix PR:** Add mobile Helios sync evidence for target networks and
+  release gates for stale checkpoint, unavailable consensus RPC, malformed
+  proof data, and plain-RPC downgrade attempts.

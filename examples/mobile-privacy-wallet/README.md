@@ -6,6 +6,7 @@ Loom. The app is intentionally small, but its boundaries are serious:
 - no default RPC, bundler, paymaster, relayer, indexer, or backend;
 - no runtime mocks in wallet flows;
 - passkey-first account creation through a first-party native module boundary;
+- Helios-first verified state reads instead of trusting a raw RPC response;
 - progressive recovery shown honestly when guardians are not configured;
 - private transfer UI gated behind Railgun privacy evidence;
 - every blocked production path recorded in `GAPS.md`.
@@ -62,6 +63,15 @@ cp examples/mobile-privacy-wallet/.env.example examples/mobile-privacy-wallet/.e
 The app does not ship with a default provider. A missing endpoint disables the
 affected flow instead of silently falling back to a hosted service.
 
+State reads are Helios-first. Helios still needs user-supplied execution and
+consensus endpoints as data transports plus a weak-subjectivity checkpoint. The
+wallet treats those endpoints as replaceable transports, not as trusted sources
+of balances, nonces, recovery state, guardian roots, vault state, or validator
+state.
+
+Plain RPC state reads are available only when `EXPO_PUBLIC_LOOM_STATE_MODE=rpc`
+is chosen explicitly. The UI and SDK must label that mode as unverified.
+
 ## Development
 
 From this directory:
@@ -89,7 +99,8 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 | Capability | Runtime behavior |
 | --- | --- |
 | Passkey unavailable | Account creation and signing fail closed. |
-| Missing RPC | State reads are disabled. |
+| Missing Helios checkpoint or transport | Verified state reads are disabled. |
+| Plain RPC mode | State reads are explicitly unverified. |
 | Missing bundler | Transaction submission is disabled. |
 | Guardianless account | App shows `unprotected-recovery`. |
 | Missing guardian evidence | Guardian setup cannot be submitted. |
@@ -104,6 +115,8 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
   graph, raw RPC payloads, or private transaction metadata.
 - Passkey registration and assertion verified on physical iOS and Android
   devices.
+- Helios verified state sync rehearsed on target iOS and Android devices with
+  user-supplied execution RPC, consensus RPC, and checkpoint.
 - Loom account deployment rehearsed with explicit RPC and two independent
   bundlers.
 - Guardian ceremony rehearsed with proof-of-possession and encrypted backup.
