@@ -585,6 +585,7 @@ export async function readAccountSafetyState(input = {}) {
 
   const recoveryModule =
     input.recoveryModule === undefined ? undefined : normalizeAddress(input.recoveryModule, "recovery module");
+  const recoveryStateReadable = recoveryModule !== undefined;
   const pendingRecovery = recoveryModule === undefined
     ? undefined
     : decodePendingRecovery(await transport.ethCall({
@@ -605,6 +606,7 @@ export async function readAccountSafetyState(input = {}) {
   });
   const warnings = accountSafetyWarnings({
     recoveryConfigured,
+    recoveryStateReadable,
     freeze,
     pendingRecovery,
     pendingMigration
@@ -631,6 +633,12 @@ export async function readAccountSafetyState(input = {}) {
     },
     freeze,
     pending,
+    coverage: {
+      account: true,
+      migration: true,
+      recovery: recoveryStateReadable,
+      ...(recoveryModule === undefined ? {} : { recoveryModule })
+    },
     warnings,
     review: {
       title: "Loom account safety state",
@@ -1217,10 +1225,13 @@ function accountSafetyStatus({ recoveryConfigured, freeze, pendingRecovery, pend
   return recoveryConfigured ? "guardian-protected" : "unprotected-recovery";
 }
 
-function accountSafetyWarnings({ recoveryConfigured, freeze, pendingRecovery, pendingMigration }) {
+function accountSafetyWarnings({ recoveryConfigured, recoveryStateReadable, freeze, pendingRecovery, pendingMigration }) {
   const warnings = [];
   if (!recoveryConfigured) {
     warnings.push("Guardian recovery is not configured; losing the primary credential can permanently lose access.");
+  }
+  if (recoveryConfigured && !recoveryStateReadable) {
+    warnings.push("Recovery module was not provided; pending recovery state was not read.");
   }
   if (freeze.active) {
     warnings.push("Account is frozen; ordinary execution may be blocked until the freeze expires.");

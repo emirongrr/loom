@@ -355,8 +355,40 @@ test("client reports pending recovery before ordinary protected state", async ()
   assert.equal(state.pending.recovery.newValidator, newValidator);
   assert.equal(state.pending.recovery.newGuardianRoot, newRoot);
   assert.equal(state.pending.recovery.readyAt, 1000n);
+  assert.equal(state.coverage.recovery, true);
+  assert.equal(state.coverage.recoveryModule, recoveryModule);
   assert.match(state.warnings.join("\n"), /Recovery is pending/);
   assert.equal(stateTransport.calls.length, 8);
+});
+
+test("client safety reader marks recovery state coverage partial without recovery module", async () => {
+  const root = "0x" + "12".repeat(32);
+  const stateTransport = accountStateTransport({
+    recoveryConfigured: true,
+    guardianRoot: root,
+    guardianThreshold: 2n,
+    configVersion: 5n
+  });
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: {
+      providerProfile,
+      fetch: async () => new Response("{}")
+    },
+    stateTransport
+  });
+  const state = await client.readSafetyState({ now: 500n });
+
+  assert.equal(state.status, "guardian-protected");
+  assert.equal(state.coverage.account, true);
+  assert.equal(state.coverage.migration, true);
+  assert.equal(state.coverage.recovery, false);
+  assert.equal("recoveryModule" in state.coverage, false);
+  assert.equal(state.pending.recovery, undefined);
+  assert.match(state.warnings.join("\n"), /pending recovery state was not read/);
+  assert.equal(state.review.summary, "Recovery module was not provided; pending recovery state was not read.");
+  assert.equal(stateTransport.calls.length, 7);
 });
 
 test("client reports frozen and pending migration safety states", async () => {
