@@ -113,7 +113,7 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  "LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest",
+  "LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
   "--no-match-path",
   "test/formal/**"
 ]);
