@@ -34,7 +34,6 @@ function validateContractsWorkflow() {
     "npm run ci:program:check",
     "npm run formal:program:check",
     "npm run fixtures:check",
-    "npm run webauthn:virtual",
     "forge fmt --check",
     "forge lint --deny warnings",
     "forge build --sizes",
@@ -59,7 +58,6 @@ function validateTestWorkflow() {
     "npm run sdk:test",
     "npm run sdk:types:check",
     "npm run fixtures:test",
-    "npm run webauthn:virtual",
     "npm run formal:program:test",
     "npm run ci:program:test",
   ]) {

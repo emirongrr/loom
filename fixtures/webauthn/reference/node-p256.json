@@ -2,7 +2,6 @@
   "version": 1,
   "evidenceKind": "reference",
   "matrixId": "reference-node-p256",
-  "collectorVersion": "webauthn-fixture-collector@1.1.0",
   "capturedAt": "2026-07-06",
   "platform": "Reference",
   "platformVersion": "node-crypto-prime256v1",
@@ -40,8 +39,8 @@
   },
   "provenance": {
     "captureMode": "reference-vector",
-    "collectorSource": "tools/webauthn-fixture/generate-reference-fixture.mjs",
-    "collectorSourceHash": "0xbbecb051224b0a400d0dcd74ee69d989640429c873e94daa4e6a0c0f3e57b850",
+    "captureSource": "reference-vector",
+    "captureSourceHash": "0xbbecb051224b0a400d0dcd74ee69d989640429c873e94daa4e6a0c0f3e57b850",
     "requiresFreshCredential": true,
     "reviewedForPII": true,
     "negativeCaseManifestHash": "0xf77008aa28bde5e35d223ce223cd9fbfd597798887059d22457c2edadf15df1a"

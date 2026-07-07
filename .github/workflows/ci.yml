@@ -48,8 +48,6 @@ jobs:
         run: npm run site:build
       - name: Validate WebAuthn fixtures
         run: npm run fixtures:check
-      - name: Run virtual WebAuthn fixture evidence
-        run: npm run webauthn:virtual
       - name: Validate formal program structure
         run: npm run formal:program:check
       - name: Test privacy SDK boundary

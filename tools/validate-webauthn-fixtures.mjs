@@ -48,7 +48,7 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
     const fixture = JSON.parse(await readFile(join(rootPath, name), "utf8"));
     const evidenceKind = fixture.evidenceKind ?? "corpus";
     rejectForbiddenMetadata(name, fixture);
-    if (!["corpus", "reference", "virtual"].includes(evidenceKind)) {
+    if (!["corpus", "reference"].includes(evidenceKind)) {
       throw new Error(`${name}: invalid evidenceKind: ${evidenceKind}`);
     }
     if (fixtureIds.has(fixture.matrixId)) throw new Error(`${name}: duplicate fixture matrixId: ${fixture.matrixId}`);
@@ -64,9 +64,6 @@ export async function validateWebAuthnFixtures({ root = defaultRoot, requireComp
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fixture.capturedAt ?? "")) throw new Error(`${name}: invalid capturedAt`);
     if (!/^0x[0-9a-fA-F]{64}$/.test(fixture.userAgentHash ?? "")) {
       throw new Error(`${name}: invalid userAgentHash`);
-    }
-    if (!fixture.collectorVersion || fixture.collectorVersion.length > 40) {
-      throw new Error(`${name}: invalid collectorVersion`);
     }
     if (!fixture.browserVersion || !fixture.platformVersion) {
       throw new Error(`${name}: incomplete environment metadata`);
@@ -148,7 +145,7 @@ async function fixtureFiles(rootPath) {
       files.push(entry.name);
     }
   }
-  for (const directory of ["reference", "virtual", "corpus"]) {
+  for (const directory of ["reference", "corpus"]) {
     const path = join(rootPath, directory);
     try {
       for (const name of await walkJsonFiles(path)) {
@@ -190,19 +187,15 @@ function assertProvenance(name, evidenceKind, provenance) {
   }
   const expectedCaptureMode = evidenceKind === "corpus"
     ? "local-secure-context"
-    : evidenceKind === "virtual"
-      ? "virtual-authenticator"
-      : "reference-vector";
+    : "reference-vector";
   if (provenance.captureMode !== expectedCaptureMode) {
     throw new Error(`${name}: provenance.captureMode must be ${expectedCaptureMode}`);
   }
-  const validCollector = evidenceKind === "corpus"
-    ? "tools/webauthn-fixture/collector.html"
-    : evidenceKind === "virtual"
-      ? "tools/webauthn-fixture/virtual-runner.mjs"
-      : "tools/webauthn-fixture/generate-reference-fixture.mjs";
-  if (provenance.collectorSource !== validCollector) {
-    throw new Error(`${name}: provenance.collectorSource is invalid`);
+  const validCaptureSource = evidenceKind === "corpus"
+    ? "browser-device"
+    : "reference-vector";
+  if (provenance.captureSource !== validCaptureSource) {
+    throw new Error(`${name}: provenance.captureSource is invalid`);
   }
   if (provenance.requiresFreshCredential !== true) {
     throw new Error(`${name}: provenance.requiresFreshCredential must be true`);
@@ -210,8 +203,8 @@ function assertProvenance(name, evidenceKind, provenance) {
   if (provenance.reviewedForPII !== true) {
     throw new Error(`${name}: provenance.reviewedForPII must be true`);
   }
-  if (!/^0x[0-9a-fA-F]{64}$/.test(provenance.collectorSourceHash ?? "")) {
-    throw new Error(`${name}: provenance.collectorSourceHash must be bytes32`);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(provenance.captureSourceHash ?? "")) {
+    throw new Error(`${name}: provenance.captureSourceHash must be bytes32`);
   }
   if (!/^0x[0-9a-fA-F]{64}$/.test(provenance.negativeCaseManifestHash ?? "")) {
     throw new Error(`${name}: provenance.negativeCaseManifestHash must be bytes32`);

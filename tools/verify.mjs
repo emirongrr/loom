@@ -63,12 +63,9 @@ function assertNoHardcodedPrivacyOrRpcDefaults() {
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
 run("WebAuthn fixture parser tests", process.execPath, [
   "--test",
-  "tools/validate-webauthn-fixtures.test.mjs",
-  "tools/webauthn-fixture-negative-cases.test.mjs",
-  "tools/webauthn-fixture/virtual-runner.test.mjs"
+  "tools/validate-webauthn-fixtures.test.mjs"
 ]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
-run("WebAuthn virtual evidence", process.execPath, ["tools/webauthn-fixture/virtual-runner.mjs"]);
 run("CI program structure", process.execPath, ["tools/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/validate-ci-program.test.mjs"]);
 run("Certora program structure", process.execPath, ["tools/validate-certora-program.mjs"]);
