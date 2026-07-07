@@ -5,7 +5,7 @@ import {
 } from "../../packages/guardian/src/index.js";
 
 const usage = [
-  "usage: node scripts/guardian/build-onboarding-evidence.mjs <ceremony-input.json> <public-evidence.json>",
+  "usage: node tools/evidence/build-guardian-onboarding-evidence.mjs <ceremony-input.json> <public-evidence.json>",
   "",
   "The input is local and sensitive because it contains guardian salts and commitments.",
   "The output is redacted public evidence and must still be reviewed before publication."

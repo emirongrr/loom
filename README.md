@@ -161,6 +161,28 @@ Each script is runnable and self-verifying: it installs a global-`fetch` trap, s
 a hidden default-provider call would fail the run — the walkaway guarantee,
 demonstrated.
 
+## Repository Layout
+
+Loom keeps source, tests, operational evidence, and developer tooling separate
+so review boundaries stay clear:
+
+- `src/` contains production Solidity contracts.
+- `script/` contains Foundry deployment scripts only.
+- `test/` contains Solidity and wallet-engine tests, split by unit,
+  integration, evidence, invariant, regression, formal-style, and E2E scopes.
+- `packages/` contains the headless TypeScript SDK packages.
+- `tools/` contains repository maintenance, CI, evidence, formal, quality, SDK,
+  keystore, and site tooling.
+- `fixtures/` contains reviewed test fixtures; real-device WebAuthn corpus
+  fixtures are release evidence, not user telemetry.
+- `evidence/` contains public, reproducible release-candidate evidence only.
+- `formal/` contains Certora, Kontrol, Lean, and refinement specifications.
+- `docs/` contains design, security, operations, decisions, reviews, and the
+  documentation site.
+
+Generated outputs, local virtual environments, private configs, logs, caches,
+and secret-bearing rehearsal inputs must stay out of the repository.
+
 ## Development
 
 ```sh

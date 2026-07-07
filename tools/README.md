@@ -8,11 +8,15 @@ through `package.json` when they are part of the supported workflow.
 | --- | --- |
 | `ci/` | Repository verification orchestration and CI-program validation. |
 | `evidence/` | Release evidence builders, validators, and rehearsal checkers. |
-| `formal/` | Local wrappers and program validators for Halmos, Certora, Kontrol, and Lean. |
+| `formal/` | Local wrappers, Linux setup helpers, and program validators for Halmos, Certora, Kontrol, and Lean. |
 | `keystore/` | Keystore proof fixture generation helpers. |
 | `quality/` | Dependency, coverage, documentation, and source-policy checks. |
 | `sdk/` | SDK fixture generation and type-consumer checks. |
 | `site/` | Documentation site build and validation helpers. |
+
+Foundry deployment scripts belong in `script/`, not here. General-purpose Node
+or shell helpers belong under the narrowest `tools/` category and should be
+reachable through `package.json` when they are part of the supported workflow.
 
 Do not commit local configs, private endpoints, generated secrets, or fake
 release evidence. Evidence tools should either validate committed public

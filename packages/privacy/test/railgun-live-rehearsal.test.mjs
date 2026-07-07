@@ -8,7 +8,7 @@ import {
 import {
   buildRailgunRehearsalEvidence,
   rejectSecrets
-} from "../../../scripts/privacy/run-railgun-rehearsal.mjs";
+} from "../../../tools/evidence/run-railgun-rehearsal.mjs";
 import { validatePrivacyAdapterProfile } from "../../../tools/evidence/validate-privacy-adapter-profile.mjs";
 
 const bytes32 = `0x${"11".repeat(32)}`;
