@@ -44,7 +44,7 @@ Status labels:
 | Guardian SDK tooling | `packages/guardian/` | Implemented | Off-chain Merkle tree, setup, possession, and backup ceremony helpers. |
 | Privacy SDK boundary | `packages/privacy/`, `docs/design/privacy-adapters.md` | Boundary implemented | Provider profiles, consent, metadata budgets, and adapter boundary exist; no production privacy claim. |
 | Wallet engine SDK | `packages/sdk/` | Boundary implemented | Local client surface with explicit transports and adapters; not a finished wallet app. |
-| Production wallet client | `docs/design/verified-wallet.md`, `docs/project/roadmap.md` | Not implemented yet | Mobile/web UX, clear signing, verified reads, and live infrastructure paths remain future work. |
+| Production wallet client | `examples/mobile-privacy-wallet/`, `docs/design/verified-wallet.md`, `docs/project/roadmap.md` | Boundary implemented | Mobile boilerplate exists with fail-closed gates; store-ready native passkeys, verified reads, live deployment, and privacy evidence remain release work. |
 | Light-client verified wallet state | `docs/design/verified-wallet.md` | Planned | Contracts expose state, but no wallet light client is implemented here. |
 | Production private transfers | `docs/design/privacy-adapters.md`, `docs/operations/privacy-adapter-profile.md` | Not implemented yet | Railgun, Aztec, privacy-pool, and stealth-address production flows require separate review and rehearsal. |
 | Formal verification | `formal/`, `test/formal/`, `docs/security/formal-verification.md` | Partially implemented | Selected properties and program structure exist; not a proof of full correctness. |
@@ -53,7 +53,8 @@ Status labels:
 ## Known Gaps
 
 - The repository is pre-audit and must not secure production assets.
-- The current source does not include a production wallet application.
+- The current source includes a mobile boilerplate, not a production-ready
+  wallet application.
 - Privacy adapters define boundaries and SDK scaffolding, not production
   private-transfer support.
 - Light-client verified wallet state is specified, not implemented.

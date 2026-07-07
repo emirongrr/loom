@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Loom Mobile Privacy Wallet",
+    "slug": "loom-mobile-privacy-wallet",
+    "scheme": "loomwallet",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "org.loom.mobileprivacywallet",
+      "associatedDomains": [
+        "webcredentials:wallet.example"
+      ]
+    },
+    "android": {
+      "package": "org.loom.mobileprivacywallet"
+    },
+    "extra": {
+      "releaseChannel": "development"
+    }
+  }
+}
