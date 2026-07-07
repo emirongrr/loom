@@ -175,6 +175,12 @@ export interface AccountSafetyState {
     readonly recovery?: PendingRecoveryState;
     readonly migration: PendingMigrationState;
   };
+  readonly coverage: {
+    readonly account: true;
+    readonly migration: true;
+    readonly recovery: boolean;
+    readonly recoveryModule?: Hex;
+  };
   readonly warnings: readonly string[];
   readonly review: {
     readonly title: string;
