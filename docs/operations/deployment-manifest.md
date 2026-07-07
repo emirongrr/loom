@@ -20,8 +20,9 @@ The manifest must include:
 - network family (`ethereum`, `op-stack`, or `arbitrum`) and explicit finality
   assumptions;
 - EntryPoint `senderCreator` address and runtime code hash;
-- P-256 support evidence, either precompile behavior verification or fallback
-  verifier address and code hash;
+- P-256 verifier mode, selected verifier address, and support evidence. Native
+  mode needs reviewed precompile behavior verification. Fallback mode needs the
+  verifier address, deployed code hash, source, and audit review reference;
 - git commit, clean source archive hash, Solidity version, Foundry version,
   optimizer settings, `viaIR`, and EVM version;
 - reproducibility commands for install, build, verification, and manifest
@@ -90,7 +91,8 @@ contains the externally observed deployment facts:
 
 - network metadata, EntryPoint code hash, `senderCreator` code hash, and
   finality assumptions;
-- P-256 precompile behavior evidence or fallback verifier code hash;
+- P-256 verifier mode, selected verifier address, native precompile behavior
+  evidence or fallback verifier code hash;
 - build source archive hash and, if needed, an explicit git commit;
 - deployed addresses, deterministic salts, constructor arguments, explorer
   verification URLs, and receipts;
@@ -143,7 +145,8 @@ verification links in the manifest must be public, credential-free URLs.
    receipt status, and gas used.
 8. Verify source on the relevant explorer.
 9. Record EntryPoint bytecode, account implementation bytecode, proxy bytecode,
-   app registry bytecode, and P-256 support evidence for the target chain.
+   app registry bytecode, P-256 verifier mode, selected verifier address, and
+   P-256 support evidence for the target chain.
 10. Collect deployer, independent reproducer, and security reviewer
     attestations over the final manifest hash.
 11. Add the manifest in a dedicated evidence PR and run the validator.

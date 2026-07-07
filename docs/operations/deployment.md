@@ -15,9 +15,10 @@ module's creation bytecode in one contract.
 
 1. Verify the EntryPoint address and deployed code hash against the official
    ERC-4337 release.
-2. Verify the P-256 fallback verifier address and code hash for every target
-   chain. A zero fallback address is acceptable only where the P-256 precompile
-   is guaranteed.
+2. Select the P-256 verifier mode for every target chain. Native precompile
+   mode is preferred when reviewed protocol-level support exists. Fallback
+   contract mode is acceptable only with a known verifier address and a matching
+   deployed bytecode hash.
 3. Publish compiler version, optimizer settings, constructor arguments, salt,
    and resulting bytecode.
 4. Verify all deployed contracts on the relevant explorers.
@@ -46,7 +47,8 @@ Every candidate deployment must publish a release manifest containing:
 - Foundry, Solidity, optimizer, and EVM settings.
 - Dependency revisions.
 - EntryPoint and sender-creator addresses and code hashes.
-- Factory, hook, validator, fallback verifier, and account addresses.
+- Factory, hook, validator, P-256 verifier mode, P-256 verifier address,
+  fallback verifier code hash when applicable, and account addresses.
 - Constructor arguments, account salt, guardian root, threshold, initial
   `configHash`, and installed modules.
 - Creation and deployed bytecode hashes for every Loom contract.
@@ -63,9 +65,9 @@ npm run deployment:manifest:check -- evidence/deployments/<network>.json
 ```
 
 The validator recomputes bytecode hashes from checked Foundry artifacts and
-rejects missing EntryPoint, P-256, explorer, reproducibility, or no-Loom-service
-checks. See `docs/operations/deployment-manifest.md` for the schema and
-release evidence rules.
+rejects missing EntryPoint, P-256 verifier mode, explorer, reproducibility, or
+no-Loom-service checks. See `docs/operations/deployment-manifest.md` for the
+schema and release evidence rules.
 
 Current pinned toolchain and contract dependencies:
 

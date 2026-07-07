@@ -13,6 +13,13 @@ export default function App() {
     config.deployment.accountFactory && config.deployment.passkeyValidator
   );
   const stateGate = stateReadinessGate(config);
+  const p256Configured = config.deployment.p256VerifierMode !== "not-configured";
+  const p256Body =
+    config.deployment.p256VerifierMode === "native-precompile"
+      ? "P-256 verification uses the protocol-level native precompile for this chain."
+      : config.deployment.p256VerifierMode === "fallback-contract"
+        ? "P-256 verification uses a fallback contract; release evidence must match the audited verifier codehash."
+        : "P-256 verifier mode is not configured. Do not deploy passkey accounts until the verifier mode is reviewed.";
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -35,6 +42,11 @@ export default function App() {
           title="Account deployment"
           status={deploymentConfigured && bundlerConfigured ? "configured" : "not-configured"}
           body="Requires explicit factory, validator, EntryPoint, and bundler configuration."
+        />
+        <CapabilityCard
+          title="P-256 verifier"
+          status={p256Configured ? "configured" : "not-configured"}
+          body={p256Body}
         />
         <CapabilityCard
           title="Verified state reads"

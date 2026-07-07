@@ -19,11 +19,25 @@ import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {P256GuardianVerifier} from "../src/recovery/P256GuardianVerifier.sol";
 import {ERC1271GuardianVerifier} from "../src/recovery/ERC1271GuardianVerifier.sol";
+import {P256VerifierConfig, P256VerifierMode, P256VerifierSelection} from "./P256VerifierConfig.sol";
 
 contract DeploySepolia is Script {
+    event P256VerifierSelected(
+        uint256 indexed chainId,
+        address indexed verifier,
+        P256VerifierMode mode,
+        bytes32 codehash,
+        bool nativePrecompileSupported,
+        bool fallbackVerifierWasDeployed,
+        bool fallbackVerifierWasProvided
+    );
+
     event SepoliaDeployment(
         address indexed deployer,
         address entryPoint,
+        address p256Verifier,
+        P256VerifierMode p256VerifierMode,
+        bytes32 p256VerifierCodehash,
         address accountImplementation,
         address accountFactory,
         address appRegistry,
@@ -43,22 +57,32 @@ contract DeploySepolia is Script {
     function run() external returns (LoomAccountFactory factory) {
         uint256 deployerKey = vm.envUint("SEPOLIA_DEPLOYER_PRIVATE_KEY");
         address entryPoint = vm.envAddress("SEPOLIA_ENTRYPOINT");
-        address p256FallbackVerifier = vm.envAddress("SEPOLIA_P256_FALLBACK_VERIFIER");
         if (entryPoint.code.length == 0) revert("SEPOLIA_ENTRYPOINT has no code");
-        if (p256FallbackVerifier.code.length == 0) revert("SEPOLIA_P256_FALLBACK_VERIFIER has no code");
+
+        P256VerifierSelection memory p256Selection = P256VerifierConfig.select(
+            block.chainid,
+            vm.envOr("SEPOLIA_P256_FALLBACK_VERIFIER", address(0)),
+            vm.envOr("SEPOLIA_P256_FALLBACK_CODEHASH", bytes32(0))
+        );
 
         vm.startBroadcast(deployerKey);
 
         PolicyHook policyHook = new PolicyHook();
         VaultHook vaultHook = new VaultHook();
         ECDSAValidator ecdsaValidator = new ECDSAValidator();
-        P256Validator p256Validator = new P256Validator(p256FallbackVerifier);
-        MultiP256Validator multiP256Validator = new MultiP256Validator(p256FallbackVerifier);
+        P256Validator p256Validator = new P256Validator(
+            p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
+        );
+        MultiP256Validator multiP256Validator = new MultiP256Validator(
+            p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
+        );
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
         RecoveryManager recoveryManager = new RecoveryManager();
         ECDSAGuardianVerifier ecdsaGuardianVerifier = new ECDSAGuardianVerifier();
-        P256GuardianVerifier p256GuardianVerifier = new P256GuardianVerifier(p256FallbackVerifier);
+        P256GuardianVerifier p256GuardianVerifier = new P256GuardianVerifier(
+            p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
+        );
         ERC1271GuardianVerifier erc1271GuardianVerifier = new ERC1271GuardianVerifier();
 
         LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](2);
@@ -78,9 +102,22 @@ contract DeploySepolia is Script {
         );
         factory = new LoomAccountFactory(IEntryPoint(entryPoint), address(implementation));
 
+        emit P256VerifierSelected(
+            block.chainid,
+            p256Selection.verifier,
+            p256Selection.mode,
+            p256Selection.codehash,
+            p256Selection.nativePrecompileSupported,
+            p256Selection.fallbackVerifierWasDeployed,
+            p256Selection.fallbackVerifierWasProvided
+        );
+
         emit SepoliaDeployment(
             msg.sender,
             entryPoint,
+            p256Selection.verifier,
+            p256Selection.mode,
+            p256Selection.codehash,
             address(implementation),
             address(factory),
             address(factory.registry()),
@@ -100,4 +137,3 @@ contract DeploySepolia is Script {
         vm.stopBroadcast();
     }
 }
-

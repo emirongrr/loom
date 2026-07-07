@@ -9,10 +9,30 @@ authority path.
 Create a local environment file outside git:
 
 ```sh
+# =============================================================================
+# Required: Sepolia deployment
+# =============================================================================
+
 SEPOLIA_RPC_URL=
 SEPOLIA_DEPLOYER_PRIVATE_KEY=
 SEPOLIA_ENTRYPOINT=
+
+# =============================================================================
+# Optional: P-256 fallback verifier
+# =============================================================================
+# Only needed when the target chain does not support a canonical native P-256
+# precompile, or when fallback mode is explicitly selected.
+#
+# Do not provide an arbitrary address here. Use a known audited verifier address
+# and set its expected deployed bytecode hash, or let a future deployment script
+# deploy an audited fallback implementation.
 SEPOLIA_P256_FALLBACK_VERIFIER=
+SEPOLIA_P256_FALLBACK_CODEHASH=
+
+# =============================================================================
+# Optional: explorer verification
+# =============================================================================
+# Only required when passing --verify to forge script.
 ETHERSCAN_API_KEY=
 ```
 
@@ -21,8 +41,17 @@ Rules:
 - `SEPOLIA_DEPLOYER_PRIVATE_KEY` must fund only the rehearsal deployment.
 - `SEPOLIA_ENTRYPOINT` must be the official ERC-4337 v0.9 EntryPoint for
   Sepolia and must have non-empty code.
-- `SEPOLIA_P256_FALLBACK_VERIFIER` is required on Sepolia unless the target
-  chain has independently verified P-256 precompile support.
+- Native P-256 precompile mode is preferred when the target chain has reviewed
+  protocol-level support. The native precompile is not a deployer-controlled
+  contract.
+- `SEPOLIA_P256_FALLBACK_VERIFIER` is optional. It is only required if native
+  P-256 precompile support is unavailable and the script is not deploying a
+  fallback verifier.
+- Fallback verifier mode uses a normal smart contract. It must be a known,
+  audited verifier and `SEPOLIA_P256_FALLBACK_CODEHASH` must match its deployed
+  bytecode hash. Arbitrary fallback verifier addresses are unsafe.
+- `ETHERSCAN_API_KEY` is not required for deployment. It is only required when
+  using `--verify`.
 - Do not commit RPC URLs, private keys, API keys, or unreduced operational
   notes.
 
@@ -31,10 +60,11 @@ Rules:
 ```sh
 forge script script/DeploySepolia.s.sol:DeploySepolia \
   --rpc-url "$SEPOLIA_RPC_URL" \
-  --broadcast \
-  --verify \
-  --etherscan-api-key "$ETHERSCAN_API_KEY"
+  --broadcast
 ```
+
+Add `--verify --etherscan-api-key "$ETHERSCAN_API_KEY"` only when explorer
+verification should run as part of the script command.
 
 The script deploys:
 
@@ -45,6 +75,22 @@ The script deploys:
   validators;
 - recovery manager;
 - ECDSA, P-256, and ERC-1271 guardian verifiers.
+
+The script emits `P256VerifierSelected` with the full P-256 verifier provenance:
+
+- `p256Verifier`;
+- `p256VerifierMode`;
+- `p256VerifierCodehash`;
+- `p256NativePrecompileSupported`;
+- `fallbackVerifierWasDeployed`;
+- `fallbackVerifierWasProvided`.
+
+The main deployment event also includes the selected verifier address, mode,
+and code hash for manifest extraction.
+
+For native precompile mode, `p256VerifierCodehash` is zero because a precompile
+is a protocol-level primitive rather than normal account bytecode. For fallback
+contract mode, the code hash must match the reviewed expected hash.
 
 ## After Deploy
 
@@ -67,6 +113,8 @@ The script deploys:
    EXPO_PUBLIC_LOOM_ENTRYPOINT=<entrypoint>
    EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY=<factory>
    EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR=<p256-validator>
+   EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE=<native-precompile|fallback-contract>
+   EXPO_PUBLIC_LOOM_P256_VERIFIER=<selected-verifier>
    EXPO_PUBLIC_LOOM_RPC_URL=<user-supplied rpc>
    EXPO_PUBLIC_LOOM_BUNDLER_URL=<user-supplied bundler>
    ```
@@ -83,4 +131,3 @@ The script deploys:
 - This does not remove the need for browser/device passkey evidence.
 - This does not replace the deployment manifest, explorer verification, or
   independent audit gates.
-

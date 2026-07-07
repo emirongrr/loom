@@ -115,6 +115,10 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
   graph, raw RPC payloads, or private transaction metadata.
 - Passkey registration and assertion verified on physical iOS and Android
   devices.
+- P-256 verifier mode recorded from the deployment manifest:
+  `native-precompile` when the chain has reviewed protocol-level support, or
+  `fallback-contract` only when the fallback contract code hash matches the
+  audited verifier.
 - Helios verified state sync rehearsed on target iOS and Android devices with
   user-supplied execution RPC, consensus RPC, and checkpoint.
 - Loom account deployment rehearsed with explicit RPC and two independent

@@ -79,8 +79,12 @@ export interface VerifiedStateConfiguration {
 export interface DeploymentConfiguration {
   readonly accountFactory?: Hex;
   readonly passkeyValidator?: Hex;
+  readonly p256VerifierAddress?: Hex;
+  readonly p256VerifierMode: P256VerifierMode;
   readonly deploymentManifestPath?: string;
 }
+
+export type P256VerifierMode = "native-precompile" | "fallback-contract" | "not-configured";
 
 export interface PrivacyConfiguration {
   readonly railgunProfile?: RailgunAdapterProfile;
