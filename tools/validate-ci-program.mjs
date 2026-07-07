@@ -58,6 +58,7 @@ function validateTestWorkflow() {
     "npm run sdk:test",
     "npm run sdk:types:check",
     "npm run fixtures:test",
+    "npm run deployment:manifest:build:test",
     "npm run formal:program:test",
     "npm run ci:program:test",
   ]) {

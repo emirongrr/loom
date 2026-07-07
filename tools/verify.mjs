@@ -86,6 +86,10 @@ run("Deployment manifest evidence tests", process.execPath, [
   "--test",
   "tools/validate-deployment-manifest.test.mjs"
 ]);
+run("Deployment manifest builder tests", process.execPath, [
+  "--test",
+  "tools/build-deployment-manifest.test.mjs"
+]);
 run("Keystore proof profile tests", process.execPath, [
   "--test",
   "tools/validate-keystore-proof-profile.test.mjs"
