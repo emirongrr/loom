@@ -57,6 +57,27 @@ test("runner rejects secret-bearing bundler URLs before evidence is written", as
   );
 });
 
+test("runner rejects secret-bearing spec-test references before evidence is written", async () => {
+  const config = validConfig();
+  config.bundlers[0].specTests.reference = "https://ci.example/bundler-spec?access_token=secret";
+  await assert.rejects(
+    () => buildBundlerQualificationEvidence({
+      config,
+      fetch: fakeFetch({
+        "https://bundler-a.example/rpc": {
+          eth_supportedEntryPoints: [ENTRYPOINT],
+          eth_chainId: "0xaa36a7"
+        },
+        "https://bundler-b.example/rpc": {
+          eth_supportedEntryPoints: [ENTRYPOINT],
+          eth_chainId: "0xaa36a7"
+        }
+      })
+    }),
+    /secret-bearing material/
+  );
+});
+
 test("runner rejects wrong live chain or unsupported EntryPoint", async () => {
   await assert.rejects(
     () => buildBundlerQualificationEvidence({

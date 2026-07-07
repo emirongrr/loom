@@ -170,6 +170,7 @@ function assertBundlers(bundlers, chainId, entryPoint) {
     if (!bundler.specTests.reference || typeof bundler.specTests.reference !== "string") {
       throw new Error(`${label}.specTests.reference is required`);
     }
+    assertPublicReference(bundler.specTests.reference, `${label}.specTests.reference`);
   }
 
   if (names.size !== bundlers.length) throw new Error("bundler names must be distinct");
@@ -219,6 +220,25 @@ function assertAddress(value, label) {
 
 function assertTxHash(value, label) {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value ?? "")) throw new Error(`${label} must be bytes32`);
+}
+
+function assertPublicReference(value, label) {
+  const text = value.toLowerCase();
+  for (const marker of ["apikey", "api_key", "access_token", "secret", "token=", "bearer "]) {
+    if (text.includes(marker)) throw new Error(`${label} must not contain secret-bearing material`);
+  }
+
+  if (/^https?:\/\//iu.test(value)) {
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error(`${label} URL is invalid`);
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error(`${label} URL must not contain credentials, query, or fragment`);
+    }
+  }
 }
 
 async function main() {
