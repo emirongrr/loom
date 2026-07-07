@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const defaultRoot = new URL("../fixtures/webauthn/", import.meta.url);
+const defaultRoot = new URL("../../fixtures/webauthn/", import.meta.url);
 const p256HalfOrder = 0x7fffffff800000007fffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
 const forbiddenMetadataKeys = new Set([
   "attestationObject",

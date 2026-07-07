@@ -6,12 +6,12 @@ import sha3 from "js-sha3";
 
 const { keccak_256 } = sha3;
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const file = process.argv[2];
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!file) {
-    throw new Error("usage: node tools/validate-deployment-manifest.mjs <manifest.json>");
+    throw new Error("usage: node tools/evidence/validate-deployment-manifest.mjs <manifest.json>");
   }
   const manifest = JSON.parse(await readFile(file, "utf8"));
   await validateDeploymentManifest(manifest);

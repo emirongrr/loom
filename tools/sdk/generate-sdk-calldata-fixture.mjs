@@ -4,11 +4,11 @@
 // The encoder hand-rolls ABI encoding (hardcoded 4-byte selectors, manual
 // offset/tuple math), which can silently drift from the contract signatures it
 // targets. This fixture is the shared oracle for two checks:
-//   • test/SdkCalldataDifferential.t.sol recomputes each case with Solidity
-//     abi.encodeCall and asserts it equals the calldata below — so the fixture
+//   - test/SdkCalldataDifferential.t.sol recomputes each case with Solidity
+//     abi.encodeCall and asserts it equals the calldata below, so the fixture
 //     stays honest to the contracts.
-//   • packages/account/test/lifecycle-calldata-differential.test.mjs re-runs the
-//     encoder and asserts it still equals the calldata below — so the fixture
+//   - packages/account/test/lifecycle-calldata-differential.test.mjs re-runs the
+//     encoder and asserts it still equals the calldata below, so the fixture
 //     stays honest to the SDK.
 //
 // Run `npm run sdk:calldata:generate` after an intentional encoder or signature
@@ -16,7 +16,7 @@
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { createLifecycleCallEncoder } from "../packages/account/src/index.js";
+import { createLifecycleCallEncoder } from "../../packages/account/src/index.js";
 
 const encoder = createLifecycleCallEncoder();
 
@@ -132,7 +132,7 @@ export function buildFixture() {
   return out;
 }
 
-const fixturePath = fileURLToPath(new URL("../test/fixtures/sdk-calldata.json", import.meta.url));
+const fixturePath = fileURLToPath(new URL("../../test/fixtures/sdk-calldata.json", import.meta.url));
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   writeFileSync(fixturePath, `${JSON.stringify(buildFixture(), null, 2)}\n`);

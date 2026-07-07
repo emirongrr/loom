@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { buildFixture, encodeCase } from "../../../tools/generate-sdk-calldata-fixture.mjs";
+import { buildFixture, encodeCase } from "../../../tools/sdk/generate-sdk-calldata-fixture.mjs";
 
 // SDK side of the calldata differential. The committed fixture
 // (test/fixtures/sdk-calldata.json) holds calldata the @loom/account encoder

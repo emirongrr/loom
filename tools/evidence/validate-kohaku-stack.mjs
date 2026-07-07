@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { join } from "node:path";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await validateKohakuStack();

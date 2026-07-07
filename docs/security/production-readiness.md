@@ -102,7 +102,7 @@ coverage, executes them. The current unfiltered report excluding formal
 harnesses is approximately 91.4% lines and 64.4% branches across production
 source. CI enforces both the aggregate production-source gate and per-module
 80% line / 60% branch gates for the security-critical production modules
-listed in `tools/check-coverage-gate.mjs`, plus named risk-group coverage for
+listed in `tools/quality/check-coverage-gate.mjs`, plus named risk-group coverage for
 account-core, recovery, vault, and session authority.
 
 Slither's `arbitrary-send-eth` warning is locally suppressed only on the

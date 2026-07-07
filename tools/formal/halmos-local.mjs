@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const venv = path.join(root, ".halmos-venv");
 const python = process.env.PYTHON || "python";
 
@@ -49,5 +49,5 @@ if (subcommand === "install") {
     run(`Halmos ${contract}`, bin("halmos"), ["--contract", contract]);
   }
 } else {
-  console.log("usage: node tools/halmos-local.mjs <install|version|test>");
+  console.log("usage: node tools/formal/halmos-local.mjs <install|version|test>");
 }

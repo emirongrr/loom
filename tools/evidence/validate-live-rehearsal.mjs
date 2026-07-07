@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const file = process.argv[2];
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!file) {
-    throw new Error("usage: node tools/validate-live-rehearsal.mjs <evidence.json>");
+    throw new Error("usage: node tools/evidence/validate-live-rehearsal.mjs <evidence.json>");
   }
   const evidence = JSON.parse(await readFile(file, "utf8"));
   validateLiveRehearsal(evidence);

@@ -243,7 +243,7 @@ function assertPublicReference(value, label) {
 
 async function main() {
   const file = process.argv[2];
-  if (!file) throw new Error("usage: node tools/validate-bundler-qualification.mjs <evidence.json>");
+  if (!file) throw new Error("usage: node tools/evidence/validate-bundler-qualification.mjs <evidence.json>");
   const summary = validateBundlerQualification(JSON.parse(await readFile(file, "utf8")));
   console.log(JSON.stringify(summary, null, 2));
 }

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const localForge = join(root, "node_modules", "@foundry-rs", "forge-win32-amd64", "bin", "forge.exe");
 const forge = existsSync(localForge) ? localForge : "forge";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -60,46 +60,46 @@ function assertNoHardcodedPrivacyOrRpcDefaults() {
   console.log("\n==> No hardcoded privacy/RPC defaults\n<== No hardcoded privacy/RPC defaults passed");
 }
 
-run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
+run("WebAuthn fixture shape", process.execPath, ["tools/evidence/validate-webauthn-fixtures.mjs"]);
 run("WebAuthn fixture parser tests", process.execPath, [
   "--test",
-  "tools/validate-webauthn-fixtures.test.mjs"
+  "tools/evidence/validate-webauthn-fixtures.test.mjs"
 ]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
-run("CI program structure", process.execPath, ["tools/validate-ci-program.mjs"]);
-run("CI program structure tests", process.execPath, ["--test", "tools/validate-ci-program.test.mjs"]);
-run("Certora program structure", process.execPath, ["tools/validate-certora-program.mjs"]);
-run("Certora program structure tests", process.execPath, ["--test", "tools/validate-certora-program.test.mjs"]);
-run("Kontrol program structure", process.execPath, ["tools/validate-kontrol-program.mjs"]);
-run("Kontrol program structure tests", process.execPath, ["--test", "tools/validate-kontrol-program.test.mjs"]);
-run("Formal program structure", process.execPath, ["tools/validate-formal-program.mjs"]);
-run("Formal program structure tests", process.execPath, ["--test", "tools/validate-formal-program.test.mjs"]);
-run("Documentation references", process.execPath, ["tools/validate-doc-links.mjs"]);
-run("Website checks", process.execPath, ["tools/validate-site.mjs"]);
+run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
+run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);
+run("Certora program structure", process.execPath, ["tools/formal/validate-certora-program.mjs"]);
+run("Certora program structure tests", process.execPath, ["--test", "tools/formal/validate-certora-program.test.mjs"]);
+run("Kontrol program structure", process.execPath, ["tools/formal/validate-kontrol-program.mjs"]);
+run("Kontrol program structure tests", process.execPath, ["--test", "tools/formal/validate-kontrol-program.test.mjs"]);
+run("Formal program structure", process.execPath, ["tools/formal/validate-formal-program.mjs"]);
+run("Formal program structure tests", process.execPath, ["--test", "tools/formal/validate-formal-program.test.mjs"]);
+run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
+run("Website checks", process.execPath, ["tools/site/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
   "--test",
-  "tools/validate-bundler-qualification.test.mjs"
+  "tools/evidence/validate-bundler-qualification.test.mjs"
 ]);
-run("Bundler smoke preflight tests", process.execPath, ["--test", "tools/bundler-smoke.test.mjs"]);
-run("Coverage gate self-test", process.execPath, ["tools/check-coverage-gate.mjs", "--self-test"]);
+run("Bundler smoke preflight tests", process.execPath, ["--test", "tools/evidence/bundler-smoke.test.mjs"]);
+run("Coverage gate self-test", process.execPath, ["tools/quality/check-coverage-gate.mjs", "--self-test"]);
 run("Deployment manifest evidence tests", process.execPath, [
   "--test",
-  "tools/validate-deployment-manifest.test.mjs"
+  "tools/evidence/validate-deployment-manifest.test.mjs"
 ]);
 run("Deployment manifest builder tests", process.execPath, [
   "--test",
-  "tools/build-deployment-manifest.test.mjs"
+  "tools/evidence/build-deployment-manifest.test.mjs"
 ]);
 run("Keystore proof profile tests", process.execPath, [
   "--test",
-  "tools/validate-keystore-proof-profile.test.mjs"
+  "tools/evidence/validate-keystore-proof-profile.test.mjs"
 ]);
-run("Live rehearsal evidence tests", process.execPath, ["--test", "tools/validate-live-rehearsal.test.mjs"]);
-run("Kohaku stack evidence tests", process.execPath, ["--test", "tools/validate-kohaku-stack.test.mjs"]);
-run("Kohaku stack evidence", process.execPath, ["tools/validate-kohaku-stack.mjs"]);
+run("Live rehearsal evidence tests", process.execPath, ["--test", "tools/evidence/validate-live-rehearsal.test.mjs"]);
+run("Kohaku stack evidence tests", process.execPath, ["--test", "tools/evidence/validate-kohaku-stack.test.mjs"]);
+run("Kohaku stack evidence", process.execPath, ["tools/evidence/validate-kohaku-stack.mjs"]);
 run("Privacy adapter profile tests", process.execPath, [
   "--test",
-  "tools/validate-privacy-adapter-profile.test.mjs"
+  "tools/evidence/validate-privacy-adapter-profile.test.mjs"
 ]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);

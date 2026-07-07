@@ -162,9 +162,12 @@ function validateDeploymentManifestCandidateWorkflow() {
 
 function validateFormalProgramInPackage() {
   const packageJson = JSON.parse(read("package.json"));
-  assert(packageJson.scripts["ci:program:check"] === "node tools/validate-ci-program.mjs", "missing ci:program:check script");
   assert(
-    packageJson.scripts["ci:program:test"] === "node --test tools/validate-ci-program.test.mjs",
+    packageJson.scripts["ci:program:check"] === "node tools/ci/validate-ci-program.mjs",
+    "missing ci:program:check script",
+  );
+  assert(
+    packageJson.scripts["ci:program:test"] === "node --test tools/ci/validate-ci-program.test.mjs",
     "missing ci:program:test script",
   );
 }

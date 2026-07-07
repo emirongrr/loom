@@ -38,14 +38,14 @@ bundler. Aggregate receipts are not enough.
 Release candidates must add a real evidence manifest and validate it with:
 
 ```sh
-node tools/validate-bundler-qualification.mjs evidence/bundlers/<network>.json
+node tools/evidence/validate-bundler-qualification.mjs evidence/bundlers/<network>.json
 ```
 
 Live qualification evidence should be generated from a local, uncommitted
 runner config:
 
 ```sh
-node tools/run-bundler-qualification.mjs \
+node tools/evidence/run-bundler-qualification.mjs \
   evidence/bundlers/<network>.config.local.json \
   evidence/bundlers/<network>.json
 ```
@@ -91,7 +91,7 @@ The workflow requires:
 - `ENTRYPOINT_ADDRESS`;
 - `BUNDLER_CHAIN_ID`.
 
-`tools/bundler-smoke.mjs` records only the RPC origin, reported chain ID, and
+`tools/evidence/bundler-smoke.mjs` records only the RPC origin, reported chain ID, and
 supported EntryPoints. It rejects credentials, query strings, fragments, and
 secret-bearing endpoint parameters. Preflight success is necessary but does
 not satisfy the complete lifecycle matrix above; it is the first live gate
