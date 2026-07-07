@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "evidenceKind": "reference",
+  "matrixId": "reference-node-p256",
+  "capturedAt": "2026-07-06",
+  "platform": "Reference",
+  "platformVersion": "node-crypto-prime256v1",
+  "browser": "Reference",
+  "browserVersion": "not-a-browser",
+  "authenticator": "Node P-256 reference vector",
+  "authenticatorClass": "platform",
+  "transports": [
+    "internal"
+  ],
+  "userAgentHash": "0x062402a8885462fd1b16ce6fc13d6d749a9e5682c7e16f500639be48b873e2ec",
+  "rpId": "localhost",
+  "origin": "http://localhost:8788",
+  "publicKeyX": "0x8e533b6fa0bf7b4625bb30667c01fb607ef9f8b8a80fef5b300628703187b2a3",
+  "publicKeyY": "0x73eb1dbde03318366d069f83a6f5900053c73633cb041b21c55e1a86c1f400b4",
+  "credentialIdHash": "0xe16c91edf52dca35e3d73f549551ecf71606f419cefe0dd82709f7c87dfebb2e",
+  "challenge": "0x1111111111111111111111111111111111111111111111111111111111111111",
+  "authenticatorData": "0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97630500000000",
+  "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"ERERERERERERERERERERERERERERERERERERERERERE\",\"origin\":\"http://localhost:8788\",\"crossOrigin\":false}",
+  "r": "0xdfc2f2a2b851e05ca7b33271d4cf248aad92928720c4ecee11e2ed1fa0304045",
+  "s": "0x66ef1b01ff05d8d9aecbf4a8e50551b3c8e7bef80865c9bebcb05bf150ab2417",
+  "expected": true,
+  "negativeMutations": [
+    "challenge",
+    "origin",
+    "rpIdHash",
+    "userVerificationFlag",
+    "signature",
+    "payloadLength"
+  ],
+  "privacy": {
+    "containsRawUserAgent": false,
+    "containsUserIdentifiers": false,
+    "containsAttestationObject": false
+  },
+  "provenance": {
+    "captureMode": "reference-vector",
+    "captureSource": "reference-vector",
+    "captureSourceHash": "0xbbecb051224b0a400d0dcd74ee69d989640429c873e94daa4e6a0c0f3e57b850",
+    "requiresFreshCredential": true,
+    "reviewedForPII": true,
+    "negativeCaseManifestHash": "0xf77008aa28bde5e35d223ce223cd9fbfd597798887059d22457c2edadf15df1a"
+  },
+  "notes": "Deterministic reference vector. This is parser/contract evidence, not real device evidence."
+}

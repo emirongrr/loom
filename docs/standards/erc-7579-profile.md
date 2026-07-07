@@ -17,6 +17,6 @@ ERC-7579 conformance.
 | Atomic batch encoding | `abi.encode(Execution[])` |
 | Recovery module type `5` | Loom extension, not an ERC-7579 standard type |
 
-`test/ERC7579LimitedProfile.t.sol` is the executable acceptance matrix. Any
+`test/integration/ERC7579LimitedProfile.t.sol` is the executable acceptance matrix. Any
 future expansion of this profile requires a threat-model update and dedicated
 conformance tests before the capability may be reported by a wallet client.

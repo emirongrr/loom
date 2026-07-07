@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -8,13 +8,15 @@ const localForge = join(root, "node_modules", "@foundry-rs", "forge-win32-amd64"
 const forge = existsSync(localForge) ? localForge : "forge";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const full = process.argv.includes("--full");
+const npmCache = join(root, ".tmp", "npm-cache");
+mkdirSync(npmCache, { recursive: true });
 
 function run(name, command, args, env = {}) {
   const started = performance.now();
   console.log(`\n==> ${name}`);
   const result = spawnSync(command, args, {
     cwd: root,
-    env: { ...process.env, ...env },
+    env: { ...process.env, npm_config_cache: npmCache, ...env },
     shell: process.platform === "win32" && command.endsWith(".cmd"),
     stdio: "inherit"
   });
@@ -59,7 +61,11 @@ function assertNoHardcodedPrivacyOrRpcDefaults() {
 }
 
 run("WebAuthn fixture shape", process.execPath, ["tools/validate-webauthn-fixtures.mjs"]);
-run("WebAuthn fixture parser tests", process.execPath, ["--test", "tools/validate-webauthn-fixtures.test.mjs"]);
+run("WebAuthn fixture parser tests", process.execPath, [
+  "--test",
+  "tools/validate-webauthn-fixtures.test.mjs"
+]);
+run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/validate-ci-program.test.mjs"]);
 run("Certora program structure", process.execPath, ["tools/validate-certora-program.mjs"]);
@@ -107,7 +113,7 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  "LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest",
+  "LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
   "--no-match-path",
   "test/formal/**"
 ]);

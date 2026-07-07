@@ -39,7 +39,7 @@ Risks:
 Required controls:
 
 - Test coverage proving a delay below the minimum is rejected and the minimum
-  itself is accepted (`test/VaultHook.t.sol:testSetVaultPolicyRejectsDelayBelowMinimum`).
+  itself is accepted (`test/unit/VaultHook.t.sol:testSetVaultPolicyRejectsDelayBelowMinimum`).
 
 ## Rejected Alternatives
 

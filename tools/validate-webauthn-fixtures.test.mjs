@@ -91,7 +91,7 @@ test("WebAuthn fixture parser rejects environment, transport, and privacy mismat
   });
 });
 
-test("WebAuthn fixture parser requires local collector provenance", async () => {
+test("WebAuthn fixture parser requires browser/device capture provenance", async () => {
   await withFixtureRoot(async root => {
     const value = fixture();
     delete value.provenance;
@@ -171,7 +171,6 @@ function fixture({
   return {
     version: 1,
     matrixId: "chrome-android-passkey",
-    collectorVersion: "webauthn-fixture-collector@1.1.0",
     capturedAt: "2026-06-19",
     platform,
     platformVersion: "Android 16",
@@ -201,8 +200,8 @@ function fixture({
     privacy,
     provenance: {
       captureMode: "local-secure-context",
-      collectorSource: "tools/webauthn-fixture/collector.html",
-      collectorSourceHash: "0x" + "0a".repeat(32),
+      captureSource: "browser-device",
+      captureSourceHash: "0x" + "0a".repeat(32),
       requiresFreshCredential: true,
       reviewedForPII: true,
       negativeCaseManifestHash: "0x" + "0b".repeat(32),

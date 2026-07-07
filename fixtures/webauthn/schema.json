@@ -6,7 +6,6 @@
   "required": [
     "version",
     "matrixId",
-    "collectorVersion",
     "capturedAt",
     "platform",
     "platformVersion",
@@ -33,8 +32,8 @@
   ],
   "properties": {
     "version": { "const": 1 },
+    "evidenceKind": { "enum": ["corpus", "reference"] },
     "matrixId": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 80 },
-    "collectorVersion": { "type": "string", "pattern": "^webauthn-fixture-collector@[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 40 },
     "capturedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
     "platform": { "type": "string", "maxLength": 80 },
     "platformVersion": { "type": "string", "maxLength": 80 },
@@ -89,16 +88,21 @@
       "additionalProperties": false,
       "required": [
         "captureMode",
-        "collectorSource",
-        "collectorSourceHash",
+        "captureSource",
+        "captureSourceHash",
         "requiresFreshCredential",
         "reviewedForPII",
         "negativeCaseManifestHash"
       ],
       "properties": {
-        "captureMode": { "const": "local-secure-context" },
-        "collectorSource": { "const": "tools/webauthn-fixture/collector.html" },
-        "collectorSourceHash": { "$ref": "#/$defs/hex32" },
+        "captureMode": { "enum": ["local-secure-context", "reference-vector"] },
+        "captureSource": {
+          "enum": [
+            "browser-device",
+            "reference-vector"
+          ]
+        },
+        "captureSourceHash": { "$ref": "#/$defs/hex32" },
         "requiresFreshCredential": { "const": true },
         "reviewedForPII": { "const": true },
         "negativeCaseManifestHash": { "$ref": "#/$defs/hex32" }
