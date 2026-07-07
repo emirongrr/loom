@@ -14,7 +14,7 @@ correctness.
 From a Linux shell at the repository root:
 
 ```sh
-bash scripts/formal/setup-linux-provers.sh
+bash tools/formal/setup-linux-provers.sh
 ```
 
 The setup script installs:
@@ -28,7 +28,7 @@ The setup script installs:
 From the repository root:
 
 ```sh
-bash scripts/formal/run-linux-provers.sh
+bash tools/formal/run-linux-provers.sh
 ```
 
 This runs Certora compile-only checks and selected Kontrol proof targets. Full

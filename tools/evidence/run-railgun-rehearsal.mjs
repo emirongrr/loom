@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { runRailgunLiveRehearsal } from "../../packages/privacy/src/index.js";
-import { validatePrivacyAdapterProfile } from "../../tools/evidence/validate-privacy-adapter-profile.mjs";
+import { validatePrivacyAdapterProfile } from "./validate-privacy-adapter-profile.mjs";
 
 const usage = [
-  "usage: LOOM_PRIVACY_REHEARSAL=1 node scripts/privacy/run-railgun-rehearsal.mjs <config.json> <evidence.json>",
+  "usage: LOOM_PRIVACY_REHEARSAL=1 node tools/evidence/run-railgun-rehearsal.mjs <config.json> <evidence.json>",
   "",
   "The config must not contain viewing keys, private keys, seed phrases, guardian salts, or account graphs.",
   "Use user-selected RPC/indexer/relayer/prover endpoints and record only hashed operation/checkpoint evidence."
