@@ -35,3 +35,20 @@ test("configuration does not contain default RPC or bundler endpoints", () => {
   assert.doesNotMatch(env, /https?:\/\//);
 });
 
+test("native passkey modules enforce platform verification and do not expose raw credentials", () => {
+  const ios = read("modules/loom-passkey/ios/LoomPasskeyModule.swift");
+  const android = read(
+    "modules/loom-passkey/android/src/main/java/org/loom/mobileprivacywallet/passkey/LoomPasskeyModule.kt"
+  );
+
+  for (const [label, contents] of [
+    ["ios", ios],
+    ["android", android]
+  ]) {
+    assert.doesNotMatch(contents, /not implemented/i, `${label} native module must not be a stub`);
+    assert.match(contents, /userVerification/i, `${label} native module must require user verification`);
+    assert.match(contents, /credentialIdHash/i, `${label} native module must expose only credential id hash`);
+    assert.doesNotMatch(contents, /"credentialId"\s+to/, `${label} native module must not return raw credential id`);
+    assert.doesNotMatch(contents, /"attestationObject"\s+to/, `${label} native module must not return attestation object`);
+  }
+});

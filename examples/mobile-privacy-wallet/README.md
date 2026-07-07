@@ -22,9 +22,19 @@ user sovereignty.
 - First-party native passkey module boundary under `modules/loom-passkey`
 - Loom SDK packages from this repository
 
-The native passkey boundary is not a mock. If the native module is unavailable
-or a platform capability is missing, the wallet flow fails closed and reports a
-configuration error.
+Native implementation references:
+
+- Apple `AuthenticationServices` platform public-key credentials:
+  https://developer.apple.com/documentation/authenticationservices/asauthorizationplatformpublickeycredentialprovider
+- Android Credential Manager passkeys:
+  https://developer.android.com/identity/sign-in/credential-manager
+- Expo native modules:
+  https://docs.expo.dev/modules/native-module-tutorial/
+
+The native passkey module creates platform credentials with user verification
+required and only returns P-256 public coordinates plus a credential id hash. If
+the native module is unavailable or a platform capability is missing, the
+wallet flow fails closed and reports a configuration error.
 
 ## Security Model
 
@@ -99,4 +109,3 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 - Guardian ceremony rehearsed with proof-of-possession and encrypted backup.
 - Railgun privacy adapter profile passes before private send is enabled.
 - Deployment manifest and bytecode reproduction evidence published.
-

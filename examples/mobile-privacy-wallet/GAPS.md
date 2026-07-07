@@ -4,19 +4,20 @@ This file records the production gaps discovered while wiring the mobile wallet
 boilerplate to real Loom flows. A disabled UI path is preferable to a fake
 runtime path.
 
-## G-001: Native Passkey Implementations Need Device Completion
+## G-001: Native Passkey Implementations Need Device Evidence
 
-- **Missing API or behavior:** The app defines a first-party native passkey
-  module boundary, but store release still requires completed iOS
-  `AuthenticationServices` and Android Credential Manager implementations with
-  real-device evidence.
+- **Missing API or behavior:** The app includes first-party iOS
+  `AuthenticationServices` and Android Credential Manager implementations, but
+  store release still requires physical-device registration/assertion evidence,
+  associated-domain validation, app signing validation, and native build
+  evidence.
 - **Affected flow:** Create account, sign UserOperation, session grant, recovery
   setup.
 - **Security/privacy impact:** Without physical-device evidence, passkey
   compatibility and client-data parsing cannot be claimed production-ready.
-- **Proposed fix PR:** Complete native passkey module implementations and add
-  physical iOS/Android evidence without persisting raw credential identifiers
-  or attestation objects.
+- **Proposed fix PR:** Add physical iOS/Android passkey evidence without
+  persisting raw credential identifiers or attestation objects, then attach
+  native build logs and store privacy declarations.
 
 ## G-002: Account Deployment Requires Production Configuration
 
@@ -72,4 +73,3 @@ runtime path.
   unless verified reads are added.
 - **Proposed fix PR:** Add a verified read adapter boundary and mobile light
   client integration.
-
