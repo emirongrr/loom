@@ -135,6 +135,16 @@ test("bundler qualification rejects shared origins and secret-bearing URLs", () 
   assert.throws(() => validateBundlerQualification(evidence), /must be an origin/);
 });
 
+test("bundler qualification rejects secret-bearing spec-test references", () => {
+  const queryReference = validEvidence();
+  queryReference.bundlers[0].specTests.reference = "https://ci.example/spec-tests?token=secret";
+  assert.throws(() => validateBundlerQualification(queryReference), /must not contain secret-bearing material/);
+
+  const credentialReference = validEvidence();
+  credentialReference.bundlers[0].specTests.reference = "https://user:pass@ci.example/spec-tests";
+  assert.throws(() => validateBundlerQualification(credentialReference), /credentials, query, or fragment/);
+});
+
 test("bundler qualification requires permissionless fallback and lifecycle checks", () => {
   const evidence = validEvidence();
   evidence.bundlers[0].endpointKind = "api";
