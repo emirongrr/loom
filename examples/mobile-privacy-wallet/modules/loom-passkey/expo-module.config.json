@@ -1,0 +1,10 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["LoomPasskeyModule"]
+  },
+  "android": {
+    "modules": ["org.loom.mobileprivacywallet.passkey.LoomPasskeyModule"]
+  }
+}
+

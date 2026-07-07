@@ -4,6 +4,9 @@ Deploy shared validators, the policy hook, and the factory with the scripts in
 `script/`. An account is then created deterministically through
 `LoomAccountFactory`.
 
+For the mobile wallet rehearsal path, see
+`docs/operations/sepolia-mobile-deployment.md`.
+
 Deployment helpers are split into passkey, authorization, and recovery groups
 so each helper remains independently deployable and does not accumulate every
 module's creation bytecode in one contract.

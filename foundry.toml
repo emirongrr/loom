@@ -8,6 +8,7 @@ ast = true
 remappings = [
     "account-abstraction/=lib/account-abstraction/contracts/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
     "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
     "@optimism-trie/=lib/optimism-trie/"
 ]

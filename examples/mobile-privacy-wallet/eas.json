@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 13.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "LOOM_WALLET_ENV": "development"
+      }
+    },
+    "testnet": {
+      "distribution": "internal",
+      "env": {
+        "LOOM_WALLET_ENV": "testnet"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "LOOM_WALLET_ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+

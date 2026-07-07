@@ -150,9 +150,11 @@
   private transfers, transaction interpretation, or independent transaction
   publication UX. The future client must satisfy the walkaway and privacy
   requirements in `docs/project/principles.md`.
-- The current repository does not implement a verified wallet client. Light
-  client verification, privacy-preserving scanning, recovery coordination, and
-  SDK state types belong to future client work.
+- The current repository includes SDK state wrappers and a mobile Helios
+  state-transport boundary, but it does not yet provide production verified
+  wallet evidence. Mobile Helios sync, checkpoint-source review, stale
+  checkpoint behavior, target-network profiles, and physical-device rehearsals
+  remain release gates.
 - The current repository does not implement Railgun, Aztec, stealth-address,
   or privacy-pool adapters. `docs/design/privacy-adapters.md` defines the
   boundary, not a production privacy guarantee.

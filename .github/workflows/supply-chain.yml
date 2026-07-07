@@ -34,7 +34,8 @@ jobs:
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0
           # Certora CLI is a pinned, optional prover tool and is not linked
           # into Loom contracts or SDK runtime packages.
-          allow-dependencies-licenses: pkg:pypi/certora-cli
+          # node-forge is dual-licensed; Loom accepts the BSD-3-Clause option.
+          allow-dependencies-licenses: "pkg:pypi/certora-cli, pkg:npm/node-forge"
 
   scorecard:
     name: OpenSSF Scorecard

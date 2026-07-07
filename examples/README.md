@@ -22,6 +22,16 @@ node examples/individual-passkey-wallet.mjs
 No network access, no extra dependencies. The scripts import the workspace
 packages directly from `packages/`.
 
+## Mobile app boilerplate
+
+`mobile-privacy-wallet/` is a production-oriented Expo Dev Client template for
+teams that want to build an iOS/Android wallet on Loom. Unlike the Node
+examples, it is a mobile workspace with explicit native, store-readiness, and
+privacy gates. Runtime wallet flows do not use mocks: if a passkey module,
+RPC, bundler, guardian ceremony, deployment manifest, or Railgun evidence is
+missing, the corresponding feature is disabled and reported in
+`mobile-privacy-wallet/GAPS.md`.
+
 ## What each example shows
 
 ### `enterprise-onboarding.mjs`

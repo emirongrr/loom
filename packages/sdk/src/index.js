@@ -533,6 +533,65 @@ export function createRpcStateTransport(options = {}) {
   });
 }
 
+export function createEip1193StateTransport(options = {}) {
+  const provider = options.provider;
+  if (!provider || typeof provider.request !== "function") {
+    throw new InvalidSdkRequestError("EIP-1193 state transport requires a provider");
+  }
+  const profile = normalizeVerificationProfile(options.verification);
+
+  async function request(method, params) {
+    const result = await provider.request({ method, params });
+    if (typeof result !== "string" || !HEX_PATTERN.test(result)) {
+      throw new InvalidSdkRequestError("EIP-1193 provider returned malformed hex", {
+        method,
+        verified: profile.status === "verified"
+      });
+    }
+    return result;
+  }
+
+  return Object.freeze({
+    provider,
+    verification: profile,
+    async ethCall(input) {
+      if (!input || typeof input !== "object") throw new InvalidSdkRequestError("ethCall input is required");
+      const to = normalizeAddress(input.to, "eth_call target");
+      const data = normalizeHex(input.data, "eth_call data");
+      const blockTag = normalizeBlockTag(input.blockTag ?? profile.blockTag ?? "safe");
+      return request("eth_call", [{ to, data }, blockTag]);
+    },
+    async getCode(input) {
+      if (!input || typeof input !== "object") throw new InvalidSdkRequestError("getCode input is required");
+      const address = normalizeAddress(input.address, "code address");
+      const blockTag = normalizeBlockTag(input.blockTag ?? profile.blockTag ?? "safe");
+      return request("eth_getCode", [address, blockTag]);
+    },
+    describeVerification() {
+      return profile;
+    }
+  });
+}
+
+export function verified(value, profile) {
+  const verification = normalizeVerificationProfile({ ...(profile ?? {}), status: "verified" });
+  return deepFreeze({
+    status: "verified",
+    value,
+    verification
+  });
+}
+
+export function unverified(reason, value, profile = {}) {
+  assertNonEmptyString(reason, "unverified reason");
+  return deepFreeze({
+    status: "unverified",
+    value,
+    reason,
+    verification: normalizeVerificationProfile({ ...profile, status: "unverified" })
+  });
+}
+
 export async function readAccountSafetyState(input = {}) {
   const chainId = normalizeChainId(input.chainId);
   const account = normalizeAddress(input.account, "account");
@@ -1292,6 +1351,23 @@ function normalizeMiddleware(middleware) {
     if (typeof item !== "function") throw new InvalidSdkRequestError(`middleware[${index}] must be a function`);
     return item;
   }));
+}
+
+function normalizeVerificationProfile(input = {}) {
+  const status = input.status === "verified" ? "verified" : "unverified";
+  const source = input.source ?? (status === "verified" ? "verified-provider" : "unverified-provider");
+  assertNonEmptyString(source, "verification source");
+  const blockTag = input.blockTag === undefined ? undefined : normalizeBlockTag(input.blockTag);
+  const assumptions = input.assumptions === undefined ? [] : input.assumptions;
+  if (!Array.isArray(assumptions) || assumptions.some(item => typeof item !== "string" || item.length === 0)) {
+    throw new InvalidSdkRequestError("verification assumptions must be non-empty strings");
+  }
+  return Object.freeze({
+    status,
+    source,
+    ...(blockTag === undefined ? {} : { blockTag }),
+    assumptions: Object.freeze([...assumptions])
+  });
 }
 
 async function applyMiddleware(envelope, middleware) {

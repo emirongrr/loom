@@ -1,0 +1,39 @@
+{
+  "name": "@loom/example-mobile-privacy-wallet",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": "^20.19.4 || ^22.13.0 || >=24.3.0"
+  },
+  "scripts": {
+    "start": "expo start --dev-client",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test:gates": "node --test test/release-gates.test.mjs"
+  },
+  "dependencies": {
+    "@a16z/helios": "^0.11.1",
+    "@loom/guardian": "file:../../packages/guardian",
+    "@loom/privacy": "file:../../packages/privacy",
+    "@loom/sdk": "file:../../packages/sdk",
+    "expo": "^57.0.4",
+    "expo-dev-client": "^57.0.5",
+    "expo-modules-core": "^3.0.0",
+    "loom-passkey": "file:modules/loom-passkey",
+    "react": "^19.0.0",
+    "react-native": "^0.81.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}
