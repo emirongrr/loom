@@ -40,6 +40,8 @@
     "bundler:qualification:runner:test": "node --test tools/run-bundler-qualification.test.mjs",
     "bundler:smoke:test": "node --test tools/bundler-smoke.test.mjs",
     "deployment:manifest:test": "node --test tools/validate-deployment-manifest.test.mjs",
+    "deployment:manifest:build": "node tools/build-deployment-manifest.mjs",
+    "deployment:manifest:build:test": "node --test tools/build-deployment-manifest.test.mjs",
     "deployment:manifest:check": "node tools/validate-deployment-manifest.mjs",
     "keystore:profile:test": "node --test tools/validate-keystore-proof-profile.test.mjs",
     "keystore:profile:check": "node tools/validate-keystore-proof-profile.mjs",

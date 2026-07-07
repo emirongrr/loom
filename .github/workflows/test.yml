@@ -73,6 +73,8 @@ jobs:
         run: npm run bundler:qualification:runner:test
       - name: Test deployment manifest evidence
         run: npm run deployment:manifest:test
+      - name: Test deployment manifest builder
+        run: npm run deployment:manifest:build:test
       - name: Test keystore proof profile evidence
         run: npm run keystore:profile:test
       - name: Test live rehearsal evidence

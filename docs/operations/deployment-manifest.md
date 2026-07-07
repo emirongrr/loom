@@ -72,6 +72,41 @@ npm run deployment:manifest:check -- evidence/deployments/<network>.json
 
 The evidence directory is intentionally not pre-populated with fake data.
 
+## Candidate Builder
+
+Use the candidate builder after deploying to a public testnet and collecting
+real receipt, explorer, EntryPoint, `senderCreator`, P-256, and attestation
+inputs:
+
+```sh
+npm run deployment:manifest:build -- \
+  evidence/deployments/<network>.config.local.json \
+  evidence/deployments/<network>.json
+npm run deployment:manifest:check -- evidence/deployments/<network>.json
+```
+
+The local config is not release evidence by itself. It is an input file that
+contains the externally observed deployment facts:
+
+- network metadata, EntryPoint code hash, `senderCreator` code hash, and
+  finality assumptions;
+- P-256 precompile behavior evidence or fallback verifier code hash;
+- build source archive hash and, if needed, an explicit git commit;
+- deployed addresses, deterministic salts, constructor arguments, explorer
+  verification URLs, and receipts;
+- deployer, independent reproducer, and security-reviewer attestations;
+- release checks that were actually performed.
+
+The builder computes artifact init-code/runtime-code hashes from local Foundry
+artifacts, computes reproducibility file hashes from the clean checkout, runs
+the same manifest validator before writing output, and rejects private paths,
+secret-bearing explorer URLs, failed command evidence, failed receipts, missing
+attestations, and artifact hash mismatches.
+
+Do not commit `<network>.config.local.json` if it contains private operational
+notes or unreduced endpoint information. Commit only the reviewed manifest
+output after it passes validation and human review.
+
 ## Candidate Workflow
 
 Production-candidate deployment manifests should be validated with the manual
