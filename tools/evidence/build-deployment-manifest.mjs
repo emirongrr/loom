@@ -7,7 +7,7 @@ import sha3 from "js-sha3";
 import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const DEFAULT_BUILD = Object.freeze({
   solcVersion: "0.8.35",
@@ -150,7 +150,7 @@ function isHex(value) {
 async function main() {
   const [configPath, outputPath] = process.argv.slice(2);
   if (!configPath) {
-    throw new Error("usage: node tools/build-deployment-manifest.mjs <config.json> [output.json]");
+    throw new Error("usage: node tools/evidence/build-deployment-manifest.mjs <config.json> [output.json]");
   }
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const manifest = await buildDeploymentManifest(config);

@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const venv = path.join(root, ".certora-venv");
 const python = process.env.PYTHON || "python";
 
@@ -66,5 +66,5 @@ if (subcommand === "install") {
   }
   run("Certora prover", command("certoraRun"), [conf, "--wait_for_results=all"]);
 } else {
-  console.log("usage: node tools/certora-local.mjs <install|version|compile|run> [conf]");
+  console.log("usage: node tools/formal/certora-local.mjs <install|version|compile|run> [conf]");
 }

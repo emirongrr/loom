@@ -1,6 +1,6 @@
 # Keystore Proof Profile Evidence
 
-`tools/validate-keystore-proof-profile.mjs` validates the minimum evidence
+`tools/evidence/validate-keystore-proof-profile.mjs` validates the minimum evidence
 required before any keystore proof verifier can be described as production
 candidate.
 

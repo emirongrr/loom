@@ -9,7 +9,7 @@ import {
   buildRailgunRehearsalEvidence,
   rejectSecrets
 } from "../../../scripts/privacy/run-railgun-rehearsal.mjs";
-import { validatePrivacyAdapterProfile } from "../../../tools/validate-privacy-adapter-profile.mjs";
+import { validatePrivacyAdapterProfile } from "../../../tools/evidence/validate-privacy-adapter-profile.mjs";
 
 const bytes32 = `0x${"11".repeat(32)}`;
 const account = "0x1111111111111111111111111111111111111111";

@@ -6,7 +6,7 @@ publish audited release commits, deterministic deployment inputs, deployed
 addresses, bytecode verification, and explorer verification evidence. Loom
 must meet that bar before any production-funds claim.
 
-`tools/validate-deployment-manifest.mjs` validates a release manifest. It does
+`tools/evidence/validate-deployment-manifest.mjs` validates a release manifest. It does
 not deploy contracts and must not be satisfied with mock addresses or private
 test fixtures. A real production-candidate manifest belongs in a dedicated
 evidence pull request after public testnet rehearsal.

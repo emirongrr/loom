@@ -57,7 +57,7 @@ export async function buildBundlerQualificationEvidence({ config, fetch: fetchIm
     checks: cloneJson(config.checks),
     receipts: cloneJson(config.receipts),
     generatedAt: new Date().toISOString(),
-    generator: "tools/run-bundler-qualification.mjs"
+    generator: "tools/evidence/run-bundler-qualification.mjs"
   });
 
   validateBundlerQualification(evidence);
@@ -97,7 +97,7 @@ function cloneJson(value) {
 async function main() {
   const [configPath, outputPath] = process.argv.slice(2);
   if (!configPath) {
-    throw new Error("usage: node tools/run-bundler-qualification.mjs <config.json> [output.json]");
+    throw new Error("usage: node tools/evidence/run-bundler-qualification.mjs <config.json> [output.json]");
   }
 
   const config = JSON.parse(await readFile(configPath, "utf8"));

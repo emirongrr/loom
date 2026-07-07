@@ -1,6 +1,6 @@
 # Privacy Adapter Profile Evidence
 
-`tools/validate-privacy-adapter-profile.mjs` validates the minimum evidence
+`tools/evidence/validate-privacy-adapter-profile.mjs` validates the minimum evidence
 required before a Railgun, privacy-pool, or Aztec adapter can be described as a
 production-candidate Loom private-transfer adapter.
 

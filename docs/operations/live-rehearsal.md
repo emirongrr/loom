@@ -5,7 +5,7 @@ readiness on a public network. Local Foundry tests are necessary, but they do
 not prove wallet behavior with real token contracts, public mempools, real
 receipts, or independent publishers.
 
-`tools/validate-live-rehearsal.mjs` validates a checked evidence file. It does
+`tools/evidence/validate-live-rehearsal.mjs` validates a checked evidence file. It does
 not broadcast transactions. It intentionally fails unless a real rehearsal
 manifest includes transaction hashes, real token addresses, non-standard token
 behavior, guardian cancellation, expiry, alternative EntryPoint destination,
@@ -39,7 +39,7 @@ The manifest must include:
 ## Command
 
 ```sh
-node tools/validate-live-rehearsal.mjs evidence/live-rehearsal/<network>.json
+node tools/evidence/validate-live-rehearsal.mjs evidence/live-rehearsal/<network>.json
 ```
 
 The evidence directory is intentionally not pre-populated with fake data.

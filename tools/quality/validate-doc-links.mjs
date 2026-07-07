@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../", import.meta.url));
 const topLevel = ["README.md", "CONTRIBUTING.md", "SECURITY.md"];
 const ignoredDirectories = new Set(["node_modules", "dist"]);
 

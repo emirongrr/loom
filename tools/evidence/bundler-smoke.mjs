@@ -78,7 +78,7 @@ async function main() {
   const [bundlerUrl, expectedEntryPoint, expectedChainId] = process.argv.slice(2);
 
   if (!bundlerUrl || !expectedEntryPoint || !expectedChainId) {
-    throw new Error("usage: node tools/bundler-smoke.mjs <bundler-url> <entrypoint> <chain-id>");
+    throw new Error("usage: node tools/evidence/bundler-smoke.mjs <bundler-url> <entrypoint> <chain-id>");
   }
 
   const result = await smokeBundler({ bundlerUrl, expectedEntryPoint, expectedChainId });

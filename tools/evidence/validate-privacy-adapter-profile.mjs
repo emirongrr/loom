@@ -24,7 +24,7 @@ const file = process.argv[2];
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!file) {
-    throw new Error("usage: node tools/validate-privacy-adapter-profile.mjs <profile.json>");
+    throw new Error("usage: node tools/evidence/validate-privacy-adapter-profile.mjs <profile.json>");
   }
   const profile = JSON.parse(await readFile(file, "utf8"));
   validatePrivacyAdapterProfile(profile);
