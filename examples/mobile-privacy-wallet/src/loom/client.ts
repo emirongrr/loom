@@ -1,41 +1,36 @@
 import {
   createBundlerTransport,
   createLoomClient,
-  createRpcStateTransport,
-  type LoomClient
+  type LoomClient,
+  type LoomStateReadTransport
 } from "@loom/sdk";
 
 import { MobileWalletConfigurationError } from "../platform/errors";
 import type { Hex, MobileWalletConfiguration } from "../types/wallet";
 
-export function createExplicitTransports(config: MobileWalletConfiguration) {
-  const transport =
-    config.network.bundlerUrl && config.network.entryPoint
-      ? createBundlerTransport({
-          endpoint: config.network.bundlerUrl,
-          entryPoint: config.network.entryPoint
-        })
-      : undefined;
-
-  const stateTransport =
-    config.network.rpcUrl && config.verifiedState.mode === "rpc"
-      ? createRpcStateTransport({ endpoint: config.network.rpcUrl })
-      : config.stateTransport;
-
-  return { transport, stateTransport };
+export function createExplicitBundlerTransport(config: MobileWalletConfiguration) {
+  return config.network.bundlerUrl && config.network.entryPoint
+    ? createBundlerTransport({
+        endpoint: config.network.bundlerUrl,
+        entryPoint: config.network.entryPoint
+      })
+    : undefined;
 }
 
+// State transports are never constructed here. They must come from
+// createMobileStateTransport so every read path carries its verification
+// label (Helios-verified or explicitly unverified RPC); building a raw RPC
+// transport in the client would silently drop that label.
 export function createConfiguredLoomClient(input: {
   config: MobileWalletConfiguration;
   account: Hex;
+  stateTransport?: LoomStateReadTransport;
 }): LoomClient {
-  const { transport, stateTransport } = createExplicitTransports(input.config);
-
   return createLoomClient({
     account: input.account,
     chainId: input.config.network.chainId,
-    transport,
-    stateTransport
+    transport: createExplicitBundlerTransport(input.config),
+    stateTransport: input.stateTransport ?? input.config.stateTransport
   });
 }
 

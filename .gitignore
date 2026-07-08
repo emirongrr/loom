@@ -24,3 +24,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# example test build output
+examples/mobile-privacy-wallet/dist-tests/

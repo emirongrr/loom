@@ -12,7 +12,9 @@
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "test:gates": "node --test test/release-gates.test.mjs"
+    "test:gates": "node --test test/release-gates.test.mjs",
+    "test:flows": "tsc -p tsconfig.tests.json && node --test dist-tests/test/flows.test.js",
+    "test": "npm run test:gates && npm run test:flows"
   },
   "dependencies": {
     "@a16z/helios": "^0.11.1",

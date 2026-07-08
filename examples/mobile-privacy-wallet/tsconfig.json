@@ -15,5 +15,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "modules/**/*.ts"]
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "modules/**/*.ts", "test/**/*.ts"],
+  "exclude": ["dist-tests", "node_modules"]
 }
