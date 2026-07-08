@@ -49,18 +49,16 @@ runtime path.
 - **Proposed fix PR:** Add per-network mobile deployment profiles generated
   from the production deployment manifest and confirm code hashes on chain.
 
-## G-007: Behavioral Unit Tests Need a TypeScript Test Runner
+## G-007: Behavioral Unit Tests Need a TypeScript Test Runner — RESOLVED
 
-- **Missing API or behavior:** The release-gate tests assert source structure
-  (grep-style). Behavioral unit tests for `configurationReadiness`,
-  `parseDeploymentManifest`, `verifyDeploymentAgainstManifest`, and session
-  permission constraints require importing the TypeScript modules under a test
-  runner (e.g. `tsx` or a compiled build step).
-- **Affected flow:** Config validation, deployment verification, sessions.
-- **Security/privacy impact:** Structure tests catch removed guards but not all
-  behavioral regressions in the pure logic.
-- **Proposed fix PR:** Add a TypeScript test runner and behavioral tests for the
-  pure config/manifest/session functions.
+- **Resolution:** `test/flows.test.ts` is compiled via `tsconfig.tests.json`
+  (`npm run test:flows`) and behaviorally covers `configurationReadiness`,
+  `parseDeploymentManifest`, `verifyDeploymentAgainstManifest`, account-creation
+  gating, metadata-budget enforcement in private send, and session permission
+  constraints. Structure-level release gates remain in
+  `test/release-gates.test.mjs`.
+- **Still open:** device- and integration-level evidence tracked in G-001,
+  G-001A, and G-006; behavioral tests do not replace it.
 
 ## G-003: Live Bundler Qualification Is Required
 

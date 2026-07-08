@@ -141,3 +141,29 @@ test("deployment addresses are verified against a committed manifest", () => {
   assert.equal(typeof example.codehashes, "object");
   assert.match(String(example.notes), /Replace every value/);
 });
+
+test("private send enforces metadata budget acknowledgment", () => {
+  const flow = read("src/flows/privacySendFlow.ts");
+
+  assert.match(flow, /metadataBudget\(context\)/);
+  assert.match(flow, /privacy\.metadata-budget\.unacknowledged/);
+  assert.match(flow, /privacy\.metadata-budget\.incomplete/);
+  assert.match(flow, /item\.required/);
+});
+
+test("session grants are validated before reaching the client", () => {
+  const flow = read("src/flows/sessionFlow.ts");
+
+  assert.match(flow, /session\.expiry\.invalid/);
+  assert.match(flow, /session\.max-amount\.invalid/);
+  assert.match(flow, /session\.max-uses\.invalid/);
+  assert.match(flow, /session\.key\.invalid/);
+  assert.match(flow, /status: "blocked"/);
+});
+
+test("client construction cannot mint an unlabeled RPC state transport", () => {
+  const client = read("src/loom/client.ts");
+
+  assert.doesNotMatch(client, /createRpcStateTransport/);
+  assert.match(client, /createMobileStateTransport/);
+});

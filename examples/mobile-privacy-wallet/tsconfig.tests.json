@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist-tests",
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["test/flows.test.ts"]
+}

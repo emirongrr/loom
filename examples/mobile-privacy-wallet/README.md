@@ -142,6 +142,8 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 | Guardianless account | App shows `unprotected-recovery`. |
 | Missing guardian evidence | Guardian setup cannot be submitted. |
 | Missing Railgun evidence | Private transfer is disabled. |
+| Metadata budget not acknowledged | Private send is blocked until the adapter's disclosure budget is surfaced and acknowledged. |
+| Invalid session permission | Session grants without explicit key, target, limits, and future expiry are rejected. |
 
 ## Production Release Checklist
 
