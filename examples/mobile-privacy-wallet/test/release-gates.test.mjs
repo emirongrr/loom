@@ -36,6 +36,9 @@ test("configuration does not contain default RPC or bundler endpoints", () => {
   assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_EXECUTION_RPC=\n/);
   assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_CONSENSUS_RPC=\n/);
   assert.match(env, /EXPO_PUBLIC_LOOM_HELIOS_CHECKPOINT=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_P256_VERIFIER=\n/);
+  assert.doesNotMatch(env, /P256_FALLBACK/i);
   assert.doesNotMatch(env, /https?:\/\//);
 });
 
@@ -53,6 +56,18 @@ test("verified state reads are Helios-first and fail closed without evidence", (
   assert.match(helios, /weak-subjectivity checkpoint/);
   assert.match(stateTransport, /plain RPC reads are not light-client verified/);
   assert.match(stateTransport, /verifiedState\.mode === "helios"/);
+});
+
+test("P-256 verifier mode is explicit and not fallback-first", () => {
+  const environment = read("src/config/environment.ts");
+  const app = read("src/app/App.tsx");
+
+  assert.match(environment, /native-precompile/);
+  assert.match(environment, /fallback-contract/);
+  assert.match(environment, /EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE/);
+  assert.match(app, /protocol-level native precompile/);
+  assert.match(app, /audited verifier codehash/);
+  assert.doesNotMatch(environment, /P256_FALLBACK/i);
 });
 
 test("native passkey modules enforce platform verification and do not expose raw credentials", () => {

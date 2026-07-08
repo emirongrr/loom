@@ -2,6 +2,7 @@ import type {
   HeliosNetworkKind,
   Hex,
   MobileWalletConfiguration,
+  P256VerifierMode,
   VerifiedStateMode,
   WalletEnvironment
 } from "../types/wallet";
@@ -49,6 +50,13 @@ function heliosNetworkKind(value: string | undefined): HeliosNetworkKind {
   return "ethereum";
 }
 
+function p256VerifierMode(value: string | undefined): P256VerifierMode {
+  if (value === "native-precompile" || value === "fallback-contract") {
+    return value;
+  }
+  return "not-configured";
+}
+
 export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   const chainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_CHAIN_ID) ?? 1;
   const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 1;
@@ -78,6 +86,8 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
     deployment: {
       accountFactory: optionalHex(process.env.EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY),
       passkeyValidator: optionalHex(process.env.EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR),
+      p256VerifierAddress: optionalHex(process.env.EXPO_PUBLIC_LOOM_P256_VERIFIER),
+      p256VerifierMode: p256VerifierMode(process.env.EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE),
       deploymentManifestPath: process.env.EXPO_PUBLIC_LOOM_DEPLOYMENT_MANIFEST || undefined
     },
     privacy: {

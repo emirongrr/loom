@@ -18,9 +18,10 @@ CI runs Slither `0.11.5` and fails on high-severity findings.
   regression test.
 - Hook iteration uses the pre-check snapshot, so a scheduled lifecycle change
   cannot alter the post-check set mid-execution.
-- Zero-address P-256 fallback verifier: intentional. A zero address selects
-  precompile-only verification; each deployment manifest must prove the
-  target chain's precompile behavior before using that configuration.
+- Zero-address P-256 fallback verifier: intentional only for deployments whose
+  manifest selects `native-precompile` mode and proves target-chain precompile
+  support. Fallback-contract mode must use a reviewed verifier address and a
+  matching deployed bytecode hash.
 - Multi-passkey signature verification calls in a loop: the credential and
   signature counts are capped at 16, and every signature must pass.
 - Recovery timestamp equality checks distinguish the zero-value "no pending

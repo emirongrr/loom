@@ -63,9 +63,10 @@ jobs:
         # unrelated source changes (via-IR/optimizer layout shifts move it by ~45 gas
         # even for a comment-only edit elsewhere), so it is not a stable regression
         # signal. WebAuthn evidence tests are fixture-gated and therefore not
-        # stable gas-regression targets. Correctness is still covered by the
-        # main test job.
-        run: forge snapshot --force --check --tolerance 1 --no-match-contract "LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/formal/**"
+        # stable gas-regression targets. Script-policy tests cover deployment
+        # configuration behavior, not production runtime gas. Correctness is
+        # still covered by the main test job.
+        run: forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|LoomAccount(Extended)?InvariantTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/(formal|script)/.*"
       - name: Check production coverage gate
         run: npm run coverage:check
       - name: Assert no excluded cryptography

@@ -40,6 +40,20 @@ runtime path.
 - **Proposed fix PR:** Publish mobile-compatible bundler qualification evidence
   and UI for switching bundlers.
 
+## G-003A: P-256 Verifier Mode Evidence Is Required
+
+- **Missing API or behavior:** The mobile app can display the selected P-256
+  verifier mode, but release evidence must prove whether the target chain uses
+  a native protocol-level precompile or a fallback verifier contract.
+- **Affected flow:** Passkey account creation, signing, guardian verification.
+- **Security/privacy impact:** Treating an arbitrary fallback verifier address
+  as a trusted verifier could let a malicious or incorrect contract accept
+  invalid P-256 signatures.
+- **Proposed fix PR:** Publish per-network P-256 verifier evidence in the
+  deployment manifest. Native mode needs reviewed precompile support evidence.
+  Fallback mode needs audited verifier source, address, and deployed bytecode
+  hash.
+
 ## G-004: Guardian Ceremony Needs Production Evidence
 
 - **Missing API or behavior:** `@loom/guardian` provides ceremony tooling, but

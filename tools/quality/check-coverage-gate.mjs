@@ -240,7 +240,18 @@ function main() {
 
   const result = spawnSync(
     forge,
-    ["coverage", "--ir-minimum", "--report", "summary", "--skip", "test/formal/**"],
+    [
+      "coverage",
+      "--ir-minimum",
+      "--report",
+      "summary",
+      "--skip",
+      "script/**",
+      "--skip",
+      "test/formal/**",
+      "--skip",
+      "test/script/**"
+    ],
     {
       cwd: root,
       encoding: "utf8",
