@@ -121,3 +121,24 @@ runtime path.
 - **Proposed fix PR:** Add mobile Helios sync evidence for target networks and
   release gates for stale checkpoint, unavailable consensus RPC, malformed
   proof data, and plain-RPC downgrade attempts.
+
+## G-008: Transport Privacy Is Not Implemented
+
+- **Missing API or behavior:** All network traffic (execution RPC, consensus
+  RPC, checkpoint source, bundler, and — when enabled — Railgun relayer,
+  indexer, and prover) leaves the device directly. Each provider observes the
+  device IP, request timing, and query patterns. There is no proxy, VPN, Tor,
+  or mixnet routing, no request batching or decoys, and no timing padding.
+- **Affected flow:** Every network-touching flow: verified state reads,
+  account deployment, transaction send, private send.
+- **Security/privacy impact:** A provider (or a network observer at the
+  provider) can build an activity profile and, for the bundler, directly link
+  IP to on-chain sender. Shielded transfers reduce on-chain linkage but do not
+  hide network metadata; overclaiming here would give users false privacy.
+- **Partial mitigation in this example:** The per-endpoint leak surface is
+  documented in `docs/PRIVACY_MODEL.md` ("Network metadata"); bundlers are
+  explicit and replaceable (G-003); the Railgun metadata budget must be
+  acknowledged before a private send is built.
+- **Proposed fix PR:** Add optional proxy configuration for all transports,
+  document a vetted transport-privacy setup, and publish evidence that the
+  wallet makes no network requests outside the configured endpoints.

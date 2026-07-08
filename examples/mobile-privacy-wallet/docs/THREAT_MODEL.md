@@ -14,7 +14,7 @@ the production recommendation.
 | Lost passkey | User cannot sign | Guardian recovery replaces the validator | Guardian ceremony evidence (G-004) | Prompt recovery setup after onboarding |
 | Compromised session key | Bounded misuse until expiry | Sessions are scoped (target/selector/token/amount/uses/expiry); revocable | Session UI + post-compromise flow | Show active sessions; one-tap revoke |
 | Malicious guardian | Guardian abuses recovery | Loom recovery is timelocked, cancellable, and grants no spending authority | Guardian-graph privacy review | Threshold guardians on independent devices |
-| Metadata leakage | Device/IP/timing correlation | No analytics/telemetry; no sensitive logs | Network-level metadata unaddressed | Consider transport privacy; document residual risk |
+| Metadata leakage | Device/IP/timing correlation | No analytics/telemetry; no sensitive logs; metadata budget enforced before private send | Network-level metadata unaddressed (PRIVACY_MODEL.md "Network metadata", G-008) | Add transport privacy before making metadata claims |
 | Address clustering | On-chain linkage of activity | — (public transfers are public) | No graph privacy | Use shielded transfers once enabled |
 | Replay attacks | Reused signature/challenge | Fresh 32-byte non-zero registration challenge; native modules reject stale/zero challenges | — | Keep challenge generation in app runtime |
 | Phishing origin / wrong RP ID | Credential bound to attacker origin | RP id + origin pinned in native build policy; JS cannot expand it; empty origin blocks creation | Release evidence that shipped policy matches (G-001A) | Verify associated domains + signing origin in release |
