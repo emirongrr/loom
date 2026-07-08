@@ -146,6 +146,21 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — evidence required before shipping.
 - [`GAPS.md`](GAPS.md) — every blocked production path.
 
+## Screens
+
+The home screen switches between three sections wired to the real flows — no
+simulated results anywhere:
+
+- **Status** — capability cards driven by `configurationReadiness`, the state
+  readiness gate, and the screen privacy shield.
+- **Create account** — generates a fresh 32-byte CSPRNG challenge
+  (`src/platform/challenge.ts`, expo-crypto), calls the native passkey module,
+  and renders the `createAccountFlow` result: blocking gates as-is, or the
+  registration summary with an explicit `unprotected-recovery` warning.
+- **Private send** — calls `preparePrivateSend` and renders its gates. Once a
+  privacy profile passes, the same screen shows the metadata budget the user
+  must see before an operation is built.
+
 ## Network Metadata
 
 Every configured endpoint — execution RPC, consensus RPC, checkpoint source,
