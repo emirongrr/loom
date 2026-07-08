@@ -25,12 +25,12 @@
     "expo-clipboard": "~57.0.0",
     "expo-crypto": "~57.0.0",
     "expo-dev-client": "^57.0.5",
-    "expo-modules-core": "^3.0.0",
+    "expo-modules-core": "~57.0.3",
     "expo-secure-store": "~57.0.0",
     "loom-passkey": "file:modules/loom-passkey",
     "loom-screen-privacy": "file:modules/loom-screen-privacy",
-    "react": "^19.0.0",
-    "react-native": "^0.81.0"
+    "react": "19.2.3",
+    "react-native": "0.86.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

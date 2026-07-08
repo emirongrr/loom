@@ -131,6 +131,21 @@ npm run ios
 npm run android
 ```
 
+Windows build notes (Android):
+
+- If the checkout path contains non-ASCII characters (e.g. `Masaüstü`), the
+  C++ toolchain breaks: CMake writes generated files and the AGP path check
+  fails. Prefer an ASCII-only checkout path. Local workarounds otherwise:
+  add `-Dfile.encoding=UTF-8` to `org.gradle.jvmargs` and
+  `android.overridePathCheck=true` in the generated `android/gradle.properties`,
+  and replace the `target_precompile_headers` block in
+  `node_modules/expo-modules-core/android/cmake/common.cmake` with a
+  command-line forced include. These live in generated/installed files and are
+  reapplied after every `prebuild --clean` or `npm install`.
+- On low-memory machines limit the build: `reactNativeArchitectures=arm64-v8a`,
+  `org.gradle.workers.max=2`, and `kotlin.daemon.jvmargs=-Xmx1536m` in
+  `android/gradle.properties`.
+
 The first store-ready release must add real iOS and Android device evidence,
 privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 

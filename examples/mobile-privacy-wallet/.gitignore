@@ -1,0 +1,7 @@
+# Generated native projects (expo prebuild) and build outputs — never commit.
+/android/
+/ios/
+/.expo/
+/dist-tests/
+modules/*/android/build/
+.env.local
