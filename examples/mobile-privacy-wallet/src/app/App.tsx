@@ -3,12 +3,43 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { configurationReadiness, readEnvironmentConfiguration } from "../config/environment";
 import { CapabilityCard } from "../components/CapabilityCard";
+import { createScreenPrivacyShield } from "../platform/screenPrivacy";
 import { stateReadinessGate } from "../verified/stateTransport";
 
 const config = readEnvironmentConfiguration();
 
+type ScreenPrivacyStatus = "enabled" | "unavailable" | "pending";
+
+function useScreenPrivacy(): ScreenPrivacyStatus {
+  const [status, setStatus] = React.useState<ScreenPrivacyStatus>("pending");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        await createScreenPrivacyShield().enable();
+        if (!cancelled) {
+          setStatus("enabled");
+        }
+      } catch {
+        // Fail closed: the wallet keeps running, but the UI must show that
+        // screenshots and app-switcher snapshots are NOT protected.
+        if (!cancelled) {
+          setStatus("unavailable");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return status;
+}
+
 export default function App() {
   const configGates = configurationReadiness(config);
+  const screenPrivacy = useScreenPrivacy();
   const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
   const deploymentConfigured = Boolean(
     config.deployment.accountFactory && config.deployment.passkeyValidator
@@ -41,6 +72,15 @@ export default function App() {
             configGates.length === 0
               ? "Chain, relying-party id, origin, and deployment addresses are all explicitly set."
               : `Incomplete: ${configGates.map(gate => gate.id).join(", ")}. No value is assumed; account creation is blocked until these are set.`
+          }
+        />
+        <CapabilityCard
+          title="Screen privacy"
+          status={screenPrivacy === "enabled" ? "configured" : screenPrivacy === "pending" ? "pending" : "requires-device"}
+          body={
+            screenPrivacy === "enabled"
+              ? "Android blocks screenshots and recents thumbnails (FLAG_SECURE); iOS covers the app-switcher snapshot. iOS cannot block screenshots."
+              : "The native screen privacy module is not active; screenshots and app-switcher snapshots are unprotected in this build."
           }
         />
         <CapabilityCard

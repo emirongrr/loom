@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
     "test:gates": "node --test test/release-gates.test.mjs",
-    "test:flows": "tsc -p tsconfig.tests.json && node --test dist-tests/test/flows.test.js",
+    "test:flows": "tsc -p tsconfig.tests.json && node --test dist-tests/test/flows.test.js dist-tests/test/hygiene.test.js",
     "test": "npm run test:gates && npm run test:flows"
   },
   "dependencies": {
@@ -22,9 +22,12 @@
     "@loom/privacy": "file:../../packages/privacy",
     "@loom/sdk": "file:../../packages/sdk",
     "expo": "^57.0.4",
+    "expo-clipboard": "~57.0.0",
     "expo-dev-client": "^57.0.5",
     "expo-modules-core": "^3.0.0",
+    "expo-secure-store": "~57.0.0",
     "loom-passkey": "file:modules/loom-passkey",
+    "loom-screen-privacy": "file:modules/loom-screen-privacy",
     "react": "^19.0.0",
     "react-native": "^0.81.0"
   },

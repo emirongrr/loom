@@ -167,3 +167,44 @@ test("client construction cannot mint an unlabeled RPC state transport", () => {
   assert.doesNotMatch(client, /createRpcStateTransport/);
   assert.match(client, /createMobileStateTransport/);
 });
+
+test("screen privacy native modules protect screenshots and app-switcher snapshots", () => {
+  const kotlin = read(
+    "modules/loom-screen-privacy/android/src/main/java/org/loom/mobileprivacywallet/screenprivacy/LoomScreenPrivacyModule.kt"
+  );
+  const swift = read("modules/loom-screen-privacy/ios/LoomScreenPrivacyModule.swift");
+  const wrapper = read("src/platform/screenPrivacy.ts");
+
+  assert.match(kotlin, /FLAG_SECURE/, "android module must apply FLAG_SECURE");
+  assert.match(swift, /willResignActiveNotification/, "ios module must cover the app-switcher snapshot");
+  assert.match(swift, /cannot block screenshots|Screenshot prevention on iOS must not be claimed/i);
+  assert.match(wrapper, /Fails closed/i, "wrapper must fail closed without the native module");
+});
+
+test("local persistence is allowlisted and never names forbidden material", () => {
+  const store = read("src/platform/secureStore.ts");
+
+  assert.match(store, /SECURE_STORE_ALLOWED_KEYS/);
+  assert.match(store, /credentialId\(\?\!Hash\)/, "forbidden-key pattern must reject raw credential ids");
+  assert.match(store, /attestation|viewingKey|accountGraph/);
+  assert.doesNotMatch(store, /@react-native-async-storage/);
+});
+
+test("clipboard hygiene clears only the value the wallet placed", () => {
+  const clipboard = read("src/platform/clipboardHygiene.ts");
+
+  assert.match(clipboard, /current === value/);
+  assert.match(clipboard, /ttlMs/);
+});
+
+test("store privacy declarations exist and declare no tracking or collection", () => {
+  const appJson = JSON.parse(read("app.json"));
+  const dataSafety = read("docs/DATA_SAFETY.md");
+
+  const manifests = appJson.expo.ios.privacyManifests;
+  assert.equal(manifests.NSPrivacyTracking, false);
+  assert.deepEqual(manifests.NSPrivacyTrackingDomains, []);
+  assert.deepEqual(manifests.NSPrivacyCollectedDataTypes, []);
+  assert.match(dataSafety, /Data Not Collected/);
+  assert.match(dataSafety, /G-009/);
+});

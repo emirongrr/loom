@@ -1,0 +1,21 @@
+{
+  "name": "loom-screen-privacy",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "private": true,
+  "peerDependencies": {
+    "expo-modules-core": "^3.0.0"
+  },
+  "expo-module": {
+    "android": {
+      "modules": [
+        "org.loom.mobileprivacywallet.screenprivacy.LoomScreenPrivacyModule"
+      ]
+    },
+    "ios": {
+      "modules": [
+        "LoomScreenPrivacyModule"
+      ]
+    }
+  }
+}

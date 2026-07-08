@@ -75,6 +75,23 @@ The app must never persist:
 - account graph data;
 - raw private transaction metadata.
 
+That rule is enforced in code, not just documented. Local persistence must go
+through `src/platform/secureStore.ts`, which allows only allowlisted keys
+(credential id hash, encrypted guardian backup) on top of the
+platform-encrypted store, and rejects anything that names forbidden material.
+
+Screen and clipboard hygiene:
+
+- `modules/loom-screen-privacy` applies Android `FLAG_SECURE` (blocks
+  screenshots, screen recording, and the recents thumbnail) and covers the
+  iOS app-switcher snapshot with a blur overlay. iOS cannot block
+  screenshots; the app must not claim that it does.
+- `src/platform/clipboardHygiene.ts` clears copied addresses after a TTL, and
+  only if the clipboard still holds the value the wallet placed there.
+- Store privacy declarations (Apple App Privacy, Google Play Data safety) are
+  drafted in `docs/DATA_SAFETY.md` and pinned by `app.json`
+  `ios.privacyManifests`.
+
 ## Environment
 
 Copy `.env.example` to `.env.local` and provide explicit infrastructure:
@@ -178,3 +195,9 @@ metadata. The per-endpoint leak surface and residual risk are documented in
 - Guardian ceremony rehearsed with proof-of-possession and encrypted backup.
 - Railgun privacy adapter profile passes before private send is enabled.
 - Deployment manifest and bytecode reproduction evidence published.
+- Screen privacy verified on physical devices: Android screenshot and recents
+  thumbnail blocked; iOS app-switcher snapshot covered (G-009).
+- Secure store contents audited against the allowlist after reboot/restore;
+  no raw credential ids or attestation objects on disk.
+- Store privacy declarations submitted exactly as drafted in
+  `docs/DATA_SAFETY.md`; re-checked after any dependency change.
