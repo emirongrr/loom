@@ -1,13 +1,14 @@
 import React from "react";
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { readEnvironmentConfiguration } from "../config/environment";
+import { configurationReadiness, readEnvironmentConfiguration } from "../config/environment";
 import { CapabilityCard } from "../components/CapabilityCard";
 import { stateReadinessGate } from "../verified/stateTransport";
 
 const config = readEnvironmentConfiguration();
 
 export default function App() {
+  const configGates = configurationReadiness(config);
   const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
   const deploymentConfigured = Boolean(
     config.deployment.accountFactory && config.deployment.passkeyValidator
@@ -33,6 +34,15 @@ export default function App() {
           </Text>
         </View>
 
+        <CapabilityCard
+          title="Configuration"
+          status={configGates.length === 0 ? "configured" : "not-configured"}
+          body={
+            configGates.length === 0
+              ? "Chain, relying-party id, origin, and deployment addresses are all explicitly set."
+              : `Incomplete: ${configGates.map(gate => gate.id).join(", ")}. No value is assumed; account creation is blocked until these are set.`
+          }
+        />
         <CapabilityCard
           title="Passkey account"
           status="requires-device"

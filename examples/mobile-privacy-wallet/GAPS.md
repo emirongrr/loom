@@ -41,8 +41,26 @@ runtime path.
 - **Affected flow:** Passkey-first onboarding.
 - **Security/privacy impact:** Hardcoded or unverified deployment addresses
   could create accounts with the wrong authority or infrastructure assumption.
+- **Partial mitigation in this example:** `src/loom/deployment/manifest.ts`
+  parses a committed manifest and refuses configured addresses that do not match
+  it (`verifyDeploymentAgainstManifest`); `deployment/manifest.example.json` is
+  the template. Still open: per-network production manifests generated from the
+  reproducible deployment, and on-chain code-hash confirmation.
 - **Proposed fix PR:** Add per-network mobile deployment profiles generated
-  from the production deployment manifest.
+  from the production deployment manifest and confirm code hashes on chain.
+
+## G-007: Behavioral Unit Tests Need a TypeScript Test Runner
+
+- **Missing API or behavior:** The release-gate tests assert source structure
+  (grep-style). Behavioral unit tests for `configurationReadiness`,
+  `parseDeploymentManifest`, `verifyDeploymentAgainstManifest`, and session
+  permission constraints require importing the TypeScript modules under a test
+  runner (e.g. `tsx` or a compiled build step).
+- **Affected flow:** Config validation, deployment verification, sessions.
+- **Security/privacy impact:** Structure tests catch removed guards but not all
+  behavioral regressions in the pure logic.
+- **Proposed fix PR:** Add a TypeScript test runner and behavioral tests for the
+  pure config/manifest/session functions.
 
 ## G-003: Live Bundler Qualification Is Required
 

@@ -1,0 +1,19 @@
+{
+  "chainId": 11155111,
+  "entryPoint": "0x0000000000000000000000000000000000000000",
+  "accountFactory": "0x0000000000000000000000000000000000000000",
+  "passkeyValidator": "0x0000000000000000000000000000000000000000",
+  "p256Verifier": "0x0000000000000000000000000000000000000000",
+  "p256VerifierMode": "fallback-contract",
+  "codehashes": {
+    "accountImplementation": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "accountFactory": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "passkeyValidator": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "p256Verifier": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "deploymentBlock": null,
+  "explorerVerification": {
+    "accountFactory": "https://sepolia.etherscan.io/address/REPLACE#code"
+  },
+  "notes": "Example manifest with placeholder zero addresses and hashes. Replace every value with the reproducible deployment output before shipping. The wallet refuses to deploy when configured addresses do not match this file, and a production build must confirm these code hashes on chain."
+}

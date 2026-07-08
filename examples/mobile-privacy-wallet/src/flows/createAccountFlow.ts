@@ -7,6 +7,7 @@ import type {
   PlatformPasskeyAuthenticator
 } from "../types/wallet";
 import { requireAccountDeploymentConfig } from "../loom/client";
+import { configurationReadiness } from "../config/environment";
 
 export async function preparePasskeyAccountCreation(input: {
   config: MobileWalletConfiguration;
@@ -15,6 +16,14 @@ export async function preparePasskeyAccountCreation(input: {
   displayName: string;
   registrationChallenge?: Hex;
 }): Promise<FlowResult<AccountCreationReadiness>> {
+  // Refuse to touch the passkey authenticator until the critical configuration
+  // (chain, relying-party id, origin, deployment addresses) is explicitly set.
+  // This prevents creating a credential bound to an empty or assumed origin.
+  const configGates = configurationReadiness(input.config);
+  if (configGates.length > 0) {
+    return { status: "blocked", gates: configGates };
+  }
+
   const available = await input.passkey.isPlatformPasskeyAvailable();
   if (!available) {
     return {

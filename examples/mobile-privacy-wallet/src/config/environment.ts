@@ -3,6 +3,7 @@ import type {
   Hex,
   MobileWalletConfiguration,
   P256VerifierMode,
+  ReleaseGate,
   VerifiedStateMode,
   WalletEnvironment
 } from "../types/wallet";
@@ -57,14 +58,19 @@ function p256VerifierMode(value: string | undefined): P256VerifierMode {
   return "not-configured";
 }
 
+// Missing critical values are NOT silently defaulted. chainId 0 and empty
+// rpId/origin are unset sentinels that configurationReadiness() flags and the
+// account/passkey flows refuse to proceed on. Defaulting a missing chainId to
+// mainnet, or a missing passkey origin to localhost, would be exactly the kind
+// of hidden assumption this wallet is built to avoid.
 export function readEnvironmentConfiguration(): MobileWalletConfiguration {
-  const chainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_CHAIN_ID) ?? 1;
-  const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 1;
+  const chainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_CHAIN_ID) ?? 0;
+  const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 0;
 
   return {
     environment: walletEnvironment(process.env.LOOM_WALLET_ENV),
-    rpId: process.env.EXPO_PUBLIC_LOOM_RP_ID ?? "localhost",
-    origin: process.env.EXPO_PUBLIC_LOOM_ORIGIN ?? "app://loom-mobile-privacy-wallet",
+    rpId: process.env.EXPO_PUBLIC_LOOM_RP_ID ?? "",
+    origin: process.env.EXPO_PUBLIC_LOOM_ORIGIN ?? "",
     network: {
       chainId,
       l1ChainId,
@@ -99,4 +105,46 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
       })
     }
   };
+}
+
+/**
+ * Returns a blocked gate for every critical configuration value that is missing
+ * or left at its unset sentinel. The account and passkey flows must consult this
+ * before creating an account, and the UI surfaces it so a half-configured build
+ * fails visibly instead of silently assuming mainnet or a localhost origin.
+ */
+export function configurationReadiness(config: MobileWalletConfiguration): readonly ReleaseGate[] {
+  const gates: ReleaseGate[] = [];
+  const missing = (id: string, summary: string): void => {
+    gates.push({ id, title: "Configuration incomplete", status: "not-configured", summary });
+  };
+
+  if (config.network.chainId <= 0) {
+    missing("config.chainId", "EXPO_PUBLIC_LOOM_CHAIN_ID is not set; the wallet will not assume a chain.");
+  }
+  if (config.network.l1ChainId <= 0) {
+    missing("config.l1ChainId", "EXPO_PUBLIC_LOOM_L1_CHAIN_ID is not set; recovery/keystore roots need an explicit L1.");
+  }
+  if (config.rpId.length === 0) {
+    missing("config.rpId", "EXPO_PUBLIC_LOOM_RP_ID is not set; passkeys must bind to an explicit relying-party id.");
+  }
+  if (config.origin.length === 0) {
+    missing("config.origin", "EXPO_PUBLIC_LOOM_ORIGIN is not set; passkeys must bind to an explicit origin.");
+  }
+  if (!config.network.entryPoint) {
+    missing("config.entryPoint", "EXPO_PUBLIC_LOOM_ENTRYPOINT is not set; UserOperations cannot be submitted.");
+  }
+  if (!config.network.bundlerUrl) {
+    missing("config.bundler", "EXPO_PUBLIC_LOOM_BUNDLER_URL is not set; there is no submission transport.");
+  }
+  if (!config.deployment.accountFactory) {
+    missing("config.factory", "EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY is not set; accounts cannot be deployed.");
+  }
+  if (!config.deployment.passkeyValidator) {
+    missing("config.passkeyValidator", "EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR is not set; passkey accounts cannot be created.");
+  }
+  if (config.deployment.p256VerifierMode === "not-configured") {
+    missing("config.p256Mode", "EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE is not set; do not deploy passkey accounts.");
+  }
+  return gates;
 }
