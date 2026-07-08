@@ -208,3 +208,36 @@ test("store privacy declarations exist and declare no tracking or collection", (
   assert.match(dataSafety, /Data Not Collected/);
   assert.match(dataSafety, /G-009/);
 });
+
+test("UI screens are wired to the real flows without mock paths", () => {
+  const app = read("src/app/App.tsx");
+  const createAccount = read("src/screens/CreateAccountScreen.tsx");
+  const privateSend = read("src/screens/PrivateSendScreen.tsx");
+  const gateList = read("src/components/GateList.tsx");
+
+  assert.match(app, /CreateAccountScreen/);
+  assert.match(app, /PrivateSendScreen/);
+  assert.match(createAccount, /preparePasskeyAccountCreation/);
+  assert.match(createAccount, /createNativePasskeyAuthenticator/);
+  assert.match(createAccount, /freshChallenge/);
+  assert.match(privateSend, /preparePrivateSend/);
+  assert.match(privateSend, /metadataBudget/);
+  assert.match(gateList, /gate\.summary/);
+  for (const [label, contents] of [
+    ["CreateAccountScreen", createAccount],
+    ["PrivateSendScreen", privateSend]
+  ]) {
+    assert.equal(/\bmock\b/i.test(contents), false, `${label} must not contain mock runtime paths`);
+  }
+});
+
+test("registration challenges come from the platform CSPRNG, never a constant", () => {
+  const challenge = read("src/platform/challenge.ts");
+  const source = read("src/platform/expoChallengeSource.ts");
+  const screen = read("src/screens/CreateAccountScreen.tsx");
+
+  assert.match(challenge, /must be exactly 32 bytes/i);
+  assert.match(challenge, /must not be all zeroes/i);
+  assert.match(source, /getRandomBytesAsync/);
+  assert.doesNotMatch(screen, /0x[0-9a-fA-F]{64}/, "no hardcoded challenge in the screen");
+});

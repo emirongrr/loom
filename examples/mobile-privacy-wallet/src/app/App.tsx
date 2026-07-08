@@ -1,9 +1,11 @@
 import React from "react";
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { configurationReadiness, readEnvironmentConfiguration } from "../config/environment";
 import { CapabilityCard } from "../components/CapabilityCard";
 import { createScreenPrivacyShield } from "../platform/screenPrivacy";
+import { CreateAccountScreen } from "../screens/CreateAccountScreen";
+import { PrivateSendScreen } from "../screens/PrivateSendScreen";
 import { stateReadinessGate } from "../verified/stateTransport";
 
 const config = readEnvironmentConfiguration();
@@ -37,9 +39,13 @@ function useScreenPrivacy(): ScreenPrivacyStatus {
   return status;
 }
 
+const SECTIONS = ["Status", "Create account", "Private send"] as const;
+type Section = (typeof SECTIONS)[number];
+
 export default function App() {
   const configGates = configurationReadiness(config);
   const screenPrivacy = useScreenPrivacy();
+  const [section, setSection] = React.useState<Section>("Status");
   const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
   const deploymentConfigured = Boolean(
     config.deployment.accountFactory && config.deployment.passkeyValidator
@@ -65,6 +71,24 @@ export default function App() {
           </Text>
         </View>
 
+        <View style={styles.tabs}>
+          {SECTIONS.map(name => (
+            <Pressable
+              accessibilityRole="button"
+              key={name}
+              onPress={() => setSection(name)}
+              style={[styles.tab, section === name && styles.tabActive]}
+            >
+              <Text style={[styles.tabLabel, section === name && styles.tabLabelActive]}>{name}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {section === "Create account" && <CreateAccountScreen config={config} />}
+        {section === "Private send" && <PrivateSendScreen config={config} />}
+
+        {section === "Status" && (
+          <>
         <CapabilityCard
           title="Configuration"
           status={configGates.length === 0 ? "configured" : "not-configured"}
@@ -117,6 +141,8 @@ export default function App() {
           status="gated"
           body="Railgun private transfer is disabled until privacy adapter evidence passes."
         />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -134,6 +160,30 @@ const styles = StyleSheet.create({
   header: {
     gap: 10,
     marginBottom: 8
+  },
+  tabs: {
+    flexDirection: "row",
+    gap: 8
+  },
+  tab: {
+    backgroundColor: "#111722",
+    borderColor: "#243044",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8
+  },
+  tabActive: {
+    backgroundColor: "#1c2d42",
+    borderColor: "#3c5a85"
+  },
+  tabLabel: {
+    color: "#8ea0b8",
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  tabLabelActive: {
+    color: "#cfe2ff"
   },
   eyebrow: {
     color: "#8ea0b8",

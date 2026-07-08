@@ -148,3 +148,28 @@ void test("a re-copy cancels the previous pending clear", async () => {
   await fire();
   assert.equal(clipboard.value, "", "second value is cleared by its own timer");
 });
+
+void test("challenge generation rejects wrong lengths and all-zero entropy", async () => {
+  const { challengeFromBytes, createChallengeSource, CHALLENGE_BYTE_LENGTH } = await import(
+    "../src/platform/challenge"
+  );
+
+  assert.equal(CHALLENGE_BYTE_LENGTH, 32);
+  assert.throws(() => challengeFromBytes(new Uint8Array(16)), MobileWalletConfigurationError);
+  assert.throws(() => challengeFromBytes(new Uint8Array(32)), MobileWalletConfigurationError);
+
+  const bytes = new Uint8Array(32);
+  bytes[0] = 0xab;
+  bytes[31] = 0x01;
+  assert.equal(challengeFromBytes(bytes), "0xab" + "00".repeat(30) + "01");
+
+  const source = createChallengeSource(async count => {
+    const random = new Uint8Array(count);
+    random.fill(0x7f);
+    return random;
+  });
+  assert.equal(await source.freshChallenge(), "0x" + "7f".repeat(32));
+
+  const zeroSource = createChallengeSource(async count => new Uint8Array(count));
+  await assert.rejects(zeroSource.freshChallenge(), MobileWalletConfigurationError);
+});
