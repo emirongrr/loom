@@ -107,3 +107,37 @@ test("account creation refuses zero or implicit passkey registration challenges"
   assert.match(flow, /passkey\.registration\.challenge\.missing/);
   assert.doesNotMatch(flow, /0000000000000000000000000000000000000000000000000000000000000000/);
 });
+
+test("configuration fails closed instead of assuming a chain or origin", () => {
+  const environment = read("src/config/environment.ts");
+  const flow = read("src/flows/createAccountFlow.ts");
+  const env = read(".env.example");
+
+  // No silent mainnet / localhost / app-scheme defaults.
+  assert.doesNotMatch(environment, /\?\? 1\b/);
+  assert.doesNotMatch(environment, /"localhost"/);
+  assert.doesNotMatch(environment, /app:\/\/loom-mobile-privacy-wallet/);
+  // Missing critical values are surfaced, and account creation blocks on them.
+  assert.match(environment, /export function configurationReadiness/);
+  assert.match(environment, /config\.network\.chainId <= 0/);
+  assert.match(flow, /configurationReadiness\(input\.config\)/);
+  // Passkey relying-party binding is an explicit, documented variable.
+  assert.match(env, /EXPO_PUBLIC_LOOM_RP_ID=\n/);
+  assert.match(env, /EXPO_PUBLIC_LOOM_ORIGIN=\n/);
+});
+
+test("deployment addresses are verified against a committed manifest", () => {
+  const manifest = read("src/loom/deployment/manifest.ts");
+
+  assert.match(manifest, /export function parseDeploymentManifest/);
+  assert.match(manifest, /export function verifyDeploymentAgainstManifest/);
+  assert.match(manifest, /does not match manifest chainId/);
+  assert.match(manifest, /Configured account factory does not match the manifest/);
+  assert.match(manifest, /Manifest carries no code hashes/);
+  // The example manifest exists and uses replaceable placeholders, not real
+  // addresses that could be trusted by accident.
+  const example = JSON.parse(read("deployment/manifest.example.json"));
+  assert.equal(typeof example.chainId, "number");
+  assert.equal(typeof example.codehashes, "object");
+  assert.match(String(example.notes), /Replace every value/);
+});

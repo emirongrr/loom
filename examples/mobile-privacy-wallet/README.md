@@ -117,10 +117,24 @@ npm run android
 The first store-ready release must add real iOS and Android device evidence,
 privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 
+## Documentation
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layout and separation of concerns.
+- [`docs/PRIVACY_MODEL.md`](docs/PRIVACY_MODEL.md) — which privacy layers are and are not addressed.
+- [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — keys, passkeys, sessions, storage rules.
+- [`docs/TRUST_ASSUMPTIONS.md`](docs/TRUST_ASSUMPTIONS.md) — what is and is not trusted.
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — per-threat risk, mitigation, gap, recommendation.
+- [`docs/RECOVERY_MODEL.md`](docs/RECOVERY_MODEL.md) — progressive vs organization recovery.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — manifest verification of contract addresses.
+- [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — evidence required before shipping.
+- [`GAPS.md`](GAPS.md) — every blocked production path.
+
 ## Runtime Gates
 
 | Capability | Runtime behavior |
 | --- | --- |
+| Incomplete configuration | Account creation is blocked; no chain, origin, or provider is assumed. |
+| Deployment addresses unverified | Blocked until they match a committed deployment manifest. |
 | Passkey unavailable | Account creation and signing fail closed. |
 | Missing Helios checkpoint or transport | Verified state reads are disabled. |
 | Plain RPC mode | State reads are explicitly unverified. |
