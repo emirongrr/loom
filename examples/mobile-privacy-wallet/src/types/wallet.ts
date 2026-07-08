@@ -39,12 +39,14 @@ export interface PlatformPasskeyAuthenticator {
   isPlatformPasskeyAvailable(): Promise<boolean>;
   createPasskey(input: {
     readonly rpId: string;
+    readonly expectedOrigin: string;
     readonly challenge: Hex;
     readonly userName: string;
     readonly displayName: string;
   }): Promise<PlatformPasskeyRegistration>;
   signWithPasskey(input: {
     readonly rpId: string;
+    readonly expectedOrigin: string;
     readonly challenge: Hex;
     readonly credentialIdHash: Hex;
   }): Promise<PlatformPasskeyAssertion>;

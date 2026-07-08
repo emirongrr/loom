@@ -15,6 +15,7 @@ export function createMobilePasskeySigner(input: {
     async signChallenge(challenge) {
       const assertion = await input.passkey.signWithPasskey({
         rpId: input.rpId,
+        expectedOrigin: input.origin,
         credentialIdHash: input.credentialIdHash,
         challenge: challenge.userOperationHash
       });
@@ -22,4 +23,3 @@ export function createMobilePasskeySigner(input: {
     }
   });
 }
-
