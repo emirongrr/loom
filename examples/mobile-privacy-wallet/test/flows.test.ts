@@ -344,3 +344,77 @@ void test("session grant forwards a valid draft with explicit limits", () => {
   assert.equal(forwarded.maxUses, 3);
   assert.equal(forwarded.origin, "https://dapp.example.org");
 });
+
+void test("deployment manifest parsing rejects malformed input", async () => {
+  const { parseDeploymentManifest, DeploymentManifestError } = await import("../src/loom/deployment/manifest");
+
+  assert.throws(() => parseDeploymentManifest(null), DeploymentManifestError);
+  assert.throws(() => parseDeploymentManifest({ chainId: 0 }), DeploymentManifestError);
+  assert.throws(
+    () =>
+      parseDeploymentManifest({
+        chainId: 11155111,
+        entryPoint: ENTRY_POINT,
+        accountFactory: FACTORY,
+        passkeyValidator: VALIDATOR,
+        p256VerifierMode: "fallback-contract",
+        codehashes: {}
+      }),
+    /fallback-contract mode requires a p256Verifier address/
+  );
+  assert.throws(
+    () =>
+      parseDeploymentManifest({
+        chainId: 11155111,
+        entryPoint: ENTRY_POINT,
+        accountFactory: FACTORY,
+        passkeyValidator: VALIDATOR,
+        p256VerifierMode: "native-precompile",
+        codehashes: { factory: "0x1234" }
+      }),
+    /32-byte hash/
+  );
+});
+
+void test("deployment verification blocks mismatched addresses and empty codehash sets", async () => {
+  const { parseDeploymentManifest, verifyDeploymentAgainstManifest } = await import(
+    "../src/loom/deployment/manifest"
+  );
+
+  const manifest = parseDeploymentManifest({
+    chainId: 11155111,
+    entryPoint: ENTRY_POINT,
+    accountFactory: FACTORY,
+    passkeyValidator: VALIDATOR,
+    p256VerifierMode: "native-precompile",
+    codehashes: { accountFactory: "0x" + "cd".repeat(32) }
+  });
+
+  assert.deepEqual(verifyDeploymentAgainstManifest(completeConfiguration(), manifest), []);
+
+  const mismatched = {
+    ...completeConfiguration(),
+    deployment: {
+      accountFactory: SESSION_KEY,
+      passkeyValidator: VALIDATOR,
+      p256VerifierMode: "fallback-contract" as const
+    }
+  };
+  const gates = verifyDeploymentAgainstManifest(mismatched, manifest);
+  const ids = gates.map(gate => gate.id).sort();
+  assert.deepEqual(ids, ["deployment.manifest.factory", "deployment.manifest.p256-mode"]);
+
+  const emptyHashes = parseDeploymentManifest({
+    chainId: 11155111,
+    entryPoint: ENTRY_POINT,
+    accountFactory: FACTORY,
+    passkeyValidator: VALIDATOR,
+    p256VerifierMode: "native-precompile",
+    codehashes: {}
+  });
+  assert.ok(
+    verifyDeploymentAgainstManifest(completeConfiguration(), emptyHashes)
+      .map(gate => gate.id)
+      .includes("deployment.manifest.codehashes")
+  );
+});
