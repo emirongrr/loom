@@ -129,6 +129,16 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — evidence required before shipping.
 - [`GAPS.md`](GAPS.md) — every blocked production path.
 
+## Network Metadata
+
+Every configured endpoint — execution RPC, consensus RPC, checkpoint source,
+bundler, and (when enabled) Railgun relayer/indexer/prover — observes the
+device IP, request timing, and query patterns. This example does not route
+traffic through a proxy, Tor, or mixnet; do not present it as hiding network
+metadata. The per-endpoint leak surface and residual risk are documented in
+[`docs/PRIVACY_MODEL.md`](docs/PRIVACY_MODEL.md) and tracked as G-008 in
+[`GAPS.md`](GAPS.md).
+
 ## Runtime Gates
 
 | Capability | Runtime behavior |
