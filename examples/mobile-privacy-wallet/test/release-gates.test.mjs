@@ -82,8 +82,28 @@ test("native passkey modules enforce platform verification and do not expose raw
   ]) {
     assert.doesNotMatch(contents, /not implemented/i, `${label} native module must not be a stub`);
     assert.match(contents, /userVerification/i, `${label} native module must require user verification`);
+    assert.match(contents, /expectedOrigin/i, `${label} native module must bind expected origin`);
+    assert.match(contents, /webauthn\.get/i, `${label} native module must validate assertion clientData type`);
+    assert.match(contents, /webauthn\.create/i, `${label} native module must validate registration clientData type`);
+    assert.match(contents, /Passkey challenge must be exactly 32 bytes/i, `${label} native module must reject malformed challenges`);
+    assert.match(contents, /Passkey challenge must not be all zeroes/i, `${label} native module must reject zero challenges`);
+    assert.match(
+      contents,
+      /native build policy|Info\.plist|application metadata/i,
+      `${label} native module must use native RP policy`
+    );
+    assert.match(contents, /user verification/i, `${label} native module must validate UV in authenticator data`);
+    assert.match(contents, /halfOrder|P256_HALF_ORDER/i, `${label} native module must canonicalize P-256 signatures`);
     assert.match(contents, /credentialIdHash/i, `${label} native module must expose only credential id hash`);
     assert.doesNotMatch(contents, /"credentialId"\s+to/, `${label} native module must not return raw credential id`);
     assert.doesNotMatch(contents, /"attestationObject"\s+to/, `${label} native module must not return attestation object`);
   }
+});
+
+test("account creation refuses zero or implicit passkey registration challenges", () => {
+  const flow = read("src/flows/createAccountFlow.ts");
+
+  assert.match(flow, /registrationChallenge/);
+  assert.match(flow, /passkey\.registration\.challenge\.missing/);
+  assert.doesNotMatch(flow, /0000000000000000000000000000000000000000000000000000000000000000/);
 });

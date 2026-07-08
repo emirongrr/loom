@@ -2,19 +2,18 @@ import { blockedGate } from "../platform/errors";
 import type {
   AccountCreationReadiness,
   FlowResult,
+  Hex,
   MobileWalletConfiguration,
   PlatformPasskeyAuthenticator
 } from "../types/wallet";
 import { requireAccountDeploymentConfig } from "../loom/client";
-
-const BOOTSTRAP_CHALLENGE =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
 export async function preparePasskeyAccountCreation(input: {
   config: MobileWalletConfiguration;
   passkey: PlatformPasskeyAuthenticator;
   userName: string;
   displayName: string;
+  registrationChallenge?: Hex;
 }): Promise<FlowResult<AccountCreationReadiness>> {
   const available = await input.passkey.isPlatformPasskeyAvailable();
   if (!available) {
@@ -30,9 +29,24 @@ export async function preparePasskeyAccountCreation(input: {
     };
   }
 
+  if (!input.registrationChallenge) {
+    return {
+      status: "blocked",
+      gates: [
+        blockedGate({
+          id: "passkey.registration.challenge.missing",
+          title: "Registration challenge required",
+          summary:
+            "Passkey registration requires a fresh 32-byte challenge from the app runtime before creating an account."
+        })
+      ]
+    };
+  }
+
   const registration = await input.passkey.createPasskey({
     rpId: input.config.rpId,
-    challenge: BOOTSTRAP_CHALLENGE,
+    expectedOrigin: input.config.origin,
+    challenge: input.registrationChallenge,
     userName: input.userName,
     displayName: input.displayName
   });
@@ -71,4 +85,3 @@ export async function preparePasskeyAccountCreation(input: {
     ]
   };
 }
-

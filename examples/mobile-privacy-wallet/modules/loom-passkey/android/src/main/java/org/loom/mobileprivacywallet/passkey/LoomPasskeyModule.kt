@@ -1,6 +1,7 @@
 package org.loom.mobileprivacywallet.passkey
 
 import android.util.Base64
+import android.content.pm.PackageManager
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.CredentialManager
@@ -11,6 +12,7 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.math.BigInteger
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,13 +22,15 @@ class LoomPasskeyModule : Module() {
     Name("LoomPasskey")
 
     AsyncFunction("isPlatformPasskeyAvailable") {
-      appContext.currentActivity != null
+      val activity = appContext.currentActivity
+      activity != null && PasskeyPolicy.isConfigured(activity)
     }
 
     AsyncFunction("createPasskey") Coroutine { options: Map<String, String> ->
       val activity = appContext.currentActivity ?: throw Exceptions.MissingActivity()
-      val rpId = options.required("rpId")
-      val challenge = options.required("challenge").hexToBytes()
+      val rpId = PasskeyPolicy.resolveRpId(activity, options.required("rpId"))
+      val expectedOrigin = PasskeyPolicy.resolveExpectedOrigin(activity, options.required("expectedOrigin"))
+      val challenge = WebAuthnChecks.challenge(options.required("challenge"))
       val userName = options.required("userName")
       val displayName = options.required("displayName")
       val credentialManager = CredentialManager.create(activity)
@@ -48,7 +52,13 @@ class LoomPasskeyModule : Module() {
       val attestationObject = registrationJson.requiredBase64Url("response", "attestationObject")
       val clientDataJSON = registrationJson.requiredBase64Url("response", "clientDataJSON")
       val credentialId = registrationJson.requiredBase64Url("rawId")
-      val publicKey = WebAuthnCbor.extractP256PublicKeyFromAttestation(attestationObject)
+      WebAuthnChecks.clientData(
+        clientDataJSON,
+        expectedType = "webauthn.create",
+        expectedChallenge = challenge,
+        expectedOrigin = expectedOrigin
+      )
+      val publicKey = WebAuthnCbor.extractP256PublicKeyFromAttestation(attestationObject, rpId)
 
       mapOf(
         "publicKeyX" to publicKey.x.hex(),
@@ -61,8 +71,9 @@ class LoomPasskeyModule : Module() {
 
     AsyncFunction("signWithPasskey") Coroutine { options: Map<String, String> ->
       val activity = appContext.currentActivity ?: throw Exceptions.MissingActivity()
-      val rpId = options.required("rpId")
-      val challenge = options.required("challenge").hexToBytes()
+      val rpId = PasskeyPolicy.resolveRpId(activity, options.required("rpId"))
+      val expectedOrigin = PasskeyPolicy.resolveExpectedOrigin(activity, options.required("expectedOrigin"))
+      val challenge = WebAuthnChecks.challenge(options.required("challenge"))
       val credentialManager = CredentialManager.create(activity)
       val requestJson = WebAuthnJson.assertionRequest(rpId = rpId, challenge = challenge)
       val request = GetCredentialRequest(
@@ -77,6 +88,17 @@ class LoomPasskeyModule : Module() {
       val clientDataJSON = authenticationJson.requiredBase64Url("response", "clientDataJSON")
       val derSignature = authenticationJson.requiredBase64Url("response", "signature")
       val userHandle = authenticationJson.optionalBase64Url("response", "userHandle")
+      WebAuthnChecks.clientData(
+        clientDataJSON,
+        expectedType = "webauthn.get",
+        expectedChallenge = challenge,
+        expectedOrigin = expectedOrigin
+      )
+      WebAuthnChecks.authenticatorData(
+        authenticatorData,
+        rpId = rpId,
+        requireAttestedCredentialData = false
+      )
 
       buildMap {
         put("authenticatorData", authenticatorData.hex())
@@ -85,6 +107,42 @@ class LoomPasskeyModule : Module() {
         if (userHandle != null) put("userHandle", userHandle.hex())
       }
     }
+  }
+}
+
+private object PasskeyPolicy {
+  private const val RP_ID_META = "org.loom.passkey.RP_ID"
+  private const val ALLOWED_ORIGINS_META = "org.loom.passkey.ALLOWED_ORIGINS"
+
+  fun isConfigured(activity: android.app.Activity): Boolean =
+    runCatching {
+      metadata(activity, RP_ID_META).isNotBlank() && metadata(activity, ALLOWED_ORIGINS_META).isNotBlank()
+    }.getOrDefault(false)
+
+  fun resolveRpId(activity: android.app.Activity, requestedRpId: String): String {
+    val configuredRpId = metadata(activity, RP_ID_META)
+    require(configuredRpId.isNotBlank()) { "Passkey RP ID must be configured in native application metadata." }
+    require(configuredRpId == requestedRpId) { "Requested passkey RP ID is not allowed by the native build policy." }
+    require(Regex("^[a-zA-Z0-9.-]+$").matches(configuredRpId) && !configuredRpId.contains("://")) {
+      "Configured passkey RP ID is invalid."
+    }
+    return configuredRpId
+  }
+
+  fun resolveExpectedOrigin(activity: android.app.Activity, requestedOrigin: String): String {
+    val allowedOrigins = metadata(activity, ALLOWED_ORIGINS_META)
+      .split(",")
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .toSet()
+    require(allowedOrigins.isNotEmpty()) { "Passkey origins must be configured in native application metadata." }
+    require(requestedOrigin in allowedOrigins) { "Requested passkey origin is not allowed by the native build policy." }
+    return requestedOrigin
+  }
+
+  private fun metadata(activity: android.app.Activity, key: String): String {
+    val appInfo = activity.packageManager.getApplicationInfo(activity.packageName, PackageManager.GET_META_DATA)
+    return appInfo.metaData?.getString(key) ?: ""
   }
 }
 
@@ -129,18 +187,53 @@ private object WebAuthnJson {
 
 private data class P256PublicKey(val x: ByteArray, val y: ByteArray)
 
+private object WebAuthnChecks {
+  fun challenge(hex: String): ByteArray {
+    val bytes = hex.hexToBytes()
+    require(bytes.size == 32) { "Passkey challenge must be exactly 32 bytes." }
+    require(bytes.any { it.toInt() != 0 }) { "Passkey challenge must not be all zeroes." }
+    return bytes
+  }
+
+  fun clientData(
+    data: ByteArray,
+    expectedType: String,
+    expectedChallenge: ByteArray,
+    expectedOrigin: String
+  ) {
+    val clientData = JSONObject(String(data, Charsets.UTF_8))
+    require(clientData.getString("type") == expectedType) { "Unexpected WebAuthn client data type." }
+    require(clientData.getString("origin") == expectedOrigin) { "Unexpected WebAuthn origin." }
+    require(clientData.getString("challenge").base64UrlToBytes().contentEquals(expectedChallenge)) {
+      "Unexpected WebAuthn challenge."
+    }
+  }
+
+  fun authenticatorData(authData: ByteArray, rpId: String, requireAttestedCredentialData: Boolean) {
+    require(authData.size >= 37) { "Authenticator data is too short." }
+    val expectedRpIdHash = sha256(rpId.toByteArray(Charsets.UTF_8))
+    require(authData.copyOfRange(0, 32).contentEquals(expectedRpIdHash)) {
+      "Authenticator data RP ID hash does not match the native RP policy."
+    }
+    val flags = authData[32].toInt()
+    require((flags and 0x01) == 0x01) { "Authenticator data is missing user presence." }
+    require((flags and 0x04) == 0x04) { "Authenticator data is missing user verification." }
+    if (requireAttestedCredentialData) {
+      require((flags and 0x40) == 0x40) { "Authenticator data does not include attested credential data." }
+    }
+  }
+}
+
 private object WebAuthnCbor {
-  fun extractP256PublicKeyFromAttestation(attestationObject: ByteArray): P256PublicKey {
+  fun extractP256PublicKeyFromAttestation(attestationObject: ByteArray, rpId: String): P256PublicKey {
     val attestation = CborReader(attestationObject).readTextMap()
     val authData = attestation["authData"]?.bytes
       ?: throw IllegalStateException("Attestation object does not contain authenticator data.")
-    return extractP256PublicKeyFromAuthenticatorData(authData)
+    return extractP256PublicKeyFromAuthenticatorData(authData, rpId)
   }
 
-  private fun extractP256PublicKeyFromAuthenticatorData(authData: ByteArray): P256PublicKey {
-    require(authData.size > 55) { "Authenticator data is too short." }
-    val flags = authData[32].toInt()
-    require(flags and 0x40 == 0x40) { "Authenticator data does not include attested credential data." }
+  private fun extractP256PublicKeyFromAuthenticatorData(authData: ByteArray, rpId: String): P256PublicKey {
+    WebAuthnChecks.authenticatorData(authData, rpId = rpId, requireAttestedCredentialData = true)
 
     var offset = 37 + 16
     val credentialIdLength = ((authData[offset].toInt() and 0xff) shl 8) or (authData[offset + 1].toInt() and 0xff)
@@ -243,9 +336,29 @@ private class CborReader(private val data: ByteArray) {
 }
 
 private object DerSignature {
+  private val P256_ORDER = BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16)
+  private val P256_HALF_ORDER = P256_ORDER.shiftRight(1)
+
   fun normalizeP256(der: ByteArray): ByteArray {
     val reader = DerReader(der)
-    return reader.readP256Signature()
+    val signature = reader.readP256Signature()
+    val r = signature.copyOfRange(0, 32)
+    val s = signature.copyOfRange(32, 64)
+    val rValue = BigInteger(1, r)
+    val sValue = BigInteger(1, s)
+    require(rValue.signum() > 0 && rValue < P256_ORDER) { "ECDSA signature r is outside the P-256 scalar field." }
+    require(sValue.signum() > 0 && sValue < P256_ORDER) { "ECDSA signature s is outside the P-256 scalar field." }
+    val canonicalS = if (sValue > P256_HALF_ORDER) P256_ORDER.subtract(sValue) else sValue
+    return r + canonicalS.toPaddedBytes(32)
+  }
+
+  private fun BigInteger.toPaddedBytes(size: Int): ByteArray {
+    var raw = toByteArray()
+    while (raw.size > 1 && raw[0].toInt() == 0) {
+      raw = raw.copyOfRange(1, raw.size)
+    }
+    require(raw.size <= size) { "P-256 scalar exceeds expected size." }
+    return ByteArray(size - raw.size) + raw
   }
 }
 
@@ -254,9 +367,12 @@ private class DerReader(private val data: ByteArray) {
 
   fun readP256Signature(): ByteArray {
     require(readByte() == 0x30) { "ECDSA signature is not DER encoded." }
-    readLength()
+    val sequenceLength = readLength()
+    val sequenceEnd = offset + sequenceLength
+    require(sequenceEnd == data.size) { "ECDSA signature DER sequence length is invalid." }
     val r = readInteger()
     val s = readInteger()
+    require(offset == sequenceEnd) { "ECDSA signature has trailing bytes." }
     return r.leftPad(32) + s.leftPad(32)
   }
 
@@ -308,6 +424,7 @@ private fun JSONObject.optionalBase64Url(section: String, key: String): ByteArra
 
 private fun String.hexToBytes(): ByteArray {
   val clean = removePrefix("0x")
+  require(startsWith("0x")) { "Hex value must use 0x prefix." }
   require(clean.length % 2 == 0) { "Hex value must have even length." }
   return ByteArray(clean.length / 2) { i ->
     clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()

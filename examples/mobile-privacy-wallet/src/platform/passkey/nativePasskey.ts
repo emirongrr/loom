@@ -12,12 +12,14 @@ interface LoomPasskeyNativeModule {
   isPlatformPasskeyAvailable(): Promise<boolean>;
   createPasskey(input: {
     rpId: string;
+    expectedOrigin: string;
     challenge: Hex;
     userName: string;
     displayName: string;
   }): Promise<PlatformPasskeyRegistration>;
   signWithPasskey(input: {
     rpId: string;
+    expectedOrigin: string;
     challenge: Hex;
     credentialIdHash: Hex;
   }): Promise<PlatformPasskeyAssertion>;
@@ -51,6 +53,22 @@ function validateRegistration(output: PlatformPasskeyRegistration): PlatformPass
   return output;
 }
 
+function assertRegistrationBinding(
+  input: { rpId: string; expectedOrigin: string },
+  output: PlatformPasskeyRegistration
+): PlatformPasskeyRegistration {
+  const registration = validateRegistration(output);
+  if (registration.rpId !== input.rpId || registration.origin !== input.expectedOrigin) {
+    throw new MobileWalletConfigurationError("Native passkey registration returned an unexpected WebAuthn binding.", {
+      expectedRpId: input.rpId,
+      returnedRpId: registration.rpId,
+      expectedOrigin: input.expectedOrigin,
+      returnedOrigin: registration.origin
+    });
+  }
+  return registration;
+}
+
 function validateAssertion(output: PlatformPasskeyAssertion): PlatformPasskeyAssertion {
   assertHex(output.authenticatorData, "authenticatorData");
   assertHex(output.clientDataJSON, "clientDataJSON");
@@ -73,7 +91,7 @@ export function createNativePasskeyAuthenticator(): PlatformPasskeyAuthenticator
       if (!available) {
         throw new MobileWalletConfigurationError("Platform passkeys are not available on this device.");
       }
-      return validateRegistration(await nativeModule.createPasskey(input));
+      return assertRegistrationBinding(input, await nativeModule.createPasskey(input));
     },
     async signWithPasskey(input) {
       const available = await nativeModule.isPlatformPasskeyAvailable();
@@ -84,4 +102,3 @@ export function createNativePasskeyAuthenticator(): PlatformPasskeyAuthenticator
     }
   };
 }
-

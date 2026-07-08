@@ -19,6 +19,20 @@ runtime path.
   persisting raw credential identifiers or attestation objects, then attach
   native build logs and store privacy declarations.
 
+## G-001A: Native Passkey Domain Policy Evidence
+
+- **Missing API or behavior:** The native module now requires build-time RP ID
+  and origin policy, but release evidence must prove the shipped iOS
+  `Info.plist`, Android merged manifest, associated domains, and Android app
+  signing origin match the wallet configuration.
+- **Affected flow:** Create account and sign UserOperation.
+- **Security/privacy impact:** If native and JS domain policies diverge,
+  passkey registration or signing fails closed. If release evidence is missing,
+  the app cannot claim production passkey readiness.
+- **Proposed fix PR:** Add iOS/Android release-build evidence that records the
+  pinned RP ID, allowed origins, associated-domain validation, Android signing
+  certificate hash, and negative tests for mismatched RP/origin.
+
 ## G-002: Account Deployment Requires Production Configuration
 
 - **Missing API or behavior:** A mobile app needs deployed factory, EntryPoint,

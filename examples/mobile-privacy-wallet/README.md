@@ -37,6 +37,29 @@ required and only returns P-256 public coordinates plus a credential id hash. If
 the native module is unavailable or a platform capability is missing, the
 wallet flow fails closed and reports a configuration error.
 
+The native module is not allowed to accept arbitrary WebAuthn relying-party
+settings from the JavaScript layer. Each production app build must pin its
+passkey domain policy in native configuration:
+
+- iOS `Info.plist`:
+  - `LoomPasskeyRpId`
+  - `LoomPasskeyAllowedOrigins`
+- Android application metadata:
+  - `org.loom.passkey.RP_ID`
+  - `org.loom.passkey.ALLOWED_ORIGINS`
+
+The JavaScript configuration must match the native policy, but it cannot expand
+it at runtime. Registration and assertion responses are rejected unless
+`clientDataJSON.type`, `clientDataJSON.challenge`, `clientDataJSON.origin`,
+`authenticatorData.rpIdHash`, user presence, and user verification match the
+native policy and the caller-provided challenge.
+
+Loom intentionally uses `attestation: "none"` for passkey registration. The
+wallet does not rely on vendor attestation or device identity. Account security
+is based on WebAuthn user verification, account-level validation, timelocked
+recovery, policy limits, and release evidence rather than device-vendor
+fingerprinting.
+
 ## Security Model
 
 Biometric data is not a wallet key. Face ID, Touch ID, Android biometrics, and
@@ -115,6 +138,9 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
   graph, raw RPC payloads, or private transaction metadata.
 - Passkey registration and assertion verified on physical iOS and Android
   devices.
+- Native passkey RP ID and allowed origins pinned in iOS/Android build metadata.
+- Passkey registration challenge generated as fresh 32-byte non-zero entropy;
+  no zero or static bootstrap challenge.
 - P-256 verifier mode recorded from the deployment manifest:
   `native-precompile` when the chain has reviewed protocol-level support, or
   `fallback-contract` only when the fallback contract code hash matches the
