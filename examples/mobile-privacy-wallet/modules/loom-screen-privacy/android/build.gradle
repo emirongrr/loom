@@ -1,0 +1,20 @@
+plugins {
+  id "com.android.library"
+  id "org.jetbrains.kotlin.android"
+}
+
+group = "org.loom.mobileprivacywallet.screenprivacy"
+version = "0.1.0"
+
+android {
+  namespace "org.loom.mobileprivacywallet.screenprivacy"
+  compileSdk 35
+
+  defaultConfig {
+    minSdk 26
+  }
+}
+
+dependencies {
+  implementation project(":expo-modules-core")
+}

@@ -14,13 +14,27 @@
       "bundleIdentifier": "org.loom.mobileprivacywallet",
       "associatedDomains": [
         "webcredentials:wallet.example"
-      ]
+      ],
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": [],
+        "NSPrivacyCollectedDataTypes": [],
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      }
     },
     "android": {
       "package": "org.loom.mobileprivacywallet"
     },
     "extra": {
       "releaseChannel": "development"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }

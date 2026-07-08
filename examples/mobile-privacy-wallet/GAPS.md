@@ -142,3 +142,22 @@ runtime path.
 - **Proposed fix PR:** Add optional proxy configuration for all transports,
   document a vetted transport-privacy setup, and publish evidence that the
   wallet makes no network requests outside the configured endpoints.
+
+## G-009: Privacy Hygiene Needs Device Evidence
+
+- **Missing API or behavior:** The hygiene layer is implemented — Android
+  FLAG_SECURE and the iOS app-switcher blur (`modules/loom-screen-privacy`),
+  allowlisted encrypted local storage (`src/platform/secureStore.ts`), and
+  clipboard clearing (`src/platform/clipboardHygiene.ts`) — but store release
+  needs physical-device proof: a screenshot/recents-thumbnail block check on
+  Android, an app-switcher snapshot check on iOS, keystore/Keychain
+  persistence checks after reboot and restore, and clipboard clearing timing
+  on both platforms.
+- **Affected flow:** Every screen showing balances, addresses, recovery
+  state; credential id hash and guardian backup persistence; address copy.
+- **Security/privacy impact:** Without device evidence the app cannot claim
+  screenshot protection or encrypted-at-rest storage as release properties.
+  Note the platform asymmetry: iOS cannot block screenshots at all — only the
+  app-switcher snapshot is covered — and the docs must never overclaim this.
+- **Proposed fix PR:** Attach device evidence for both platforms and wire the
+  store privacy declarations (`docs/DATA_SAFETY.md`) into release review.

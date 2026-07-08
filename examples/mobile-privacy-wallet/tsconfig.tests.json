@@ -8,5 +8,5 @@
     "sourceMap": false,
     "declaration": false
   },
-  "include": ["test/flows.test.ts"]
+  "include": ["test/flows.test.ts", "test/hygiene.test.ts"]
 }
