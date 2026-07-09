@@ -41,12 +41,13 @@ Rules:
 - `SEPOLIA_DEPLOYER_PRIVATE_KEY` must fund only the rehearsal deployment.
 - `SEPOLIA_ENTRYPOINT` must be the official ERC-4337 v0.9 EntryPoint for
   Sepolia and must have non-empty code.
-- Native P-256 precompile mode is preferred when the target chain has reviewed
-  protocol-level support. The native precompile is not a deployer-controlled
-  contract.
-- `SEPOLIA_P256_FALLBACK_VERIFIER` is optional. It is only required if native
-  P-256 precompile support is unavailable and the script is not deploying a
-  fallback verifier.
+- Native P-256 precompile mode is the default for Sepolia and mainnet: the
+  EIP-7951 precompile at 0x100 is recorded with probe evidence in
+  `script/P256VerifierConfig.sol`, and the bootstrap pipeline re-probes the
+  live chain (fresh signed vector via `eth_call`) before deploying. The native
+  precompile is not a deployer-controlled contract.
+- `SEPOLIA_P256_FALLBACK_VERIFIER` is only for chains without a working
+  precompile.
 - Fallback verifier mode uses a normal smart contract. It must be a known,
   audited verifier and `SEPOLIA_P256_FALLBACK_CODEHASH` must match its deployed
   bytecode hash. Arbitrary fallback verifier addresses are unsafe.
