@@ -1,12 +1,21 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "lib": ["ES2022"],
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "noEmit": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
     "outDir": "dist-tests",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
     "sourceMap": false,
-    "declaration": false
+    "declaration": false,
+    "strict": true,
+    "target": "ES2022"
   },
   "include": ["test/flows.test.ts", "test/hygiene.test.ts"]
 }
