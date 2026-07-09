@@ -136,6 +136,14 @@ Deployment lifecycle:
 | `npm run start` | Run the app; preflight requires a connected deployment. |
 | `npm run deployment:remove` | Disconnect the app (archive manifest, clear env fields). Contracts are immutable and stay on chain; reconnect any time with `bootstrap` or `deploy:connect`. |
 
+This example uses the repository deployment tooling instead of carrying a
+parallel app-only deployment stack. Core tools build and validate manifests,
+summarize Foundry broadcasts, and keep transaction evidence reproducible; the
+example stores only app-specific Sepolia rehearsal evidence in
+[`docs/sepolia-deployment-evidence.md`](docs/sepolia-deployment-evidence.md).
+The live `deployment/sepolia.manifest.json` stays local-only and the committed
+file remains a placeholder.
+
 ## Development
 
 From this directory:
@@ -167,6 +175,7 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — per-threat risk, mitigation, gap, recommendation.
 - [`docs/RECOVERY_MODEL.md`](docs/RECOVERY_MODEL.md) — progressive vs organization recovery.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — manifest verification of contract addresses.
+- [`docs/sepolia-deployment-evidence.md`](docs/sepolia-deployment-evidence.md) — app-specific Sepolia rehearsal evidence produced from repository deployment tooling.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — evidence required before shipping.
 - [`GAPS.md`](GAPS.md) — every blocked production path.
 
