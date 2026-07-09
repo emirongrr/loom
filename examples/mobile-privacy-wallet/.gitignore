@@ -5,3 +5,4 @@
 /dist-tests/
 modules/*/android/build/
 .env.local
+.env.sepolia.local

@@ -1,7 +1,7 @@
 // Runs a self-hosted ERC-4337 bundler (Pimlico's open-source Alto) against
 // Sepolia, using the same env file as the deployment:
 //
-//   node scripts/run-local-bundler.mjs            # reads ../../.env.sepolia.local
+//   node scripts/run-local-bundler.mjs            # reads ./.env.sepolia.local
 //
 // The bundler listens on http://localhost:4337 — enter that URL in the app's
 // Settings screen (or EXPO_PUBLIC_LOOM_BUNDLER_URL). The executor key must
@@ -19,7 +19,7 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
-const envPath = process.argv[2] ?? path.join(repoRoot, ".env.sepolia.local");
+const envPath = process.argv[2] ?? path.resolve(import.meta.dirname, "..", ".env.sepolia.local");
 
 if (!fs.existsSync(envPath)) {
   console.error(`Missing ${envPath}. Fill the Sepolia env file first.`);

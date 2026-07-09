@@ -70,7 +70,7 @@ if (emptyDeployment.length > 0 || !manifestConnected) {
     console.error("deployment/sepolia.manifest.json is still the placeholder (no verified deployment).\n");
   }
   console.error("First deployment (fills everything above automatically):\n");
-  console.error("  1. Fill SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY in <repo>/.env.sepolia.local");
+  console.error("  1. Fill SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY in .env.sepolia.local (this directory)");
   console.error("  2. npm run bootstrap\n");
   console.error("UI-only start without a deployment: LOOM_ALLOW_UNCONFIGURED=1 npm run start\n");
   process.exit(1);

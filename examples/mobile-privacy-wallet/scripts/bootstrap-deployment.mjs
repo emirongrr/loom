@@ -21,7 +21,7 @@ import { probeP256Precompile, P256_PRECOMPILE } from "./p256-probe.mjs";
 
 const exampleRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(exampleRoot, "..", "..");
-const envPath = path.join(repoRoot, ".env.sepolia.local");
+const envPath = path.join(exampleRoot, ".env.sepolia.local");
 
 function fail(message) {
   console.error(`\nFAIL ${message}`);

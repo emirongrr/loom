@@ -117,7 +117,7 @@ is chosen explicitly. The UI and SDK must label that mode as unverified.
 First deployment (one command once the Sepolia env file is filled):
 
 ```sh
-# 1. Fill SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY in <repo>/.env.sepolia.local
+# 1. Fill SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY in .env.sepolia.local
 npm run bootstrap        # deploy -> connect -> verify env == manifest == chain
 npm run bundler:local    # self-hosted ERC-4337 bundler on localhost:4337 (optional)
 npm run start
