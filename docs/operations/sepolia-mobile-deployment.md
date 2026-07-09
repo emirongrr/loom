@@ -93,6 +93,13 @@ For native precompile mode, `p256VerifierCodehash` is zero because a precompile
 is a protocol-level primitive rather than normal account bytecode. For fallback
 contract mode, the code hash must match the reviewed expected hash.
 
+Core deployment tooling should remain reusable across apps. Use
+`npm run deployment:sepolia:summary` to turn the Foundry broadcast into a
+reviewable contract, address, transaction, and gas table. App-specific
+rehearsal evidence belongs with the app that consumes it; the mobile wallet
+example keeps its reviewed Sepolia evidence in
+`examples/mobile-privacy-wallet/docs/sepolia-deployment-evidence.md`.
+
 ## After Deploy
 
 1. Record every deployed address, transaction hash, block number, constructor
