@@ -27,10 +27,14 @@ library P256VerifierConfig {
     address internal constant RIP7212_P256_PRECOMPILE = address(0x100);
 
     function p256PrecompileForChain(uint256 chainId) internal pure returns (address precompile, bool supported) {
-        // Ethereum mainnet and Sepolia intentionally remain unsupported here
-        // until this repository records reviewed evidence that their active fork
-        // exposes the canonical P-256 precompile at RIP7212_P256_PRECOMPILE.
-        if (chainId == 1 || chainId == 11155111) return (address(0), false);
+        // Ethereum mainnet and Sepolia expose the EIP-7951 secp256r1 precompile
+        // at address 0x100 (shipped with the Fusaka fork). Recorded evidence:
+        // eth_call probes against both networks on 2026-07-09 returned
+        // 32-byte 0x…01 for a freshly generated valid P-256 signature and empty
+        // output for a corrupted signature, matching the EIP-7951 interface
+        // (input = hash||r||s||qx||qy, 160 bytes). Deployment scripts still
+        // re-probe at deploy time before relying on native mode.
+        if (chainId == 1 || chainId == 11155111) return (RIP7212_P256_PRECOMPILE, true);
 
         return (address(0), false);
     }

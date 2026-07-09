@@ -124,9 +124,27 @@ contract P256VerifierConfigTest {
         }
     }
 
-    function testSepoliaNativePrecompileIsNotClaimedWithoutEvidence() public view {
-        try harness.select(11155111, address(0), bytes32(0)) {
-            revert("Sepolia native precompile support was guessed");
+    function testSepoliaSelectsRecordedNativePrecompile() public view {
+        // EIP-7951 precompile support for Sepolia is recorded with probe
+        // evidence in P256VerifierConfig; selection must be native with no
+        // fallback requirement.
+        P256VerifierSelection memory selection = harness.select(11155111, address(0), bytes32(0));
+
+        require(selection.verifier == address(0x100), "wrong native verifier");
+        require(selection.mode == P256VerifierMode.NativePrecompile, "wrong verifier mode");
+        require(selection.nativePrecompileSupported, "native support not recorded");
+    }
+
+    function testMainnetSelectsRecordedNativePrecompile() public view {
+        P256VerifierSelection memory selection = harness.select(1, address(0), bytes32(0));
+
+        require(selection.verifier == address(0x100), "wrong native verifier");
+        require(selection.mode == P256VerifierMode.NativePrecompile, "wrong verifier mode");
+    }
+
+    function testUnknownChainStillRequiresFallbackEvidence() public view {
+        try harness.select(424242, address(0), bytes32(0)) {
+            revert("unknown chain native precompile support was guessed");
         } catch (bytes memory reason) {
             require(
                 keccak256(reason)

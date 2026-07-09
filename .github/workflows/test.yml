@@ -55,6 +55,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Install privacy SDK dependencies
+        run: npm --prefix packages/privacy ci
       - name: Test account SDK
         run: npm run account:test
       - name: Test guardian SDK

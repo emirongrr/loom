@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import jsSha256 from "js-sha256";
+
+const { sha256 } = jsSha256;
 
 const DISCLOSING_SURFACES = new Set(["rpc", "indexer", "relayer", "prover", "bridge", "timing"]);
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
@@ -997,7 +999,7 @@ function assertNonEmptyStringReturn(value, label) {
 }
 
 function hashEvidence(value) {
-  return `0x${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
+  return `0x${sha256(stableStringify(value))}`;
 }
 
 function stableStringify(value) {

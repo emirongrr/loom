@@ -1,0 +1,202 @@
+// Connects a DeploySepolia broadcast to this example, then verifies the wiring.
+//
+//   node scripts/connect-deployment.mjs \
+//     [--broadcast ../../broadcast/DeploySepolia.s.sol/11155111/run-latest.json] \
+//     [--rpc $SEPOLIA_RPC_URL] [--entrypoint $SEPOLIA_ENTRYPOINT] \
+//     [--p256-verifier $SEPOLIA_P256_FALLBACK_VERIFIER]
+//
+// Steps:
+//   1. Read the forge broadcast and extract every deployed contract address.
+//   2. Fetch each contract's code from the chain and compute its keccak-256
+//      codehash — the manifest never trusts the broadcast alone.
+//   3. Write deployment/sepolia.manifest.json and the EXPO_PUBLIC_LOOM_*
+//      values in .env.local.
+//   4. Verify: re-read what was written and check env == manifest == chain.
+//      Any mismatch exits non-zero; partially-written config is reported, not
+//      hidden.
+
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import jsSha3 from "js-sha3";
+import { probeP256Precompile } from "./p256-probe.mjs";
+const { keccak256 } = jsSha3;
+
+const exampleRoot = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(exampleRoot, "..", "..");
+
+function arg(name, fallback) {
+  const index = process.argv.indexOf(`--${name}`);
+  if (index !== -1 && process.argv[index + 1]) {
+    return process.argv[index + 1];
+  }
+  return fallback;
+}
+
+const broadcastPath = path.resolve(
+  exampleRoot,
+  arg("broadcast", path.join(repoRoot, "broadcast", "DeploySepolia.s.sol", "11155111", "run-latest.json"))
+);
+const rpcUrl = arg("rpc", process.env.SEPOLIA_RPC_URL);
+const entryPoint = arg("entrypoint", process.env.SEPOLIA_ENTRYPOINT);
+// Native precompile is the default; fallback-contract only when a chain has
+// no working EIP-7951 precompile.
+const p256Mode = arg("p256-mode", "native-precompile");
+const p256Verifier = arg(
+  "p256-verifier",
+  p256Mode === "native-precompile"
+    ? "0x0000000000000000000000000000000000000100"
+    : process.env.SEPOLIA_P256_FALLBACK_VERIFIER
+);
+
+if (!rpcUrl) fail("Missing --rpc (or SEPOLIA_RPC_URL).");
+if (!entryPoint) fail("Missing --entrypoint (or SEPOLIA_ENTRYPOINT).");
+if (p256Mode !== "native-precompile" && p256Mode !== "fallback-contract") fail("--p256-mode must be native-precompile or fallback-contract.");
+if (!p256Verifier) fail("Missing --p256-verifier (or SEPOLIA_P256_FALLBACK_VERIFIER) for fallback-contract mode.");
+
+function fail(message) {
+  console.error(`FAIL ${message}`);
+  process.exit(1);
+}
+
+async function rpc(method, params) {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  const body = await response.json();
+  if (body.error) throw new Error(`${method}: ${body.error.message}`);
+  return body.result;
+}
+
+async function codehash(address, label) {
+  const code = await rpc("eth_getCode", [address, "latest"]);
+  if (!code || code === "0x") fail(`${label} at ${address} has no code on chain.`);
+  return `0x${keccak256(Buffer.from(code.slice(2), "hex"))}`;
+}
+
+// --- 1. Broadcast extraction -------------------------------------------------
+
+if (!fs.existsSync(broadcastPath)) {
+  fail(`Broadcast not found: ${broadcastPath}. Run forge script script/DeploySepolia.s.sol --broadcast first.`);
+}
+const broadcast = JSON.parse(fs.readFileSync(broadcastPath, "utf8"));
+const created = new Map();
+for (const tx of broadcast.transactions ?? []) {
+  if (tx.transactionType === "CREATE" && tx.contractName && tx.contractAddress) {
+    created.set(tx.contractName, tx.contractAddress);
+  }
+}
+const require_ = name => {
+  const address = created.get(name);
+  if (!address) fail(`Broadcast has no CREATE for ${name}.`);
+  return address;
+};
+
+const chainId = Number(broadcast.chain ?? 11155111);
+const accountFactory = require_("LoomAccountFactory");
+const passkeyValidator = require_("P256Validator");
+const accountImplementation = require_("LoomAccount");
+
+// --- 2. On-chain codehashes --------------------------------------------------
+
+console.log("Fetching on-chain code for every address…");
+const codehashes = {
+  accountFactory: await codehash(accountFactory, "LoomAccountFactory"),
+  passkeyValidator: await codehash(passkeyValidator, "P256Validator"),
+  accountImplementation: await codehash(accountImplementation, "LoomAccount")
+};
+if (p256Mode === "fallback-contract") {
+  // Precompiles have no bytecode; only contract-mode verifiers get a codehash.
+  codehashes.p256Verifier = await codehash(p256Verifier, "P-256 fallback verifier");
+}
+await codehash(entryPoint, "EntryPoint");
+
+// --- 3. Write manifest + .env.local -----------------------------------------
+
+const manifest = {
+  chainId,
+  entryPoint,
+  accountFactory,
+  passkeyValidator,
+  p256Verifier,
+  p256VerifierMode: p256Mode,
+  codehashes,
+  deploymentBlock: null,
+  notes: `Generated by scripts/connect-deployment.mjs from ${path.relative(repoRoot, broadcastPath)}`
+};
+const manifestPath = path.join(exampleRoot, "deployment", "sepolia.manifest.json");
+fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+console.log(`Wrote ${path.relative(exampleRoot, manifestPath)}`);
+
+const envPath = path.join(exampleRoot, ".env.local");
+const envUpdates = {
+  EXPO_PUBLIC_LOOM_CHAIN_ID: String(chainId),
+  EXPO_PUBLIC_LOOM_L1_CHAIN_ID: String(chainId),
+  EXPO_PUBLIC_LOOM_ENTRYPOINT: entryPoint,
+  EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY: accountFactory,
+  EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR: passkeyValidator,
+  EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE: p256Mode,
+  EXPO_PUBLIC_LOOM_P256_VERIFIER: p256Verifier,
+  EXPO_PUBLIC_LOOM_DEPLOYMENT_MANIFEST: "deployment/sepolia.manifest.json"
+};
+let env = fs.readFileSync(envPath, "utf8");
+for (const [key, value] of Object.entries(envUpdates)) {
+  const line = `${key}=${value}`;
+  env = new RegExp(`^${key}=`, "m").test(env)
+    ? env.replace(new RegExp(`^${key}=.*$`, "m"), line)
+    : `${env.trimEnd()}\n${line}\n`;
+}
+fs.writeFileSync(envPath, env);
+console.log("Updated .env.local");
+
+// --- 4. Verify written == deployed -------------------------------------------
+
+console.log("\nVerifying written values against the chain…");
+const writtenEnv = Object.fromEntries(
+  fs
+    .readFileSync(envPath, "utf8")
+    .split(/\r?\n/)
+    .filter(line => line.includes("=") && !line.startsWith("#"))
+    .map(line => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)])
+);
+const writtenManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+let failures = 0;
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "  ok " : " FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
+  if (!ok) failures += 1;
+};
+const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+
+check("env chainId == manifest chainId", same(writtenEnv.EXPO_PUBLIC_LOOM_CHAIN_ID, writtenManifest.chainId));
+check("env entryPoint == manifest", same(writtenEnv.EXPO_PUBLIC_LOOM_ENTRYPOINT, writtenManifest.entryPoint));
+check("env factory == manifest", same(writtenEnv.EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY, writtenManifest.accountFactory));
+check(
+  "env passkeyValidator == manifest",
+  same(writtenEnv.EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR, writtenManifest.passkeyValidator)
+);
+check("env p256Verifier == manifest", same(writtenEnv.EXPO_PUBLIC_LOOM_P256_VERIFIER, writtenManifest.p256Verifier));
+check("env p256 mode == manifest", same(writtenEnv.EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE, writtenManifest.p256VerifierMode));
+
+for (const [name, expected] of Object.entries(writtenManifest.codehashes)) {
+  const address = {
+    accountFactory: writtenManifest.accountFactory,
+    passkeyValidator: writtenManifest.passkeyValidator,
+    accountImplementation,
+    p256Verifier: writtenManifest.p256Verifier
+  }[name];
+  const fresh = await codehash(address, name);
+  check(`chain codehash(${name}) == manifest`, same(fresh, expected), address);
+}
+
+if (writtenManifest.p256VerifierMode === "native-precompile") {
+  const probe = await probeP256Precompile(rpcUrl);
+  check("native P-256 precompile verifies a live test vector", probe.supported, writtenManifest.p256Verifier);
+}
+
+if (failures > 0) {
+  fail(`${failures} verification check(s) failed. Do NOT use this configuration.`);
+}
+console.log("\nAll checks passed. Restart the dev server to load the new configuration.");

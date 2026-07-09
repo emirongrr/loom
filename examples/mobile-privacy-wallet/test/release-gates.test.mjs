@@ -60,13 +60,13 @@ test("verified state reads are Helios-first and fail closed without evidence", (
 
 test("P-256 verifier mode is explicit and not fallback-first", () => {
   const environment = read("src/config/environment.ts");
-  const app = read("src/app/App.tsx");
+  const statusScreen = read("src/screens/StatusScreen.tsx");
 
   assert.match(environment, /native-precompile/);
   assert.match(environment, /fallback-contract/);
   assert.match(environment, /EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE/);
-  assert.match(app, /protocol-level native precompile/);
-  assert.match(app, /audited verifier codehash/);
+  assert.match(statusScreen, /protocol-level native precompile/);
+  assert.match(statusScreen, /audited verifier codehash/);
   assert.doesNotMatch(environment, /P256_FALLBACK/i);
 });
 
@@ -240,4 +240,79 @@ test("registration challenges come from the platform CSPRNG, never a constant", 
   assert.match(challenge, /must not be all zeroes/i);
   assert.match(source, /getRandomBytesAsync/);
   assert.doesNotMatch(screen, /0x[0-9a-fA-F]{64}/, "no hardcoded challenge in the screen");
+});
+
+test("runtime endpoint overrides are transport-only and validated", () => {
+  const overrides = read("src/config/runtimeOverrides.ts");
+  const settings = read("src/screens/SettingsScreen.tsx");
+
+  assert.match(overrides, /bundlerUrl/);
+  assert.match(overrides, /rpcUrl/);
+  assert.match(overrides, /must be https or localhost/);
+  assert.doesNotMatch(overrides, /accountFactory|passkeyValidator|entryPoint|chainId|rpId|origin:/,
+    "runtime overrides must never touch chain identity, addresses, or passkey binding");
+  assert.doesNotMatch(settings, /accountFactory|passkeyValidator|CHAIN_ID|RP_ID/,
+    "the settings screen must not edit build-time identity values");
+});
+
+test("the home screen surfaces a missing Loom deployment as a first-class state", () => {
+  const home = read("src/screens/HomeScreen.tsx");
+
+  assert.match(home, /Not connected to a Loom deployment/);
+  assert.match(home, /DeploySepolia\.s\.sol/);
+  assert.match(home, /deploymentConnected/);
+  assert.doesNotMatch(home, /\d+\.\d+ ETH(?!"?\s*:)/, "no hardcoded fake balance outside the verified branch");
+});
+
+test("connect-deployment pipeline verifies written values against the chain", () => {
+  const script = read("scripts/connect-deployment.mjs");
+  const connected = read("src/loom/deployment/connectedManifest.ts");
+  const app = read("src/app/App.tsx");
+
+  assert.match(script, /eth_getCode/, "the script must fetch code from the chain, not trust the broadcast");
+  assert.match(script, /keccak256/, "codehashes must be computed, not copied");
+  assert.match(script, /Verifying written values against the chain/);
+  assert.match(script, /process\.exit\(1\)/, "verification failures must be fatal");
+  assert.match(connected, /verifyDeploymentAgainstManifest/);
+  assert.match(connected, /deployment\.manifest\.not-generated/);
+  assert.match(app, /deploymentManifestGates/);
+  assert.match(app, /manifestGates\.length === 0/, "connected state must require a matching manifest");
+});
+
+test("bootstrap and preflight guard the start path", () => {
+  const bootstrap = read("scripts/bootstrap-deployment.mjs");
+  const preflight = read("scripts/preflight.mjs");
+  const packageJson = JSON.parse(read("package.json"));
+
+  assert.match(bootstrap, /required fields are empty/i, "bootstrap must list empty fields");
+  assert.match(bootstrap, /connect-deployment\.mjs/, "bootstrap must run the connect+verify step");
+  assert.match(bootstrap, /deployment failed — nothing was connected/i, "a failed deploy must not connect anything");
+  assert.match(preflight, /NOT connected to a Loom deployment/);
+  assert.match(preflight, /npm run bootstrap/, "preflight must point at the bootstrap command");
+  assert.match(preflight, /LOOM_ALLOW_UNCONFIGURED/, "UI-only escape hatch must be explicit");
+  assert.equal(packageJson.scripts.prestart, "node scripts/preflight.mjs");
+  assert.equal(packageJson.scripts.preandroid, "node scripts/preflight.mjs");
+  assert.equal(packageJson.scripts.bootstrap, "node scripts/bootstrap-deployment.mjs");
+});
+
+test("deployment lifecycle commands exist and stay honest", () => {
+  const disconnect = read("scripts/disconnect-deployment.mjs");
+  const packageJson = JSON.parse(read("package.json"));
+
+  assert.equal(packageJson.scripts["deployment:remove"], "node scripts/disconnect-deployment.mjs");
+  assert.match(disconnect, /immutable and (stay|remain)/i, "must not claim on-chain contracts are deleted");
+  assert.match(disconnect, /archive/i, "must archive the manifest so the deployment can be reconnected");
+  assert.match(disconnect, /not-deployed/, "must reset the manifest to the placeholder");
+  assert.match(disconnect, /EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY/, "must clear the deployment env fields");
+});
+
+test("local bundler runner discloses executor-key process exposure", () => {
+  const bundler = read("scripts/run-local-bundler.mjs");
+  const readme = read("README.md");
+
+  assert.match(bundler, /argv exposure/i, "runner must warn that Alto receives the rehearsal key in argv");
+  assert.match(bundler, /low-balance Sepolia rehearsal key/i, "runner must require a constrained rehearsal key");
+  assert.match(bundler, /never reuse a production deployer or user key/i);
+  assert.match(readme, /process-inspection tools may see it/i, "README must document local argv exposure");
+  assert.match(readme, /low-balance Sepolia rehearsal key/i);
 });

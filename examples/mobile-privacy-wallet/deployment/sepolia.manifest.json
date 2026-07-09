@@ -1,0 +1,4 @@
+{
+  "status": "not-deployed",
+  "notes": "Placeholder. Run the Sepolia deployment (script/DeploySepolia.s.sol) and then `npm run deploy:connect` to generate the real manifest; the app refuses to treat itself as connected until this file carries verified addresses."
+}

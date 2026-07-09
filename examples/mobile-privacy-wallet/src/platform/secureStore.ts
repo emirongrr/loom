@@ -16,7 +16,12 @@ export const SECURE_STORE_ALLOWED_KEYS = Object.freeze([
   // Raw credential ids must never be stored.
   "loom.credentialIdHash",
   // Encrypted guardian ceremony backup blob produced by @loom/guardian.
-  "loom.guardianBackup.encrypted"
+  "loom.guardianBackup.encrypted",
+  // User-supplied infrastructure endpoints entered from the settings screen.
+  // Endpoints are replaceable transports, not secrets, but they still live in
+  // the encrypted store so nothing in this app uses plaintext persistence.
+  "loom.endpoints.bundler",
+  "loom.endpoints.rpc"
 ] as const);
 
 export type SecureStoreKey = (typeof SECURE_STORE_ALLOWED_KEYS)[number];

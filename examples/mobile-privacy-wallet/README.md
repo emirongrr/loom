@@ -112,6 +112,30 @@ state.
 Plain RPC state reads are available only when `EXPO_PUBLIC_LOOM_STATE_MODE=rpc`
 is chosen explicitly. The UI and SDK must label that mode as unverified.
 
+## Quickstart
+
+First deployment (one command once the Sepolia env file is filled):
+
+```sh
+# 1. Fill SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY in .env.sepolia.local
+npm run bootstrap        # deploy -> connect -> verify env == manifest == chain
+npm run bundler:local    # self-hosted ERC-4337 bundler on localhost:4337 (optional)
+npm run start
+```
+
+`npm run start` (and `run android` / `run ios`) runs a preflight first: if the
+app is not connected to a verified Loom deployment it lists exactly which
+fields are empty and how to fill them, then refuses to start. UI-only work
+without a deployment: `LOOM_ALLOW_UNCONFIGURED=1 npm run start`.
+
+Deployment lifecycle:
+
+| Command | Effect |
+| --- | --- |
+| `npm run bootstrap` | Deploy to Sepolia, connect the app, verify env == manifest == chain. |
+| `npm run start` | Run the app; preflight requires a connected deployment. |
+| `npm run deployment:remove` | Disconnect the app (archive manifest, clear env fields). Contracts are immutable and stay on chain; reconnect any time with `bootstrap` or `deploy:connect`. |
+
 ## Development
 
 From this directory:
@@ -160,6 +184,25 @@ simulated results anywhere:
 - **Private send** — calls `preparePrivateSend` and renders its gates. Once a
   privacy profile passes, the same screen shows the metadata budget the user
   must see before an operation is built.
+
+## Bundler
+
+The app never ships a default bundler; any ERC-4337 bundler is a replaceable
+transport. Two standard options:
+
+- **Self-hosted** — run Pimlico's open-source Alto against Sepolia with the
+  same env file as the deployment: `npm run bundler:local` (listens on
+  `http://localhost:4337`; the executor key fronts gas and is refunded by the
+  EntryPoint). This is the sovereignty path. Alto receives the executor key
+  through CLI flags, so local process-inspection tools may see it while the
+  bundler is running; use only a low-balance Sepolia rehearsal key, never a
+  production deployer or user key.
+- **Hosted** — Pimlico, Alchemy, Biconomy, etc. This is the managed path most
+  production wallets use, typically with two independent providers and
+  failover (G-003 tracks the qualification evidence).
+
+Either URL goes into `EXPO_PUBLIC_LOOM_BUNDLER_URL` or the in-app Settings
+screen at runtime.
 
 ## Network Metadata
 
