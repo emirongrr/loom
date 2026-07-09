@@ -305,3 +305,14 @@ test("deployment lifecycle commands exist and stay honest", () => {
   assert.match(disconnect, /not-deployed/, "must reset the manifest to the placeholder");
   assert.match(disconnect, /EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY/, "must clear the deployment env fields");
 });
+
+test("local bundler runner discloses executor-key process exposure", () => {
+  const bundler = read("scripts/run-local-bundler.mjs");
+  const readme = read("README.md");
+
+  assert.match(bundler, /argv exposure/i, "runner must warn that Alto receives the rehearsal key in argv");
+  assert.match(bundler, /low-balance Sepolia rehearsal key/i, "runner must require a constrained rehearsal key");
+  assert.match(bundler, /never reuse a production deployer or user key/i);
+  assert.match(readme, /process-inspection tools may see it/i, "README must document local argv exposure");
+  assert.match(readme, /low-balance Sepolia rehearsal key/i);
+});

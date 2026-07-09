@@ -8,6 +8,11 @@
 // hold Sepolia ETH: the bundler fronts the gas for every UserOperation and is
 // refunded by the EntryPoint.
 //
+// Key-handling note: Alto currently receives executor keys through CLI flags.
+// That means the rehearsal key can be visible to local process-inspection
+// tools while the bundler is running. Use a Sepolia-only hot key with minimal
+// funds, never a production deployer or user key.
+//
 // Self-hosting is the sovereignty path; hosted bundlers (Pimlico, Alchemy,
 // Biconomy…) are the managed path. The app treats both as replaceable
 // transports — production wallets should qualify at least two independent
@@ -50,9 +55,13 @@ for (const [name, value] of [
 const port = process.env.BUNDLER_PORT ?? "4337";
 console.log(`Starting Alto bundler on http://localhost:${port} (EntryPoint ${entryPoint})…`);
 console.log("Safe mode is disabled: public RPCs rarely expose debug_traceCall. Dev use only.\n");
+console.warn(
+  "Executor key argv exposure: use only a low-balance Sepolia rehearsal key; " +
+    "never reuse a production deployer or user key.\n"
+);
 
 // npx resolves @pimlico/alto on first run; the executor key never leaves this
-// process's argv on the local machine.
+// machine, but Alto's current CLI receives it in argv on that machine.
 const child = spawn(
   process.platform === "win32" ? "npx.cmd" : "npx",
   [
