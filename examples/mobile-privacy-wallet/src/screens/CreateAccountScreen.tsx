@@ -7,6 +7,7 @@ import { createExpoChallengeSource } from "../platform/expoChallengeSource";
 import { createNativePasskeyAuthenticator } from "../platform/passkey/nativePasskey";
 import type {
   AccountCreationReadiness,
+  Hex,
   MobileWalletConfiguration,
   ReleaseGate
 } from "../types/wallet";
@@ -29,7 +30,13 @@ function truncate(value: string): string {
 // platform authenticator, and the createAccountFlow gates rendered as-is. On
 // a device without the native module or with incomplete configuration this
 // screen shows the blocking gates instead of a simulated success.
-export function CreateAccountScreen({ config }: { readonly config: MobileWalletConfiguration }) {
+export function CreateAccountScreen({
+  config,
+  onRegistered
+}: {
+  readonly config: MobileWalletConfiguration;
+  readonly onRegistered?: (credentialIdHash: Hex) => void;
+}) {
   const [state, setState] = React.useState<ScreenState>({ phase: "idle" });
 
   const createAccount = React.useCallback(async () => {
@@ -47,6 +54,7 @@ export function CreateAccountScreen({ config }: { readonly config: MobileWalletC
         setState({ phase: "blocked", gates: result.gates });
       } else {
         setState({ phase: "ready", readiness: result.value, gates: result.gates ?? [] });
+        onRegistered?.(result.value.registration.credentialIdHash);
       }
     } catch (error) {
       setState({
@@ -61,7 +69,7 @@ export function CreateAccountScreen({ config }: { readonly config: MobileWalletC
         ]
       });
     }
-  }, [config]);
+  }, [config, onRegistered]);
 
   return (
     <View style={styles.screen}>

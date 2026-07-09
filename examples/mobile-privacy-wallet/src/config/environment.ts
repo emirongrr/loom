@@ -107,6 +107,9 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   };
 }
 
+/** Total number of critical checks performed by configurationReadiness. */
+export const CONFIGURATION_CHECK_COUNT = 9;
+
 /**
  * Returns a blocked gate for every critical configuration value that is missing
  * or left at its unset sentinel. The account and passkey flows must consult this

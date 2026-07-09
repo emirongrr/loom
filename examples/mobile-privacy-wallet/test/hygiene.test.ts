@@ -173,3 +173,33 @@ void test("challenge generation rejects wrong lengths and all-zero entropy", asy
   const zeroSource = createChallengeSource(async count => new Uint8Array(count));
   await assert.rejects(zeroSource.freshChallenge(), MobileWalletConfigurationError);
 });
+
+void test("endpoint overrides validate URLs and never weaken environment values", async () => {
+  const { applyEndpointOverrides, assertEndpointUrl, loadEndpointOverrides, saveEndpointOverride } =
+    await import("../src/config/runtimeOverrides");
+  const { createSecureLocalStore } = await import("../src/platform/secureStore");
+  const { backend, values } = memoryBackend();
+  const store = createSecureLocalStore({ backend });
+
+  assert.throws(() => assertEndpointUrl("not a url", "Bundler URL"), MobileWalletConfigurationError);
+  assert.throws(() => assertEndpointUrl("http://insecure.example", "Bundler URL"), MobileWalletConfigurationError);
+  assert.equal(assertEndpointUrl(" https://bundler.example ", "Bundler URL"), "https://bundler.example");
+  assert.equal(assertEndpointUrl("http://localhost:4337", "Bundler URL"), "http://localhost:4337");
+
+  await saveEndpointOverride(store, "bundler", "https://bundler.example");
+  assert.equal(values.get("loom.endpoints.bundler"), "https://bundler.example");
+
+  const overrides = await loadEndpointOverrides(store);
+  assert.equal(overrides.bundlerUrl, "https://bundler.example");
+  assert.equal(overrides.rpcUrl, undefined);
+
+  const config = {
+    network: { chainId: 1, l1ChainId: 1, rpcUrl: "https://env-rpc.example", bundlerUrl: undefined }
+  } as unknown as import("../src/types/wallet").MobileWalletConfiguration;
+  const merged = applyEndpointOverrides(config, overrides);
+  assert.equal(merged.network.bundlerUrl, "https://bundler.example");
+  assert.equal(merged.network.rpcUrl, "https://env-rpc.example", "an absent override must fall back to the environment");
+
+  await saveEndpointOverride(store, "bundler", "   ");
+  assert.equal(values.has("loom.endpoints.bundler"), false, "clearing removes the override entirely");
+});

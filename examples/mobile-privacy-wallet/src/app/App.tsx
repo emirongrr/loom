@@ -2,13 +2,27 @@ import React from "react";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { configurationReadiness, readEnvironmentConfiguration } from "../config/environment";
-import { CapabilityCard } from "../components/CapabilityCard";
+import {
+  applyEndpointOverrides,
+  loadEndpointOverrides,
+  saveEndpointOverride,
+  type EndpointOverrides
+} from "../config/runtimeOverrides";
+import { GateList } from "../components/GateList";
+import { deploymentManifestGates } from "../loom/deployment/connectedManifest";
+import { createNativeSecureStoreBackend } from "../platform/nativeSecureStoreBackend";
 import { createScreenPrivacyShield } from "../platform/screenPrivacy";
+import { createSecureLocalStore, type SecureLocalStore } from "../platform/secureStore";
 import { CreateAccountScreen } from "../screens/CreateAccountScreen";
+import { HomeScreen, type HomeNavigation } from "../screens/HomeScreen";
 import { PrivateSendScreen } from "../screens/PrivateSendScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
+import { StatusScreen } from "../screens/StatusScreen";
+import { colors } from "../theme/colors";
+import type { Hex } from "../types/wallet";
 import { stateReadinessGate } from "../verified/stateTransport";
 
-const config = readEnvironmentConfiguration();
+const baseConfig = readEnvironmentConfiguration();
 
 type ScreenPrivacyStatus = "enabled" | "unavailable" | "pending";
 
@@ -24,8 +38,8 @@ function useScreenPrivacy(): ScreenPrivacyStatus {
           setStatus("enabled");
         }
       } catch {
-        // Fail closed: the wallet keeps running, but the UI must show that
-        // screenshots and app-switcher snapshots are NOT protected.
+        // Fail closed: the wallet keeps running, but the status screen must
+        // show that screenshots and app-switcher snapshots are NOT protected.
         if (!cancelled) {
           setStatus("unavailable");
         }
@@ -39,166 +53,221 @@ function useScreenPrivacy(): ScreenPrivacyStatus {
   return status;
 }
 
-const SECTIONS = ["Status", "Create account", "Private send"] as const;
-type Section = (typeof SECTIONS)[number];
+function useSecureStore(): SecureLocalStore | undefined {
+  return React.useMemo(() => {
+    try {
+      return createSecureLocalStore({ backend: createNativeSecureStoreBackend() });
+    } catch {
+      // No encrypted storage in this build: nothing is persisted, ever.
+      return undefined;
+    }
+  }, []);
+}
+
+const TABS = ["Home", "Status", "Settings"] as const;
+type Tab = (typeof TABS)[number];
+type Overlay = "create-account" | "private-send" | "receive" | "send" | undefined;
 
 export default function App() {
-  const configGates = configurationReadiness(config);
   const screenPrivacy = useScreenPrivacy();
-  const [section, setSection] = React.useState<Section>("Status");
-  const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
-  const deploymentConfigured = Boolean(
-    config.deployment.accountFactory && config.deployment.passkeyValidator
-  );
+  const store = useSecureStore();
+  const [tab, setTab] = React.useState<Tab>("Home");
+  const [overlay, setOverlay] = React.useState<Overlay>(undefined);
+  const [overrides, setOverrides] = React.useState<EndpointOverrides>({});
+  const [credentialIdHash, setCredentialIdHash] = React.useState<Hex | undefined>();
+
+  React.useEffect(() => {
+    if (!store) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [loaded, storedCredential] = await Promise.all([
+          loadEndpointOverrides(store),
+          store.get("loom.credentialIdHash")
+        ]);
+        if (!cancelled) {
+          setOverrides(loaded);
+          if (storedCredential) {
+            setCredentialIdHash(storedCredential as Hex);
+          }
+        }
+      } catch {
+        // Reads fail closed to "nothing stored"; the UI simply shows the
+        // pre-account state instead of guessing.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [store]);
+
+  const config = applyEndpointOverrides(baseConfig, overrides);
+  const configGates = configurationReadiness(config);
   const stateGate = stateReadinessGate(config);
-  const p256Configured = config.deployment.p256VerifierMode !== "not-configured";
-  const p256Body =
-    config.deployment.p256VerifierMode === "native-precompile"
-      ? "P-256 verification uses the protocol-level native precompile for this chain."
-      : config.deployment.p256VerifierMode === "fallback-contract"
-        ? "P-256 verification uses a fallback contract; release evidence must match the audited verifier codehash."
-        : "P-256 verifier mode is not configured. Do not deploy passkey accounts until the verifier mode is reviewed.";
+  const stateReadsLabel =
+    stateGate.status === "passed" ? "verified" : config.verifiedState.mode === "rpc" && config.network.rpcUrl ? "unverified" : "unavailable";
+  const bundlerConfigured = Boolean(config.network.bundlerUrl && config.network.entryPoint);
+
+  // Connected means: addresses configured AND they match the manifest that
+  // scripts/connect-deployment.mjs verified against the chain.
+  const manifestGates = deploymentManifestGates(config);
+  const deploymentConnected =
+    config.network.chainId > 0 &&
+    Boolean(config.deployment.accountFactory && config.deployment.passkeyValidator && config.network.entryPoint) &&
+    manifestGates.length === 0;
+
+  const handleNavigate = React.useCallback((target: HomeNavigation) => {
+    if (target === "status") {
+      setTab("Status");
+      return;
+    }
+    if (target === "settings") {
+      setTab("Settings");
+      return;
+    }
+    setOverlay(target);
+  }, []);
+
+  const handleRegistered = React.useCallback(
+    (hash: Hex) => {
+      setCredentialIdHash(hash);
+      if (store) {
+        store.set("loom.credentialIdHash", hash).catch(() => {
+          // Persisting is best-effort; the in-memory session still works and
+          // nothing outside the allowlisted key is ever written.
+        });
+      }
+    },
+    [store]
+  );
+
+  const handleSaveEndpoint = React.useCallback(
+    async (endpoint: "bundler" | "rpc", value: string): Promise<string | undefined> => {
+      if (!store) {
+        return "Encrypted storage is unavailable.";
+      }
+      try {
+        await saveEndpointOverride(store, endpoint, value);
+        setOverrides(await loadEndpointOverrides(store));
+        return undefined;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    [store]
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>Loom example client</Text>
-          <Text style={styles.title}>Mobile Privacy Wallet</Text>
-          <Text style={styles.body}>
-            A passkey-first, self-custody mobile wallet boilerplate with explicit
-            infrastructure, progressive recovery, and gated privacy.
-          </Text>
-        </View>
-
-        <View style={styles.tabs}>
-          {SECTIONS.map(name => (
-            <Pressable
-              accessibilityRole="button"
-              key={name}
-              onPress={() => setSection(name)}
-              style={[styles.tab, section === name && styles.tabActive]}
-            >
-              <Text style={[styles.tabLabel, section === name && styles.tabLabelActive]}>{name}</Text>
+        {overlay ? (
+          <View style={styles.overlay}>
+            <Pressable accessibilityRole="button" onPress={() => setOverlay(undefined)} style={styles.back}>
+              <Text style={styles.backLabel}>‹ Back</Text>
             </Pressable>
-          ))}
-        </View>
-
-        {section === "Create account" && <CreateAccountScreen config={config} />}
-        {section === "Private send" && <PrivateSendScreen config={config} />}
-
-        {section === "Status" && (
+            {overlay === "create-account" && (
+              <CreateAccountScreen config={config} onRegistered={handleRegistered} />
+            )}
+            {overlay === "private-send" && <PrivateSendScreen config={config} />}
+            {overlay === "receive" && (
+              <View style={styles.stub}>
+                <Text style={styles.stubTitle}>Receive</Text>
+                <Text style={styles.stubBody}>
+                  The account address becomes available after on-chain deployment. Until then there is no
+                  address to receive to — this screen will show it, verified, once deployment completes.
+                </Text>
+              </View>
+            )}
+            {overlay === "send" && (
+              <View style={styles.stub}>
+                <Text style={styles.stubTitle}>Send</Text>
+                <GateList
+                  gates={[
+                    {
+                      id: "send.requires.deployment",
+                      title: "Sending is not available yet",
+                      status: "blocked",
+                      summary: bundlerConfigured
+                        ? "The account must be deployed on-chain before it can send. Complete account creation first."
+                        : "A bundler and EntryPoint are required before any transaction can be submitted. Configure a bundler in Settings."
+                    }
+                  ]}
+                />
+              </View>
+            )}
+          </View>
+        ) : (
           <>
-        <CapabilityCard
-          title="Configuration"
-          status={configGates.length === 0 ? "configured" : "not-configured"}
-          body={
-            configGates.length === 0
-              ? "Chain, relying-party id, origin, and deployment addresses are all explicitly set."
-              : `Incomplete: ${configGates.map(gate => gate.id).join(", ")}. No value is assumed; account creation is blocked until these are set.`
-          }
-        />
-        <CapabilityCard
-          title="Screen privacy"
-          status={screenPrivacy === "enabled" ? "configured" : screenPrivacy === "pending" ? "pending" : "requires-device"}
-          body={
-            screenPrivacy === "enabled"
-              ? "Android blocks screenshots and recents thumbnails (FLAG_SECURE); iOS covers the app-switcher snapshot. iOS cannot block screenshots."
-              : "The native screen privacy module is not active; screenshots and app-switcher snapshots are unprotected in this build."
-          }
-        />
-        <CapabilityCard
-          title="Passkey account"
-          status="requires-device"
-          body="Creates a platform passkey through the native module. No seed phrase and no hosted signer."
-        />
-        <CapabilityCard
-          title="Account deployment"
-          status={deploymentConfigured && bundlerConfigured ? "configured" : "not-configured"}
-          body="Requires explicit factory, validator, EntryPoint, and bundler configuration."
-        />
-        <CapabilityCard
-          title="P-256 verifier"
-          status={p256Configured ? "configured" : "not-configured"}
-          body={p256Body}
-        />
-        <CapabilityCard
-          title="Verified state reads"
-          status={stateGate.status === "passed" ? "configured" : stateGate.status}
-          body={
-            config.verifiedState.mode === "helios"
-              ? "Helios verifies state from user-supplied execution and consensus transports after a checkpoint sync."
-              : stateGate.summary
-          }
-        />
-        <CapabilityCard
-          title="Recovery"
-          status="progressive"
-          body="Guardianless onboarding is allowed, but the UI must show unprotected recovery until setup is complete."
-        />
-        <CapabilityCard
-          title="Private send"
-          status="gated"
-          body="Railgun private transfer is disabled until privacy adapter evidence passes."
-        />
+            {tab === "Home" && (
+              <HomeScreen
+                blockedCount={configGates.length}
+                bundlerConfigured={bundlerConfigured}
+                config={config}
+                credentialIdHash={credentialIdHash}
+                deploymentConnected={deploymentConnected}
+                onNavigate={handleNavigate}
+                stateReadsLabel={stateReadsLabel}
+              />
+            )}
+            {tab === "Status" && (
+              <StatusScreen
+                config={config}
+                configGates={configGates}
+                manifestGates={manifestGates}
+                screenPrivacy={screenPrivacy}
+              />
+            )}
+            {tab === "Settings" && (
+              <SettingsScreen
+                envBundlerUrl={baseConfig.network.bundlerUrl}
+                envRpcUrl={baseConfig.network.rpcUrl}
+                onSave={handleSaveEndpoint}
+                overrides={overrides}
+                storageAvailable={Boolean(store)}
+              />
+            )}
           </>
         )}
       </ScrollView>
+
+      {!overlay && (
+        <View style={styles.tabBar}>
+          {TABS.map(name => (
+            <Pressable
+              accessibilityRole="button"
+              key={name}
+              onPress={() => setTab(name)}
+              style={styles.tabItem}
+            >
+              <Text style={[styles.tabLabel, tab === name && styles.tabLabelActive]}>{name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#080b10"
-  },
-  container: {
-    gap: 16,
-    padding: 24
-  },
-  header: {
-    gap: 10,
-    marginBottom: 8
-  },
-  tabs: {
+  safeArea: { backgroundColor: colors.bg, flex: 1 },
+  container: { gap: 16, padding: 20, paddingBottom: 32 },
+  overlay: { gap: 14 },
+  back: { alignSelf: "flex-start", paddingVertical: 4 },
+  backLabel: { color: colors.accent, fontSize: 16, fontWeight: "600" },
+  stub: { gap: 10 },
+  stubTitle: { color: colors.text, fontSize: 24, fontWeight: "700" },
+  stubBody: { color: colors.textDim, fontSize: 14, lineHeight: 21 },
+  tabBar: {
+    backgroundColor: colors.bg,
+    borderTopColor: colors.cardBorder,
+    borderTopWidth: 1,
     flexDirection: "row",
-    gap: 8
+    paddingBottom: 18,
+    paddingTop: 10
   },
-  tab: {
-    backgroundColor: "#111722",
-    borderColor: "#243044",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8
-  },
-  tabActive: {
-    backgroundColor: "#1c2d42",
-    borderColor: "#3c5a85"
-  },
-  tabLabel: {
-    color: "#8ea0b8",
-    fontSize: 13,
-    fontWeight: "600"
-  },
-  tabLabelActive: {
-    color: "#cfe2ff"
-  },
-  eyebrow: {
-    color: "#8ea0b8",
-    fontSize: 13,
-    letterSpacing: 1.4,
-    textTransform: "uppercase"
-  },
-  title: {
-    color: "#f7f9fc",
-    fontSize: 34,
-    fontWeight: "700"
-  },
-  body: {
-    color: "#bac6d6",
-    fontSize: 16,
-    lineHeight: 24
-  }
+  tabItem: { alignItems: "center", flex: 1, paddingVertical: 4 },
+  tabLabel: { color: colors.textFaint, fontSize: 13, fontWeight: "600" },
+  tabLabelActive: { color: colors.text }
 });
