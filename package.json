@@ -71,12 +71,12 @@
     "e2e:devnet": "node tools/e2e/devnet-lifecycle.mjs"
   },
   "devDependencies": {
-    "@foundry-rs/anvil-win32-amd64": "^1.7.1",
     "js-sha3": "0.9.3",
     "solc": "0.8.35",
     "typescript": "5.9.3"
   },
   "optionalDependencies": {
+    "@foundry-rs/anvil-win32-amd64": "1.7.1",
     "@foundry-rs/forge-win32-amd64": "1.7.1"
   },
   "overrides": {
