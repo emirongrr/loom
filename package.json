@@ -67,9 +67,11 @@
     "site:check": "node tools/site/validate-site.mjs",
     "site:dev": "npm --prefix docs/site run dev",
     "verify:quick": "node tools/ci/verify.mjs",
-    "verify": "node tools/ci/verify.mjs --full"
+    "verify": "node tools/ci/verify.mjs --full",
+    "e2e:devnet": "node tools/e2e/devnet-lifecycle.mjs"
   },
   "devDependencies": {
+    "@foundry-rs/anvil-win32-amd64": "^1.7.1",
     "js-sha3": "0.9.3",
     "solc": "0.8.35",
     "typescript": "5.9.3"
