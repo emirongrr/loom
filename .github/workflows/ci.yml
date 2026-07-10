@@ -54,6 +54,8 @@ jobs:
         run: npm run formal:program:check
       - name: Test privacy SDK boundary
         run: npm run privacy:test
+      - name: End-to-end devnet lifecycle
+        run: npm run e2e:devnet
       - name: Check formatting
         run: forge fmt --check
       - name: Lint Solidity
