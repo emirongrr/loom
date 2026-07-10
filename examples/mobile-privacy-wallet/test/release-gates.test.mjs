@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -318,4 +319,18 @@ test("local bundler runner discloses executor-key process exposure", () => {
   assert.match(bundler, /never reuse a production deployer or user key/i);
   assert.match(readme, /process-inspection tools may see it/i, "README must document local argv exposure");
   assert.match(readme, /low-balance Sepolia rehearsal key/i);
+});
+
+test("the committed deployment manifest is always the not-deployed placeholder", () => {
+  // Live manifests are generated locally by deploy:connect and must never be
+  // committed: they are per-developer deployment state, not template content.
+  // Read the file from git HEAD so this gate checks what is committed even
+  // when a local live manifest exists in the working tree.
+  const committed = execSync("git show HEAD:examples/mobile-privacy-wallet/deployment/sepolia.manifest.json", {
+    cwd: path.join(root, "..", ".."),
+    encoding: "utf8"
+  });
+  const manifest = JSON.parse(committed);
+  assert.equal(manifest.status, "not-deployed", "commit the placeholder, never a live deployment manifest");
+  assert.equal(manifest.chainId, undefined, "a committed manifest must not carry deployed addresses");
 });
