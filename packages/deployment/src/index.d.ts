@@ -111,6 +111,23 @@ export function connectWalletAppDeployment(options: {
   parsed: ParsedFoundryBroadcast;
 }>;
 
+export interface DeploymentGasEntry {
+  readonly contractName: string;
+  readonly address: Hex | null;
+  readonly gasUsed: number;
+}
+
+export interface DeploymentGasReport {
+  readonly contracts: readonly DeploymentGasEntry[];
+  readonly totalGas: number;
+}
+
+/** Per-contract deployment gas from a Foundry broadcast, matched by tx hash. */
+export function deploymentGasReport(
+  broadcast: unknown,
+  options?: { exclude?: readonly string[] }
+): DeploymentGasReport;
+
 export function createJsonRpcClient(rpcUrl: string): JsonRpcCall;
 
 /** Live EIP-7951 probe: fresh software P-256 vector verified via eth_call. */

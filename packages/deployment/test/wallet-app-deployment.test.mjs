@@ -240,3 +240,28 @@ test("foundry runner fails closed on non-zero exit and missing broadcast", async
     /broadcast is missing/
   );
 });
+
+test("deployment gas report attributes CREATE gas by transaction hash", async () => {
+  const { deploymentGasReport } = await import("../src/index.js");
+  const broadcast = {
+    transactions: [
+      { transactionType: "CREATE", contractName: "Factory", contractAddress: FACTORY, hash: "0xAA" },
+      { transactionType: "CALL", contractName: "Factory", hash: "0xBB" },
+      { transactionType: "CREATE", contractName: "Helper", contractAddress: ACCOUNT, hash: "0xCC" }
+    ],
+    // Deliberately out of order to prove hash-matching, not index-matching.
+    receipts: [
+      { transactionHash: "0xcc", gasUsed: "0x2710" },
+      { transactionHash: "0xaa", gasUsed: "0x3e8" },
+      { transactionHash: "0xbb", gasUsed: "0xffff" }
+    ]
+  };
+
+  const all = deploymentGasReport(broadcast);
+  assert.deepEqual(all.contracts.map(c => [c.contractName, c.gasUsed]), [["Factory", 1000], ["Helper", 10000]]);
+  assert.equal(all.totalGas, 11000, "only CREATE gas is summed");
+
+  const excluded = deploymentGasReport(broadcast, { exclude: ["Helper"] });
+  assert.deepEqual(excluded.contracts.map(c => c.contractName), ["Factory"]);
+  assert.equal(excluded.totalGas, 1000);
+});
