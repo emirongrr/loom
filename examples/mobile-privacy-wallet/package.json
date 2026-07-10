@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@a16z/helios": "^0.11.1",
+    "@loom/deployment": "file:../../packages/deployment",
     "@loom/guardian": "file:../../packages/guardian",
     "@loom/privacy": "file:../../packages/privacy",
     "@loom/sdk": "file:../../packages/sdk",

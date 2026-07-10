@@ -92,7 +92,7 @@ run("Deployment manifest builder tests", process.execPath, [
 ]);
 run("Wallet deployment toolkit tests", process.execPath, [
   "--test",
-  "tools/deployment/wallet-app-deployment.test.mjs"
+  "packages/deployment/test/wallet-app-deployment.test.mjs"
 ]);
 run("Keystore proof profile tests", process.execPath, [
   "--test",

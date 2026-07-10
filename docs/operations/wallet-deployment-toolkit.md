@@ -2,7 +2,7 @@
 
 Loom wallet applications should use the shared deployment toolkit instead of
 copying app-specific deployment glue. The toolkit lives in
-`tools/deployment/wallet-app-deployment.mjs` and gives wallet, fintech, and app
+`packages/deployment` (`@loom/deployment`) and gives wallet, fintech, and app
 teams one reusable path for:
 
 - extracting app-required contracts from a Foundry broadcast;
@@ -24,8 +24,10 @@ Use the module directly when building wallet-specific automation:
 ```js
 import {
   connectWalletAppDeployment,
-  createJsonRpcClient
-} from "./tools/deployment/wallet-app-deployment.mjs";
+  createJsonRpcClient,
+  deployAndConnectWallet,
+  probeP256Precompile
+} from "@loom/deployment";
 ```
 
 `connectWalletAppDeployment` takes:

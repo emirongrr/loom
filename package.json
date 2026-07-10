@@ -43,7 +43,7 @@
     "deployment:manifest:build": "node tools/evidence/build-deployment-manifest.mjs",
     "deployment:manifest:build:test": "node --test tools/evidence/build-deployment-manifest.test.mjs",
     "deployment:manifest:check": "node tools/evidence/validate-deployment-manifest.mjs",
-    "deployment:wallet:test": "node --test tools/deployment/wallet-app-deployment.test.mjs",
+    "deployment:wallet:test": "npm --prefix packages/deployment test",
     "deployment:sepolia:summary": "node tools/evidence/summarize-sepolia-deployment.mjs",
     "deployment:sepolia:summary:test": "node --test tools/evidence/summarize-sepolia-deployment.test.mjs",
     "keystore:profile:test": "node --test tools/evidence/validate-keystore-proof-profile.test.mjs",

@@ -1,9 +1,23 @@
+// @loom/deployment — the Loom wallet deployment toolkit.
+//
+// One reusable path from "forge script --broadcast" to an application that can
+// trust its configuration: parse the broadcast, read live bytecode from the
+// chain, compute code hashes locally, write a versioned manifest plus env
+// values, then re-read everything and verify env == manifest == chain. Every
+// mismatch fails closed. Node-only tooling — never import this from an app's
+// runtime bundle.
+
+import crypto from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
-import { dirname, relative } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { dirname, join, relative } from "node:path";
 import jsSha3 from "js-sha3";
 
 const { keccak256 } = jsSha3;
+
+/** Versioned manifest schema; bump on breaking manifest shape changes. */
+export const MANIFEST_SCHEMA_VERSION = 1;
 
 export const DEFAULT_CONTRACTS = Object.freeze({
   accountFactory: "LoomAccountFactory",
@@ -18,13 +32,16 @@ export function parseFoundryBroadcast(broadcast, options = {}) {
   const contracts = { ...DEFAULT_CONTRACTS, ...(options.contracts ?? {}) };
   const created = new Map();
 
+  const transactionHashes = new Map();
   for (const tx of broadcast.transactions ?? []) {
     if (tx?.transactionType === "CREATE" && tx.contractName && tx.contractAddress) {
       created.set(tx.contractName, requireAddress(tx.contractAddress, `CREATE ${tx.contractName}`));
+      if (typeof tx.hash === "string") transactionHashes.set(tx.contractName, tx.hash);
     }
     for (const contract of tx?.additionalContracts ?? []) {
       if (contract.contractName && contract.address) {
         created.set(contract.contractName, requireAddress(contract.address, `additional ${contract.contractName}`));
+        if (typeof tx?.hash === "string") transactionHashes.set(contract.contractName, tx.hash);
       }
     }
   }
@@ -44,7 +61,8 @@ export function parseFoundryBroadcast(broadcast, options = {}) {
       passkeyValidator: addressFor("passkeyValidator"),
       accountImplementation: addressFor("accountImplementation")
     }),
-    createdContracts: Object.freeze(Object.fromEntries(created))
+    createdContracts: Object.freeze(Object.fromEntries(created)),
+    transactionHashes: Object.freeze(Object.fromEntries(transactionHashes))
   });
 }
 
@@ -78,7 +96,10 @@ export async function buildWalletDeploymentManifest(options) {
   }
 
   return Object.freeze({
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
     chainId: parsed.chainId,
+    deployedAt: options.deployedAt ?? new Date().toISOString(),
+    sourceCommit: parsed.sourceCommit ?? null,
     entryPoint,
     accountFactory: parsed.addresses.accountFactory,
     passkeyValidator: parsed.addresses.passkeyValidator,
@@ -251,4 +272,178 @@ function requireFunction(value, label) {
 function assertObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// Native P-256 precompile probe (EIP-7951).
+//
+// Signs a fresh P-256 vector with a throwaway software key and asks the
+// precompile at 0x100 to verify it via eth_call. A functioning precompile
+// returns 32-byte 0x…01 for the valid signature and empty output for a
+// corrupted one; anything else means native mode must not be used.
+// ---------------------------------------------------------------------------
+
+export async function probeP256Precompile(rpc) {
+  const call = requireFunction(rpc, "rpc");
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const message = crypto.randomBytes(64);
+  const hash = crypto.createHash("sha256").update(message).digest();
+  const derSig = crypto.sign("sha256", message, { key: privateKey, dsaEncoding: "der" });
+  const jwk = publicKey.export({ format: "jwk" });
+  const input =
+    "0x" +
+    Buffer.concat([
+      hash,
+      derSignatureToRs(derSig),
+      Buffer.from(jwk.x, "base64url"),
+      Buffer.from(jwk.y, "base64url")
+    ]).toString("hex");
+
+  const valid = await call("eth_call", [{ to: NATIVE_P256_PRECOMPILE, data: input }, "latest"]);
+  const corrupted = input.slice(0, 2 + 64) + (input[2 + 64] === "a" ? "b" : "a") + input.slice(2 + 65);
+  const invalid = await call("eth_call", [{ to: NATIVE_P256_PRECOMPILE, data: corrupted }, "latest"]);
+
+  return Object.freeze({
+    supported:
+      valid === "0x0000000000000000000000000000000000000000000000000000000000000001" &&
+      (invalid === "0x" || invalid === null),
+    valid,
+    invalid
+  });
+}
+
+function derSignatureToRs(der) {
+  let i = 2;
+  if (der[1] & 0x80) i += der[1] & 0x7f;
+  i += 1;
+  const rLength = der[i];
+  i += 1;
+  const r = der.slice(i, i + rLength);
+  i += rLength;
+  i += 1;
+  const sLength = der[i];
+  i += 1;
+  const s = der.slice(i, i + sLength);
+  const pad = bytes => {
+    let b = Buffer.from(bytes);
+    while (b.length > 32) b = b.slice(1);
+    while (b.length < 32) b = Buffer.concat([Buffer.alloc(1), b]);
+    return b;
+  };
+  return Buffer.concat([pad(r), pad(s)]);
+}
+
+// ---------------------------------------------------------------------------
+// Foundry deployment runner.
+//
+// Spawns `forge script <script> --rpc-url <url> --broadcast` with the given
+// environment and resolves with the broadcast path. The runner never parses
+// forge's stdout — the broadcast JSON is the machine-readable source of truth.
+// ---------------------------------------------------------------------------
+
+export async function runFoundryDeployment(options) {
+  assertObject(options, "options");
+  const repoRoot = requireString(options.repoRoot, "options.repoRoot");
+  const script = requireString(options.script, "options.script");
+  const rpcUrl = requireString(options.rpcUrl, "options.rpcUrl");
+  const scriptFile = script.includes(":") ? script.slice(0, script.indexOf(":")) : script;
+  const scriptName = scriptFile.split("/").pop().replace(/\.s\.sol$/u, ".s.sol");
+
+  const forgeBin =
+    options.forgeBin ??
+    [join(repoRoot, "node_modules", "@foundry-rs", "forge-win32-amd64", "bin", "forge.exe")].find(existsSync) ??
+    "forge";
+  const spawnImpl = options.spawn ?? spawn;
+
+  const exitCode = await new Promise((resolve, reject) => {
+    const child = spawnImpl(forgeBin, ["script", script, "--rpc-url", rpcUrl, "--broadcast", ...(options.extraArgs ?? [])], {
+      cwd: repoRoot,
+      stdio: options.stdio ?? "inherit",
+      env: { ...process.env, ...(options.env ?? {}) }
+    });
+    child.on("error", reject);
+    child.on("exit", code => resolve(code ?? 1));
+  });
+  if (exitCode !== 0) {
+    throw new Error(`forge deployment exited with code ${exitCode}; nothing was connected`);
+  }
+
+  const chainId = requirePositiveInteger(options.chainId, "options.chainId");
+  const broadcastPath = join(repoRoot, "broadcast", scriptName, String(chainId), "run-latest.json");
+  if (!existsSync(broadcastPath)) {
+    throw new Error(`forge reported success but the broadcast is missing: ${broadcastPath}`);
+  }
+  return Object.freeze({ broadcastPath, forgeBin });
+}
+
+// ---------------------------------------------------------------------------
+// Per-network deployment records (deployments/<chainId>.json).
+//
+// The registry pattern used across the ecosystem (hardhat-deploy, Ignition's
+// deployed_addresses.json): one JSON file per network mapping contract names
+// to addresses plus provenance, so other tooling can consume a deployment
+// without re-parsing forge broadcasts.
+// ---------------------------------------------------------------------------
+
+export async function saveDeploymentRecord(options) {
+  assertObject(options, "options");
+  const directory = requireString(options.directory, "options.directory");
+  const manifest = assertObject(options.manifest, "options.manifest");
+  const parsed = assertObject(options.parsed, "options.parsed");
+  const record = Object.freeze({
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    chainId: requirePositiveInteger(manifest.chainId, "manifest.chainId"),
+    deployedAt: manifest.deployedAt ?? null,
+    sourceCommit: manifest.sourceCommit ?? null,
+    contracts: parsed.createdContracts,
+    transactionHashes: parsed.transactionHashes ?? {},
+    manifest
+  });
+  await mkdir(directory, { recursive: true });
+  const recordPath = join(directory, `${record.chainId}.json`);
+  await writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`);
+  return Object.freeze({ recordPath, record });
+}
+
+export async function loadDeploymentRecord(options) {
+  assertObject(options, "options");
+  const recordPath = join(
+    requireString(options.directory, "options.directory"),
+    `${requirePositiveInteger(options.chainId, "options.chainId")}.json`
+  );
+  if (!existsSync(recordPath)) return undefined;
+  const record = JSON.parse(await readFile(recordPath, "utf8"));
+  if (record.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
+    throw new Error(
+      `deployment record ${recordPath} uses schema ${record.schemaVersion}; this toolkit expects ${MANIFEST_SCHEMA_VERSION}`
+    );
+  }
+  return record;
+}
+
+// ---------------------------------------------------------------------------
+// Full pipeline: deploy -> connect -> verify -> record.
+// ---------------------------------------------------------------------------
+
+export async function deployAndConnectWallet(options) {
+  assertObject(options, "options");
+  const rpc = options.rpc ?? createJsonRpcClient(requireString(options.rpcUrl, "options.rpcUrl"));
+  const probeP256 = options.probeP256 ?? (() => probeP256Precompile(rpc));
+
+  const { broadcastPath } = await runFoundryDeployment(options);
+  const connected = await connectWalletAppDeployment({
+    ...options,
+    broadcastPath,
+    rpc,
+    probeP256
+  });
+  let recordPath;
+  if (options.recordDirectory) {
+    ({ recordPath } = await saveDeploymentRecord({
+      directory: options.recordDirectory,
+      manifest: connected.manifest,
+      parsed: connected.parsed
+    }));
+  }
+  return Object.freeze({ ...connected, broadcastPath, recordPath });
 }

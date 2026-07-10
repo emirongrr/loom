@@ -266,11 +266,12 @@ test("the home screen surfaces a missing Loom deployment as a first-class state"
 
 test("connect-deployment pipeline verifies written values against the chain", () => {
   const script = read("scripts/connect-deployment.mjs");
-  const toolkit = fs.readFileSync(path.join(root, "..", "..", "tools", "deployment", "wallet-app-deployment.mjs"), "utf8");
+  const toolkit = fs.readFileSync(path.join(root, "..", "..", "packages", "deployment", "src", "index.js"), "utf8");
   const connected = read("src/loom/deployment/connectedManifest.ts");
   const app = read("src/app/App.tsx");
 
   assert.match(script, /connectWalletAppDeployment/, "the example must use the shared deployment toolkit");
+  assert.match(script, /@loom\/deployment/, "the toolkit must be consumed as the core package, not a copied file");
   assert.match(toolkit, /eth_getCode/, "the toolkit must fetch code from the chain, not trust the broadcast");
   assert.match(toolkit, /keccak256/, "codehashes must be computed, not copied");
   assert.match(toolkit, /verifyWalletDeploymentFiles/);
