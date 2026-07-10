@@ -447,3 +447,37 @@ export async function deployAndConnectWallet(options) {
   }
   return Object.freeze({ ...connected, broadcastPath, recordPath });
 }
+
+// ---------------------------------------------------------------------------
+// Deployment gas report.
+//
+// Extracts the real gas each contract deployment cost from a Foundry
+// broadcast: every CREATE transaction matched to its receipt by transaction
+// hash, so ordering assumptions cannot silently misattribute gas. gasUsed is
+// the computational cost and is identical for the same bytecode on any chain,
+// so a devnet run reports the same per-contract deployment gas as mainnet.
+// ---------------------------------------------------------------------------
+
+export function deploymentGasReport(broadcast, options = {}) {
+  assertObject(broadcast, "broadcast");
+  const exclude = new Set(options.exclude ?? []);
+  const gasByHash = new Map();
+  for (const receipt of broadcast.receipts ?? []) {
+    if (receipt?.transactionHash && receipt.gasUsed) {
+      gasByHash.set(receipt.transactionHash.toLowerCase(), BigInt(receipt.gasUsed));
+    }
+  }
+
+  const contracts = [];
+  let totalGas = 0n;
+  for (const tx of broadcast.transactions ?? []) {
+    if (tx?.transactionType !== "CREATE" || !tx.contractName || exclude.has(tx.contractName)) continue;
+    const gas = tx.hash ? gasByHash.get(tx.hash.toLowerCase()) : undefined;
+    if (gas === undefined) continue;
+    totalGas += gas;
+    contracts.push(
+      Object.freeze({ contractName: tx.contractName, address: tx.contractAddress ?? null, gasUsed: Number(gas) })
+    );
+  }
+  return Object.freeze({ contracts: Object.freeze(contracts), totalGas: Number(totalGas) });
+}
