@@ -10,7 +10,7 @@ import {
   envForWalletDeployment,
   parseFoundryBroadcast,
   verifyWalletDeploymentFiles
-} from "./wallet-app-deployment.mjs";
+} from "../src/index.js";
 
 const { keccak256 } = jsSha3;
 const ENTRYPOINT = address("entrypoint");
@@ -165,3 +165,78 @@ function hexText(text) {
 function address(seed) {
   return `0x${keccak256(seed).slice(0, 40)}`;
 }
+
+test("p256 probe accepts only a 1-for-valid, empty-for-corrupted precompile", async () => {
+  const { probeP256Precompile } = await import("../src/index.js");
+  const ONE = `0x${"0".repeat(63)}1`;
+
+  let calls = 0;
+  const healthy = await probeP256Precompile(async (method, params) => {
+    assert.equal(method, "eth_call");
+    assert.equal(params[0].to, "0x0000000000000000000000000000000000000100");
+    // First call carries the valid vector, second the corrupted one.
+    return calls++ === 0 ? ONE : "0x";
+  });
+  assert.equal(healthy.supported, true);
+
+  const alwaysOne = await probeP256Precompile(async () => ONE);
+  assert.equal(alwaysOne.supported, false, "a precompile that accepts corrupted signatures must be rejected");
+
+  const dead = await probeP256Precompile(async () => "0x");
+  assert.equal(dead.supported, false, "an absent precompile must be rejected");
+});
+
+test("deployment records round-trip per network and reject unknown schemas", async () => {
+  const { saveDeploymentRecord, loadDeploymentRecord, MANIFEST_SCHEMA_VERSION } = await import("../src/index.js");
+  const directory = await mkdtemp(join(tmpdir(), "loom-deploy-record-"));
+  const manifest = { chainId: 11155111, deployedAt: "2026-07-10T00:00:00.000Z", sourceCommit: "abc" };
+  const parsed = {
+    createdContracts: { LoomAccountFactory: FACTORY },
+    transactionHashes: { LoomAccountFactory: "0x1234" }
+  };
+
+  const { recordPath, record } = await saveDeploymentRecord({ directory, manifest, parsed });
+  assert.match(recordPath, /11155111\.json$/);
+  assert.equal(record.schemaVersion, MANIFEST_SCHEMA_VERSION);
+
+  const loaded = await loadDeploymentRecord({ directory, chainId: 11155111 });
+  assert.equal(loaded.contracts.LoomAccountFactory, FACTORY);
+  assert.equal(loaded.transactionHashes.LoomAccountFactory, "0x1234");
+  assert.equal(await loadDeploymentRecord({ directory, chainId: 1 }), undefined);
+
+  await writeFile(join(directory, "5.json"), JSON.stringify({ schemaVersion: 999 }));
+  await assert.rejects(loadDeploymentRecord({ directory, chainId: 5 }), /schema 999/);
+});
+
+test("foundry runner fails closed on non-zero exit and missing broadcast", async () => {
+  const { runFoundryDeployment } = await import("../src/index.js");
+  const fakeSpawn = exitCode => () => ({
+    on(event, handler) {
+      if (event === "exit") setImmediate(() => handler(exitCode));
+    }
+  });
+
+  await assert.rejects(
+    runFoundryDeployment({
+      repoRoot: tmpdir(),
+      script: "script/DeploySepolia.s.sol:DeploySepolia",
+      rpcUrl: "https://rpc.example",
+      chainId: 11155111,
+      forgeBin: "forge",
+      spawn: fakeSpawn(1)
+    }),
+    /exited with code 1/
+  );
+
+  await assert.rejects(
+    runFoundryDeployment({
+      repoRoot: tmpdir(),
+      script: "script/DeploySepolia.s.sol:DeploySepolia",
+      rpcUrl: "https://rpc.example",
+      chainId: 11155111,
+      forgeBin: "forge",
+      spawn: fakeSpawn(0)
+    }),
+    /broadcast is missing/
+  );
+});

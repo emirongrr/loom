@@ -1,0 +1,22 @@
+{
+  "name": "@loom/deployment",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Loom wallet deployment toolkit: run a Foundry deployment, verify it against the live chain, and emit app-consumable manifests, env values, and per-network records.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "js-sha3": "0.8.0"
+  }
+}

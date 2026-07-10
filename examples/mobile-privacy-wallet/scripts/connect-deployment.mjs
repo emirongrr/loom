@@ -15,9 +15,9 @@ import process from "node:process";
 import {
   connectWalletAppDeployment,
   createJsonRpcClient,
+  probeP256Precompile,
   NATIVE_P256_PRECOMPILE
-} from "../../../tools/deployment/wallet-app-deployment.mjs";
-import { probeP256Precompile } from "./p256-probe.mjs";
+} from "@loom/deployment";
 
 const exampleRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(exampleRoot, "..", "..");
@@ -53,17 +53,18 @@ if (p256VerifierMode !== "native-precompile" && p256VerifierMode !== "fallback-c
 if (!p256Verifier) fail("Missing --p256-verifier (or SEPOLIA_P256_FALLBACK_VERIFIER) for fallback-contract mode.");
 
 console.log("Connecting deployment with Loom wallet deployment tooling...");
+const rpc = createJsonRpcClient(rpcUrl);
 try {
   const result = await connectWalletAppDeployment({
     broadcastPath,
     manifestPath: path.join(exampleRoot, "deployment", "sepolia.manifest.json"),
     envPath: path.join(exampleRoot, ".env.local"),
     manifestReference: "deployment/sepolia.manifest.json",
-    rpc: createJsonRpcClient(rpcUrl),
+    rpc,
     entryPoint,
     p256VerifierMode,
     p256Verifier,
-    probeP256: () => probeP256Precompile(rpcUrl)
+    probeP256: () => probeP256Precompile(rpc)
   });
 
   console.log("Wrote deployment/sepolia.manifest.json");

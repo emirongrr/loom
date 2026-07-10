@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -266,11 +267,12 @@ test("the home screen surfaces a missing Loom deployment as a first-class state"
 
 test("connect-deployment pipeline verifies written values against the chain", () => {
   const script = read("scripts/connect-deployment.mjs");
-  const toolkit = fs.readFileSync(path.join(root, "..", "..", "tools", "deployment", "wallet-app-deployment.mjs"), "utf8");
+  const toolkit = fs.readFileSync(path.join(root, "..", "..", "packages", "deployment", "src", "index.js"), "utf8");
   const connected = read("src/loom/deployment/connectedManifest.ts");
   const app = read("src/app/App.tsx");
 
   assert.match(script, /connectWalletAppDeployment/, "the example must use the shared deployment toolkit");
+  assert.match(script, /@loom\/deployment/, "the toolkit must be consumed as the core package, not a copied file");
   assert.match(toolkit, /eth_getCode/, "the toolkit must fetch code from the chain, not trust the broadcast");
   assert.match(toolkit, /keccak256/, "codehashes must be computed, not copied");
   assert.match(toolkit, /verifyWalletDeploymentFiles/);
@@ -317,4 +319,18 @@ test("local bundler runner discloses executor-key process exposure", () => {
   assert.match(bundler, /never reuse a production deployer or user key/i);
   assert.match(readme, /process-inspection tools may see it/i, "README must document local argv exposure");
   assert.match(readme, /low-balance Sepolia rehearsal key/i);
+});
+
+test("the committed deployment manifest is always the not-deployed placeholder", () => {
+  // Live manifests are generated locally by deploy:connect and must never be
+  // committed: they are per-developer deployment state, not template content.
+  // Read the file from git HEAD so this gate checks what is committed even
+  // when a local live manifest exists in the working tree.
+  const committed = execSync("git show HEAD:examples/mobile-privacy-wallet/deployment/sepolia.manifest.json", {
+    cwd: path.join(root, "..", ".."),
+    encoding: "utf8"
+  });
+  const manifest = JSON.parse(committed);
+  assert.equal(manifest.status, "not-deployed", "commit the placeholder, never a live deployment manifest");
+  assert.equal(manifest.chainId, undefined, "a committed manifest must not carry deployed addresses");
 });

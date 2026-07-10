@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { probeP256Precompile, P256_PRECOMPILE } from "./p256-probe.mjs";
+import { createJsonRpcClient, probeP256Precompile, NATIVE_P256_PRECOMPILE as P256_PRECOMPILE } from "@loom/deployment";
 
 const exampleRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(exampleRoot, "..", "..");
@@ -60,7 +60,7 @@ if (missing.length > 0) {
 // probe confirms the live chain actually verifies signatures before any
 // contract is deployed against that assumption.
 console.log("Probing the native P-256 precompile (EIP-7951, 0x100) on the target chain…");
-const probe = await probeP256Precompile(env.SEPOLIA_RPC_URL);
+const probe = await probeP256Precompile(createJsonRpcClient(env.SEPOLIA_RPC_URL));
 if (!probe.supported) {
   fail(
     `The P-256 precompile at ${P256_PRECOMPILE} did not verify a fresh test vector ` +
