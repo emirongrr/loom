@@ -69,6 +69,11 @@ rejects missing EntryPoint, P-256 verifier mode, explorer, reproducibility, or
 no-Loom-service checks. See `docs/operations/deployment-manifest.md` for the
 schema and release evidence rules.
 
+Wallet and app integrations should consume the shared deployment toolkit rather
+than duplicating deployment glue. See
+`docs/operations/wallet-deployment-toolkit.md` for the reusable env, manifest,
+and live-chain verification flow.
+
 Current pinned toolchain and contract dependencies:
 
 - Foundry `v1.7.1`

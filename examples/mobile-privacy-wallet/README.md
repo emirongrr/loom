@@ -142,7 +142,8 @@ summarize Foundry broadcasts, and keep transaction evidence reproducible; the
 example stores only app-specific Sepolia rehearsal evidence in
 [`docs/sepolia-deployment-evidence.md`](docs/sepolia-deployment-evidence.md).
 The live `deployment/sepolia.manifest.json` stays local-only and the committed
-file remains a placeholder.
+file remains a placeholder. The shared toolkit is documented in
+[`../../docs/operations/wallet-deployment-toolkit.md`](../../docs/operations/wallet-deployment-toolkit.md).
 
 ## Development
 

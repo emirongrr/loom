@@ -90,6 +90,10 @@ run("Deployment manifest builder tests", process.execPath, [
   "--test",
   "tools/evidence/build-deployment-manifest.test.mjs"
 ]);
+run("Wallet deployment toolkit tests", process.execPath, [
+  "--test",
+  "tools/deployment/wallet-app-deployment.test.mjs"
+]);
 run("Keystore proof profile tests", process.execPath, [
   "--test",
   "tools/evidence/validate-keystore-proof-profile.test.mjs"
