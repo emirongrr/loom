@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "_note": "Fill this in during a physical iOS + Android device session, then run `npm run evidence:device:check evidence/device-evidence.<network>.json`. Placeholders (PENDING / false where a check has not been run) fail validation until truthfully completed. Never record raw credential ids or attestation objects here.",
+  "app": {
+    "bundleIdentifier": "org.loom.mobileprivacywallet",
+    "buildType": "release"
+  },
+  "passkey": {
+    "platforms": [
+      {
+        "platform": "ios",
+        "osVersion": "PENDING",
+        "device": "PENDING",
+        "registrationVerified": false,
+        "assertionVerified": false,
+        "userVerificationRequired": false,
+        "persistsRawCredentialId": false,
+        "persistsAttestationObject": false,
+        "buildLogReference": "PENDING"
+      },
+      {
+        "platform": "android",
+        "osVersion": "PENDING",
+        "device": "PENDING",
+        "registrationVerified": false,
+        "assertionVerified": false,
+        "userVerificationRequired": false,
+        "persistsRawCredentialId": false,
+        "persistsAttestationObject": false,
+        "buildLogReference": "PENDING"
+      }
+    ]
+  },
+  "domainPolicy": {
+    "rpId": "PENDING",
+    "allowedOrigins": ["https://PENDING"],
+    "ios": {
+      "infoPlistRpId": "PENDING",
+      "associatedDomainsVerified": false
+    },
+    "android": {
+      "mergedManifestRpId": "PENDING",
+      "signingCertificateSha256": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "assetlinksVerified": false
+    },
+    "negativeTests": {
+      "mismatchedRpRejected": false,
+      "mismatchedOriginRejected": false
+    }
+  },
+  "helios": {
+    "platforms": [
+      {
+        "platform": "ios",
+        "network": "PENDING",
+        "checkpointSource": "PENDING",
+        "syncVerified": false,
+        "checkpointReviewed": false,
+        "wasmRuntimeCompatible": false,
+        "staleCheckpointRejected": false,
+        "unavailableConsensusHandled": false,
+        "malformedProofRejected": false,
+        "plainRpcDowngradeLabeledUnverified": false
+      },
+      {
+        "platform": "android",
+        "network": "PENDING",
+        "checkpointSource": "PENDING",
+        "syncVerified": false,
+        "checkpointReviewed": false,
+        "wasmRuntimeCompatible": false,
+        "staleCheckpointRejected": false,
+        "unavailableConsensusHandled": false,
+        "malformedProofRejected": false,
+        "plainRpcDowngradeLabeledUnverified": false
+      }
+    ]
+  },
+  "hygiene": {
+    "android": {
+      "screenshotBlocked": false,
+      "recentsThumbnailBlocked": false,
+      "keystorePersistsAfterReboot": false,
+      "keystorePersistsAfterRestore": false,
+      "clipboardClearedAfterMs": 60000
+    },
+    "ios": {
+      "screenshotBlocked": false,
+      "appSwitcherSnapshotCovered": false,
+      "keychainPersistsAfterReboot": false,
+      "keychainPersistsAfterRestore": false,
+      "clipboardClearedAfterMs": 60000
+    }
+  }
+}

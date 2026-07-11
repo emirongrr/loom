@@ -334,3 +334,22 @@ test("the committed deployment manifest is always the not-deployed placeholder",
   assert.equal(manifest.status, "not-deployed", "commit the placeholder, never a live deployment manifest");
   assert.equal(manifest.chainId, undefined, "a committed manifest must not carry deployed addresses");
 });
+
+test("device evidence tooling exists and encodes the honesty constraints (G-001/G-001A/G-006/G-009)", () => {
+  const validator = read("evidence/validate-device-evidence.mjs");
+  const template = JSON.parse(read("evidence/device-evidence.template.json"));
+
+  // The validator must enforce the non-negotiable honesty rules.
+  assert.match(validator, /persistsRawCredentialId.*must be false|must be false.*persistsRawCredentialId/s,
+    "raw credential ids must never be recorded as persisted");
+  assert.match(validator, /persistsAttestationObject/, "attestation objects must never be recorded as persisted");
+  assert.match(validator, /hygiene\.ios\.screenshotBlocked/, "iOS screenshot asymmetry must be enforced");
+  assert.match(validator, /infoPlistRpId must equal|mergedManifestRpId must equal/,
+    "native domain policy must match the pinned RP id");
+
+  // The committed template is a placeholder, not a passing bundle.
+  assert.equal(template.version, 1);
+  assert.equal(template.app.buildType, "release");
+  assert.equal(template.hygiene.ios.screenshotBlocked, false, "template must not claim iOS screenshot blocking");
+  assert.equal(template.passkey.platforms[0].registrationVerified, false, "template must ship unverified");
+});

@@ -177,6 +177,7 @@ privacy adapter evidence, and deployment manifests listed in `GAPS.md`.
 - [`docs/RECOVERY_MODEL.md`](docs/RECOVERY_MODEL.md) — progressive vs organization recovery.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — manifest verification of contract addresses.
 - [`docs/sepolia-deployment-evidence.md`](docs/sepolia-deployment-evidence.md) — app-specific Sepolia rehearsal evidence produced from repository deployment tooling.
+- [`docs/DEVICE_EVIDENCE.md`](docs/DEVICE_EVIDENCE.md) — the physical-device evidence bundle (G-001/G-001A/G-006/G-009) and its validator.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — evidence required before shipping.
 - [`GAPS.md`](GAPS.md) — every blocked production path.
 
