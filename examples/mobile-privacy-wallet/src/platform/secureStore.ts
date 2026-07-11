@@ -21,7 +21,12 @@ export const SECURE_STORE_ALLOWED_KEYS = Object.freeze([
   // Endpoints are replaceable transports, not secrets, but they still live in
   // the encrypted store so nothing in this app uses plaintext persistence.
   "loom.endpoints.bundler",
-  "loom.endpoints.rpc"
+  "loom.endpoints.rpc",
+  // Saved bundler profiles (label + URL) so a user can qualify more than one
+  // bundler and switch the active one without retyping a URL. The active
+  // profile's URL is mirrored into loom.endpoints.bundler, which stays the
+  // single source of truth every transport builder reads from.
+  "loom.endpoints.bundlerProfiles"
 ] as const);
 
 export type SecureStoreKey = (typeof SECURE_STORE_ALLOWED_KEYS)[number];

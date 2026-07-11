@@ -203,3 +203,54 @@ void test("endpoint overrides validate URLs and never weaken environment values"
   await saveEndpointOverride(store, "bundler", "   ");
   assert.equal(values.has("loom.endpoints.bundler"), false, "clearing removes the override entirely");
 });
+
+void test("bundler profiles can be added, switched, and removed, and activating writes the single active override", async () => {
+  const { activateBundlerProfile, addBundlerProfile, loadBundlerProfiles, loadEndpointOverrides, removeBundlerProfile } =
+    await import("../src/config/runtimeOverrides");
+  const { createSecureLocalStore } = await import("../src/platform/secureStore");
+  const { MobileWalletConfigurationError } = await import("../src/platform/errors");
+  const { backend } = memoryBackend();
+  const store = createSecureLocalStore({ backend });
+
+  await assert.rejects(addBundlerProfile(store, "  ", "https://bundler-a.example"), MobileWalletConfigurationError);
+  await assert.rejects(addBundlerProfile(store, "Primary", "not a url"), MobileWalletConfigurationError);
+
+  const afterFirst = await addBundlerProfile(store, "Primary", "https://bundler-a.example");
+  assert.equal(afterFirst.length, 1);
+  const primary = afterFirst[0];
+  assert.ok(primary);
+  assert.equal(primary.label, "Primary");
+  assert.equal(primary.url, "https://bundler-a.example");
+
+  await assert.rejects(
+    addBundlerProfile(store, "Primary", "https://bundler-b.example"),
+    MobileWalletConfigurationError,
+    "duplicate labels must be rejected"
+  );
+
+  const afterSecond = await addBundlerProfile(store, "Backup", "https://bundler-b.example");
+  assert.equal(afterSecond.length, 2);
+  const backup = afterSecond[1];
+  assert.ok(backup);
+
+  await assert.rejects(activateBundlerProfile(store, "does-not-exist"), MobileWalletConfigurationError);
+
+  const activated = await activateBundlerProfile(store, backup.id);
+  assert.equal(activated.label, "Backup");
+  const overridesAfterActivate = await loadEndpointOverrides(store);
+  assert.equal(
+    overridesAfterActivate.bundlerUrl,
+    "https://bundler-b.example",
+    "activating a profile must write its URL as the single active bundler override"
+  );
+
+  const afterRemove = await removeBundlerProfile(store, primary.id);
+  assert.equal(afterRemove.length, 1);
+  const remaining = afterRemove[0];
+  assert.ok(remaining);
+  assert.equal(remaining.label, "Backup");
+
+  const afterRemoveLast = await removeBundlerProfile(store, backup.id);
+  assert.deepEqual(afterRemoveLast, []);
+  assert.deepEqual(await loadBundlerProfiles(store), []);
+});
