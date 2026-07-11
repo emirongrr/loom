@@ -445,3 +445,86 @@ void test("a custom transport override takes priority over the auto-built bundle
   };
   assert.equal(resolveBundlerTransport(withNeitherOverrideNorUrl), undefined);
 });
+
+void test("on-chain code hash confirmation reads bytecode through the state transport and matches it against the manifest", async () => {
+  const { parseDeploymentManifest } = await import("../src/loom/deployment/manifest");
+  const { verifyManifestCodehashesOnChain } = await import("../src/loom/deployment/onChainCodehash");
+
+  const IMPLEMENTATION = "0x7777777777777777777777777777777777777777" as Hex;
+  const ACCOUNT_IMPLEMENTATION_WORD = ("0x" + "00".repeat(12) + IMPLEMENTATION.slice(2)) as Hex;
+
+  const bytecodeByAddress: Record<string, Hex> = {
+    [ENTRY_POINT.toLowerCase()]: "0xaa",
+    [FACTORY.toLowerCase()]: "0xbb",
+    [VALIDATOR.toLowerCase()]: "0xcc",
+    [IMPLEMENTATION.toLowerCase()]: "0xdd"
+  };
+
+  const manifest = parseDeploymentManifest({
+    chainId: 11155111,
+    entryPoint: ENTRY_POINT,
+    accountFactory: FACTORY,
+    passkeyValidator: VALIDATOR,
+    p256VerifierMode: "native-precompile",
+    codehashes: {
+      entryPoint: "0xdb81b4d58595fbbbb592d3661a34cdca14d7ab379441400cbfa1b78bc447c365",
+      accountFactory: "0x9f1a1ebcae59b0879e9fb23ad9f90461016010b02c4a57af0fab0ee41025b4aa",
+      passkeyValidator: "0xeead6dbfc7340a56caedc044696a168870549a6a7f6f56961e84a54bd9970b8a",
+      accountImplementation: "0x5302ff401477f0f1499f76107d0641580c296cc4ff88eca12c019e3af840821a"
+    }
+  });
+
+  function stubTransport(overrides?: {
+    getCode?: (input: { address: Hex }) => Promise<Hex>;
+    ethCall?: (input: { to: Hex; data: Hex }) => Promise<Hex>;
+  }) {
+    return {
+      async ethCall(input: { to: Hex; data: Hex }) {
+        if (overrides?.ethCall) return overrides.ethCall(input);
+        return ACCOUNT_IMPLEMENTATION_WORD;
+      },
+      async getCode(input: { address: Hex }) {
+        if (overrides?.getCode) return overrides.getCode(input);
+        const bytecode = bytecodeByAddress[input.address.toLowerCase()];
+        assert.ok(bytecode, `no fixture bytecode for ${input.address}`);
+        return bytecode;
+      }
+    };
+  }
+
+  // Everything matches: no gates.
+  assert.deepEqual(await verifyManifestCodehashesOnChain(manifest, stubTransport()), []);
+
+  // A mismatched deployed implementation is caught even though the address lookup succeeded.
+  const tamperedImplementation = stubTransport({
+    async getCode(input) {
+      if (input.address.toLowerCase() === IMPLEMENTATION.toLowerCase()) {
+        return "0xdeadbeef";
+      }
+      return bytecodeByAddress[input.address.toLowerCase()] as Hex;
+    }
+  });
+  const mismatchGates = await verifyManifestCodehashesOnChain(manifest, tamperedImplementation);
+  assert.deepEqual(
+    mismatchGates.map(gate => gate.id),
+    ["deployment.onchain.accountImplementation.mismatch"]
+  );
+
+  // No bytecode at the factory address at all (not deployed on this chain).
+  const undeployed = stubTransport({
+    async getCode(input) {
+      if (input.address.toLowerCase() === FACTORY.toLowerCase()) {
+        return "0x";
+      }
+      return bytecodeByAddress[input.address.toLowerCase()] as Hex;
+    }
+  });
+  const undeployedGates = await verifyManifestCodehashesOnChain(manifest, undeployed);
+  assert.ok(undeployedGates.some(gate => gate.id === "deployment.onchain.accountFactory.not-deployed"));
+
+  // A state transport without getCode/ethCall support cannot confirm anything and says so.
+  const noSupport = { async ethCall() { throw new Error("unsupported"); } };
+  const noSupportGates = await verifyManifestCodehashesOnChain(manifest, noSupport);
+  assert.ok(noSupportGates.every(gate => gate.status === "blocked"));
+  assert.ok(noSupportGates.some(gate => gate.id === "deployment.onchain.entryPoint.no-getcode-support"));
+});
