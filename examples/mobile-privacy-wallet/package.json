@@ -14,14 +14,16 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test:gates": "node --test test/release-gates.test.mjs",
     "test:flows": "tsc -p tsconfig.tests.json && node --test dist-tests/test/flows.test.js dist-tests/test/hygiene.test.js",
-    "test": "npm run test:gates && npm run test:flows",
+    "test": "npm run test:gates && npm run test:flows && npm run evidence:device:test",
     "deploy:connect": "node scripts/connect-deployment.mjs",
     "bundler:local": "node scripts/run-local-bundler.mjs",
     "bootstrap": "node scripts/bootstrap-deployment.mjs",
     "prestart": "node scripts/preflight.mjs",
     "preandroid": "node scripts/preflight.mjs",
     "preios": "node scripts/preflight.mjs",
-    "deployment:remove": "node scripts/disconnect-deployment.mjs"
+    "deployment:remove": "node scripts/disconnect-deployment.mjs",
+    "evidence:device:check": "node evidence/validate-device-evidence.mjs",
+    "evidence:device:test": "node --test evidence/validate-device-evidence.test.mjs"
   },
   "dependencies": {
     "@a16z/helios": "^0.11.1",

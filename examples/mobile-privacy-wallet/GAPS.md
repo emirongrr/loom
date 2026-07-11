@@ -18,6 +18,7 @@ runtime path.
 - **Proposed fix PR:** Add physical iOS/Android passkey evidence without
   persisting raw credential identifiers or attestation objects, then attach
   native build logs and store privacy declarations.
+- **Evidence template:** `evidence/device-evidence.template.json`, validated by `npm run evidence:device:check` (see `docs/DEVICE_EVIDENCE.md`). The template ships intentionally incomplete; a physical-device session must complete it.
 
 ## G-001A: Native Passkey Domain Policy Evidence
 
@@ -32,6 +33,7 @@ runtime path.
 - **Proposed fix PR:** Add iOS/Android release-build evidence that records the
   pinned RP ID, allowed origins, associated-domain validation, Android signing
   certificate hash, and negative tests for mismatched RP/origin.
+- **Evidence template:** `evidence/device-evidence.template.json`, validated by `npm run evidence:device:check` (see `docs/DEVICE_EVIDENCE.md`). The template ships intentionally incomplete; a physical-device session must complete it.
 
 ## G-002: Account Deployment Requires Production Configuration
 
@@ -121,6 +123,7 @@ runtime path.
 - **Proposed fix PR:** Add mobile Helios sync evidence for target networks and
   release gates for stale checkpoint, unavailable consensus RPC, malformed
   proof data, and plain-RPC downgrade attempts.
+- **Evidence template:** `evidence/device-evidence.template.json`, validated by `npm run evidence:device:check` (see `docs/DEVICE_EVIDENCE.md`). The template ships intentionally incomplete; a physical-device session must complete it.
 
 ## G-008: Transport Privacy Is Not Implemented
 
@@ -161,3 +164,4 @@ runtime path.
   app-switcher snapshot is covered — and the docs must never overclaim this.
 - **Proposed fix PR:** Attach device evidence for both platforms and wire the
   store privacy declarations (`docs/DATA_SAFETY.md`) into release review.
+- **Evidence template:** `evidence/device-evidence.template.json`, validated by `npm run evidence:device:check` (see `docs/DEVICE_EVIDENCE.md`). The template ships intentionally incomplete; a physical-device session must complete it.

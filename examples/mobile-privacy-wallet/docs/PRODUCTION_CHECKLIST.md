@@ -4,6 +4,11 @@ This example is **pre-production**. Every item below must be satisfied — with
 evidence — before shipping a wallet built from this boilerplate. Items map to
 `GAPS.md` where applicable.
 
+The device-dependent items (G-001, G-001A, G-006, G-009) are collected into one
+evidence bundle: fill `evidence/device-evidence.template.json` during a physical
+iOS + Android session and validate it with `npm run evidence:device:check`. See
+[`DEVICE_EVIDENCE.md`](DEVICE_EVIDENCE.md).
+
 ## Configuration
 
 - [ ] All `configurationReadiness` gates pass (chain, L1 chain, RP id, origin,
