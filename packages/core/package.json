@@ -1,0 +1,21 @@
+{
+  "name": "@loom/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Canonical Loom types, errors, and encoding shared across the SDK and tooling.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test"
+  }
+}
