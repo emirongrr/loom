@@ -54,12 +54,27 @@ Mitigations this example takes:
 - The Railgun metadata budget is enforced at the flow level: a private send
   cannot be built unless the draft acknowledges every required disclosure
   surface (`src/flows/privacySendFlow.ts`).
+- `MobileWalletConfiguration.transport` / `.stateTransport` let a fork supply
+  its own proxy, VPN, or Tor-aware transport instead of the default bundler
+  and RPC clients this example builds (`src/loom/client.ts`,
+  `resolveBundlerTransport`). `MobileWalletConfiguration.transportFetch` is a
+  lighter-weight hook: it routes the *default* bundler and plain-RPC
+  transports through a caller-supplied `fetch` without requiring a full
+  custom transport implementation. Neither hook is wired to a UI setting —
+  they are integration points for the app shell, not a promise that this
+  example ships proxy support out of the box.
+- These hooks cover bundler submission and plain-RPC fallback reads only.
+  They do **not** cover Helios execution/consensus RPC traffic in the default
+  verified-state mode: `@a16z/helios`'s public `Config` type has no fetch or
+  proxy hook, so that traffic stays outside app-level reach regardless of
+  which hooks the app wires up.
 
 Residual risk that forks must own: this example does **not** route traffic
-through a proxy, VPN, Tor, or mixnet, does not batch or add decoy requests, and
-does not pad timing. An integrator shipping a wallet with stronger metadata
-claims must add transport privacy at the network layer and publish evidence for
-it; see G-008 in `GAPS.md`.
+through a proxy, VPN, Tor, or mixnet by default, does not batch or add decoy
+requests, and does not pad timing. An integrator shipping a wallet with
+stronger metadata claims must use the hooks above (or a Helios fork with its
+own proxy support) to add transport privacy at the network layer, and publish
+evidence for it; see G-008 in `GAPS.md`.
 
 ## Honest defaults
 

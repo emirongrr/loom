@@ -52,7 +52,10 @@ export async function createMobileStateTransport(
     return {
       status: "ready",
       value: {
-        stateTransport: createRpcStateTransport({ endpoint: config.network.rpcUrl }),
+        stateTransport: createRpcStateTransport({
+          endpoint: config.network.rpcUrl,
+          fetch: config.transportFetch
+        }),
         verification: unverified("plain RPC reads are not light-client verified", "explicit-rpc", {
           source: "user-supplied-rpc",
           assumptions: ["RPC endpoint is user supplied and replaceable but not a verification root"]

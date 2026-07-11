@@ -138,13 +138,30 @@ runtime path.
   provider) can build an activity profile and, for the bundler, directly link
   IP to on-chain sender. Shielded transfers reduce on-chain linkage but do not
   hide network metadata; overclaiming here would give users false privacy.
-- **Partial mitigation in this example:** The per-endpoint leak surface is
-  documented in `docs/PRIVACY_MODEL.md` ("Network metadata"); bundlers are
-  explicit and replaceable (G-003); the Railgun metadata budget must be
-  acknowledged before a private send is built.
-- **Proposed fix PR:** Add optional proxy configuration for all transports,
-  document a vetted transport-privacy setup, and publish evidence that the
-  wallet makes no network requests outside the configured endpoints.
+- **Partial mitigation in this example:**
+  - The per-endpoint leak surface is documented in `docs/PRIVACY_MODEL.md`
+    ("Network metadata"); bundlers are explicit and replaceable (G-003); the
+    Railgun metadata budget must be acknowledged before a private send is
+    built.
+  - `MobileWalletConfiguration.transport` and `.stateTransport` are explicit
+    override hooks a fork can use to supply a proxy/VPN/Tor-aware
+    `LoomTransportAdapter` or `LoomStateReadTransport` instead of the
+    default bundler/RPC transports. `createConfiguredLoomClient` previously
+    ignored `config.transport` even though the type declared it — that was a
+    silent no-op for any fork that tried to use it; it is now honored
+    (`src/loom/client.ts`, `resolveBundlerTransport`).
+  - `MobileWalletConfiguration.transportFetch` lets a fork route the
+    *default* bundler and plain-RPC transports through a proxy-aware `fetch`
+    without writing a full custom transport (`src/loom/client.ts`,
+    `src/verified/stateTransport.ts`).
+  - This does **not** cover Helios execution/consensus RPC traffic:
+    `@a16z/helios`'s public `Config` type has no fetch or proxy hook, so
+    verified-state-mode network traffic stays outside app-level reach. See
+    "What Helios does and does not do" in `docs/PRIVACY_MODEL.md`.
+- **Proposed fix PR:** Publish a vetted transport-privacy setup guide for
+  integrators using the override hooks above, and — separately, upstream in
+  `@a16z/helios` or via a Helios fork — add a proxy/fetch hook for execution
+  and consensus RPC traffic so Helios-mode reads can be covered too.
 
 ## G-009: Privacy Hygiene Needs Device Evidence
 
