@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors } from "../theme/colors";
-import type { EndpointOverrides } from "../config/runtimeOverrides";
+import type { BundlerProfile, EndpointOverrides } from "../config/runtimeOverrides";
 
 // Runtime infrastructure settings. Only replaceable transports are editable —
 // any ERC-4337 bundler and any RPC endpoint can be plugged in here without a
@@ -13,13 +13,21 @@ export function SettingsScreen({
   envBundlerUrl,
   envRpcUrl,
   storageAvailable,
-  onSave
+  onSave,
+  bundlerProfiles,
+  onAddBundlerProfile,
+  onRemoveBundlerProfile,
+  onActivateBundlerProfile
 }: {
   readonly overrides: EndpointOverrides;
   readonly envBundlerUrl?: string;
   readonly envRpcUrl?: string;
   readonly storageAvailable: boolean;
   readonly onSave: (endpoint: "bundler" | "rpc", value: string) => Promise<string | undefined>;
+  readonly bundlerProfiles: readonly BundlerProfile[];
+  readonly onAddBundlerProfile: (label: string, url: string) => Promise<string | undefined>;
+  readonly onRemoveBundlerProfile: (id: string) => Promise<void>;
+  readonly onActivateBundlerProfile: (id: string) => Promise<void>;
 }) {
   return (
     <View style={styles.screen}>
@@ -37,8 +45,17 @@ export function SettingsScreen({
         </View>
       )}
 
+      <BundlerProfiles
+        activeUrl={overrides.bundlerUrl ?? envBundlerUrl}
+        disabled={!storageAvailable}
+        onActivate={onActivateBundlerProfile}
+        onAdd={onAddBundlerProfile}
+        onRemove={onRemoveBundlerProfile}
+        profiles={bundlerProfiles}
+      />
+
       <EndpointField
-        label="Bundler URL (any ERC-4337 bundler)"
+        label="Bundler URL (manual override)"
         placeholder="https://api.pimlico.io/v2/sepolia/rpc?apikey=…"
         initialValue={overrides.bundlerUrl ?? ""}
         fallback={envBundlerUrl}
@@ -53,6 +70,133 @@ export function SettingsScreen({
         disabled={!storageAvailable}
         onSave={value => onSave("rpc", value)}
       />
+    </View>
+  );
+}
+
+// Bundler switching (G-003). Saving more than one qualified bundler and
+// switching the active one is a mitigation for a single-bundler chokepoint,
+// not a fix: only one bundler is ever active at a time, and there is no
+// automatic failover if the active one goes down. Live qualification
+// evidence for each saved bundler stays a separate, physical/live process —
+// this screen cannot manufacture that evidence, only make switching easy
+// once it exists.
+function BundlerProfiles({
+  profiles,
+  activeUrl,
+  disabled,
+  onAdd,
+  onRemove,
+  onActivate
+}: {
+  readonly profiles: readonly BundlerProfile[];
+  readonly activeUrl?: string;
+  readonly disabled: boolean;
+  readonly onAdd: (label: string, url: string) => Promise<string | undefined>;
+  readonly onRemove: (id: string) => Promise<void>;
+  readonly onActivate: (id: string) => Promise<void>;
+}) {
+  const [label, setLabel] = React.useState("");
+  const [url, setUrl] = React.useState("");
+  const [error, setError] = React.useState<string | undefined>();
+
+  const add = React.useCallback(async () => {
+    const result = await onAdd(label, url);
+    if (result) {
+      setError(result);
+    } else {
+      setError(undefined);
+      setLabel("");
+      setUrl("");
+    }
+  }, [label, onAdd, url]);
+
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>Saved bundlers</Text>
+      <View style={styles.warnBox}>
+        <Text style={styles.warnText}>
+          Every configured bundler observes the full UserOperation you submit through it — sender, calldata, gas,
+          your device IP, and timing. Saving more than one bundler lets you switch, but only one is active at a
+          time; this app does not proxy or hide that traffic.
+        </Text>
+      </View>
+
+      {profiles.length === 0 ? (
+        <Text style={styles.fallback}>No bundlers saved yet.</Text>
+      ) : (
+        profiles.map(profile => {
+          const isActive = activeUrl !== undefined && profile.url === activeUrl;
+          return (
+            <View key={profile.id} style={styles.profileRow}>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileLabel}>
+                  {profile.label}
+                  {isActive ? " (active)" : ""}
+                </Text>
+                <Text style={styles.fallback}>{profile.url}</Text>
+              </View>
+              <View style={styles.profileActions}>
+                {!isActive && (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={disabled}
+                    onPress={() => {
+                      void onActivate(profile.id);
+                    }}
+                    style={({ pressed }) => [styles.smallButton, pressed && styles.saveButtonPressed]}
+                  >
+                    <Text style={styles.smallButtonLabel}>Use</Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={disabled}
+                  onPress={() => {
+                    void onRemove(profile.id);
+                  }}
+                  style={({ pressed }) => [styles.smallButton, styles.removeButton, pressed && styles.saveButtonPressed]}
+                >
+                  <Text style={styles.smallButtonLabel}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })
+      )}
+
+      <Text style={styles.fieldLabel}>Add a bundler</Text>
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!disabled}
+        onChangeText={setLabel}
+        placeholder="Label (e.g. Pimlico primary)"
+        placeholderTextColor={colors.textFaint}
+        style={styles.input}
+        value={label}
+      />
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!disabled}
+        onChangeText={setUrl}
+        placeholder="https://api.pimlico.io/v2/sepolia/rpc?apikey=…"
+        placeholderTextColor={colors.textFaint}
+        style={styles.input}
+        value={url}
+      />
+      <Pressable
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={() => {
+          void add();
+        }}
+        style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed, disabled && styles.saveDisabled]}
+      >
+        <Text style={styles.saveLabel}>Save bundler</Text>
+      </Pressable>
+      {error ? <Text style={[styles.message, styles.messageError]}>{error}</Text> : null}
     </View>
   );
 }
@@ -162,5 +306,27 @@ const styles = StyleSheet.create({
   saveDisabled: { opacity: 0.4 },
   saveLabel: { color: colors.text, fontSize: 14, fontWeight: "700" },
   message: { color: colors.success, fontSize: 12 },
-  messageError: { color: colors.danger }
+  messageError: { color: colors.danger },
+  profileRow: {
+    alignItems: "center",
+    borderColor: colors.cardBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+    padding: 10
+  },
+  profileInfo: { flex: 1, gap: 2 },
+  profileLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  profileActions: { flexDirection: "row", gap: 6 },
+  smallButton: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  removeButton: { backgroundColor: colors.cardBorder },
+  smallButtonLabel: { color: colors.text, fontSize: 12, fontWeight: "700" }
 });

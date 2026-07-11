@@ -37,8 +37,12 @@ iOS + Android session and validate it with `npm run evidence:device:check`. See
 
 ## Infrastructure (G-003)
 
-- [ ] At least two independent bundlers qualified; provider switching in UI.
-- [ ] Bundler-observability warning shown to users.
+- [ ] At least two independent bundlers qualified.
+- [x] Provider switching in UI (Settings → Saved bundlers).
+- [x] Bundler-observability warning shown to users (Settings, next to the
+      bundler list).
+- [ ] Automatic failover between qualified bundlers (not implemented —
+      switching today is a manual, one-at-a-time action).
 
 ## Verified reads (G-006)
 

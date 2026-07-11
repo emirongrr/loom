@@ -3,9 +3,14 @@ import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "rea
 
 import { configurationReadiness, readEnvironmentConfiguration } from "../config/environment";
 import {
+  activateBundlerProfile,
+  addBundlerProfile,
   applyEndpointOverrides,
+  loadBundlerProfiles,
   loadEndpointOverrides,
+  removeBundlerProfile,
   saveEndpointOverride,
+  type BundlerProfile,
   type EndpointOverrides
 } from "../config/runtimeOverrides";
 import { GateList } from "../components/GateList";
@@ -74,6 +79,7 @@ export default function App() {
   const [tab, setTab] = React.useState<Tab>("Home");
   const [overlay, setOverlay] = React.useState<Overlay>(undefined);
   const [overrides, setOverrides] = React.useState<EndpointOverrides>({});
+  const [bundlerProfiles, setBundlerProfiles] = React.useState<readonly BundlerProfile[]>([]);
   const [credentialIdHash, setCredentialIdHash] = React.useState<Hex | undefined>();
 
   React.useEffect(() => {
@@ -83,12 +89,14 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const [loaded, storedCredential] = await Promise.all([
+        const [loaded, profiles, storedCredential] = await Promise.all([
           loadEndpointOverrides(store),
+          loadBundlerProfiles(store),
           store.get("loom.credentialIdHash")
         ]);
         if (!cancelled) {
           setOverrides(loaded);
+          setBundlerProfiles(profiles);
           if (storedCredential) {
             setCredentialIdHash(storedCredential as Hex);
           }
@@ -159,6 +167,42 @@ export default function App() {
     [store]
   );
 
+  const handleAddBundlerProfile = React.useCallback(
+    async (label: string, url: string): Promise<string | undefined> => {
+      if (!store) {
+        return "Encrypted storage is unavailable.";
+      }
+      try {
+        setBundlerProfiles(await addBundlerProfile(store, label, url));
+        return undefined;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    [store]
+  );
+
+  const handleRemoveBundlerProfile = React.useCallback(
+    async (id: string) => {
+      if (!store) {
+        return;
+      }
+      setBundlerProfiles(await removeBundlerProfile(store, id));
+    },
+    [store]
+  );
+
+  const handleActivateBundlerProfile = React.useCallback(
+    async (id: string) => {
+      if (!store) {
+        return;
+      }
+      await activateBundlerProfile(store, id);
+      setOverrides(await loadEndpointOverrides(store));
+    },
+    [store]
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -221,8 +265,12 @@ export default function App() {
             )}
             {tab === "Settings" && (
               <SettingsScreen
+                bundlerProfiles={bundlerProfiles}
                 envBundlerUrl={baseConfig.network.bundlerUrl}
                 envRpcUrl={baseConfig.network.rpcUrl}
+                onActivateBundlerProfile={handleActivateBundlerProfile}
+                onAddBundlerProfile={handleAddBundlerProfile}
+                onRemoveBundlerProfile={handleRemoveBundlerProfile}
                 onSave={handleSaveEndpoint}
                 overrides={overrides}
                 storageAvailable={Boolean(store)}

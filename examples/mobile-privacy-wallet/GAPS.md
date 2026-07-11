@@ -78,8 +78,20 @@ runtime path.
 - **Affected flow:** Account deployment and transaction send.
 - **Security/privacy impact:** A single bundler can become a liveness choke
   point if the app cannot switch providers.
-- **Proposed fix PR:** Publish mobile-compatible bundler qualification evidence
-  and UI for switching bundlers.
+- **Partial mitigation in this example:** `src/config/runtimeOverrides.ts`
+  (`addBundlerProfile`/`removeBundlerProfile`/`activateBundlerProfile`) and
+  the Settings screen (`src/screens/SettingsScreen.tsx`) let a user save
+  multiple named bundler endpoints and switch which one is active, with the
+  bundler-observability warning ("every configured bundler sees your full
+  UserOperation") shown next to the list. Activating a profile is a manual,
+  one-at-a-time switch, not automatic failover — the app never talks to more
+  than one bundler at once, and switching does not retry an in-flight
+  submission. Still open: live qualification evidence across two independent
+  bundlers (this UI cannot manufacture that evidence, only make switching
+  between already-qualified bundlers easy) and automatic failover.
+- **Proposed fix PR:** Publish mobile-compatible bundler qualification
+  evidence for at least two independent providers, and consider automatic
+  failover once that evidence exists.
 
 ## G-003A: P-256 Verifier Mode Evidence Is Required
 
