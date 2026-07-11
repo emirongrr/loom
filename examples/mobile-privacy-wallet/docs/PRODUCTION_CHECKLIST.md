@@ -19,8 +19,12 @@ iOS + Android session and validate it with `npm run evidence:device:check`. See
 
 - [ ] `deployment/manifest.<network>.json` filled from a reproducible deployment.
 - [ ] `verifyDeploymentAgainstManifest` passes for the target chain.
-- [ ] Manifest code hashes confirmed on chain.
-- [ ] Reproducible bytecode, salts, and constructor args verified.
+- [ ] `verifyManifestCodehashesOnChain` returns no gates for the target chain
+      (confirms manifest code hashes against deployed bytecode, including the
+      resolved account implementation).
+- [ ] Reproducible bytecode, salts, and constructor args verified — a passing
+      `verifyManifestCodehashesOnChain` only proves deployed bytecode matches
+      the manifest, not that the manifest's hashes came from audited source.
 - [ ] P-256 verifier mode evidence: reviewed native precompile, or audited
       fallback verifier with a matching code hash.
 

@@ -44,12 +44,21 @@ runtime path.
 - **Security/privacy impact:** Hardcoded or unverified deployment addresses
   could create accounts with the wrong authority or infrastructure assumption.
 - **Partial mitigation in this example:** `src/loom/deployment/manifest.ts`
-  parses a committed manifest and refuses configured addresses that do not match
-  it (`verifyDeploymentAgainstManifest`); `deployment/manifest.example.json` is
-  the template. Still open: per-network production manifests generated from the
-  reproducible deployment, and on-chain code-hash confirmation.
+  parses a committed manifest and refuses configured addresses that do not
+  match it (`verifyDeploymentAgainstManifest`); `deployment/manifest.example.json`
+  is the template. `src/loom/deployment/onChainCodehash.ts`
+  (`verifyManifestCodehashesOnChain`) now reads deployed bytecode through the
+  app's own state transport and confirms it hashes to the manifest's
+  committed value for every pinned role, including the account
+  implementation resolved via `accountFactory.accountImplementation()`. See
+  `docs/DEPLOYMENT.md`. Still open: per-network production manifests
+  generated from a reproducible deployment, and independent confirmation
+  that the manifest's own code hashes came from an audited, reproducible
+  build (matching the manifest is not the same as the manifest being
+  trustworthy).
 - **Proposed fix PR:** Add per-network mobile deployment profiles generated
-  from the production deployment manifest and confirm code hashes on chain.
+  from the production deployment manifest, and publish reproducible-build
+  evidence for the manifest's committed code hashes.
 
 ## G-007: Behavioral Unit Tests Need a TypeScript Test Runner — RESOLVED
 

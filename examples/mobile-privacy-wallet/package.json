@@ -37,6 +37,7 @@
     "expo-dev-client": "^57.0.5",
     "expo-modules-core": "~57.0.3",
     "expo-secure-store": "~57.0.0",
+    "js-sha3": "^0.8.0",
     "loom-passkey": "file:modules/loom-passkey",
     "loom-screen-privacy": "file:modules/loom-screen-privacy",
     "react": "19.2.3",
@@ -47,7 +48,6 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
-    "js-sha3": "^0.8.0",
     "typescript": "5.9.3"
   },
   "overrides": {
