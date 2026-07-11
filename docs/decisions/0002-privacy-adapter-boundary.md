@@ -3,6 +3,11 @@
 Status: accepted
 Date: 2026-06-16
 
+Note: the boundary below still holds, but the packaging step has changed. Privacy
+is a separate, optional install and is never an `@loom/sdk` dependency; it is
+reached only through a structural adapter. See the "SDK and tooling" section of
+`docs/design/architecture.md`.
+
 ## Problem
 
 Loom needs to use Kohaku directly for private receiving, private transfers,
