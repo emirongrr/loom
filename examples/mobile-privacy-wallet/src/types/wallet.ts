@@ -104,6 +104,13 @@ export interface MobileWalletConfiguration {
   readonly privacy: PrivacyConfiguration;
   readonly transport?: LoomTransportAdapter;
   readonly stateTransport?: LoomStateReadTransport;
+  // Optional fetch override for the *default* bundler/RPC transports this
+  // wallet builds from bundlerUrl/rpcUrl. Lets a fork route that traffic
+  // through a proxy, VPN, or Tor-aware fetch without writing a full custom
+  // transport object. Does not apply to Helios execution/consensus RPC
+  // traffic — @a16z/helios's public config has no fetch/proxy hook, so that
+  // traffic is out of app-level reach; see docs/PRIVACY_MODEL.md.
+  readonly transportFetch?: typeof fetch;
 }
 
 export interface WalletRuntime {

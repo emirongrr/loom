@@ -418,3 +418,30 @@ void test("deployment verification blocks mismatched addresses and empty codehas
       .includes("deployment.manifest.codehashes")
   );
 });
+
+void test("a custom transport override takes priority over the auto-built bundler transport", async () => {
+  const { resolveBundlerTransport } = await import("../src/loom/client");
+
+  const customTransport = {
+    async sendUserOperation() {
+      return { userOpHash: ("0x" + "aa".repeat(32)) as Hex };
+    }
+  };
+
+  const withOverride = {
+    ...completeConfiguration(),
+    transport: customTransport
+  };
+  assert.equal(resolveBundlerTransport(withOverride), customTransport);
+
+  const withoutOverride = completeConfiguration();
+  const built = resolveBundlerTransport(withoutOverride);
+  assert.notEqual(built, customTransport);
+  assert.equal(typeof built?.sendUserOperation, "function");
+
+  const withNeitherOverrideNorUrl = {
+    ...completeConfiguration(),
+    network: { ...completeConfiguration().network, bundlerUrl: undefined }
+  };
+  assert.equal(resolveBundlerTransport(withNeitherOverrideNorUrl), undefined);
+});

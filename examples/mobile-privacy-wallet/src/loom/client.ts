@@ -2,7 +2,8 @@ import {
   createBundlerTransport,
   createLoomClient,
   type LoomClient,
-  type LoomStateReadTransport
+  type LoomStateReadTransport,
+  type LoomTransportAdapter
 } from "@loom/sdk";
 
 import { MobileWalletConfigurationError } from "../platform/errors";
@@ -12,7 +13,8 @@ export function createExplicitBundlerTransport(config: MobileWalletConfiguration
   return config.network.bundlerUrl && config.network.entryPoint
     ? createBundlerTransport({
         endpoint: config.network.bundlerUrl,
-        entryPoint: config.network.entryPoint
+        entryPoint: config.network.entryPoint,
+        fetch: config.transportFetch
       })
     : undefined;
 }
@@ -21,6 +23,16 @@ export function createExplicitBundlerTransport(config: MobileWalletConfiguration
 // createMobileStateTransport so every read path carries its verification
 // label (Helios-verified or explicitly unverified RPC); building a raw RPC
 // transport in the client would silently drop that label.
+//
+// config.transport is an explicit escape hatch: a fork can supply its own
+// LoomTransportAdapter (for example one that routes bundler submission
+// through a proxy, VPN, or Tor-aware fetch) instead of the default bundler
+// transport built from EXPO_PUBLIC_LOOM_BUNDLER_URL. It must take priority
+// over the auto-built transport, or the override would be silently dropped.
+export function resolveBundlerTransport(config: MobileWalletConfiguration): LoomTransportAdapter | undefined {
+  return config.transport ?? createExplicitBundlerTransport(config);
+}
+
 export function createConfiguredLoomClient(input: {
   config: MobileWalletConfiguration;
   account: Hex;
@@ -29,7 +41,7 @@ export function createConfiguredLoomClient(input: {
   return createLoomClient({
     account: input.account,
     chainId: input.config.network.chainId,
-    transport: createExplicitBundlerTransport(input.config),
+    transport: resolveBundlerTransport(input.config),
     stateTransport: input.stateTransport ?? input.config.stateTransport
   });
 }
