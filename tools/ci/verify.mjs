@@ -107,6 +107,7 @@ run("Privacy adapter profile tests", process.execPath, [
 ]);
 run("Core SDK tests", npm, ["run", "core:test"]);
 run("User-operation hash fixture", npm, ["run", "sdk:userop-hash:test"]);
+run("Deployment manifest schema", npm, ["run", "manifest:schema:test"]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
