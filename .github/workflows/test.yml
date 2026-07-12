@@ -59,6 +59,8 @@ jobs:
         run: npm --prefix packages/privacy ci
       - name: Test core SDK
         run: npm run core:test
+      - name: Test user-operation hash fixture
+        run: npm run sdk:userop-hash:test
       - name: Test account SDK
         run: npm run account:test
       - name: Test guardian SDK

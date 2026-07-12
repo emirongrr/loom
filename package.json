@@ -10,6 +10,8 @@
   "scripts": {
     "core:build": "tsc -p packages/core/tsconfig.json",
     "core:test": "npm run core:build && npm --prefix packages/core test",
+    "sdk:userop-hash:generate": "npm run core:build && node tools/sdk/generate-userop-hash-fixture.mjs",
+    "sdk:userop-hash:test": "npm run core:build && node --test tools/sdk/generate-userop-hash-fixture.test.mjs",
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",
     "coverage:check": "node tools/quality/check-coverage-gate.mjs",
     "certora:program:test": "node --test tools/formal/validate-certora-program.test.mjs",

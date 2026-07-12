@@ -17,5 +17,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
   }
 }
