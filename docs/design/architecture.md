@@ -176,3 +176,41 @@ deployment must provide a real `IKeystoreProofVerifier` for the target network;
 test-only verifier contracts do not belong to production source.
 
 The design is documented in `docs/design/keystore.md`.
+
+## SDK and tooling
+
+Loom's off-chain code is a set of headless TypeScript packages, not a framework.
+They build, explain, verify, and publish account operations; none becomes account
+authority or a mandatory service, and an account stays operable if all of them
+disappear. Per-package implementation status lives in `docs/status.md`; this
+section fixes the boundaries that shape them.
+
+The packages layer around one canonical core:
+
+- `@loom/core` is the leaf: canonical types, ABIs, errors, encoding and hashing,
+  contract and version metadata, and the single deployment-manifest schema. Every
+  other package depends on it and on nothing else in the layer.
+- `@loom/sdk` is the account client: counterfactual address derivation and the
+  ERC-4337 v0.9 operation pipeline — initializer encoding, nonce, fees, gas, the
+  canonical EntryPoint hash, the `(validator, validatorSignature)` envelope,
+  simulation, send, and receipt. Passkey signatures are the on-chain
+  `WebAuthnSignature` structure, never a bare hash.
+- `@loom/passkey`, `@loom/guardian`, `@loom/deployment`, and `@loom/cli` are
+  separate packages because each sits on a real platform, secret, Node-runtime,
+  or signer boundary.
+- `@loom/privacy` is optional and experimental and is never a dependency of
+  `@loom/sdk`. Privacy is reached only through a structural adapter, so a normal
+  wallet install pulls in no Kohaku, Railgun, or privacy-pool code.
+
+No package ships a default RPC, bundler, paymaster, or privacy provider:
+transports are injected and provider replacement is a first-class path. Deployed
+addresses are trusted only against the canonical manifest — the SDK refuses a
+chain whose EntryPoint, proxy, implementation, or verifier code hash does not
+match, unless the caller explicitly selects an unverified mode. The `loom` CLI is
+a thin layer over these libraries: it never accepts a raw key as an argument,
+splits deployment into a secret-free plan and an externally signed apply, and
+redacts endpoints, headers, and signing material from every output.
+
+Packages are TypeScript compiled to ESM with generated type declarations. `viem`
+is used internally for ABI and ERC-4337 encoding, but never appears in a public
+interface: those stay defined by Loom's own structural provider types.
