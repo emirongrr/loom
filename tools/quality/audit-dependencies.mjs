@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
+// The core, account, guardian, and deployment packages are npm workspaces and
+// share the root lockfile, so the root audit covers them. The privacy and wallet
+// engine SDKs and the documentation site keep their own lockfiles and are audited
+// separately.
 const targets = [
-  { name: "root", args: ["audit", "--audit-level=low"] },
-  { name: "account SDK", args: ["--prefix", "packages/account", "audit", "--audit-level=low"] },
-  { name: "guardian SDK", args: ["--prefix", "packages/guardian", "audit", "--audit-level=low"] },
+  { name: "root workspace", args: ["audit", "--audit-level=low"] },
   { name: "privacy SDK", args: ["--prefix", "packages/privacy", "audit", "--audit-level=low"] },
   { name: "wallet engine SDK", args: ["--prefix", "packages/sdk", "audit", "--audit-level=low"] },
   { name: "documentation site", args: ["--prefix", "docs/site", "audit", "--audit-level=low"] }

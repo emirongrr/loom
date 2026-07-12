@@ -1,6 +1,11 @@
 {
   "name": "loom",
   "private": true,
+  "workspaces": [
+    "packages/account",
+    "packages/guardian",
+    "packages/deployment"
+  ],
   "scripts": {
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",
     "coverage:check": "node tools/quality/check-coverage-gate.mjs",
