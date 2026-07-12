@@ -1,11 +1,5 @@
 import sha3 from "js-sha3";
 import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
-import {
-  createConsentStore,
-  createKohakuHost,
-  createMemoryStorage,
-  providerConsentKey
-} from "@loom/privacy";
 
 const { keccak_256 } = sha3;
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
@@ -40,25 +34,14 @@ const MAX_GUARDIAN_THRESHOLD = 32;
 const MAX_VALIDATORS = 16;
 
 export function createKohakuRuntime(options = {}) {
-  if (options.host !== undefined) {
-    assertKohakuHost(options.host);
-    return freezeRuntime(options.host);
+  // Privacy is reached only through an injected host (the structural adapter),
+  // so the wallet engine never depends on a privacy protocol package. Build the
+  // host with @loom/privacy (or any conforming adapter) and pass it in.
+  if (options.host === undefined) {
+    throw new InvalidSdkRequestError("kohaku host is required");
   }
-
-  if (!options.providerProfile) {
-    throw new InvalidSdkRequestError("kohaku providerProfile or host is required");
-  }
-
-  const host = createKohakuHost({
-    providerProfile: options.providerProfile,
-    fetch: options.fetch,
-    storage: options.storage ?? createMemoryStorage(),
-    keystore: options.keystore,
-    consentStore: options.consentStore ?? createConsentStore(),
-    metadataPolicy: options.metadataPolicy
-  });
-
-  return freezeRuntime(host);
+  assertKohakuHost(options.host);
+  return freezeRuntime(options.host);
 }
 
 export function createAppScopeManager(options = {}) {
@@ -1386,7 +1369,7 @@ function freezeRuntime(host) {
   return Object.freeze({
     host,
     providerProfile: host.provider.profile,
-    providerConsentKey: providerConsentKey(host.provider.profile),
+    providerConsentKey: host.provider.consentKey,
     metadataBudget: host.metadataBudget.bind(host),
     request: host.provider.request
   });
@@ -1396,6 +1379,9 @@ function assertKohakuHost(host) {
   if (!host || typeof host !== "object") throw new InvalidSdkRequestError("kohaku host is required");
   if (!host.provider || !host.provider.profile || typeof host.provider.request !== "function") {
     throw new InvalidSdkRequestError("kohaku host provider surface is invalid");
+  }
+  if (typeof host.provider.consentKey !== "string") {
+    throw new InvalidSdkRequestError("kohaku host must expose a provider consent key");
   }
   if (typeof host.metadataBudget !== "function") {
     throw new InvalidSdkRequestError("kohaku host metadataBudget function is required");

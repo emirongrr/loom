@@ -86,6 +86,7 @@ export interface KohakuHost {
   provider: {
     profile: KohakuProviderProfile;
     request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    consentKey: string;
   };
   metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
 }

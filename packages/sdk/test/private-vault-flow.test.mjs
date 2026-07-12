@@ -7,6 +7,7 @@ import {
   hashCanonical,
   preparePrivateVaultWithdrawal
 } from "../src/index.js";
+import { createKohakuHost } from "../../privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const token = "0x2222222222222222222222222222222222222222";
@@ -111,10 +112,7 @@ test("private vault preparation binds a kohaku private operation to lifecycle ha
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const appScope = sdk.appScopes.scopeForOrigin("https://defi.example/swap");
   const prepared = await sdk.preparePrivateVaultWithdrawal({
@@ -208,10 +206,7 @@ test("clear signing review summarizes private vault authority", async () => {
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const prepared = await sdk.preparePrivateVaultWithdrawal({
     adapter: privateAdapter(),

@@ -5,6 +5,7 @@ import {
   createLoomClient,
   createLoomSdk
 } from "../src/index.js";
+import { createKohakuHost } from "../../privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const factory = "0x2222222222222222222222222222222222222222";
@@ -97,11 +98,13 @@ test("loom client construction has no transport signing or provider side effects
     chainId: 1,
     account,
     kohaku: {
-      providerProfile,
-      fetch: async () => {
-        calls += 1;
-        return new Response("{}");
-      }
+      host: createKohakuHost({
+        providerProfile,
+        fetch: async () => {
+          calls += 1;
+          return new Response("{}");
+        }
+      })
     }
   });
 
@@ -114,10 +117,7 @@ test("loom client prepares deploy and user operation envelopes without broadcast
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   const deploy = client.prepareDeployAccount({
@@ -142,10 +142,7 @@ test("sendCalls requires explicit signer and transport", async () => {
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   await assert.rejects(
@@ -162,10 +159,7 @@ test("sendCalls builds signs and submits through caller-supplied transport", asy
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     signer: {
       async signUserOperation(envelope) {
         signed.push(envelope);
@@ -195,10 +189,7 @@ test("sendCalls runs optional middleware before signing", async () => {
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     signer: {
       async signUserOperation(envelope) {
         assert.equal(envelope.userOperation.callGasLimit, 10n);
@@ -237,10 +228,7 @@ test("sendCallsAndWait submits and resolves receipt through transport", async ()
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     signer: {
       async signUserOperation() {
         return "0xdeadbeef";
@@ -268,10 +256,7 @@ test("estimateCalls delegates to caller supplied transport", async () => {
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     transport: {
       async estimateUserOperationGas(envelope) {
         assert.equal(envelope.account, account);
@@ -296,10 +281,7 @@ test("client reads guardianless recovery onboarding safety state", async () => {
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport
   });
   const state = await client.readSafetyState({ now: 100n });
@@ -339,10 +321,7 @@ test("client reports pending recovery before ordinary protected state", async ()
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport
   });
   const state = await client.readSafetyState({ recoveryModule, now: 500n });
@@ -372,10 +351,7 @@ test("client safety reader marks recovery state coverage partial without recover
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport
   });
   const state = await client.readSafetyState({ now: 500n });
@@ -413,10 +389,7 @@ test("client reports frozen and pending migration safety states", async () => {
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport
   });
   const state = await client.readSafetyState({ now: 500n });
@@ -433,10 +406,7 @@ test("client refuses to read safety state without explicit state transport", asy
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   await assert.rejects(() => client.readSafetyState(), InvalidSdkRequestError);
@@ -446,10 +416,7 @@ test("client safety reader fails closed on inconsistent guardian state", async (
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport: accountStateTransport({
       recoveryConfigured: false,
       guardianRoot: "0x" + "12".repeat(32),
@@ -464,10 +431,7 @@ test("client safety reader fails closed on impossible validator and pending reco
   const zeroValidatorClient = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport: accountStateTransport({
       validatorCount: 0n
     })
@@ -475,10 +439,7 @@ test("client safety reader fails closed on impossible validator and pending reco
   const malformedRecoveryClient = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     stateTransport: accountStateTransport({
       recoveryConfigured: true,
       guardianRoot: "0x" + "12".repeat(32),
@@ -508,10 +469,7 @@ test("high-level client delegates session and recovery lifecycle builders", () =
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const client = createLoomClient({
     chainId: 1,
@@ -545,10 +503,7 @@ test("sdk exposes typed lifecycle encoders and viem-compatible call shapes", () 
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const client = createLoomClient({
     chainId: 1,
@@ -577,10 +532,7 @@ test("client reports truthful ERC-5792 atomic capabilities for the enabled accou
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   assert.deepEqual(client.getCapabilities({ address: account, chainIds: ["0x1", "0x2105"] }), {
@@ -600,10 +552,7 @@ test("wallet_sendCalls preparation preserves atomic clear-signing review", () =>
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   const prepared = client.prepareWalletSendCalls({
@@ -634,10 +583,7 @@ test("wallet_sendCalls rejects unsupported required capabilities and mismatched 
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
 
   assert.throws(
@@ -673,10 +619,7 @@ test("sendWalletCalls returns the app id and rejects duplicate ids", async () =>
   const client = createLoomClient({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    },
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
     signer: {
       async signUserOperation() {
         return "0xdeadbeef";

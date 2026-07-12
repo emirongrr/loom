@@ -6,7 +6,12 @@ import {
   createKohakuRuntime,
   createLoomSdk
 } from "../src/index.js";
-import { ConsentRequiredError, createConsentStore, providerConsentKey } from "../../privacy/src/index.js";
+import {
+  ConsentRequiredError,
+  createConsentStore,
+  createKohakuHost,
+  providerConsentKey
+} from "../../privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 
@@ -35,11 +40,13 @@ test("loom sdk construction has no provider side effects", () => {
     chainId: 1,
     account,
     kohaku: {
-      providerProfile,
-      fetch: async () => {
-        calls += 1;
-        return new Response("{}");
-      }
+      host: createKohakuHost({
+        providerProfile,
+        fetch: async () => {
+          calls += 1;
+          return new Response("{}");
+        }
+      })
     }
   });
 
@@ -49,8 +56,10 @@ test("loom sdk construction has no provider side effects", () => {
 
 test("kohaku runtime requires explicit provider consent before network use", async () => {
   const runtime = createKohakuRuntime({
-    providerProfile,
-    fetch: async () => new Response("{}")
+    host: createKohakuHost({
+      providerProfile,
+      fetch: async () => new Response("{}")
+    })
   });
 
   await assert.rejects(runtime.request("https://rpc.example"), ConsentRequiredError);
@@ -60,16 +69,18 @@ test("kohaku runtime exposes a stable consent key for user-controlled providers"
   let calls = 0;
   const consentStore = createConsentStore();
   const runtime = createKohakuRuntime({
-    providerProfile,
-    consentStore,
-    metadataPolicy: {
-      allowedSurfaces: ["rpc"],
-      requireKnownMitigation: true
-    },
-    fetch: async () => {
-      calls += 1;
-      return new Response("{}");
-    }
+    host: createKohakuHost({
+      providerProfile,
+      consentStore,
+      metadataPolicy: {
+        allowedSurfaces: ["rpc"],
+        requireKnownMitigation: true
+      },
+      fetch: async () => {
+        calls += 1;
+        return new Response("{}");
+      }
+    })
   });
 
   assert.equal(runtime.providerConsentKey, providerConsentKey(runtime.providerProfile));
@@ -78,7 +89,7 @@ test("kohaku runtime exposes a stable consent key for user-controlled providers"
   assert.equal(calls, 1);
 });
 
-test("loom sdk rejects construction without an explicit kohaku host or provider profile", () => {
+test("loom sdk rejects construction without an explicit kohaku host", () => {
   assert.throws(() => createLoomSdk({ chainId: 1, account }), InvalidSdkRequestError);
 });
 
@@ -106,10 +117,7 @@ test("app-scoped session grants preserve granular limits without leaking origin"
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const grant = sdk.buildAppSessionGrant({
     origin: "https://swap.example/path?pair=private",
@@ -134,10 +142,7 @@ test("app-scoped session binding is deterministic across paths and query strings
   const sdk = createLoomSdk({
     chainId: 1,
     account,
-    kohaku: {
-      providerProfile,
-      fetch: async () => new Response("{}")
-    }
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
   });
   const common = {
     sessionKey: "0x2222222222222222222222222222222222222222",

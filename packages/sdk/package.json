@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@loom/account": "file:../account",
-    "@loom/privacy": "file:../privacy",
     "js-sha3": "0.8.0"
+  },
+  "devDependencies": {
+    "@loom/privacy": "file:../privacy"
   }
 }

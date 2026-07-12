@@ -6,7 +6,6 @@ import type {
 } from "@loom/account";
 import type {
   KohakuHost,
-  KohakuHostOptions,
   KohakuProviderProfile,
   MetadataBudget,
   PrivacyContext,
@@ -25,9 +24,7 @@ export interface KohakuRuntime {
   request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
-export function createKohakuRuntime(options?: Partial<KohakuHostOptions> & {
-  host?: KohakuHost;
-}): KohakuRuntime;
+export function createKohakuRuntime(options: { host: KohakuHost }): KohakuRuntime;
 
 export interface AppScope {
   readonly applicationId: string;
@@ -89,7 +86,7 @@ export interface LoomSdk {
 export function createLoomSdk(options?: {
   chainId?: number;
   account?: Hex;
-  kohaku?: Partial<KohakuHostOptions> & { host?: KohakuHost };
+  kohaku?: { host: KohakuHost };
 }): LoomSdk;
 
 export interface LoomSignerAdapter {
@@ -439,7 +436,7 @@ export function createLoomClient(options: {
   chainId: number;
   account: Hex;
   sdk?: LoomSdk;
-  kohaku?: Partial<KohakuHostOptions> & { host?: KohakuHost };
+  kohaku?: { host: KohakuHost };
   signer?: LoomSignerAdapter;
   transport?: LoomTransportAdapter;
   stateTransport?: LoomStateReadTransport;

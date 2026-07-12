@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLoomClient } from "../src/index.js";
+import { createKohakuHost } from "../../privacy/src/index.js";
 
 // Walkaway example (executable): a Loom account's full authority lifecycle must
 // run using only caller-supplied signer, broadcast transport, and privacy/runtime
@@ -55,11 +56,13 @@ test("full account lifecycle runs through only caller-supplied adapters (walkawa
       account,
       // Privacy/runtime access goes through the caller's own fetch + endpoint.
       kohaku: {
-        providerProfile,
-        fetch: async url => {
-          userFetchUrls.push(String(url));
-          return new Response("{}");
-        }
+        host: createKohakuHost({
+          providerProfile,
+          fetch: async url => {
+            userFetchUrls.push(String(url));
+            return new Response("{}");
+          }
+        })
       },
       // Signing is the user's key material, never a Loom service.
       signer: {
@@ -142,7 +145,7 @@ test("without a caller-supplied transport there is no fallback broadcast path", 
     const client = createLoomClient({
       chainId: 1,
       account,
-      kohaku: { providerProfile, fetch: async () => new Response("{}") }
+      kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
     });
     // Preparation still works offline...
     const prepared = client.prepareCalls({ calls: [{ target, value: 0n, data: "0x1234" }] });
