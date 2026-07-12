@@ -6,6 +6,7 @@ import {LoomAccountFactory} from "../../src/LoomAccountFactory.sol";
 import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {GranularSessionValidator} from "../../src/validators/GranularSessionValidator.sol";
 import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
+import {VaultHook} from "../../src/hooks/VaultHook.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
@@ -170,6 +171,75 @@ contract ContractIntegrationTest {
             !ok, "execution within the session validator's own limit bypassed the account-wide PolicyHook period budget"
         );
         require(token.balanceOf(address(0xBEEF)) == 60, "blocked execution still moved funds");
+    }
+
+    function testSessionExecutionSharesVaultHookSpendBudgetWithOwner() public {
+        GranularSessionValidator session = new GranularSessionValidator();
+        VaultHook vault = new VaultHook();
+        address signer = vm.addr(SESSION_KEY);
+
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(vault), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(session), "");
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+
+        MockERC20 token = new MockERC20();
+        token.mint(address(account), 1_000);
+
+        VaultHook.VaultPolicy memory policy = VaultHook.VaultPolicy(100, 1 days, 2 days, true);
+        bytes memory setPolicy = abi.encodeCall(VaultHook.setVaultPolicy, (address(token), policy));
+        bytes memory scheduleSetPolicy =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(vault), 0, setPolicy, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, scheduleSetPolicy)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(vault), 0, setPolicy);
+
+        bytes32 permissionId = keccak256("shared-vault-budget-permission");
+        GranularSessionValidator.Permission memory permission = GranularSessionValidator.Permission({
+            signer: signer,
+            target: address(token),
+            token: address(token),
+            counterparty: address(0xBEEF),
+            allowedPaymaster: address(0),
+            selector: MockERC20.transfer.selector,
+            maxAmountPerCall: 50,
+            maxAmountPerUserOp: 50,
+            maxCallsPerUserOp: 1,
+            maxUses: 5,
+            validAfter: 0,
+            validUntil: type(uint48).max
+        });
+        bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
+        bytes memory scheduleGrant =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(session), 0, grant, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, scheduleGrant)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(session), 0, grant);
+
+        ExecutionLib.Execution memory ownerTransfer =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(0xBEEF), 60)));
+        account.execute(bytes32(0), abi.encode(ownerTransfer));
+
+        ExecutionLib.Execution memory sessionTransfer =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(0xBEEF), 50)));
+        bytes memory sessionAccountCall = abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(sessionTransfer)));
+        bytes32 userOpHash = keccak256("vault-session-user-op");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_KEY, userOpHash);
+        PackedUserOperation memory sessionOp = _emptyUserOp(address(account));
+        sessionOp.callData = sessionAccountCall;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        sessionOp.nonce = uint256(uint192(bytes24(permissionId))) << 64;
+        sessionOp.signature = abi.encode(address(session), abi.encode(permissionId, abi.encodePacked(r, s, v)));
+        require(
+            account.validateUserOp(sessionOp, userOpHash, 0) != ValidationDataLib.SIG_VALIDATION_FAILED,
+            "session permission rejected transfer within its own limit"
+        );
+
+        (bool ok,) = address(account).call(sessionAccountCall);
+        require(!ok, "session permission bypassed the account-wide vault period budget");
+        require(token.balanceOf(address(0xBEEF)) == 60, "blocked session execution still moved funds");
+        (uint128 spent,) = vault.spending(address(account), address(token));
+        require(spent == 60, "blocked session execution changed vault accounting");
     }
 
     function testPaymasterSponsoredExecutionStillEnforcesPolicyLimit() public {
