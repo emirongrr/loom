@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLoomClient, explainLifecycleIntent, hashCanonical } from "../src/index.js";
+import { createKohakuHost } from "../../privacy/src/index.js";
 
 // Randomized SDK session simulation. The unit tests exercise fixed lifecycle
 // sequences; this drives thousands of randomly ordered create → grant → recover
@@ -218,10 +219,12 @@ test("randomized SDK sessions preserve authority, immutability, determinism, and
         chainId: 1 + Math.floor(rng() * 10),
         account: addr(rng),
         kohaku: {
-          providerProfile: userProviderProfile(),
-          fetch: async () => {
-            throw new Error(`walkaway violation (seed ${seed}): kohaku fetch reached`);
-          }
+          host: createKohakuHost({
+            providerProfile: userProviderProfile(),
+            fetch: async () => {
+              throw new Error(`walkaway violation (seed ${seed}): kohaku fetch reached`);
+            }
+          })
         }
       });
       const ops = operations(client);
@@ -277,10 +280,12 @@ test("malformed lifecycle inputs are rejected without emitting an intent", () =>
       chainId: 1,
       account: addr(rng),
       kohaku: {
-        providerProfile: userProviderProfile(),
-        fetch: async () => {
-          throw new Error("kohaku fetch reached");
-        }
+        host: createKohakuHost({
+          providerProfile: userProviderProfile(),
+          fetch: async () => {
+            throw new Error("kohaku fetch reached");
+          }
+        })
       }
     });
 

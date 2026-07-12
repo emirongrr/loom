@@ -6,6 +6,7 @@ import {
   createPasskeySigner,
   hashCanonical
 } from "../../packages/sdk/src/index.js";
+import { createKohakuHost } from "../../packages/privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const factory = "0x2222222222222222222222222222222222222222";
@@ -178,11 +179,13 @@ function createClient(events, options = {}) {
     chainId: 1,
     account,
     kohaku: {
-      providerProfile,
-      fetch: async url => {
-        events.push({ type: "kohaku.fetch", url: String(url) });
-        return new Response("{}");
-      }
+      host: createKohakuHost({
+        providerProfile,
+        fetch: async url => {
+          events.push({ type: "kohaku.fetch", url: String(url) });
+          return new Response("{}");
+        }
+      })
     },
     signer: options.signer ?? createFixturePasskeySigner(events),
     transport: options.transport ?? createInMemoryBundlerTransport(events),
@@ -378,10 +381,7 @@ test("e2e wallet engine: no hidden default RPC, bundler or signer exists", async
     const client = createLoomClient({
       chainId: 1,
       account,
-      kohaku: {
-        providerProfile,
-        fetch: async () => new Response("{}")
-      }
+      kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) }
     });
     const prepared = client.prepareCalls({
       calls: [{ target, value: 0n, data: "0x12345678" }]

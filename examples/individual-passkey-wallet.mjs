@@ -11,6 +11,9 @@
 import assert from "node:assert/strict";
 import { createLoomClient, createPasskeySigner } from "../packages/sdk/src/index.js";
 import { buildGuardianCeremony, verifyGuardianProof } from "../packages/guardian/src/index.js";
+// Privacy is optional: the wallet engine takes an injected host, so @loom/privacy
+// is a separate, explicit install rather than an SDK dependency.
+import { createKohakuHost } from "../packages/privacy/src/index.js";
 
 const log = (...args) => console.log(...args);
 const section = title => log(`\n=== ${title} ===`);
@@ -56,18 +59,20 @@ async function main() {
         }
       },
       kohaku: {
-        providerProfile: {
-          mode: "user-rpc",
-          chainId: CHAIN_ID,
-          endpoint: USER_RPC,
-          verified: false,
-          metadataBudget: {
-            protocol: "custom",
+        host: createKohakuHost({
+          providerProfile: {
+            mode: "user-rpc",
             chainId: CHAIN_ID,
-            items: [{ surface: "rpc", reveals: "chain and timing", required: true, mitigation: "self-hosted node" }]
-          }
-        },
-        fetch: async () => new Response("{}")
+            endpoint: USER_RPC,
+            verified: false,
+            metadataBudget: {
+              protocol: "custom",
+              chainId: CHAIN_ID,
+              items: [{ surface: "rpc", reveals: "chain and timing", required: true, mitigation: "self-hosted node" }]
+            }
+          },
+          fetch: async () => new Response("{}")
+        })
       }
     });
     log("Passkey created. The user controls the account directly.");

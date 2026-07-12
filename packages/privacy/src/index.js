@@ -263,7 +263,8 @@ export function createKohakuHost(options) {
     keystore,
     provider: Object.freeze({
       profile,
-      request: guardedFetch
+      request: guardedFetch,
+      consentKey: providerConsentKey(profile)
     }),
     async metadataBudget(context) {
       if (context && context.chainId !== undefined && context.chainId !== profile.chainId) {

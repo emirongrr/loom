@@ -15,6 +15,9 @@
 
 import assert from "node:assert/strict";
 import { createLoomClient, createPasskeySigner } from "../packages/sdk/src/index.js";
+// Privacy is optional: the wallet engine takes an injected host, so @loom/privacy
+// is a separate, explicit install rather than an SDK dependency.
+import { createKohakuHost } from "../packages/privacy/src/index.js";
 
 const log = (...args) => console.log(...args);
 const section = title => log(`\n=== ${title} ===`);
@@ -95,23 +98,25 @@ async function main() {
       },
       // Acme's chosen RPC endpoint, reached only through Acme's own fetch.
       kohaku: {
-        providerProfile: {
-          mode: "user-rpc",
-          chainId: CHAIN_ID,
-          endpoint: ACME_RPC,
-          verified: false,
-          metadataBudget: {
-            protocol: "custom",
+        host: createKohakuHost({
+          providerProfile: {
+            mode: "user-rpc",
             chainId: CHAIN_ID,
-            items: [
-              { surface: "rpc", reveals: "chain and request timing", required: true, mitigation: "Acme-operated endpoint" }
-            ]
+            endpoint: ACME_RPC,
+            verified: false,
+            metadataBudget: {
+              protocol: "custom",
+              chainId: CHAIN_ID,
+              items: [
+                { surface: "rpc", reveals: "chain and request timing", required: true, mitigation: "Acme-operated endpoint" }
+              ]
+            }
+          },
+          fetch: async url => {
+            acmeRpcCalls.push(String(url));
+            return new Response("{}");
           }
-        },
-        fetch: async url => {
-          acmeRpcCalls.push(String(url));
-          return new Response("{}");
-        }
+        })
       }
     });
 
