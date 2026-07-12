@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://loom.dev/schemas/deployment-manifest/v1.schema.json",
+  "title": "LoomDeploymentManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseChannel",
+    "chainId",
+    "entryPoint",
+    "factory",
+    "account",
+    "modules",
+    "compatibility"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1"
+    },
+    "releaseChannel": {
+      "enum": [
+        "devnet",
+        "testnet",
+        "mainnet"
+      ]
+    },
+    "chainId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "entryPoint": {
+      "$ref": "#/definitions/deployedContract"
+    },
+    "factory": {
+      "$ref": "#/definitions/deployedContract"
+    },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation",
+        "proxy"
+      ],
+      "properties": {
+        "implementation": {
+          "$ref": "#/definitions/deployedContract"
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "creationCodeHash",
+            "runtimeCodeHash"
+          ],
+          "properties": {
+            "creationCodeHash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{64}$"
+            },
+            "runtimeCodeHash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/module"
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractRelease",
+        "sdkRange"
+      ],
+      "properties": {
+        "contractRelease": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sdkRange": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "definitions": {
+    "deployedContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address",
+        "runtimeCodeHash"
+      ],
+      "properties": {
+        "address": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "runtimeCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "address",
+        "runtimeCodeHash",
+        "version",
+        "status"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "validator",
+            "hook",
+            "recovery"
+          ]
+        },
+        "address": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "runtimeCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "stable",
+            "beta",
+            "experimental"
+          ]
+        }
+      }
+    }
+  }
+}

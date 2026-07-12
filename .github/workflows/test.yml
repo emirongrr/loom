@@ -57,6 +57,12 @@ jobs:
         run: npm ci
       - name: Install privacy SDK dependencies
         run: npm --prefix packages/privacy ci
+      - name: Test core SDK
+        run: npm run core:test
+      - name: Test user-operation hash fixture
+        run: npm run sdk:userop-hash:test
+      - name: Test deployment manifest schema
+        run: npm run manifest:schema:test
       - name: Test account SDK
         run: npm run account:test
       - name: Test guardian SDK
