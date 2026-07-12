@@ -63,6 +63,8 @@ jobs:
         run: npm run sdk:userop-hash:test
       - name: Test deployment manifest schema
         run: npm run manifest:schema:test
+      - name: Test account derivation fixture
+        run: npm run sdk:derivation:test
       - name: Test account SDK
         run: npm run account:test
       - name: Test guardian SDK
