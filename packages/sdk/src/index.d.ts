@@ -4,13 +4,68 @@ import type {
   LifecycleIntent,
   Hex
 } from "@loom/account";
-import type {
-  KohakuHost,
-  KohakuProviderProfile,
-  MetadataBudget,
-  PrivacyContext,
-  ShieldedPoolAdapter
-} from "@loom/privacy";
+// Structural privacy-adapter types the wallet engine consumes. They are defined
+// here — not imported from @loom/privacy — so a TypeScript consumer of the base
+// SDK never needs a privacy protocol package installed. Any conforming adapter
+// (Kohaku's concrete types included) satisfies these shapes structurally.
+export type PrivacyProtocol = "railgun" | "aztec" | "stealth" | "privacy-pool" | "custom";
+export type KohakuProviderMode = "user-rpc" | "helios" | "colibri" | "local-node" | "custom";
+export type MetadataSurface =
+  | "rpc"
+  | "indexer"
+  | "relayer"
+  | "prover"
+  | "bridge"
+  | "timing"
+  | "browser-storage"
+  | "backup";
+
+export interface MetadataBudgetItem {
+  surface: MetadataSurface;
+  reveals: string;
+  required: boolean;
+  mitigation?: string;
+}
+
+export interface MetadataBudget {
+  protocol: PrivacyProtocol;
+  chainId: number;
+  items: readonly MetadataBudgetItem[];
+  degradedMode?: string;
+}
+
+export interface PrivacyContext {
+  account: Hex;
+  chainId: number;
+  applicationId?: string;
+  identityHint?: string;
+  scanScope?: string;
+}
+
+export interface KohakuProviderProfile {
+  mode: KohakuProviderMode;
+  chainId: number;
+  endpoint?: string;
+  verified: boolean;
+  metadataBudget: MetadataBudget;
+}
+
+export interface KohakuHost {
+  provider: {
+    profile: KohakuProviderProfile;
+    request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    consentKey: string;
+  };
+  metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
+}
+
+export interface ShieldedPoolAdapter {
+  readonly protocol: PrivacyProtocol;
+  buildOperation(request: unknown): Promise<unknown>;
+  shield(request: unknown): Promise<unknown>;
+  unshield(request: unknown): Promise<unknown>;
+  privateTransfer(request: unknown): Promise<unknown>;
+}
 
 export class InvalidSdkRequestError extends Error {
   readonly details: Record<string, unknown>;
