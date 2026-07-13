@@ -151,6 +151,22 @@ export async function exerciseSdkSurface(): Promise<void> {
   });
   void sent.userOpHash;
 
+  // The full send pipeline: fill nonce/fees/gas, sign the canonical hash, send,
+  // and receive a typed receipt.
+  const filled: UserOperationEnvelope = await client.fillUserOperation(prepared, {
+    signer: passkey,
+    transport: bundler,
+    stateTransport: rpc
+  });
+  void filled.userOperation.callGasLimit;
+  const txResult = await client.sendTransaction(
+    { calls: [{ target: account, data: "0x" }] },
+    { signer: passkey, transport: bundler, stateTransport: rpc }
+  );
+  void txResult.userOpHash;
+  const gasCost: bigint | undefined = txResult.receipt?.actualGasCost;
+  void gasCost;
+
   const estimate: UserOperationGasEstimate = await client.estimateCalls({
     calls: [{ target: account, data: "0x" }]
   });
