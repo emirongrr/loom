@@ -6,6 +6,8 @@ import {LoomAccount} from "../../src/LoomAccount.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
+import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
@@ -18,6 +20,12 @@ interface VmP256 {
 
 contract P256ValidatorTest {
     VmP256 internal constant vm = VmP256(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    function testFuzz_PublicKeyValidationMatchesOpenZeppelin(bytes32 x, bytes32 y) public pure {
+        WebAuthnP256.PublicKey memory key =
+            WebAuthnP256.PublicKey(x, y, keccak256("wallet.example"), keccak256("https://wallet.example"));
+        require(WebAuthnP256.isValidKey(key) == P256.isValidPublicKey(x, y), "P-256 key validation drift");
+    }
 
     function testInitializationRejectsInvalidP256CurvePoints() public {
         P256Validator validator = new P256Validator(address(new MockP256Verifier()));

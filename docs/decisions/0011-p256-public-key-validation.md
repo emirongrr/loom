@@ -18,11 +18,11 @@ the engineering decision threshold.
 
 ## Decision
 
-`WebAuthnP256.isValidKey` must validate that coordinates are non-zero,
-field-bounded, and satisfy the P-256 curve equation in addition to requiring
-non-zero relying-party and origin commitments. All consumers of the shared key
-check - single-passkey initialization and rotation, multi-passkey credential
-changes, and guardian verification - inherit the same curve membership rule.
+`WebAuthnP256.isValidKey` must validate coordinates with the pinned OpenZeppelin
+`P256.isValidPublicKey` implementation in addition to requiring non-zero
+relying-party and origin commitments. All consumers of the shared key check -
+single-passkey initialization and rotation, multi-passkey credential changes,
+and guardian verification - inherit the same curve membership rule.
 
 Acceptance requires tests for zero coordinates, coordinates outside the field,
 off-curve coordinates, valid initialization, and timelocked key rotation. The

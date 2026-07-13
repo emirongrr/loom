@@ -3,14 +3,12 @@ pragma solidity 0.8.35;
 
 import {IP256Verifier} from "../interfaces/IP256Verifier.sol";
 import {Base64Url} from "./Base64Url.sol";
+import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 
 library WebAuthnP256 {
     uint256 internal constant MAX_AUTHENTICATOR_DATA_LENGTH = 1024;
     uint256 internal constant MAX_CLIENT_DATA_JSON_LENGTH = 1024;
     uint256 internal constant MAX_ORIGIN_LENGTH = 256;
-    uint256 internal constant P256_FIELD_MODULUS =
-        0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff;
-    uint256 internal constant P256_B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b;
     uint256 internal constant P256_HALF_ORDER = 0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8;
 
     struct PublicKey {
@@ -29,7 +27,7 @@ library WebAuthnP256 {
     }
 
     function isValidKey(PublicKey memory key) internal pure returns (bool) {
-        return key.rpIdHash != bytes32(0) && key.originHash != bytes32(0) && _isOnCurve(key.x, key.y);
+        return key.rpIdHash != bytes32(0) && key.originHash != bytes32(0) && P256.isValidPublicKey(key.x, key.y);
     }
 
     // Excludes rpIdHash/originHash: the same physical authenticator registered
@@ -169,18 +167,5 @@ library WebAuthnP256 {
             out[i - start] = data[i];
         }
         return out;
-    }
-
-    function _isOnCurve(bytes32 xBytes, bytes32 yBytes) private pure returns (bool) {
-        uint256 x = uint256(xBytes);
-        uint256 y = uint256(yBytes);
-        if (x == 0 || y == 0 || x >= P256_FIELD_MODULUS || y >= P256_FIELD_MODULUS) return false;
-
-        uint256 yy = mulmod(y, y, P256_FIELD_MODULUS);
-        uint256 xx = mulmod(x, x, P256_FIELD_MODULUS);
-        uint256 xxx = mulmod(xx, x, P256_FIELD_MODULUS);
-        uint256 threeX = mulmod(3, x, P256_FIELD_MODULUS);
-        uint256 rhs = addmod(addmod(xxx, P256_FIELD_MODULUS - threeX, P256_FIELD_MODULUS), P256_B, P256_FIELD_MODULUS);
-        return yy == rhs;
     }
 }

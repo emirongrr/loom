@@ -36,6 +36,10 @@ CI runs Slither `0.11.5` and fails on high-severity findings.
   so the revealed old guardian tree is no longer active during initialization.
 - Recovery's `readyAt == 0` comparisons intentionally use zero as the
   no-pending-recovery sentinel; they are not timestamp equality gates.
+- OpenZeppelin `Math.mulDiv` intentionally uses `(3 * denominator) ^ 2` as the
+  four-bit Newton-Raphson modular-inverse seed. The vendored line has a local
+  `incorrect-exp` suppression because Slither otherwise mistakes XOR for
+  exponentiation; no detector or dependency path is globally excluded.
 
 Every warning must be re-triaged before audit freeze. New high-severity
 findings fail CI and may not be globally excluded.
