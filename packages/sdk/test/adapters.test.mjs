@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   InvalidSdkRequestError,
+  computeUserOperationHash,
   createBundlerTransport,
   createEip1193StateTransport,
   createPasskeySigner,
@@ -299,12 +300,15 @@ test("passkey signer construction has no credential side effects", () => {
   createPasskeySigner({
     credentialId: "credential-1",
     rpId: "loom.example",
+    origin: "https://wallet.example",
+    validator: target,
+    entryPoint,
     signChallenge: async () => {
       calls += 1;
       return {
         authenticatorData: "0x01",
         clientDataJSON: "0x02",
-        signature: "0x03"
+        signature: `0x${"01".padStart(64, "0")}${"02".padStart(64, "0")}`
       };
     }
   });
@@ -312,18 +316,20 @@ test("passkey signer construction has no credential side effects", () => {
   assert.equal(calls, 0);
 });
 
-test("passkey signer binds account chain and intent hash into the challenge", async () => {
+test("passkey signer binds the canonical hash and emits the contract envelope", async () => {
   const challenges = [];
   const signer = createPasskeySigner({
     credentialId: "credential-1",
     rpId: "loom.example",
     origin: "https://wallet.example",
+    validator: target,
+    entryPoint,
     signChallenge: async challenge => {
       challenges.push(challenge);
       return {
         authenticatorData: "0x01",
         clientDataJSON: "0x02",
-        signature: "0x03",
+        signature: `0x${"05".padStart(64, "0")}${"07".padStart(64, "0")}`,
         userHandle: "0x04"
       };
     }
@@ -335,31 +341,56 @@ test("passkey signer binds account chain and intent hash into the challenge", as
   });
   const signature = await signer.signUserOperation(envelope);
 
-  assert.match(signature, /^0x[0-9a-f]{64}$/);
+  // The signature is the abi.encode(validator, WebAuthnSignature) envelope,
+  // never a bare hash: it embeds the validator address and the r component.
+  assert.ok(signature.length > 2 + 64 * 8);
+  assert.ok(signature.includes(target.slice(2)));
+  assert.ok(signature.includes("05".padStart(64, "0")));
   assert.equal(challenges.length, 1);
   assert.equal(challenges[0].account, account);
   assert.equal(challenges[0].chainId, 1);
   assert.equal(challenges[0].intentHash, envelope.intentHash);
   assert.equal(challenges[0].rpId, "loom.example");
+  // The challenge carries the canonical EntryPoint hash, not a local digest.
+  assert.equal(challenges[0].userOperationHash, computeUserOperationHash(envelope, { entryPoint }));
+  assert.match(challenges[0].challenge, /^[A-Za-z0-9_-]{43}$/);
 });
 
 test("passkey signer rejects malformed authenticator responses", async () => {
-  const signer = createPasskeySigner({
+  const base = {
     credentialId: "credential-1",
     rpId: "loom.example",
-    signChallenge: async () => ({
-      authenticatorData: "0x01",
-      clientDataJSON: "not-hex",
-      signature: "0x03"
-    })
-  });
+    origin: "https://wallet.example",
+    validator: target,
+    entryPoint
+  };
   const envelope = prepareUserOperationEnvelope({
     chainId: 1,
     account,
     intent
   });
 
-  await assert.rejects(signer.signUserOperation(envelope), InvalidSdkRequestError);
+  const badClientData = createPasskeySigner({
+    ...base,
+    signChallenge: async () => ({ authenticatorData: "0x01", clientDataJSON: "not-hex", signature: "0x03" })
+  });
+  await assert.rejects(badClientData.signUserOperation(envelope), InvalidSdkRequestError);
+
+  const badSignature = createPasskeySigner({
+    ...base,
+    signChallenge: async () => ({ authenticatorData: "0x01", clientDataJSON: "0x02", signature: "0x03" })
+  });
+  await assert.rejects(badSignature.signUserOperation(envelope), InvalidSdkRequestError);
+
+  // A signer without an explicit validator or EntryPoint cannot be constructed.
+  assert.throws(
+    () => createPasskeySigner({ ...base, validator: undefined, signChallenge: async () => ({}) }),
+    InvalidSdkRequestError
+  );
+  assert.throws(
+    () => createPasskeySigner({ ...base, entryPoint: undefined, signChallenge: async () => ({}) }),
+    InvalidSdkRequestError
+  );
 });
 
 // Walkaway / WalletBeat "custom endpoints, no default provider": the transports

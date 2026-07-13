@@ -48,6 +48,8 @@ function createFixturePasskeySigner(events) {
     credentialId: "chrome-windows-hello-fixture",
     rpId: "localhost",
     origin: "http://localhost:8788",
+    validator: "0x9999999999999999999999999999999999999999",
+    entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     async signChallenge(challenge) {
       events.push({ type: "passkey.challenge", challenge });
       assert.equal(challenge.type, "loom.passkey-user-operation");
@@ -55,10 +57,11 @@ function createFixturePasskeySigner(events) {
       assert.equal(challenge.chainId, 1);
       assert.match(challenge.intentHash, /^0x[0-9a-f]{64}$/);
       assert.match(challenge.userOperationHash, /^0x[0-9a-f]{64}$/);
+      assert.match(challenge.challenge, /^[A-Za-z0-9_-]{43}$/);
       return {
         authenticatorData: "0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97630500000001",
         clientDataJSON: "0x7b2274797065223a22776562617574686e2e676574227d",
-        signature: "0x1234"
+        signature: `0x${"12".repeat(32)}${"34".repeat(32)}`
       };
     }
   });

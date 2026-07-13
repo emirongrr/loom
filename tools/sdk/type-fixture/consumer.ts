@@ -19,6 +19,8 @@ import {
   walletGetCapabilities,
   buildAppSessionGrant,
   prepareUserOperationEnvelope,
+  computeUserOperationHash,
+  fetchEntryPointNonce,
   explainLifecycleIntent,
   hashCanonical,
   toViemCalls,
@@ -91,6 +93,9 @@ export async function exerciseSdkSurface(): Promise<void> {
   const passkey: LoomSignerAdapter = createPasskeySigner({
     credentialId: "credential-id",
     rpId: "wallet.example",
+    origin: "https://wallet.example",
+    validator: account,
+    entryPoint: account,
     async signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion> {
       const boundIntent: Hex = challenge.intentHash;
       void boundIntent;
@@ -120,6 +125,22 @@ export async function exerciseSdkSurface(): Promise<void> {
   });
   void envelope.userOperation.callData;
 
+  // Canonical hashing and nonce reads are explicit: the EntryPoint and the
+  // state transport are always supplied, never defaulted.
+  const canonicalOpHash: Hex = computeUserOperationHash(envelope, { entryPoint: account });
+  void canonicalOpHash;
+  const clientOpHash: Hex = client.computeUserOperationHash(envelope, { entryPoint: account });
+  void clientOpHash;
+  const entryPointNonce: bigint = await fetchEntryPointNonce({
+    stateTransport: rpc,
+    entryPoint: account,
+    account,
+    key: 0n
+  });
+  void entryPointNonce;
+  const clientNonce: bigint = await client.getEntryPointNonce({ entryPoint: account });
+  void clientNonce;
+
   const viemCalls: readonly ViemCall[] = client.toViemCalls(prepared);
   void viemCalls;
   const standaloneViemCalls: readonly ViemCall[] = toViemCalls(prepared, { account });
@@ -129,6 +150,22 @@ export async function exerciseSdkSurface(): Promise<void> {
     calls: [{ target: account, data: "0x" }]
   });
   void sent.userOpHash;
+
+  // The full send pipeline: fill nonce/fees/gas, sign the canonical hash, send,
+  // and receive a typed receipt.
+  const filled: UserOperationEnvelope = await client.fillUserOperation(prepared, {
+    signer: passkey,
+    transport: bundler,
+    stateTransport: rpc
+  });
+  void filled.userOperation.callGasLimit;
+  const txResult = await client.sendTransaction(
+    { calls: [{ target: account, data: "0x" }] },
+    { signer: passkey, transport: bundler, stateTransport: rpc }
+  );
+  void txResult.userOpHash;
+  const gasCost: bigint | undefined = txResult.receipt?.actualGasCost;
+  void gasCost;
 
   const estimate: UserOperationGasEstimate = await client.estimateCalls({
     calls: [{ target: account, data: "0x" }]

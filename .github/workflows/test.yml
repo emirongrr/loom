@@ -65,6 +65,8 @@ jobs:
         run: npm run manifest:schema:test
       - name: Test account derivation fixture
         run: npm run sdk:derivation:test
+      - name: Test signature envelope fixture
+        run: npm run sdk:signature:test
       - name: Test account SDK
         run: npm run account:test
       - name: Test guardian SDK

@@ -83,6 +83,15 @@ contract LoomAccountExtendedHandler {
     // ── Recovery tracking ─────────────────────────────────────────────────────
     bool public recoveryPending;
 
+    struct ActionCoverage {
+        uint64 invoked;
+        uint64 attempted;
+        uint64 succeeded;
+        uint64 reverted;
+    }
+
+    mapping(bytes4 selector => ActionCoverage coverage) public actionCoverage;
+
     function configure(
         LoomAccount account_,
         LoomAccount migrationDestination_,
@@ -116,6 +125,17 @@ contract LoomAccountExtendedHandler {
 
     function _checkVersion(uint64 versionBefore) internal {
         if (account.configVersion() < versionBefore) violated = true;
+    }
+
+    function _recordInvocation(bytes4 selector) internal {
+        ++actionCoverage[selector].invoked;
+    }
+
+    function _recordAttempt(bytes4 selector, bool succeeded) internal {
+        ActionCoverage storage coverage = actionCoverage[selector];
+        ++coverage.attempted;
+        if (succeeded) ++coverage.succeeded;
+        else ++coverage.reverted;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -428,6 +448,8 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function attemptDirectExecution(uint256 validatorSeed) external {
+        bytes4 selector = this.attemptDirectExecution.selector;
+        _recordInvocation(selector);
         uint256 count = account.validatorCount();
         if (count == 0) {
             violated = true;
@@ -448,6 +470,7 @@ contract LoomAccountExtendedHandler {
 
         (bool ok,) = address(account)
             .call(abi.encodeCall(LoomAccount.executeDirect, (validator, mode, execCalldata, validUntil, sig)));
+        _recordAttempt(selector, ok);
         if (ok) {
             // Nonce must have advanced.
             if (account.directExecutionNonces(validator) <= nonceBefore) violated = true;
@@ -599,6 +622,8 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function attemptExecuteMigration() external {
+        bytes4 selector = this.attemptExecuteMigration.selector;
+        _recordInvocation(selector);
         (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) = account.pendingMigration();
         if (pendingCallsHash == bytes32(0)) return;
         // forge-lint: disable-next-line(block-timestamp)
@@ -606,6 +631,7 @@ contract LoomAccountExtendedHandler {
         uint64 versionBefore = account.configVersion();
         uint256 valueBefore = migrationTarget.value();
         (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.executeMigration, (_migrationCalls())));
+        _recordAttempt(selector, ok);
         if (shouldBeBlocked && ok) violated = true;
         if (shouldBeBlocked && migrationTarget.value() != valueBefore) violated = true;
         if (account.migrationNonce() < lastObservedMigrationNonce) violated = true;
@@ -713,6 +739,8 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function proposeRecovery() external {
+        bytes4 selector = this.proposeRecovery.selector;
+        _recordInvocation(selector);
         (,,,,, uint48 pendingReadyAt,,,) = recovery.pendingRecoveries(address(account));
         if (pendingReadyAt != 0) return; // one recovery pending at a time
 
@@ -747,6 +775,7 @@ contract LoomAccountExtendedHandler {
                     (address(account), oldValidators, address(newValidator), initDataHash, newRoot, 1, approvals)
                 )
             );
+        _recordAttempt(selector, ok);
         if (ok) {
             recoveryPending = true;
             // A proposal is a *pending* record in the module; it must not touch
@@ -998,6 +1027,18 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
         );
     }
 
+    function invariantCriticalHandlerOutcomesAreFullyAccounted() public view {
+        _assertCoverageAccounting(LoomAccountExtendedHandler.attemptDirectExecution.selector);
+        _assertCoverageAccounting(LoomAccountExtendedHandler.attemptExecuteMigration.selector);
+        _assertCoverageAccounting(LoomAccountExtendedHandler.proposeRecovery.selector);
+    }
+
+    function _assertCoverageAccounting(bytes4 selector) internal view {
+        (uint64 invoked, uint64 attempted, uint64 succeeded, uint64 reverted) = handler.actionCoverage(selector);
+        require(invoked >= attempted, "action attempts exceeded invocations");
+        require(attempted == succeeded + reverted, "action outcome was not recorded");
+    }
+
     /// @notice Guards against the new recovery handler actions silently always
     ///         early-returning (which would make them dead fuzz coverage). This
     ///         drives the actual success path once and asserts the module state
@@ -1008,10 +1049,47 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
         (,,,,, uint48 readyAtAfterPropose,,,) = recovery.pendingRecoveries(address(account));
         require(readyAtAfterPropose != 0, "proposeRecovery action did not reach the success path");
         require(handler.recoveryPending(), "handler did not record the pending recovery");
+        (uint64 invoked, uint64 attempted, uint64 succeeded, uint64 reverted) =
+            handler.actionCoverage(LoomAccountExtendedHandler.proposeRecovery.selector);
+        require(invoked == 1 && attempted == 1 && succeeded == 1 && reverted == 0, "recovery outcome not counted");
+
+        handler.proposeRecovery();
+        (invoked, attempted, succeeded, reverted) =
+            handler.actionCoverage(LoomAccountExtendedHandler.proposeRecovery.selector);
+        require(invoked == 2 && attempted == 1, "recovery precondition return not distinguished");
 
         handler.cancelRecoveryDirect();
         (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
         require(readyAtAfterCancel == 0, "cancelRecoveryDirect action did not clear the pending recovery");
         require(!handler.violated(), "recovery handler actions observed an invariant violation");
+    }
+
+    function test_DirectExecutionHandlerReachesSuccessAndRevertPaths() public {
+        handler.attemptDirectExecution(0);
+        handler.freezeAccount();
+        handler.attemptDirectExecution(0);
+
+        (uint64 invoked, uint64 attempted, uint64 succeeded, uint64 reverted) =
+            handler.actionCoverage(LoomAccountExtendedHandler.attemptDirectExecution.selector);
+        require(invoked == 2 && attempted == 2, "direct execution actions were not attempted");
+        require(succeeded == 1 && reverted == 1, "direct execution did not reach both outcomes");
+        require(!handler.violated(), "direct execution handler observed an invariant violation");
+    }
+
+    function test_MigrationHandlerDistinguishesBlockedAndReadyExecution() public {
+        handler.scheduleMigration(77);
+        handler.attemptExecuteMigration();
+
+        (,,,, uint48 readyAt,,,) = account.pendingMigration();
+        require(readyAt != 0, "blocked migration did not remain pending");
+        VmExtInvariant(address(uint160(uint256(keccak256("hevm cheat code"))))).warp(readyAt);
+        handler.attemptExecuteMigration();
+
+        (uint64 invoked, uint64 attempted, uint64 succeeded, uint64 reverted) =
+            handler.actionCoverage(LoomAccountExtendedHandler.attemptExecuteMigration.selector);
+        require(invoked == 2 && attempted == 2, "migration actions were not attempted");
+        require(succeeded == 1 && reverted == 1, "migration did not reach blocked and ready outcomes");
+        require(handler.migrationTarget().value() == 77, "ready migration did not execute committed call");
+        require(!handler.violated(), "migration handler observed an invariant violation");
     }
 }
