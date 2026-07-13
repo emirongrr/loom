@@ -6,6 +6,7 @@ import {LoomAccountFactory} from "../../src/LoomAccountFactory.sol";
 import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../../src/validators/P256Validator.sol";
 import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
+import {VaultHook} from "../../src/hooks/VaultHook.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
@@ -36,6 +37,7 @@ contract MultiUserFactoryIsolationTest {
 
     MockEntryPoint internal entryPoint;
     PolicyHook internal hook;
+    VaultHook internal vault;
     ECDSAValidator internal ecdsa;
     P256Validator internal p256;
     LoomAccountFactory internal factory;
@@ -43,6 +45,7 @@ contract MultiUserFactoryIsolationTest {
     function setUp() public {
         entryPoint = new MockEntryPoint();
         hook = new PolicyHook();
+        vault = new VaultHook();
         ecdsa = new ECDSAValidator();
         p256 = new P256Validator(address(new OZP256Verifier()));
 
@@ -175,6 +178,38 @@ contract MultiUserFactoryIsolationTest {
         );
     }
 
+    function testVaultPolicyAndSpendingRemainAccountScoped() public {
+        LoomAccount accountA =
+            _create(keccak256("vault-a"), _modules(vm.addr(OWNER_A_KEY), P256_X_A, P256_Y_A, "vault-a"));
+        LoomAccount accountB =
+            _create(keccak256("vault-b"), _modules(vm.addr(OWNER_B_KEY), P256_X_B, P256_Y_B, "vault-b"));
+        MockERC20 token = new MockERC20();
+        token.mint(address(accountA), 100);
+        token.mint(address(accountB), 100);
+
+        _setVaultPolicy(accountA, address(token), VaultHook.VaultPolicy(50, 1 days, 2 days, true));
+        _executeFromEntryPoint(
+            accountA,
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(0xA11CE), 40)))
+        );
+        _executeFromEntryPoint(
+            accountB,
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(0xB0B), 80)))
+        );
+
+        (uint128 dailyLimitA,,, bool enabledA) = vault.policies(address(accountA), address(token));
+        (uint128 dailyLimitB,,, bool enabledB) = vault.policies(address(accountB), address(token));
+        (uint128 spentA,) = vault.spending(address(accountA), address(token));
+        (uint128 spentB,) = vault.spending(address(accountB), address(token));
+
+        require(enabledA && dailyLimitA == 50, "account A vault policy missing");
+        require(!enabledB && dailyLimitB == 0, "account B inherited vault policy");
+        require(spentA == 40, "account A vault spend missing");
+        require(spentB == 0, "account B inherited vault spend");
+        require(token.balanceOf(address(0xA11CE)) == 40, "account A transfer missing");
+        require(token.balanceOf(address(0xB0B)) == 80, "account B unprotected transfer blocked");
+    }
+
     function _create(bytes32 salt, LoomAccount.ModuleInit[] memory modules) internal returns (LoomAccount) {
         return entryPoint.createAccount(factory, salt, bytes32(0), 0, keccak256("config"), modules);
     }
@@ -184,12 +219,13 @@ contract MultiUserFactoryIsolationTest {
         view
         returns (LoomAccount.ModuleInit[] memory modules)
     {
-        modules = new LoomAccount.ModuleInit[](3);
+        modules = new LoomAccount.ModuleInit[](4);
         modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
-        modules[1] = LoomAccount.ModuleInit(
+        modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(vault), "");
+        modules[2] = LoomAccount.ModuleInit(
             ModuleType.VALIDATOR, address(ecdsa), abi.encodeCall(ECDSAValidator.initialize, (owner, address(hook)))
         );
-        modules[2] = LoomAccount.ModuleInit(
+        modules[3] = LoomAccount.ModuleInit(
             ModuleType.VALIDATOR,
             address(p256),
             abi.encodeCall(
@@ -214,6 +250,15 @@ contract MultiUserFactoryIsolationTest {
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, schedule));
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
         account.executeScheduled(address(hook), 0, setPolicy);
+    }
+
+    function _setVaultPolicy(LoomAccount account, address asset, VaultHook.VaultPolicy memory policy) internal {
+        bytes memory setPolicy = abi.encodeCall(VaultHook.setVaultPolicy, (asset, policy));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(vault), 0, setPolicy, account.MIN_CONFIG_DELAY()));
+        _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, schedule));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(vault), 0, setPolicy);
     }
 
     function _executeFromEntryPoint(LoomAccount account, ExecutionLib.Execution memory execution) internal {
