@@ -245,6 +245,94 @@ export function createLoomClient(options = {}) {
         blockTag: input.blockTag
       });
     },
+    async fillUserOperation(prepared, overrides = {}) {
+      const selectedTransport = overrides.transport ?? transport;
+      const selectedSigner = overrides.signer ?? signer;
+      const base = await applyMiddleware(this.prepareUserOperation(prepared, overrides), middleware);
+      const op = base.userOperation;
+
+      // Nonce: read from the EntryPoint unless the caller pinned one.
+      let nonce = op.nonce;
+      if (overrides.nonce === undefined && nonce === 0n) {
+        nonce = await this.getEntryPointNonce({
+          stateTransport: overrides.stateTransport,
+          entryPoint: overrides.entryPoint,
+          key: overrides.nonceKey
+        });
+      }
+
+      // Fees: explicit overrides win; otherwise ask the bundler's gas oracle.
+      // No silent default — a bundler without the oracle requires explicit fees.
+      let maxFeePerGas = op.maxFeePerGas;
+      let maxPriorityFeePerGas = op.maxPriorityFeePerGas;
+      if ((maxFeePerGas === 0n || maxPriorityFeePerGas === 0n)) {
+        if (selectedTransport && typeof selectedTransport.getUserOperationGasPrice === "function") {
+          const fees = await selectedTransport.getUserOperationGasPrice(overrides.feeTier);
+          if (maxFeePerGas === 0n) maxFeePerGas = fees.maxFeePerGas;
+          if (maxPriorityFeePerGas === 0n) maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
+        } else if (maxFeePerGas === 0n || maxPriorityFeePerGas === 0n) {
+          throw new InvalidSdkRequestError("fee fill requires explicit fees or a bundler gas oracle");
+        }
+      }
+
+      // Gas limits: estimate against the bundler using a representative dummy
+      // signature so verification gas is realistic before the real hash exists.
+      let { callGasLimit, verificationGasLimit, preVerificationGas } = op;
+      if (callGasLimit === 0n || verificationGasLimit === 0n || preVerificationGas === 0n) {
+        if (!selectedTransport || typeof selectedTransport.estimateUserOperationGas !== "function") {
+          throw new InvalidSdkRequestError("gas fill requires transport gas estimation or explicit limits");
+        }
+        const dummySignature = overrides.dummySignature ?? selectedSigner?.dummySignature;
+        if (op.signature === "0x" && dummySignature === undefined) {
+          throw new InvalidSdkRequestError("gas estimation requires a dummy signature from the signer");
+        }
+        const forEstimate = withFilledUserOperation(base, {
+          nonce,
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          signature: op.signature === "0x" ? dummySignature : op.signature
+        });
+        const estimate = await selectedTransport.estimateUserOperationGas(forEstimate);
+        if (callGasLimit === 0n) callGasLimit = estimate.callGasLimit;
+        if (verificationGasLimit === 0n) verificationGasLimit = estimate.verificationGasLimit;
+        if (preVerificationGas === 0n) preVerificationGas = estimate.preVerificationGas;
+      }
+
+      return withFilledUserOperation(base, {
+        nonce,
+        callGasLimit,
+        verificationGasLimit,
+        preVerificationGas,
+        maxFeePerGas,
+        maxPriorityFeePerGas
+      });
+    },
+    async sendTransaction(input, overrides = {}) {
+      const selectedSigner = overrides.signer ?? signer;
+      const selectedTransport = overrides.transport ?? transport;
+      if (!selectedSigner || typeof selectedSigner.signUserOperation !== "function") {
+        throw new InvalidSdkRequestError("sendTransaction requires an explicit signer adapter");
+      }
+      if (!selectedTransport || typeof selectedTransport.sendUserOperation !== "function") {
+        throw new InvalidSdkRequestError("sendTransaction requires an explicit transport adapter");
+      }
+      const prepared = this.prepareCalls(input);
+      // Fill nonce/fees/gas first: the canonical hash the signer signs binds them,
+      // so filling must precede signing.
+      const filled = await this.fillUserOperation(prepared, overrides);
+      const signature = await selectedSigner.signUserOperation(filled);
+      const signed = withFilledUserOperation(filled, { signature: normalizeHex(signature, "signature") });
+      const sent = await selectedTransport.sendUserOperation(signed);
+      if (overrides.wait === false || typeof selectedTransport.waitForUserOperationReceipt !== "function") {
+        return Object.freeze({ userOpHash: sent.userOpHash, userOperation: signed.userOperation });
+      }
+      const receipt = await selectedTransport.waitForUserOperationReceipt({
+        userOpHash: sent.userOpHash,
+        timeoutMs: overrides.timeoutMs,
+        pollIntervalMs: overrides.pollIntervalMs
+      });
+      return Object.freeze({ userOpHash: sent.userOpHash, userOperation: signed.userOperation, receipt });
+    },
     toViemCalls(prepared) {
       return toViemCalls(prepared, { account });
     },
@@ -458,6 +546,19 @@ export function createBundlerTransport(options = {}) {
         callGasLimit: parseRpcQuantity(result.callGasLimit, "callGasLimit"),
         verificationGasLimit: parseRpcQuantity(result.verificationGasLimit, "verificationGasLimit"),
         preVerificationGas: parseRpcQuantity(result.preVerificationGas, "preVerificationGas")
+      });
+    },
+    async getUserOperationGasPrice(tier = "standard") {
+      // Bundler-provided fee suggestion (Alto/Pimlico `pimlico_getUserOperationGasPrice`).
+      // Optional: callers whose bundler lacks it supply fees explicitly instead.
+      const result = await request("pimlico_getUserOperationGasPrice", []);
+      const selected = result?.[tier];
+      if (!selected || typeof selected !== "object") {
+        throw new InvalidSdkRequestError("bundler did not return the requested gas price tier", { tier });
+      }
+      return Object.freeze({
+        maxFeePerGas: parseRpcQuantity(selected.maxFeePerGas, "maxFeePerGas"),
+        maxPriorityFeePerGas: parseRpcQuantity(selected.maxPriorityFeePerGas, "maxPriorityFeePerGas")
       });
     },
     async getUserOperationReceipt(input) {
@@ -844,12 +945,27 @@ export function createPasskeySigner(options = {}) {
   const validator = normalizeAddress(options.validator, "validator");
   const entryPoint = normalizeAddress(options.entryPoint, "entry point");
 
+  // A representative, signature-shaped envelope for gas estimation: same
+  // validator, WebAuthn field sizes, and low-s r/s bounds a real assertion has,
+  // so a bundler estimates realistic verification gas without a live signature.
+  const dummySignature = encodeValidatorSignature(
+    validator,
+    encodeWebAuthnSignature({
+      authenticatorData: `0x${"00".repeat(37)}`,
+      clientDataJSON: `0x${"00".repeat(134)}`,
+      origin: options.origin,
+      r: `0x${"11".repeat(32)}`,
+      s: `0x${"22".repeat(32)}`
+    })
+  );
+
   return Object.freeze({
     credentialId: options.credentialId,
     rpId: options.rpId,
     origin: options.origin,
     validator,
     entryPoint,
+    dummySignature,
     async signUserOperation(envelope) {
       const normalizedEnvelope = normalizeUserOperationEnvelope(envelope);
       // The authenticator signs over the canonical EntryPoint hash — the same
@@ -1157,15 +1273,38 @@ function normalizeUserOperationEnvelope(envelope) {
   });
 }
 
+function withFilledUserOperation(envelope, fields) {
+  return Object.freeze({
+    ...envelope,
+    userOperation: normalizePreparedUserOperation({ ...envelope.userOperation, ...fields })
+  });
+}
+
 function normalizeUserOperationReceipt(receipt) {
   if (!receipt || typeof receipt !== "object") {
     throw new InvalidSdkRequestError("user operation receipt is invalid");
   }
-  return Object.freeze({
-    ...receipt,
+  const normalized = {
     userOpHash: normalizeBytes32(receipt.userOpHash, "receipt userOpHash"),
     success: Boolean(receipt.success)
-  });
+  };
+  // Decode the standard ERC-4337 receipt fields into typed values when present;
+  // absence is tolerated (a mock or minimal bundler may omit them).
+  if (receipt.sender !== undefined) normalized.sender = normalizeAddress(receipt.sender, "receipt sender");
+  if (receipt.nonce !== undefined) normalized.nonce = parseRpcQuantity(receipt.nonce, "receipt nonce");
+  if (receipt.actualGasCost !== undefined) {
+    normalized.actualGasCost = parseRpcQuantity(receipt.actualGasCost, "actualGasCost");
+  }
+  if (receipt.actualGasUsed !== undefined) {
+    normalized.actualGasUsed = parseRpcQuantity(receipt.actualGasUsed, "actualGasUsed");
+  }
+  if (receipt.paymaster !== undefined && receipt.paymaster !== null) {
+    normalized.paymaster = normalizeAddress(receipt.paymaster, "receipt paymaster");
+  }
+  if (receipt.reason !== undefined) normalized.reason = String(receipt.reason);
+  if (receipt.logs !== undefined) normalized.logs = receipt.logs;
+  if (receipt.receipt !== undefined) normalized.receipt = receipt.receipt;
+  return Object.freeze(normalized);
 }
 
 function normalizePreparedUserOperation(userOperation) {

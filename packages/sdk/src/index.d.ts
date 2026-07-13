@@ -146,6 +146,8 @@ export function createLoomSdk(options?: {
 
 export interface LoomSignerAdapter {
   signUserOperation(envelope: UserOperationEnvelope): Promise<Hex>;
+  /** A representative signature-shaped envelope for gas estimation, if available. */
+  readonly dummySignature?: Hex;
 }
 
 export interface LoomTransportAdapter {
@@ -154,6 +156,7 @@ export interface LoomTransportAdapter {
     receipt?: unknown;
   }>;
   estimateUserOperationGas?(envelope: UserOperationEnvelope): Promise<UserOperationGasEstimate>;
+  getUserOperationGasPrice?(tier?: string): Promise<UserOperationFees>;
   getUserOperationReceipt?(input: { userOpHash: Hex }): Promise<UserOperationReceipt | null>;
   waitForUserOperationReceipt?(input: {
     userOpHash: Hex;
@@ -334,27 +337,29 @@ export interface AccountCallsIntent {
   };
 }
 
+export interface PreparedUserOperation {
+  readonly sender: Hex;
+  readonly nonce: bigint;
+  readonly factory?: Hex;
+  readonly factoryData?: Hex;
+  readonly callData: Hex;
+  readonly callGasLimit: bigint;
+  readonly verificationGasLimit: bigint;
+  readonly preVerificationGas: bigint;
+  readonly maxFeePerGas: bigint;
+  readonly maxPriorityFeePerGas: bigint;
+  readonly paymaster?: Hex;
+  readonly paymasterData?: Hex;
+  readonly signature: Hex;
+}
+
 export interface UserOperationEnvelope {
   readonly kind: "userOperation.prepare";
   readonly chainId: number;
   readonly account: Hex;
   readonly intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
   readonly intentHash: Hex;
-  readonly userOperation: {
-    readonly sender: Hex;
-    readonly nonce: bigint;
-    readonly factory?: Hex;
-    readonly factoryData?: Hex;
-    readonly callData: Hex;
-    readonly callGasLimit: bigint;
-    readonly verificationGasLimit: bigint;
-    readonly preVerificationGas: bigint;
-    readonly maxFeePerGas: bigint;
-    readonly maxPriorityFeePerGas: bigint;
-    readonly paymaster?: Hex;
-    readonly paymasterData?: Hex;
-    readonly signature: Hex;
-  };
+  readonly userOperation: PreparedUserOperation;
   readonly review: ClearSigningReview;
 }
 
@@ -367,8 +372,35 @@ export interface UserOperationGasEstimate {
 export interface UserOperationReceipt {
   readonly userOpHash: Hex;
   readonly success: boolean;
+  readonly sender?: Hex;
+  readonly nonce?: bigint;
+  readonly paymaster?: Hex;
+  readonly actualGasCost?: bigint;
+  readonly actualGasUsed?: bigint;
+  readonly reason?: string;
+  readonly logs?: unknown;
   readonly receipt?: unknown;
-  readonly [key: string]: unknown;
+}
+
+export interface UserOperationFees {
+  readonly maxFeePerGas: bigint;
+  readonly maxPriorityFeePerGas: bigint;
+}
+
+export interface SendTransactionResult {
+  readonly userOpHash: Hex;
+  readonly userOperation: PreparedUserOperation;
+  readonly receipt?: UserOperationReceipt;
+}
+
+export interface FillOverrides extends UserOperationOverrides {
+  transport?: LoomTransportAdapter;
+  stateTransport?: LoomStateReadTransport;
+  signer?: LoomSignerAdapter;
+  entryPoint?: Hex;
+  nonceKey?: bigint;
+  feeTier?: string;
+  dummySignature?: Hex;
 }
 
 export interface LoomClient {
@@ -408,6 +440,14 @@ export interface LoomClient {
     key?: bigint;
     blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
   }): Promise<bigint>;
+  fillUserOperation(
+    prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
+    overrides?: FillOverrides
+  ): Promise<UserOperationEnvelope>;
+  sendTransaction(
+    input: { calls: readonly LoomCall[] } | LoomCall,
+    overrides?: FillOverrides & { wait?: boolean; timeoutMs?: number; pollIntervalMs?: number }
+  ): Promise<SendTransactionResult>;
   toViemCalls(prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent): readonly ViemCall[];
   sendPreparedUserOperation(
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
@@ -628,6 +668,8 @@ export function createPasskeySigner(options: {
   readonly origin: string;
   readonly validator: Hex;
   readonly entryPoint: Hex;
+  /** A representative signature-shaped envelope for gas estimation. */
+  readonly dummySignature: Hex;
 };
 
 export function prepareUserOperationEnvelope(input: {
