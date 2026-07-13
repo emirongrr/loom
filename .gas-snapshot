@@ -40,6 +40,8 @@ EthereumL1KeystoreVerifierTest:testDirectL1VerifierRejectsMissingIdentityWrongKe
 ExactCallSessionValidatorTest:testExactCallPermissionIdsCannotShareNonceKey() (gas: 5564735)
 ExactCallSessionValidatorTest:testPermissionBindsCallAndUseLimit() (gas: 5657827)
 ExactCallSessionValidatorTest:testZeroPermissionIdRejected() (gas: 5431872)
+ExecutionGasScalingTest:testBatchExecutionGasScalesApproximatelyLinearly() (gas: 18551978)
+ExecutionGasScalingTest:testMaximumHookCompositionExecutesBoundedBatch() (gas: 8483916)
 GranularSessionValidatorTest:testBatchGrantPermissionsRequiresTimelockAndIsAtomic() (gas: 1264349)
 GranularSessionValidatorTest:testFuzzTokenAmountBound(uint128) (runs: 256, μ: 346720, ~: 346704)
 GranularSessionValidatorTest:testGranularBatchEnforcesCallAndAggregateLimits() (gas: 593646)
