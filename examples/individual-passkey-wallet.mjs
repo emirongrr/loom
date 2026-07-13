@@ -37,12 +37,16 @@ async function main() {
     const passkey = createPasskeySigner({
       credentialId: "solo-user-passkey",
       rpId: "my-wallet.example",
+      origin: "https://my-wallet.example",
+      // The installed P-256 validator and the EntryPoint the hash binds to.
+      validator: "0x00000000000000000000000000000000000000f2",
+      entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
       async signChallenge(challenge) {
         assert.equal(challenge.account, USER_ACCOUNT);
         return {
           authenticatorData: `0x${"aa".repeat(37)}`,
           clientDataJSON: `0x${"bb".repeat(40)}`,
-          signature: `0x${"cc".repeat(64)}`
+          signature: `0x${"1c".repeat(32)}${"2d".repeat(32)}`
         };
       }
     });

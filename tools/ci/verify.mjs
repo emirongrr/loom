@@ -112,6 +112,7 @@ run("Core SDK tests", npm, ["run", "core:test"]);
 run("User-operation hash fixture", npm, ["run", "sdk:userop-hash:test"]);
 run("Deployment manifest schema", npm, ["run", "manifest:schema:test"]);
 run("Account derivation fixture", npm, ["run", "sdk:derivation:test"]);
+run("Signature envelope fixture", npm, ["run", "sdk:signature:test"]);
 run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
