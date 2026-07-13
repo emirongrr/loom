@@ -33,6 +33,8 @@ EntryPointIntegrationTest:testExecutionRevertDoesNotRollbackIndependentOperation
 EntryPointIntegrationTest:testFullCounterfactualUserOperationLifecycle() (gas: 529247)
 EntryPointIntegrationTest:testInvalidSecondOperationRevertsValidationBundleWithExactIndex() (gas: 931717)
 EntryPointIntegrationTest:testMultipleCounterfactualAccountsExecuteInSingleBundle() (gas: 1051398)
+EntryPointECDSAMultiAccountTest:testCounterfactualAccountsUseRealEcdsaSignaturesInSingleBundle() (gas: 1277873)
+EntryPointECDSAMultiAccountTest:testCrossAccountEcdsaSignatureReplayRevertsWholeBundle() (gas: 1116144)
 EthereumL1KeystoreVerifierTest:testDirectL1VerifierAcceptsExactKeystoreConfig() (gas: 694445)
 EthereumL1KeystoreVerifierTest:testDirectL1VerifierConstructorRejectsNonContractKeystore() (gas: 36203)
 EthereumL1KeystoreVerifierTest:testDirectL1VerifierRejectsMismatchedConfigAndVersion() (gas: 699611)
