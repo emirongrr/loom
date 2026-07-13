@@ -6,6 +6,7 @@ import {P256GuardianVerifier} from "../../src/recovery/P256GuardianVerifier.sol"
 import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {MockERC1271Signer} from "../mocks/MockERC1271Signer.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 
 contract GuardianVerifierTest {
     function testP256GuardianVerifierBindsPublicKeyCommitmentAndWebAuthnFields() public {
@@ -61,8 +62,8 @@ contract GuardianVerifierTest {
 
     function _key() internal pure returns (WebAuthnP256.PublicKey memory) {
         return WebAuthnP256.PublicKey(
-            bytes32(uint256(1)),
-            bytes32(uint256(2)),
+            P256TestKeys.x(1),
+            P256TestKeys.y(1),
             keccak256("wallet.example"),
             keccak256(bytes("https://wallet.example"))
         );

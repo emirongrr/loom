@@ -8,6 +8,7 @@ import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
 import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../../src/validators/P256Validator.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
 
@@ -157,8 +158,8 @@ contract ValidatorBranchCoverageTest {
                 abi.encodeCall(
                     P256Validator.initialize,
                     (
-                        bytes32(uint256(1)),
-                        bytes32(uint256(2)),
+                        P256TestKeys.x(1),
+                        P256TestKeys.y(1),
                         keccak256("wallet.example"),
                         keccak256(origin),
                         address(hook)
@@ -168,7 +169,7 @@ contract ValidatorBranchCoverageTest {
         require(!initializedAgain, "P-256 validator initialized twice");
 
         bytes memory invalidKey = abi.encodeCall(
-            P256Validator.setKey, (bytes32(0), bytes32(uint256(2)), keccak256("wallet.example"), keccak256(origin))
+            P256Validator.setKey, (bytes32(0), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin))
         );
         _schedule(account, address(validator), invalidKey);
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
@@ -215,7 +216,7 @@ contract ValidatorBranchCoverageTest {
             address(validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (bytes32(uint256(1)), bytes32(uint256(2)), keccak256("wallet.example"), keccak256(origin), hook)
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), hook)
             )
         );
         return new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
