@@ -242,6 +242,91 @@ contract ContractIntegrationTest {
         require(spent == 60, "blocked session execution changed vault accounting");
     }
 
+    function testPendingSessionOperationFailsAfterImmediateRevocation() public {
+        EntryPoint entryPoint = new EntryPoint();
+        ECDSAValidator ecdsa = new ECDSAValidator();
+        GranularSessionValidator session = new GranularSessionValidator();
+        PolicyHook hook = new PolicyHook();
+        address owner = vm.addr(OWNER_KEY);
+        address signer = vm.addr(SESSION_KEY);
+
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR, address(ecdsa), abi.encodeCall(ECDSAValidator.initialize, (owner, address(hook)))
+        );
+        modules[2] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(session), "");
+        LoomAccount implementation = new LoomAccount(
+            address(entryPoint), keccak256("implementation-guardians"), 1, keccak256("implementation-config"), modules
+        );
+        LoomAccountFactory factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)), address(implementation));
+        bytes32 salt = keccak256("session-revocation-integration");
+        address sender = factory.getAddress(salt, keccak256("guardians"), 1, keccak256("config"), modules);
+        address senderCreator = address(entryPoint.senderCreator());
+        vm.startPrank(senderCreator, senderCreator);
+        factory.createAccount(salt, keccak256("guardians"), 1, keccak256("config"), modules);
+        vm.stopPrank();
+        LoomAccount account = LoomAccount(payable(sender));
+        vm.deal(sender, 10 ether);
+        MockERC20 token = new MockERC20();
+        token.mint(sender, 100);
+        bytes32 permissionId = keccak256("pending-session-permission");
+        GranularSessionValidator.Permission memory permission = GranularSessionValidator.Permission({
+            signer: signer,
+            target: address(token),
+            token: address(token),
+            counterparty: address(0xBEEF),
+            allowedPaymaster: address(0),
+            selector: MockERC20.transfer.selector,
+            maxAmountPerCall: 25,
+            maxAmountPerUserOp: 25,
+            maxCallsPerUserOp: 1,
+            maxUses: 5,
+            validAfter: 0,
+            validUntil: type(uint48).max
+        });
+        bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
+        bytes memory scheduleGrant =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(session), 0, grant, account.MIN_CONFIG_DELAY()));
+        _submitOwnerOp(entryPoint, ecdsa, account, abi.encode(ExecutionLib.Execution(sender, 0, scheduleGrant)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(session), 0, grant);
+        ExecutionLib.Execution memory transfer =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(0xBEEF), 25)));
+        PackedUserOperation memory pendingOp = _emptyUserOp(sender);
+        pendingOp.callData = abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(transfer)));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint192 nonceKey = uint192(bytes24(permissionId));
+        pendingOp.nonce = entryPoint.getNonce(sender, nonceKey);
+        bytes32 pendingOpHash = entryPoint.getUserOpHash(pendingOp);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SESSION_KEY, pendingOpHash);
+        bytes memory sessionSignature = abi.encode(permissionId, abi.encodePacked(r, s, v));
+        pendingOp.signature = abi.encode(address(session), sessionSignature);
+        require(
+            session.validateUserOp(
+                sender, pendingOpHash, pendingOp.nonce, sessionSignature, pendingOp.callData, address(0)
+            ) != ValidationDataLib.SIG_VALIDATION_FAILED,
+            "pending session operation was invalid before revocation"
+        );
+        bytes memory revoke = abi.encodeCall(GranularSessionValidator.revokePermission, (permissionId));
+        _submitOwnerOp(entryPoint, ecdsa, account, abi.encode(ExecutionLib.Execution(address(session), 0, revoke)));
+        require(session.revoked(sender, permissionId), "session permission was not revoked");
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = pendingOp;
+        address bundler = address(0xB0B);
+        vm.startPrank(bundler, bundler);
+        (bool accepted, bytes memory revertData) =
+            address(entryPoint).call(abi.encodeCall(IEntryPoint.handleOps, (ops, payable(bundler))));
+        vm.stopPrank();
+        require(!accepted, "revoked pending session operation was included");
+        require(revertData.length >= 4, "revoked operation returned malformed revert data");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bytes4 revertSelector = bytes4(revertData);
+        require(revertSelector == IEntryPoint.FailedOp.selector, "revoked operation failed for an unexpected reason");
+        require(entryPoint.getNonce(sender, nonceKey) == pendingOp.nonce, "rejected operation consumed session nonce");
+        require(token.balanceOf(address(0xBEEF)) == 0, "rejected operation moved funds");
+    }
+
     function testPaymasterSponsoredExecutionStillEnforcesPolicyLimit() public {
         EntryPoint entryPoint = new EntryPoint();
         ECDSAValidator ecdsa = new ECDSAValidator();
