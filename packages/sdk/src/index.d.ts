@@ -595,16 +595,20 @@ export interface PasskeyChallenge {
   readonly type: "loom.passkey-user-operation";
   readonly credentialId: string;
   readonly rpId: string;
-  readonly origin?: string;
+  readonly origin: string;
   readonly account: Hex;
   readonly chainId: number;
   readonly intentHash: Hex;
+  /** The canonical EntryPoint user-operation hash the authenticator signs over. */
   readonly userOperationHash: Hex;
+  /** Unpadded base64url of `userOperationHash` — the WebAuthn challenge text. */
+  readonly challenge: string;
 }
 
 export interface PasskeyAssertion {
   readonly authenticatorData: Hex;
   readonly clientDataJSON: Hex;
+  /** 64-byte raw `r || s` or ASN.1 DER; normalized to low-s before encoding. */
   readonly signature: Hex;
   readonly userHandle?: Hex;
 }
@@ -612,12 +616,18 @@ export interface PasskeyAssertion {
 export function createPasskeySigner(options: {
   credentialId: string;
   rpId: string;
-  origin?: string;
+  origin: string;
+  /** The installed P-256 validator the signature envelope routes through. */
+  validator: Hex;
+  /** The EntryPoint the canonical user-operation hash is bound to. */
+  entryPoint: Hex;
   signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion>;
 }): LoomSignerAdapter & {
   readonly credentialId: string;
   readonly rpId: string;
-  readonly origin?: string;
+  readonly origin: string;
+  readonly validator: Hex;
+  readonly entryPoint: Hex;
 };
 
 export function prepareUserOperationEnvelope(input: {
