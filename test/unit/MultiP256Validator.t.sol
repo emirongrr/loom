@@ -10,6 +10,7 @@ import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface VmMultiP256 {
@@ -264,7 +265,7 @@ contract MultiP256ValidatorTest {
     function _key(uint256 seed) internal pure returns (WebAuthnP256.PublicKey memory) {
         bytes memory origin = bytes("https://wallet.example");
         return WebAuthnP256.PublicKey(
-            bytes32(seed), bytes32(seed + 100), keccak256(abi.encode("wallet.example", seed)), keccak256(origin)
+            P256TestKeys.x(seed), P256TestKeys.y(seed), keccak256(abi.encode("wallet.example", seed)), keccak256(origin)
         );
     }
 

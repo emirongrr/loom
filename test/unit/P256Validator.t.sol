@@ -6,10 +6,13 @@ import {LoomAccount} from "../../src/LoomAccount.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
+import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
+import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 
 interface VmP256 {
     function warp(uint256) external;
@@ -17,6 +20,45 @@ interface VmP256 {
 
 contract P256ValidatorTest {
     VmP256 internal constant vm = VmP256(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    function testFuzz_PublicKeyValidationMatchesOpenZeppelin(bytes32 x, bytes32 y) public pure {
+        WebAuthnP256.PublicKey memory key =
+            WebAuthnP256.PublicKey(x, y, keccak256("wallet.example"), keccak256("https://wallet.example"));
+        require(WebAuthnP256.isValidKey(key) == P256.isValidPublicKey(x, y), "P-256 key validation drift");
+    }
+
+    function testInitializationRejectsInvalidP256CurvePoints() public {
+        P256Validator validator = new P256Validator(address(new MockP256Verifier()));
+        MockPolicyHook hook = new MockPolicyHook();
+        (bytes32 validX, bytes32 validY) = P256TestKeys.point(1);
+        bytes32 rpIdHash = keccak256("wallet.example");
+        bytes32 originHash = keccak256("https://wallet.example");
+
+        _assertInitializationRejected(validator, hook, bytes32(0), validY, rpIdHash, originHash);
+        _assertInitializationRejected(validator, hook, validX, bytes32(0), rpIdHash, originHash);
+        _assertInitializationRejected(validator, hook, bytes32(type(uint256).max), validY, rpIdHash, originHash);
+        _assertInitializationRejected(validator, hook, bytes32(uint256(validX) + 1), validY, rpIdHash, originHash);
+    }
+
+    function _assertInitializationRejected(
+        P256Validator validator,
+        MockPolicyHook hook,
+        bytes32 x,
+        bytes32 y,
+        bytes32 rpIdHash,
+        bytes32 originHash
+    ) internal {
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(P256Validator.initialize, (x, y, rpIdHash, originHash, address(hook)))
+        );
+        try new LoomAccount(address(this), keccak256("guardians"), 1, keccak256(abi.encode(x, y)), modules) {
+            revert("invalid P-256 curve point accepted");
+        } catch {}
+    }
 
     function testWebAuthnChecksChallengeOriginTypeAndFlags() public {
         MockP256Verifier verifier = new MockP256Verifier();
@@ -48,13 +90,7 @@ contract P256ValidatorTest {
             address(validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (
-                    bytes32(uint256(1)),
-                    bytes32(uint256(2)),
-                    keccak256("wallet.example"),
-                    keccak256(origin),
-                    address(hook)
-                )
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), address(hook))
             )
         );
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
@@ -205,13 +241,7 @@ contract P256ValidatorTest {
             address(validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (
-                    bytes32(uint256(1)),
-                    bytes32(uint256(2)),
-                    keccak256("wallet.example"),
-                    keccak256(origin),
-                    address(hook)
-                )
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), address(hook))
             )
         );
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
@@ -266,13 +296,12 @@ contract P256ValidatorTest {
             ModuleType.VALIDATOR,
             address(validator),
             abi.encodeCall(
-                P256Validator.initialize,
-                (bytes32(uint256(1)), bytes32(uint256(2)), rpIdHash, originHash, address(hook))
+                P256Validator.initialize, (P256TestKeys.x(1), P256TestKeys.y(1), rpIdHash, originHash, address(hook))
             )
         );
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
         bytes memory setKey =
-            abi.encodeCall(P256Validator.setKey, (bytes32(uint256(3)), bytes32(uint256(4)), rpIdHash, originHash));
+            abi.encodeCall(P256Validator.setKey, (P256TestKeys.x(2), P256TestKeys.y(2), rpIdHash, originHash));
 
         (bool immediate,) = address(account)
             .call(
@@ -289,7 +318,7 @@ contract P256ValidatorTest {
         account.executeScheduled(address(validator), 0, setKey);
 
         (bytes32 x, bytes32 y,,) = validator.publicKeys(address(account));
-        require(x == bytes32(uint256(3)) && y == bytes32(uint256(4)), "key did not rotate");
+        require(x == P256TestKeys.x(2) && y == P256TestKeys.y(2), "key did not rotate");
         require(account.configVersion() == 2, "key rotation did not advance config");
     }
 
@@ -305,13 +334,7 @@ contract P256ValidatorTest {
             address(validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (
-                    bytes32(uint256(1)),
-                    bytes32(uint256(2)),
-                    keccak256("wallet.example"),
-                    keccak256(origin),
-                    address(hook)
-                )
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), address(hook))
             )
         );
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
@@ -353,13 +376,7 @@ contract P256ValidatorTest {
             address(validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (
-                    bytes32(uint256(1)),
-                    bytes32(uint256(2)),
-                    keccak256("wallet.example"),
-                    keccak256(origin),
-                    address(hook)
-                )
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), address(hook))
             )
         );
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
@@ -412,8 +429,8 @@ contract P256ValidatorTest {
             abi.encodeCall(
                 P256Validator.initialize,
                 (
-                    bytes32(uint256(1)),
-                    bytes32(uint256(2)),
+                    P256TestKeys.x(1),
+                    P256TestKeys.y(1),
                     keccak256("wallet.example"),
                     keccak256(origin),
                     address(denyHook)

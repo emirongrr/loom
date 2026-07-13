@@ -9,6 +9,8 @@
 - Publishing guardian addresses during initial account configuration.
 - Duplicate credential identifiers or the same passkey registered under
   multiple identifiers satisfying an MFA threshold.
+- Invalid or off-curve P-256 public keys entering validator configuration and
+  silently making an account unusable.
 - A session signer using a revoked, expired, future, or altered permission.
 - A compromised low-risk key changing session permissions immediately or
   sending policy-controlled ERC-20 calls to an unapproved counterparty.

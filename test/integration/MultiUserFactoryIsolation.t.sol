@@ -30,10 +30,10 @@ contract MultiUserFactoryIsolationTest {
 
     uint256 internal constant OWNER_A_KEY = 0xA11CE;
     uint256 internal constant OWNER_B_KEY = 0xB0B;
-    bytes32 internal constant P256_X_A = bytes32(uint256(0x1111));
-    bytes32 internal constant P256_Y_A = bytes32(uint256(0x2222));
-    bytes32 internal constant P256_X_B = bytes32(uint256(0x3333));
-    bytes32 internal constant P256_Y_B = bytes32(uint256(0x4444));
+    bytes32 internal constant P256_X_A = 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296;
+    bytes32 internal constant P256_Y_A = 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5;
+    bytes32 internal constant P256_X_B = 0x7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978;
+    bytes32 internal constant P256_Y_B = 0x07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1;
 
     MockEntryPoint internal entryPoint;
     PolicyHook internal hook;

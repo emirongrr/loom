@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {IP256Verifier} from "../interfaces/IP256Verifier.sol";
 import {Base64Url} from "./Base64Url.sol";
+import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 
 library WebAuthnP256 {
     uint256 internal constant MAX_AUTHENTICATOR_DATA_LENGTH = 1024;
@@ -26,7 +27,7 @@ library WebAuthnP256 {
     }
 
     function isValidKey(PublicKey memory key) internal pure returns (bool) {
-        return key.x != bytes32(0) && key.y != bytes32(0) && key.rpIdHash != bytes32(0) && key.originHash != bytes32(0);
+        return key.rpIdHash != bytes32(0) && key.originHash != bytes32(0) && P256.isValidPublicKey(key.x, key.y);
     }
 
     // Excludes rpIdHash/originHash: the same physical authenticator registered
