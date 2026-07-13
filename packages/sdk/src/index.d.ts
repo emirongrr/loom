@@ -401,6 +401,13 @@ export interface LoomClient {
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
     overrides?: UserOperationOverrides
   ): UserOperationEnvelope;
+  computeUserOperationHash(envelope: UserOperationEnvelope, input?: { entryPoint?: Hex }): Hex;
+  getEntryPointNonce(input?: {
+    stateTransport?: LoomStateReadTransport;
+    entryPoint?: Hex;
+    key?: bigint;
+    blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+  }): Promise<bigint>;
   toViemCalls(prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent): readonly ViemCall[];
   sendPreparedUserOperation(
     prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
@@ -618,6 +625,19 @@ export function prepareUserOperationEnvelope(input: {
   account: Hex;
   intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
 } & UserOperationOverrides): UserOperationEnvelope;
+
+export function computeUserOperationHash(
+  envelope: UserOperationEnvelope,
+  options: { entryPoint: Hex }
+): Hex;
+
+export function fetchEntryPointNonce(input: {
+  stateTransport: LoomStateReadTransport;
+  entryPoint: Hex;
+  account: Hex;
+  key?: bigint;
+  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+}): Promise<bigint>;
 
 export interface AppSessionGrantInput {
   lifecycle?: AccountLifecycleClient;
