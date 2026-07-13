@@ -1,8 +1,12 @@
 import sha3 from "js-sha3";
 import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
 import {
+  base64UrlEncode,
+  encodeValidatorSignature,
+  encodeWebAuthnSignature,
   getUserOpHash as coreGetUserOpHash,
-  packUserOperation as corePackUserOperation
+  packUserOperation as corePackUserOperation,
+  parseP256Signature
 } from "@loom/core";
 
 const { keccak_256 } = sha3;
@@ -831,16 +835,26 @@ export function prepareWalletSendCalls(input = {}) {
 export function createPasskeySigner(options = {}) {
   assertNonEmptyString(options.credentialId, "credential id");
   assertNonEmptyString(options.rpId, "rpId");
+  assertNonEmptyString(options.origin, "origin");
   if (typeof options.signChallenge !== "function") {
     throw new InvalidSdkRequestError("passkey signer requires signChallenge");
   }
+  // The installed validator this signer routes through and the EntryPoint the
+  // hash is bound to are both explicit, construction-time commitments.
+  const validator = normalizeAddress(options.validator, "validator");
+  const entryPoint = normalizeAddress(options.entryPoint, "entry point");
 
   return Object.freeze({
     credentialId: options.credentialId,
     rpId: options.rpId,
     origin: options.origin,
+    validator,
+    entryPoint,
     async signUserOperation(envelope) {
       const normalizedEnvelope = normalizeUserOperationEnvelope(envelope);
+      // The authenticator signs over the canonical EntryPoint hash — the same
+      // value the chain validates — carried as the WebAuthn challenge.
+      const userOperationHash = computeUserOperationHash(normalizedEnvelope, { entryPoint });
       const challenge = Object.freeze({
         type: "loom.passkey-user-operation",
         credentialId: options.credentialId,
@@ -849,14 +863,28 @@ export function createPasskeySigner(options = {}) {
         account: normalizedEnvelope.account,
         chainId: normalizedEnvelope.chainId,
         intentHash: normalizedEnvelope.intentHash,
-        userOperationHash: hashCanonical(normalizedEnvelope.userOperation)
+        userOperationHash,
+        challenge: base64UrlEncode(userOperationHash)
       });
-      const assertion = await options.signChallenge(challenge);
-      return hashCanonical({
-        type: "loom.passkey-assertion",
-        challenge,
-        assertion: normalizePasskeyAssertion(assertion)
-      });
+      const assertion = normalizePasskeyAssertion(await options.signChallenge(challenge));
+      let components;
+      try {
+        components = parseP256Signature(assertion.signature);
+      } catch (error) {
+        throw new InvalidSdkRequestError("passkey signature must be 64-byte r||s or DER", {
+          cause: error?.message
+        });
+      }
+      return encodeValidatorSignature(
+        validator,
+        encodeWebAuthnSignature({
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          origin: options.origin,
+          r: components.r,
+          s: components.s
+        })
+      );
     }
   });
 }

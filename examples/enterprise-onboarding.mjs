@@ -64,6 +64,10 @@ async function main() {
       credentialId: "acme-passkey-cust_20260704_8842",
       rpId: "acme-pay.example",
       origin: "https://app.acme-pay.example",
+      // The installed P-256 validator this signer routes through and the
+      // EntryPoint the canonical hash is bound to — explicit commitments.
+      validator: "0xac6e000000000000000000000000000000000002",
+      entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
       // This callback is where Acme's frontend would call the WebAuthn API and
       // the user would approve with Face ID / fingerprint. The challenge is
       // bound to the exact account, chain, and operation hash.
@@ -74,7 +78,7 @@ async function main() {
         return {
           authenticatorData: `0x${"aa".repeat(37)}`,
           clientDataJSON: `0x${"bb".repeat(40)}`,
-          signature: `0x${"cc".repeat(64)}`
+          signature: `0x${"1c".repeat(32)}${"2d".repeat(32)}`
         };
       }
     });

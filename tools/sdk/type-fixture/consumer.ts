@@ -93,6 +93,9 @@ export async function exerciseSdkSurface(): Promise<void> {
   const passkey: LoomSignerAdapter = createPasskeySigner({
     credentialId: "credential-id",
     rpId: "wallet.example",
+    origin: "https://wallet.example",
+    validator: account,
+    entryPoint: account,
     async signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion> {
       const boundIntent: Hex = challenge.intentHash;
       void boundIntent;
