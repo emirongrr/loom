@@ -65,6 +65,9 @@ run("WebAuthn fixture parser tests", process.execPath, [
   "--test",
   "tools/evidence/validate-webauthn-fixtures.test.mjs"
 ]);
+// The wallet engine consumes @loom/core's built output, so build it before any
+// gate that imports the SDK.
+run("Core SDK build", npm, ["run", "core:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);

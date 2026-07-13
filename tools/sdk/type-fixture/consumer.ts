@@ -19,6 +19,8 @@ import {
   walletGetCapabilities,
   buildAppSessionGrant,
   prepareUserOperationEnvelope,
+  computeUserOperationHash,
+  fetchEntryPointNonce,
   explainLifecycleIntent,
   hashCanonical,
   toViemCalls,
@@ -119,6 +121,22 @@ export async function exerciseSdkSurface(): Promise<void> {
     maxFeePerGas: 1n
   });
   void envelope.userOperation.callData;
+
+  // Canonical hashing and nonce reads are explicit: the EntryPoint and the
+  // state transport are always supplied, never defaulted.
+  const canonicalOpHash: Hex = computeUserOperationHash(envelope, { entryPoint: account });
+  void canonicalOpHash;
+  const clientOpHash: Hex = client.computeUserOperationHash(envelope, { entryPoint: account });
+  void clientOpHash;
+  const entryPointNonce: bigint = await fetchEntryPointNonce({
+    stateTransport: rpc,
+    entryPoint: account,
+    account,
+    key: 0n
+  });
+  void entryPointNonce;
+  const clientNonce: bigint = await client.getEntryPointNonce({ entryPoint: account });
+  void clientNonce;
 
   const viemCalls: readonly ViemCall[] = client.toViemCalls(prepared);
   void viemCalls;

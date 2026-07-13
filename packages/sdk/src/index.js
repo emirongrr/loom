@@ -1,5 +1,9 @@
 import sha3 from "js-sha3";
 import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
+import {
+  getUserOpHash as coreGetUserOpHash,
+  packUserOperation as corePackUserOperation
+} from "@loom/core";
 
 const { keccak_256 } = sha3;
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
@@ -223,6 +227,19 @@ export function createLoomClient(options = {}) {
     prepareUserOperation(prepared, overrides = {}) {
       const intent = prepared?.intent ?? prepared;
       return prepareIntent(intent, overrides);
+    },
+    computeUserOperationHash(envelope, input = {}) {
+      const entryPoint = input.entryPoint ?? transport?.entryPoint;
+      return computeUserOperationHash(envelope, { entryPoint });
+    },
+    async getEntryPointNonce(input = {}) {
+      return fetchEntryPointNonce({
+        stateTransport: input.stateTransport ?? stateTransport,
+        entryPoint: input.entryPoint ?? transport?.entryPoint,
+        account,
+        key: input.key,
+        blockTag: input.blockTag
+      });
     },
     toViemCalls(prepared) {
       return toViemCalls(prepared, { account });
@@ -1052,6 +1069,46 @@ export function prepareUserOperationEnvelope(input) {
     userOperation,
     review: explainLifecycleIntent(intent)
   });
+}
+
+/**
+ * The canonical ERC-4337 v0.9 hash of a prepared envelope, computed exactly as
+ * the EntryPoint computes it (via the differentially-verified encoding in
+ * `@loom/core`). Pure: the EntryPoint is an explicit input, never a default.
+ */
+export function computeUserOperationHash(envelope, options = {}) {
+  const normalized = normalizeUserOperationEnvelope(envelope);
+  const entryPoint = normalizeAddress(options.entryPoint, "entry point");
+  return coreGetUserOpHash(corePackUserOperation(normalized.userOperation), entryPoint, BigInt(normalized.chainId));
+}
+
+const ENTRY_POINT_GET_NONCE_SELECTOR_SIGNATURE = "getNonce(address,uint192)";
+
+/**
+ * Read the account's EntryPoint nonce for a two-dimensional nonce key through
+ * an explicitly supplied state transport. Nothing is fetched implicitly and no
+ * endpoint is defaulted.
+ */
+export async function fetchEntryPointNonce(input = {}) {
+  const stateTransport = input.stateTransport;
+  if (!stateTransport || typeof stateTransport.ethCall !== "function") {
+    throw new InvalidSdkRequestError("nonce read requires an explicit state transport");
+  }
+  const entryPoint = normalizeAddress(input.entryPoint, "entry point");
+  const account = normalizeAddress(input.account, "account");
+  const key = normalizeBigInt(input.key ?? 0n, "nonce key");
+  if (key < 0n || key >= 1n << 192n) {
+    throw new InvalidSdkRequestError("nonce key exceeds uint192", { key: key.toString() });
+  }
+  const data = `${selector(ENTRY_POINT_GET_NONCE_SELECTOR_SIGNATURE)}${account
+    .slice(2)
+    .toLowerCase()
+    .padStart(64, "0")}${key.toString(16).padStart(64, "0")}`;
+  const result = await stateTransport.ethCall({ to: entryPoint, data, blockTag: input.blockTag });
+  if (result === "0x") {
+    throw new InvalidSdkRequestError("entry point returned an empty nonce", { entryPoint });
+  }
+  return BigInt(result);
 }
 
 function normalizeUserOperationEnvelope(envelope) {
