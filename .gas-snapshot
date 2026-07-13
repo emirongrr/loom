@@ -201,6 +201,8 @@ SovereignMigrationTest:testMigrationRejectsWrongCallsDestinationConfigExpiryAndS
 SovereignMigrationTest:testMigrationRejectsWrongDestinationConfigAtScheduleAndInvalidWindow() (gas: 9870189)
 SovereignMigrationTest:testMigrationRunsPolicyHooks() (gas: 11402973)
 SovereignMigrationTest:testMigrationSelfCancelIsBlockedWhileFrozen() (gas: 11150434)
+TokenFailureSemanticsTest:testFalseReturnConsumesBudgetWithoutReportingTokenSuccess() (gas: 303563)
+TokenFailureSemanticsTest:testRevertingTransferBubblesErrorAndRollsBackBudget() (gas: 265176)
 TokenReceiverTransfersTest:testERC1155SingleAndBatchSafeTransfersReachAccount() (gas: 997588)
 TokenReceiverTransfersTest:testERC721SafeTransferReachesAccount() (gas: 745680)
 UserOpHashDifferentialTest:testFullUserOpHashMatches() (gas: 250793)
