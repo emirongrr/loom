@@ -13,7 +13,6 @@ import {MockTarget} from "../mocks/MockTarget.sol";
 
 interface VmP256 {
     function warp(uint256) external;
-    function assume(bool) external pure;
 }
 
 contract P256ValidatorTest {
@@ -176,9 +175,11 @@ contract P256ValidatorTest {
         );
     }
 
-    function testFuzz_WebAuthnVerifyNeverFalselyAcceptsOrRevertsOnArbitraryClientData(bytes memory clientDataJSON)
-        public
-    {
+    function testFuzz_WebAuthnAcceptsPermittedClientDataGrammar(
+        uint8 fieldOrder,
+        bool includeCrossOrigin,
+        bool includeExtraField
+    ) public {
         // MockP256Verifier always reports a valid signature, isolating clientDataJSON
         // parsing as the only thing that can make validateUserOp succeed.
         MockP256Verifier verifier = new MockP256Verifier();
@@ -186,15 +187,8 @@ contract P256ValidatorTest {
         MockPolicyHook hook = new MockPolicyHook();
         bytes32 hash = keccak256("fuzzed-user-operation");
         bytes memory origin = bytes("https://wallet.example");
-        bytes memory validClientData = bytes.concat(
-            bytes('{"type":"webauthn.get","challenge":"'),
-            _base64Url(hash),
-            bytes('","origin":"'),
-            origin,
-            bytes('","crossOrigin":false}')
-        );
-        vm.assume(keccak256(clientDataJSON) != keccak256(validClientData));
-        vm.assume(clientDataJSON.length <= 1024);
+        bytes memory clientDataJSON =
+            _clientDataVariant(hash, origin, fieldOrder, includeCrossOrigin, includeExtraField);
 
         P256Validator.WebAuthnSignature memory signature = P256Validator.WebAuthnSignature({
             authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
@@ -224,7 +218,40 @@ contract P256ValidatorTest {
 
         uint256 result =
             validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0));
-        require(result == ValidationDataLib.SIG_VALIDATION_FAILED, "fuzzed clientDataJSON falsely accepted");
+        require(result != ValidationDataLib.SIG_VALIDATION_FAILED, "permitted clientDataJSON grammar rejected");
+    }
+
+    function _clientDataVariant(
+        bytes32 hash,
+        bytes memory origin,
+        uint8 fieldOrder,
+        bool includeCrossOrigin,
+        bool includeExtraField
+    ) internal pure returns (bytes memory) {
+        bytes memory typeField = bytes('"type":"webauthn.get"');
+        bytes memory challengeField = bytes.concat(bytes('"challenge":"'), _base64Url(hash), bytes('"'));
+        bytes memory originField = bytes.concat(bytes('"origin":"'), origin, bytes('"'));
+        bytes memory requiredFields;
+
+        uint8 order = fieldOrder % 6;
+        if (order == 0) {
+            requiredFields = bytes.concat(typeField, bytes(","), challengeField, bytes(","), originField);
+        } else if (order == 1) {
+            requiredFields = bytes.concat(typeField, bytes(","), originField, bytes(","), challengeField);
+        } else if (order == 2) {
+            requiredFields = bytes.concat(challengeField, bytes(","), typeField, bytes(","), originField);
+        } else if (order == 3) {
+            requiredFields = bytes.concat(challengeField, bytes(","), originField, bytes(","), typeField);
+        } else if (order == 4) {
+            requiredFields = bytes.concat(originField, bytes(","), typeField, bytes(","), challengeField);
+        } else {
+            requiredFields = bytes.concat(originField, bytes(","), challengeField, bytes(","), typeField);
+        }
+
+        bytes memory optionalFields;
+        if (includeCrossOrigin) optionalFields = bytes(",\"crossOrigin\":false");
+        if (includeExtraField) optionalFields = bytes.concat(optionalFields, bytes(",\"tokenBinding\":\"supported\""));
+        return bytes.concat(bytes("{"), requiredFields, optionalFields, bytes("}"));
     }
 
     function testKeyRotationRequiresConfigTimelock() public {
