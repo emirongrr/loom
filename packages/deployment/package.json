@@ -17,6 +17,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "js-sha3": "0.8.0"
+    "js-sha3": "0.9.3"
   }
 }
