@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InvalidLifecycleRequestError, createAccountLifecycleClient, createLifecycleCallEncoder } from "../src/index.js";
+import { InvalidLifecycleRequestError, createAccountLifecycleClient, createLifecycleCallEncoder } from "../dist/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const other = "0x2222222222222222222222222222222222222222";

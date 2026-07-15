@@ -16,7 +16,7 @@
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { createLifecycleCallEncoder } from "../../packages/account/src/index.js";
+import { createLifecycleCallEncoder } from "../../packages/account/dist/index.js";
 
 const encoder = createLifecycleCallEncoder();
 
