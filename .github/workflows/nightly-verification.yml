@@ -33,8 +33,33 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Prepare deep Foundry evidence
+        run: |
+          mkdir -p artifacts/nightly-foundry
+          printf '%s\n' \
+            '{' \
+            '  "schemaVersion": 1,' \
+            '  "repository": "${{ github.repository }}",' \
+            '  "commit": "${{ github.sha }}",' \
+            '  "workflowRunId": "${{ github.run_id }}",' \
+            '  "workflowRunAttempt": "${{ github.run_attempt }}",' \
+            '  "profile": "deep",' \
+            '  "command": "FOUNDRY_PROFILE=deep forge test -vvv"' \
+            '}' > artifacts/nightly-foundry/run-metadata.json
+          forge --version > artifacts/nightly-foundry/forge-version.txt
+          node --version > artifacts/nightly-foundry/node-version.txt
       - name: Run deep fuzz and invariants
-        run: FOUNDRY_PROFILE=deep forge test -vvv
+        run: |
+          set -o pipefail
+          FOUNDRY_PROFILE=deep forge test -vvv 2>&1 | tee artifacts/nightly-foundry/forge-test.log
+      - name: Upload deep Foundry evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-foundry-${{ github.sha }}
+          path: artifacts/nightly-foundry
+          retention-days: 30
+          if-no-files-found: error
 
   halmos-full:
     name: Full Halmos symbolic properties

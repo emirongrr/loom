@@ -108,7 +108,15 @@ function validateNightlyWorkflow() {
   for (const required of [
     "workflow_dispatch:",
     'cron: "17 2 * * 0"',
-    "FOUNDRY_PROFILE=deep forge test -vvv",
+    "set -o pipefail",
+    "FOUNDRY_PROFILE=deep forge test -vvv 2>&1 | tee artifacts/nightly-foundry/forge-test.log",
+    "run-metadata.json",
+    "if: always()",
+    "actions/upload-artifact@v7",
+    "name: nightly-foundry-${{ github.sha }}",
+    "path: artifacts/nightly-foundry",
+    "retention-days: 30",
+    "if-no-files-found: error",
     "--depth 100000 --width 500000",
     "cd formal/lean && lake build",
   ]) {
