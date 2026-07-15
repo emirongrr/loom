@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import sha3 from "js-sha3";
+import { manifestHash } from "@loom/core";
 import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
@@ -171,6 +172,47 @@ test("deployment manifest requires signed release attestations", async () => {
   await assert.rejects(() => validateDeploymentManifest(badSignature, { root }), /signature must be a 65-byte signature/);
 });
 
+test("deployment manifest requires a hash-bound canonical projection", async () => {
+  const root = await fixtureRoot();
+
+  const missing = manifestFor(root);
+  delete missing.canonical;
+  await assert.rejects(() => validateDeploymentManifest(missing, { root }), /missing top-level manifest field: canonical/);
+
+  const badHash = manifestFor(root);
+  badHash.canonical.manifestHash = bytes32("tampered");
+  await assert.rejects(
+    () => validateDeploymentManifest(badHash, { root }),
+    /canonical.manifestHash does not match/
+  );
+});
+
+test("deployment manifest rejects a canonical projection that drifts from the evidence", async () => {
+  const root = await fixtureRoot();
+
+  const driftedFactory = manifestFor(root);
+  driftedFactory.canonical.manifest.factory = {
+    address: address("someone-else"),
+    runtimeCodeHash: driftedFactory.canonical.manifest.factory.runtimeCodeHash
+  };
+  driftedFactory.canonical.manifestHash = manifestHash(driftedFactory.canonical.manifest);
+  await assert.rejects(
+    () => validateDeploymentManifest(driftedFactory, { root }),
+    /canonical factory disagrees with deployment evidence/
+  );
+
+  const driftedProxy = manifestFor(root);
+  driftedProxy.canonical.manifest.account = {
+    ...driftedProxy.canonical.manifest.account,
+    proxy: { creationCodeHash: bytes32("not-the-artifact"), runtimeCodeHash: hashHex("0x6001") }
+  };
+  driftedProxy.canonical.manifestHash = manifestHash(driftedProxy.canonical.manifest);
+  await assert.rejects(
+    () => validateDeploymentManifest(driftedProxy, { root }),
+    /canonical proxy hashes disagree/
+  );
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "loom-deployment-manifest-"));
   const artifactDir = join(root, "out", "Example.sol");
@@ -187,7 +229,7 @@ async function fixtureRoot() {
 
 function manifestFor(root) {
   const artifact = "out/Example.sol/Example.json";
-  return {
+  const base = {
     version: 1,
     network: {
       name: "sepolia",
@@ -272,6 +314,35 @@ function manifestFor(root) {
       noAdminOrUpgradeKey: true,
       noLoomServiceRequired: true
     }
+  };
+  base.canonical = canonicalFor(base);
+  return base;
+}
+
+// Mirrors the builder's projection so the fixture stays consistent by
+// construction: the canonical manifest is derived from the same evidence
+// values and hashed with @loom/core's manifestHash.
+function canonicalFor(base) {
+  const deployment = base.deployments[0];
+  const entry = { address: deployment.address, runtimeCodeHash: deployment.runtimeCodeHash };
+  const projected = {
+    schemaVersion: "1",
+    releaseChannel: "testnet",
+    chainId: base.network.chainId,
+    entryPoint: { address: base.network.entryPoint, runtimeCodeHash: base.network.entryPointCodeHash },
+    factory: entry,
+    account: {
+      implementation: entry,
+      proxy: { creationCodeHash: hashHex("0x60016002"), runtimeCodeHash: hashHex("0x6001") }
+    },
+    modules: [{ type: "validator", ...entry, version: "0.1.0", status: "beta" }],
+    compatibility: { contractRelease: "0.1.0", sdkRange: "^0.1.0" }
+  };
+  return {
+    manifest: projected,
+    manifestHash: manifestHash(projected),
+    proxyArtifact: "out/Example.sol/Example.json",
+    sources: { factory: "Example", implementation: "Example", validator: "Example" }
   };
 }
 

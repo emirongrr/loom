@@ -8,6 +8,23 @@ import { buildDeploymentManifest } from "./build-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
 
+test("the builder embeds a hash-bound canonical projection of the evidence", async () => {
+  const root = await fixtureRoot();
+  const manifest = await buildDeploymentManifest(configFor(root), { root });
+
+  assert.equal(manifest.canonical.manifest.schemaVersion, "1");
+  assert.equal(manifest.canonical.manifest.chainId, manifest.network.chainId);
+  assert.equal(manifest.canonical.manifest.factory.address, manifest.deployments[0].address);
+  assert.equal(manifest.canonical.manifest.factory.runtimeCodeHash, manifest.deployments[0].runtimeCodeHash);
+  assert.equal(manifest.canonical.manifest.entryPoint.runtimeCodeHash, manifest.network.entryPointCodeHash);
+  assert.match(manifest.canonical.manifestHash, /^0x[0-9a-f]{64}$/);
+  assert.deepEqual(manifest.canonical.sources, {
+    factory: "Example",
+    implementation: "Example",
+    validator: "Example"
+  });
+});
+
 test("deployment manifest builder computes artifact and reproducibility hashes", async () => {
   const root = await fixtureRoot();
   const manifest = await buildDeploymentManifest(configFor(root), { root });
@@ -135,6 +152,13 @@ function configFor() {
       factoryRuntimeWithinEip170: true,
       noAdminOrUpgradeKey: true,
       noLoomServiceRequired: true
+    },
+    canonical: {
+      factory: "Example",
+      implementation: "Example",
+      validator: "Example",
+      proxyArtifact: "out/Example.sol/Example.json",
+      compatibility: { contractRelease: "0.1.0", sdkRange: "^0.1.0" }
     }
   };
 }

@@ -4,6 +4,7 @@ import { isAbsolute, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
+import { manifestHash, parseDeploymentManifest } from "@loom/core";
 import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
@@ -57,9 +58,87 @@ export async function buildDeploymentManifest(config, options = {}) {
     attestations: cloneJson(config.attestations),
     checks: cloneJson(config.checks)
   };
+  manifest.canonical = canonicalProjection(config.canonical, manifest, repoRoot);
 
   await validateDeploymentManifest(manifest, { root: repoRoot });
   return Object.freeze(manifest);
+}
+
+/**
+ * Project the rich evidence manifest onto the one canonical
+ * `LoomDeploymentManifest` schema in `@loom/core`, so applications and release
+ * evidence share a single hash chain: the projection is embedded in the
+ * evidence manifest together with its `manifestHash`, and the validator
+ * re-derives both. Evidence stays the superset; the projection is never a
+ * second independent schema.
+ */
+function canonicalProjection(config, manifest, repoRoot) {
+  assertObject(config, "config.canonical");
+  const named = name => {
+    const deployment = manifest.deployments.find(entry => entry.name === name);
+    if (!deployment) throw new Error(`canonical projection references unknown deployment: ${name}`);
+    return deployment;
+  };
+  const factory = named(requireString(config.factory, "config.canonical.factory"));
+  const implementation = named(requireString(config.implementation, "config.canonical.implementation"));
+  const validator = named(requireString(config.validator, "config.canonical.validator"));
+  assertObject(config.compatibility, "config.canonical.compatibility");
+  const compatibility = config.compatibility;
+
+  assertRepoRelativePath(config.proxyArtifact, "config.canonical.proxyArtifact");
+  const proxy = proxyHashes(config.proxyArtifact, repoRoot);
+
+  const channels = { 1: "mainnet", 31337: "devnet" };
+  const releaseChannel = config.releaseChannel ?? channels[manifest.network.chainId] ?? "testnet";
+
+  const canonical = parseDeploymentManifest({
+    schemaVersion: "1",
+    releaseChannel,
+    chainId: manifest.network.chainId,
+    entryPoint: {
+      address: manifest.network.entryPoint,
+      runtimeCodeHash: manifest.network.entryPointCodeHash
+    },
+    factory: { address: factory.address, runtimeCodeHash: factory.runtimeCodeHash },
+    account: {
+      implementation: { address: implementation.address, runtimeCodeHash: implementation.runtimeCodeHash },
+      proxy
+    },
+    modules: [
+      {
+        type: "validator",
+        address: validator.address,
+        runtimeCodeHash: validator.runtimeCodeHash,
+        version: requireString(compatibility.contractRelease, "config.canonical.compatibility.contractRelease"),
+        status: config.moduleStatus ?? "beta"
+      }
+    ],
+    compatibility: {
+      contractRelease: compatibility.contractRelease,
+      sdkRange: requireString(compatibility.sdkRange, "config.canonical.compatibility.sdkRange")
+    }
+  });
+
+  return Object.freeze({
+    manifest: canonical,
+    manifestHash: manifestHash(canonical),
+    proxyArtifact: config.proxyArtifact,
+    sources: Object.freeze({
+      factory: factory.name,
+      implementation: implementation.name,
+      validator: validator.name
+    })
+  });
+}
+
+function proxyHashes(artifactPath, repoRoot) {
+  const path = join(repoRoot, artifactPath);
+  if (!existsSync(path)) throw new Error(`canonical proxy artifact does not exist: ${artifactPath}`);
+  const artifact = JSON.parse(readFileSync(path, "utf8"));
+  const creation = artifact.bytecode?.object;
+  const runtime = artifact.deployedBytecode?.object;
+  if (!isHex(creation) || !isHex(runtime)) throw new Error("canonical proxy artifact missing bytecode");
+  return Object.freeze({ creationCodeHash: hashHex(creation), runtimeCodeHash: hashHex(runtime) });
 }
 
 function deploymentEvidence(deployment, repoRoot, index) {
