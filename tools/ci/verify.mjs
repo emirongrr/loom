@@ -122,6 +122,9 @@ run("SDK type integrity", npm, ["run", "sdk:types:check"]);
 run("Formatting", forge, ["fmt", "--check"]);
 run("Solidity lint", forge, ["lint", "--deny", "warnings"]);
 run("Production size", forge, ["build", "--sizes", "--skip", "test/**", "script/**"]);
+// After the build: the committed @loom/core ABI modules must match the fresh
+// artifacts, or the SDK encoders have drifted from the contracts.
+run("Generated ABI freshness", npm, ["run", "abi:check"]);
 run("Gas snapshot", forge, [
   "snapshot",
   "--force",

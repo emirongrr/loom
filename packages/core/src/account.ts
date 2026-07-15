@@ -1,4 +1,6 @@
 import { encodeAbiParameters, encodeFunctionData, getAddress, keccak256 } from "viem";
+import { LoomAccountAbi } from "./abi/loom-account.js";
+import { LoomAccountFactoryAbi } from "./abi/loom-account-factory.js";
 import { concatHex } from "./bytes.js";
 import { LoomError } from "./errors.js";
 import { assertAddress, equalHex } from "./hex.js";
@@ -20,43 +22,8 @@ export interface AccountInitConfig {
   modules: readonly ModuleInit[];
 }
 
-const MODULE_INIT_COMPONENTS = [
-  { name: "moduleTypeId", type: "uint256" },
-  { name: "module", type: "address" },
-  { name: "initData", type: "bytes" }
-] as const;
-
-const INITIALIZE_ABI = [
-  {
-    type: "function",
-    name: "initialize",
-    stateMutability: "payable",
-    inputs: [
-      { name: "entryPoint_", type: "address" },
-      { name: "guardianRoot_", type: "bytes32" },
-      { name: "guardianThreshold_", type: "uint8" },
-      { name: "configHash_", type: "bytes32" },
-      { name: "modules", type: "tuple[]", components: MODULE_INIT_COMPONENTS }
-    ],
-    outputs: []
-  }
-] as const;
-
-const CREATE_ACCOUNT_ABI = [
-  {
-    type: "function",
-    name: "createAccount",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "salt", type: "bytes32" },
-      { name: "guardianRoot", type: "bytes32" },
-      { name: "guardianThreshold", type: "uint8" },
-      { name: "configHash", type: "bytes32" },
-      { name: "modules", type: "tuple[]", components: MODULE_INIT_COMPONENTS }
-    ],
-    outputs: [{ name: "account", type: "address" }]
-  }
-] as const;
+// The ABIs are generated from the reviewed Foundry artifacts (see src/abi/),
+// so the encodings below can never drift from the contract signatures.
 
 function moduleTuples(modules: readonly ModuleInit[]) {
   return modules.map(module => ({
@@ -69,7 +36,7 @@ function moduleTuples(modules: readonly ModuleInit[]) {
 /** Calldata for `LoomAccount.initialize`, exactly as the factory encodes it. */
 export function encodeInitializeCall(config: AccountInitConfig): Hex {
   return encodeFunctionData({
-    abi: INITIALIZE_ABI,
+    abi: LoomAccountAbi,
     functionName: "initialize",
     args: [
       assertAddress(config.entryPoint),
@@ -87,7 +54,7 @@ export function encodeInitializeCall(config: AccountInitConfig): Hex {
  */
 export function encodeCreateAccountCall(salt: Hex, config: Omit<AccountInitConfig, "entryPoint">): Hex {
   return encodeFunctionData({
-    abi: CREATE_ACCOUNT_ABI,
+    abi: LoomAccountFactoryAbi,
     functionName: "createAccount",
     args: [salt, config.guardianRoot, config.guardianThreshold, config.configHash, moduleTuples(config.modules)]
   });

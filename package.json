@@ -16,6 +16,8 @@
     "manifest:schema:test": "npm run core:build && node --test tools/sdk/generate-manifest-schema.test.mjs",
     "sdk:derivation:generate": "npm run core:build && node tools/sdk/generate-account-derivation-fixture.mjs",
     "sdk:derivation:test": "npm run core:build && node --test tools/sdk/generate-account-derivation-fixture.test.mjs",
+    "abi:generate": "node tools/sdk/generate-core-abis.mjs",
+    "abi:check": "node --test tools/sdk/generate-core-abis.test.mjs",
     "sdk:signature:generate": "npm run core:build && node tools/sdk/generate-signature-envelope-fixture.mjs",
     "sdk:signature:test": "npm run core:build && node --test tools/sdk/generate-signature-envelope-fixture.test.mjs",
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",

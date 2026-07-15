@@ -62,6 +62,8 @@ jobs:
         run: forge lint --deny warnings
       - name: Check production bytecode sizes
         run: forge build --sizes --skip "test/**" "script/**"
+      - name: Check generated ABI freshness
+        run: npm run abi:check
       - name: Check gas snapshot
         # MultiP256ValidatorTest is excluded: its measured gas is hypersensitive to
         # unrelated source changes (via-IR/optimizer layout shifts move it by ~45 gas

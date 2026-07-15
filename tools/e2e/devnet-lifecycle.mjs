@@ -33,7 +33,11 @@ import {
   deriveAccountAddress,
   encodeValidatorSignature,
   encodeWebAuthnSignature,
+  EntryPointAbi,
   getUserOpHash,
+  LoomAccountAbi,
+  LoomAccountFactoryAbi,
+  P256ValidatorAbi,
   packUserOperation,
   parseP256Signature
 } from "../../packages/core/dist/index.js";
@@ -102,95 +106,12 @@ function softwareP256Key() {
   };
 }
 
-// ABI fragments for the SDK-driven phase. The PackedUserOperation layout is the
-// on-wire struct the EntryPoint consumes.
-const PACKED_USER_OPERATION_COMPONENTS = [
-  { name: "sender", type: "address" },
-  { name: "nonce", type: "uint256" },
-  { name: "initCode", type: "bytes" },
-  { name: "callData", type: "bytes" },
-  { name: "accountGasLimits", type: "bytes32" },
-  { name: "preVerificationGas", type: "uint256" },
-  { name: "gasFees", type: "bytes32" },
-  { name: "paymasterAndData", type: "bytes" },
-  { name: "signature", type: "bytes" }
-];
-const ENTRY_POINT_ABI = [
-  {
-    type: "function",
-    name: "getUserOpHash",
-    stateMutability: "view",
-    inputs: [{ name: "userOp", type: "tuple", components: PACKED_USER_OPERATION_COMPONENTS }],
-    outputs: [{ type: "bytes32" }]
-  },
-  {
-    type: "function",
-    name: "handleOps",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "ops", type: "tuple[]", components: PACKED_USER_OPERATION_COMPONENTS },
-      { name: "beneficiary", type: "address" }
-    ],
-    outputs: []
-  }
-];
-const MODULE_INIT_COMPONENTS = [
-  { name: "moduleTypeId", type: "uint256" },
-  { name: "module", type: "address" },
-  { name: "initData", type: "bytes" }
-];
-const FACTORY_ABI = [
-  {
-    type: "function",
-    name: "accountImplementation",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }]
-  },
-  {
-    type: "function",
-    name: "getAddress",
-    stateMutability: "view",
-    inputs: [
-      { name: "salt", type: "bytes32" },
-      { name: "guardianRoot", type: "bytes32" },
-      { name: "guardianThreshold", type: "uint8" },
-      { name: "configHash", type: "bytes32" },
-      { name: "modules", type: "tuple[]", components: MODULE_INIT_COMPONENTS }
-    ],
-    outputs: [{ type: "address" }]
-  }
-];
+// Contract ABIs come from @loom/core's generated modules (single source: the
+// reviewed Foundry artifacts). Only the devnet-local test target keeps a hand
+// fragment — it is not part of the curated public ABI set.
 const TARGET_ABI = [
   { type: "function", name: "value", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "setValue", stateMutability: "nonpayable", inputs: [{ type: "uint256" }], outputs: [] }
-];
-const P256_INITIALIZE_ABI = [
-  {
-    type: "function",
-    name: "initialize",
-    stateMutability: "nonpayable",
-    inputs: [
-      { type: "bytes32" },
-      { type: "bytes32" },
-      { type: "bytes32" },
-      { type: "bytes32" },
-      { type: "address" }
-    ],
-    outputs: []
-  }
-];
-const EXECUTE_ABI = [
-  {
-    type: "function",
-    name: "execute",
-    stateMutability: "payable",
-    inputs: [
-      { name: "mode", type: "bytes32" },
-      { name: "executionCalldata", type: "bytes" }
-    ],
-    outputs: []
-  }
 ];
 // anvil's first deterministic dev account address (unlocked on the devnet).
 const DEPLOYER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -237,7 +158,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
         moduleTypeId: 1n,
         module: validator,
         initData: encodeFunctionData({
-          abi: P256_INITIALIZE_ABI,
+          abi: P256ValidatorAbi,
           functionName: "initialize",
           args: [key.x, key.y, rpIdHash, originHash, policyHook]
         })
@@ -254,7 +175,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
 
   // 2. Derive the account address locally and cross-check it three ways:
   //    local CREATE2 == live factory.getAddress == deployed code on chain.
-  const implementation = `0x${(await ethCall(factory, encodeFunctionData({ abi: FACTORY_ABI, functionName: "accountImplementation" }))).slice(26)}`;
+  const implementation = `0x${(await ethCall(factory, encodeFunctionData({ abi: LoomAccountFactoryAbi, functionName: "accountImplementation" }))).slice(26)}`;
   const proxyArtifact = JSON.parse(
     readFileSync(join(repoRoot, "out", "LoomAccountProxy.sol", "LoomAccountProxy.json"), "utf8")
   );
@@ -266,7 +187,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
     config
   });
   const getAddressData = encodeFunctionData({
-    abi: FACTORY_ABI,
+    abi: LoomAccountFactoryAbi,
     functionName: "getAddress",
     args: [salt, config.guardianRoot, config.guardianThreshold, config.configHash, config.modules]
   });
@@ -294,7 +215,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
   const unsigned = {
     sender: derived,
     nonce: BigInt(nonceWord),
-    callData: encodeFunctionData({ abi: EXECUTE_ABI, functionName: "execute", args: [ZERO32, execution] }),
+    callData: encodeFunctionData({ abi: LoomAccountAbi, functionName: "execute", args: [ZERO32, execution] }),
     callGasLimit: 1_500_000n,
     verificationGasLimit: 6_000_000n,
     preVerificationGas: 200_000n,
@@ -309,7 +230,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
   const localHash = getUserOpHash(packed, entryPoint, 31337n);
   const liveHash = await ethCall(
     entryPoint,
-    encodeFunctionData({ abi: ENTRY_POINT_ABI, functionName: "getUserOpHash", args: [packedTuple(packed)] })
+    encodeFunctionData({ abi: EntryPointAbi, functionName: "getUserOpHash", args: [packedTuple(packed)] })
   );
   if (localHash.toLowerCase() !== liveHash.toLowerCase()) {
     fail(`SDK userOpHash ${localHash} != live EntryPoint.getUserOpHash ${liveHash}`);
@@ -348,7 +269,7 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
       to: entryPoint,
       gas: "0x7a1200",
       data: encodeFunctionData({
-        abi: ENTRY_POINT_ABI,
+        abi: EntryPointAbi,
         functionName: "handleOps",
         args: [[packedTuple(signed)], DEPLOYER_ADDRESS]
       })
