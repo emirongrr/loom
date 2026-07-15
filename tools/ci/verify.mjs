@@ -71,6 +71,7 @@ run("Core SDK build", npm, ["run", "core:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);
+run("Release nightly evidence tests", npm, ["run", "release:nightly:test"]);
 run("Certora program structure", process.execPath, ["tools/formal/validate-certora-program.mjs"]);
 run("Certora program structure tests", process.execPath, ["--test", "tools/formal/validate-certora-program.test.mjs"]);
 run("Kontrol program structure", process.execPath, ["tools/formal/validate-kontrol-program.mjs"]);

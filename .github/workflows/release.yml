@@ -6,6 +6,7 @@ on:
       - "v*"
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -33,6 +34,11 @@ jobs:
         run: npm --prefix packages/privacy ci
       - name: Audit dependencies
         run: npm run deps:audit
+      - name: Require recent same-commit nightly verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NIGHTLY_BRANCH: main
+        run: npm run release:nightly:check
       - name: Require complete device evidence
         run: npm run fixtures:release
       - name: Verify release candidate

@@ -97,3 +97,5 @@ jobs:
         run: npm run formal:program:test
       - name: Test CI program structure
         run: npm run ci:program:test
+      - name: Test release nightly evidence
+        run: npm run release:nightly:test

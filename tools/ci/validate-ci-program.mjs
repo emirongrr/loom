@@ -61,6 +61,7 @@ function validateTestWorkflow() {
     "npm run deployment:manifest:build:test",
     "npm run formal:program:test",
     "npm run ci:program:test",
+    "npm run release:nightly:test",
   ]) {
     assertIncludes(file, required, `missing required test CI step: ${required}`);
   }
@@ -122,8 +123,10 @@ function validateReleaseWorkflow() {
   for (const required of [
     'tags:',
     '"v*"',
+    "actions: read",
     "npm --prefix packages/privacy ci",
     "npm run deps:audit",
+    "npm run release:nightly:check",
     "npm run verify",
     "npm run coverage:check",
     "npm run fixtures:release",
@@ -201,6 +204,14 @@ function validateFormalProgramInPackage() {
   assert(
     packageJson.scripts["ci:program:test"] === "node --test tools/ci/validate-ci-program.test.mjs",
     "missing ci:program:test script",
+  );
+  assert(
+    packageJson.scripts["release:nightly:test"] === "node --test tools/ci/require-recent-nightly.test.mjs",
+    "missing release:nightly:test script",
+  );
+  assert(
+    packageJson.scripts["release:nightly:check"] === "node tools/ci/require-recent-nightly.mjs",
+    "missing release:nightly:check script",
   );
 }
 
