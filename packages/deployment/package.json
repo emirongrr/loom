@@ -17,6 +17,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@loom/core": "file:../core",
     "js-sha3": "0.9.3"
   }
 }

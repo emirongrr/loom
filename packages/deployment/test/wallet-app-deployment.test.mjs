@@ -5,10 +5,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import jsSha3 from "js-sha3";
 import {
+  bindWalletManifestToCanonical,
+  buildCanonicalDeploymentManifest,
   buildWalletDeploymentManifest,
   connectWalletAppDeployment,
   envForWalletDeployment,
   parseFoundryBroadcast,
+  verifyManifestOnChain,
   verifyWalletDeploymentFiles
 } from "../src/index.js";
 
@@ -165,6 +168,70 @@ function hexText(text) {
 function address(seed) {
   return `0x${keccak256(seed).slice(0, 40)}`;
 }
+
+function proxyArtifact() {
+  return { bytecode: { object: hexText("proxy-creation") }, deployedBytecode: { object: hexText("proxy-runtime") } };
+}
+
+async function canonicalFixture() {
+  const { manifest } = await buildCanonicalDeploymentManifest({
+    broadcast: broadcast(),
+    rpc: rpcFor(),
+    entryPoint: ENTRYPOINT,
+    releaseChannel: "testnet",
+    compatibility: { contractRelease: "0.1.0", sdkRange: "^0.1.0" },
+    proxyArtifact: proxyArtifact()
+  });
+  return manifest;
+}
+
+test("builds a schema-valid canonical manifest from live chain code", async () => {
+  const manifest = await canonicalFixture();
+  assert.equal(manifest.schemaVersion, "1");
+  assert.equal(manifest.chainId, 11155111);
+  assert.equal(manifest.entryPoint.runtimeCodeHash, codehash("entrypoint-code"));
+  assert.equal(manifest.factory.runtimeCodeHash, codehash("factory-code"));
+  assert.equal(manifest.account.implementation.runtimeCodeHash, codehash("account-code"));
+  assert.equal(manifest.account.proxy.creationCodeHash, codehash("proxy-creation"));
+  assert.equal(manifest.modules[0].type, "validator");
+  assert.equal(manifest.modules[0].runtimeCodeHash, codehash("p256-code"));
+});
+
+test("verifyManifestOnChain passes on agreement and fails closed on drift", async () => {
+  const manifest = await canonicalFixture();
+
+  const clean = await verifyManifestOnChain({ rpc: rpcFor(), manifest });
+  assert.equal(clean.ok, true);
+  assert.equal(clean.failures.length, 0);
+  assert.match(clean.manifestHash, /^0x[0-9a-f]{64}$/);
+
+  // The same chain with the factory's code swapped out must fail exactly there.
+  const drifted = async (method, params) => {
+    assert.equal(method, "eth_getCode");
+    if (String(params[0]).toLowerCase() === FACTORY.toLowerCase()) return hexText("tampered-code");
+    return rpcFor()(method, params);
+  };
+  const report = await verifyManifestOnChain({ rpc: drifted, manifest });
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.failures.map(entry => entry.label), ["factory"]);
+});
+
+test("app manifests bind to the canonical manifest and reject disagreement", async () => {
+  const canonical = await canonicalFixture();
+  const app = await buildWalletDeploymentManifest({
+    broadcast: broadcast(),
+    rpc: rpcFor(),
+    entryPoint: ENTRYPOINT,
+    probeP256: async () => ({ supported: true })
+  });
+
+  const bound = bindWalletManifestToCanonical(app, canonical);
+  assert.match(bound.sourceManifestHash, /^0x[0-9a-f]{64}$/);
+  assert.equal(bound.accountFactory, app.accountFactory);
+
+  const foreign = { ...app, passkeyValidator: address("other-validator") };
+  assert.throws(() => bindWalletManifestToCanonical(foreign, canonical), /passkeyValidator/);
+});
 
 test("p256 probe accepts only a 1-for-valid, empty-for-corrupted precompile", async () => {
   const { probeP256Precompile } = await import("../src/index.js");

@@ -1,3 +1,5 @@
+import type { LoomDeploymentManifest } from "@loom/core";
+
 export type Hex = `0x${string}`;
 export type P256VerifierMode = "native-precompile" | "fallback-contract";
 
@@ -72,6 +74,34 @@ export function buildWalletDeploymentManifest(options: {
   notes?: string;
   contracts?: Record<string, string>;
 }): Promise<WalletDeploymentManifest>;
+
+export function buildCanonicalDeploymentManifest(options: {
+  broadcast?: unknown;
+  parsed?: ParsedFoundryBroadcast;
+  rpc: JsonRpcCall;
+  entryPoint: Hex;
+  releaseChannel?: "devnet" | "testnet" | "mainnet";
+  compatibility: { contractRelease: string; sdkRange: string };
+  proxyArtifact: { bytecode: { object: Hex }; deployedBytecode: { object: Hex } };
+  moduleStatus?: "stable" | "beta" | "experimental";
+  extraModules?: readonly unknown[];
+  contracts?: Record<string, string>;
+}): Promise<{ manifest: LoomDeploymentManifest; manifestHash: Hex }>;
+
+export function verifyManifestOnChain(options: {
+  rpc: JsonRpcCall;
+  manifest: LoomDeploymentManifest | unknown;
+}): Promise<{
+  readonly ok: boolean;
+  readonly manifestHash: Hex;
+  readonly checks: readonly { label: string; address: Hex; ok: boolean }[];
+  readonly failures: readonly { label: string; address: Hex; ok: boolean }[];
+}>;
+
+export function bindWalletManifestToCanonical(
+  appManifest: WalletDeploymentManifest,
+  canonicalManifest: LoomDeploymentManifest | unknown
+): WalletDeploymentManifest & { readonly sourceManifestHash: Hex };
 
 export function envForWalletDeployment(
   manifest: WalletDeploymentManifest,
