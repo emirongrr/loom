@@ -24,6 +24,7 @@ interface Vm {
     function deal(address account, uint256 amount) external;
     function addr(uint256 privateKey) external returns (address);
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
+    function expectRevert(bytes calldata revertData) external;
 }
 
 contract LoomAccountTest {
@@ -53,8 +54,8 @@ contract LoomAccountTest {
         items[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.fail, ()));
 
         bytes32 batchMode = bytes32(uint256(1) << 248);
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (batchMode, abi.encode(items))));
-        require(!ok, "batch should revert");
+        vm.expectRevert(abi.encodeWithSignature("Error(string)", "FAIL"));
+        account.execute(batchMode, abi.encode(items));
         require(target.value() == 0, "batch was not atomic");
     }
 
@@ -83,10 +84,12 @@ contract LoomAccountTest {
         vm.deal(address(account), 1 ether);
         items[0] = ExecutionLib.Execution(address(target), 0.6 ether, abi.encodeCall(MockTarget.setValue, (3)));
         items[1] = ExecutionLib.Execution(address(secondTarget), 0.6 ether, abi.encodeCall(MockTarget.setValue, (4)));
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (batchMode, abi.encode(items))));
-        require(!ok, "underfunded batch succeeded");
+        vm.expectRevert(bytes(""));
+        account.execute(batchMode, abi.encode(items));
         require(target.value() == 1 && secondTarget.value() == 2, "underfunded batch was not atomic");
         require(address(account).balance == 1 ether, "underfunded batch spent account funds");
+        require(address(target).balance == 0.4 ether, "underfunded batch changed first target balance");
+        require(address(secondTarget).balance == 0.6 ether, "underfunded batch changed second target balance");
     }
 
     function testBatchCanFundAndExecuteInOneCall() public {
@@ -100,12 +103,13 @@ contract LoomAccountTest {
     function testEmptyBatchAndZeroTargetRevert() public {
         bytes32 batchMode = bytes32(uint256(1) << 248);
         ExecutionLib.Execution[] memory empty = new ExecutionLib.Execution[](0);
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (batchMode, abi.encode(empty))));
-        require(!ok, "empty batch accepted");
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.EmptyBatch.selector));
+        account.execute(batchMode, abi.encode(empty));
 
         ExecutionLib.Execution memory zeroTarget = ExecutionLib.Execution(address(0), 0, "");
-        (ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(zeroTarget))));
-        require(!ok, "zero target accepted");
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.CallFailed.selector, bytes("")));
+        account.execute(bytes32(0), abi.encode(zeroTarget));
+        require(address(account).balance == 0, "rejected execution changed account balance");
     }
 
     function testExecutionCapabilitiesAndCallerAuthorization() public {
@@ -121,15 +125,17 @@ contract LoomAccountTest {
 
         ExecutionLib.Execution memory item =
             ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (11)));
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (trailingModeData, abi.encode(item))));
-        require(!ok, "trailing mode data executed");
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.UnsupportedExecutionMode.selector));
+        account.execute(trailingModeData, abi.encode(item));
 
         LoomAccount foreignAccount = new LoomAccount(
             address(new MockEntryPoint()), keccak256("guardians"), 1, keccak256("config"), _modules(validator)
         );
-        (ok,) = address(foreignAccount).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(item))));
-        require(!ok, "unauthorized caller executed account");
+        uint256 foreignConfigVersion = foreignAccount.configVersion();
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.OnlyEntryPoint.selector));
+        foreignAccount.execute(bytes32(0), abi.encode(item));
         require(target.value() == 0, "unauthorized execution changed state");
+        require(foreignAccount.configVersion() == foreignConfigVersion, "unauthorized execution changed config");
     }
 
     function testTokenReceiverCapabilities() public view {
@@ -156,15 +162,22 @@ contract LoomAccountTest {
         ExecutionLib.Execution memory item =
             ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
         bytes32 unsupported = bytes32(uint256(2) << 248);
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (unsupported, abi.encode(item))));
-        require(!ok, "unsupported mode accepted");
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.UnsupportedExecutionMode.selector));
+        account.execute(unsupported, abi.encode(item));
+        require(target.value() == 0, "unsupported mode changed target state");
     }
 
     function testConfigCannotBypassTimelock() public {
-        (bool ok,) =
-            address(account).call(abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("new-guardians"), uint8(1))));
-        require(!ok, "config timelock bypassed");
-        require(account.configVersion() == 1, "config changed");
+        bytes32 guardianRootBefore = account.guardianRoot();
+        uint8 guardianThresholdBefore = account.guardianThreshold();
+        uint256 configVersionBefore = account.configVersion();
+
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.OperationNotReady.selector));
+        account.setGuardianConfig(keccak256("new-guardians"), 1);
+
+        require(account.guardianRoot() == guardianRootBefore, "timelock bypass changed guardian root");
+        require(account.guardianThreshold() == guardianThresholdBefore, "timelock bypass changed guardian threshold");
+        require(account.configVersion() == configVersionBefore, "timelock bypass changed config version");
     }
 
     function testGuardianlessBootstrapIsExplicitlyUnprotected() public {
