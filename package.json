@@ -84,7 +84,7 @@
     "site:dev": "npm --prefix docs/site run dev",
     "verify:quick": "node tools/ci/verify.mjs",
     "verify": "node tools/ci/verify.mjs --full",
-    "e2e:devnet": "node tools/e2e/devnet-lifecycle.mjs",
+    "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
     "deployment:gas": "node tools/deployment/deployment-gas-report.mjs"
   },
   "devDependencies": {
