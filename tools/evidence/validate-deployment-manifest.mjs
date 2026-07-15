@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
+import { manifestHash, parseDeploymentManifest } from "@loom/core";
 
 const { keccak_256 } = sha3;
 
@@ -27,13 +28,93 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   assertDeployments(manifest.deployments, repoRoot);
   assertAttestations(manifest.attestations);
   assertChecks(manifest.checks);
+  assertCanonicalProjection(manifest, repoRoot);
 }
 
 function assertTopLevel(manifest) {
-  for (const key of ["version", "network", "build", "reproducibility", "deployments", "attestations", "checks"]) {
+  for (const key of [
+    "version",
+    "network",
+    "build",
+    "reproducibility",
+    "deployments",
+    "attestations",
+    "checks",
+    "canonical"
+  ]) {
     if (!(key in manifest)) throw new Error(`missing top-level manifest field: ${key}`);
   }
   if (manifest.version !== 1) throw new Error("unsupported deployment manifest version");
+}
+
+// The canonical projection is validated by delegation: the schema itself is
+// `@loom/core`'s (never duplicated here); this only re-derives the hash and
+// cross-checks that the projection agrees with the evidence it claims to
+// project — so the app-facing record can never drift from the release record.
+function assertCanonicalProjection(manifest, repoRoot) {
+  const canonical = manifest.canonical;
+  if (!canonical || typeof canonical !== "object") throw new Error("canonical projection must be an object");
+
+  let projected;
+  try {
+    projected = parseDeploymentManifest(canonical.manifest);
+  } catch (error) {
+    throw new Error(`canonical.manifest is not a valid LoomDeploymentManifest: ${error.message}`);
+  }
+  if (manifestHash(projected) !== canonical.manifestHash) {
+    throw new Error("canonical.manifestHash does not match the projected manifest");
+  }
+
+  if (projected.chainId !== manifest.network.chainId) {
+    throw new Error("canonical.manifest.chainId disagrees with network.chainId");
+  }
+  const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  if (!same(projected.entryPoint.address, manifest.network.entryPoint)) {
+    throw new Error("canonical entryPoint address disagrees with network.entryPoint");
+  }
+  if (!same(projected.entryPoint.runtimeCodeHash, manifest.network.entryPointCodeHash)) {
+    throw new Error("canonical entryPoint code hash disagrees with network.entryPointCodeHash");
+  }
+
+  const sources = canonical.sources;
+  if (!sources || typeof sources !== "object") throw new Error("canonical.sources must be an object");
+  const named = (name, label) => {
+    const deployment = manifest.deployments.find(entry => entry.name === name);
+    if (!deployment) throw new Error(`canonical.sources.${label} references unknown deployment: ${name}`);
+    return deployment;
+  };
+  const agree = (label, projectedEntry, deployment) => {
+    if (!same(projectedEntry.address, deployment.address) ||
+        !same(projectedEntry.runtimeCodeHash, deployment.runtimeCodeHash)) {
+      throw new Error(`canonical ${label} disagrees with deployment evidence ${deployment.name}`);
+    }
+  };
+  agree("factory", projected.factory, named(sources.factory, "factory"));
+  agree("account.implementation", projected.account.implementation, named(sources.implementation, "implementation"));
+  const validatorModule = projected.modules.find(module => module.type === "validator");
+  if (!validatorModule) throw new Error("canonical.manifest must carry a validator module");
+  agree("validator module", validatorModule, named(sources.validator, "validator"));
+
+  assertRepoRelative(canonical.proxyArtifact, "canonical.proxyArtifact");
+  const artifactPath = join(repoRoot, canonical.proxyArtifact);
+  if (!existsSync(artifactPath)) {
+    throw new Error(`canonical.proxyArtifact does not exist: ${canonical.proxyArtifact}`);
+  }
+  const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+  const creation = artifact.bytecode?.object;
+  const runtime = artifact.deployedBytecode?.object;
+  if (!isHex(creation) || !isHex(runtime)) throw new Error("canonical.proxyArtifact missing bytecode");
+  if (projected.account.proxy.creationCodeHash !== hashHex(creation) ||
+      projected.account.proxy.runtimeCodeHash !== hashHex(runtime)) {
+    throw new Error("canonical proxy hashes disagree with canonical.proxyArtifact");
+  }
+}
+
+function assertRepoRelative(value, label) {
+  if (!value || typeof value !== "string") throw new Error(`${label} is required`);
+  if (isAbsolute(value) || value.split(/[\\/]+/).includes("..")) {
+    throw new Error(`${label} must stay inside repository`);
+  }
 }
 
 function assertReproducibility(reproducibility, repoRoot) {
