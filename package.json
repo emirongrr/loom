@@ -36,6 +36,8 @@
     "lean:build": "node tools/formal/lean-local.mjs build",
     "ci:program:test": "node --test tools/ci/validate-ci-program.test.mjs",
     "ci:program:check": "node tools/ci/validate-ci-program.mjs",
+    "release:nightly:test": "node --test tools/ci/require-recent-nightly.test.mjs",
+    "release:nightly:check": "node tools/ci/require-recent-nightly.mjs",
     "deps:audit": "node tools/quality/audit-dependencies.mjs",
     "docs:check": "node tools/quality/validate-doc-links.mjs",
     "fixtures:check": "node tools/evidence/validate-webauthn-fixtures.mjs",
