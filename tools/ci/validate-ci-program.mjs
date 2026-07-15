@@ -115,6 +115,37 @@ function validateNightlyWorkflow() {
   }
 }
 
+function validateReleaseWorkflow() {
+  const file = ".github/workflows/release.yml";
+  const source = read(file);
+  assertWorkflowSecurityDefaults(file);
+  for (const required of [
+    'tags:',
+    '"v*"',
+    "npm --prefix packages/privacy ci",
+    "npm run deps:audit",
+    "npm run verify",
+    "npm run coverage:check",
+    "npm run fixtures:release",
+    "npm run e2e:devnet",
+    "slither . --fail-high",
+    "src script docs evidence fixtures out",
+    "actions/upload-artifact@v7",
+    "gh release create",
+  ]) {
+    assertIncludes(file, required, `missing required release qualification step: ${required}`);
+  }
+  assert(source.includes("needs: [qualification, static-analysis]"), `${file}: publishing must depend on every release qualification job`);
+  assert(
+    (source.match(/contents: write/gu) ?? []).length === 1,
+    `${file}: only the publishing job may receive release write authority`,
+  );
+  assert(
+    source.indexOf("contents: write") > source.indexOf("\n  publish:\n"),
+    `${file}: release write authority must be scoped to the publishing job`,
+  );
+}
+
 function validateKontrolWorkflow() {
   const file = ".github/workflows/kontrol.yml";
   assertWorkflowSecurityDefaults(file);
@@ -191,6 +222,7 @@ validateContractsWorkflow();
 validateTestWorkflow();
 validateFormalWorkflow();
 validateNightlyWorkflow();
+validateReleaseWorkflow();
 validateKontrolWorkflow();
 validateSupplyChainWorkflow();
 validateCertoraWorkflow();
