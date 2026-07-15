@@ -54,8 +54,36 @@ jobs:
         run: npm run formal:program:check
       - name: Test privacy SDK boundary
         run: npm run privacy:test
+      - name: Prepare devnet evidence
+        run: |
+          mkdir -p artifacts/devnet
+          printf '%s\n' \
+            '{' \
+            '  "schemaVersion": 1,' \
+            '  "repository": "${{ github.repository }}",' \
+            '  "commit": "${{ github.sha }}",' \
+            '  "workflowRunId": "${{ github.run_id }}",' \
+            '  "workflowRunAttempt": "${{ github.run_attempt }}",' \
+            '  "chainId": 31337,' \
+            '  "command": "npm run e2e:devnet"' \
+            '}' > artifacts/devnet/run-metadata.json
+          forge --version > artifacts/devnet/forge-version.txt
+          anvil --version > artifacts/devnet/anvil-version.txt
+          node --version > artifacts/devnet/node-version.txt
       - name: End-to-end devnet lifecycle
-        run: npm run e2e:devnet
+        run: |
+          set -o pipefail
+          npm run e2e:devnet 2>&1 | tee artifacts/devnet/devnet-lifecycle.log
+          cp broadcast/DeployDevnet.s.sol/31337/run-latest.json artifacts/devnet/deployment-broadcast.json
+          cp broadcast/DevnetAccountLifecycle.s.sol/31337/run-latest.json artifacts/devnet/account-lifecycle-broadcast.json
+      - name: Upload devnet evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: devnet-${{ github.sha }}
+          path: artifacts/devnet
+          retention-days: 30
+          if-no-files-found: error
       - name: Check formatting
         run: forge fmt --check
       - name: Lint Solidity
