@@ -37,3 +37,10 @@ passkey evidence (see `examples/mobile-privacy-wallet/GAPS.md` G-001).
 The `Build and test` job in `.github/workflows/ci.yml` runs `npm run e2e:devnet`
 after the contract and SDK checks. `anvil` and `forge` come from the Foundry
 toolchain the job already installs.
+
+The job uploads a 30-day `devnet-<commit>` artifact even when the lifecycle
+fails. It contains exact workflow provenance and tool versions, the complete
+orchestrator log, and, after a successful run, the deployment and account
+lifecycle Foundry broadcasts with their transaction receipts. These are
+deterministic chain-31337 CI diagnostics; they are not production deployment
+manifests, live-chain receipts, or device-passkey evidence.
