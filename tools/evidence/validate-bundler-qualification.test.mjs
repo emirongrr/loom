@@ -7,7 +7,7 @@ const TX = "0x" + "11".repeat(32);
 
 function validEvidence() {
   return {
-    version: 1,
+    version: 2,
     network: { name: "sepolia", chainId: 11155111 },
     entryPoint: ENTRYPOINT,
     bundlers: [
@@ -62,6 +62,21 @@ function validEvidence() {
 }
 
 function lifecycleFor(bundler) {
+  const receipts = {
+    deploy: TX,
+    single: TX,
+    batch: TX,
+    nativeGas: TX,
+    paymasterApproved: TX,
+    sessionGrant: TX,
+    sessionRevoke: TX,
+    recoveryProposal: TX,
+    recoveryCancel: TX,
+    migrationSchedule: TX,
+    migrationCancel: TX,
+    vaultSchedule: TX,
+    vaultCancel: TX
+  };
   return {
     bundler,
     chainId: 11155111,
@@ -87,21 +102,20 @@ function lifecycleFor(bundler) {
       vault: stage()
     },
     rejections: rejectionEvidence(),
-    receipts: {
-      deploy: TX,
-      single: TX,
-      batch: TX,
-      nativeGas: TX,
-      paymasterApproved: TX,
-      sessionGrant: TX,
-      sessionRevoke: TX,
-      recoveryProposal: TX,
-      recoveryCancel: TX,
-      migrationSchedule: TX,
-      migrationCancel: TX,
-      vaultSchedule: TX,
-      vaultCancel: TX
-    }
+    receipts,
+    executions: Object.fromEntries(Object.keys(receipts).map(key => [key, executionEvidence()]))
+  };
+}
+
+function executionEvidence() {
+  return {
+    userOperationHash: TX,
+    transactionHash: TX,
+    blockHash: TX,
+    blockNumber: "0x123",
+    stateChecks: 1,
+    eventReconciled: true,
+    receiptReconciled: true
   };
 }
 
@@ -135,6 +149,12 @@ test("bundler qualification requires two independent implementations and operato
 
   evidence.bundlers[1].implementation = "rundler";
   assert.throws(() => validateBundlerQualification(evidence), /at least two implementations/);
+});
+
+test("bundler qualification rejects legacy evidence without live executions", () => {
+  const evidence = validEvidence();
+  evidence.version = 1;
+  assert.throws(() => validateBundlerQualification(evidence), /unsupported bundler qualification evidence version/);
 });
 
 test("bundler qualification rejects shared origins and secret-bearing URLs", () => {
@@ -218,4 +238,16 @@ test("bundler qualification requires lifecycle stage and receipt evidence", () =
   const includedRejection = validEvidence();
   includedRejection.lifecycle[0].rejections.staleNonceRejected.receiptAbsent = false;
   assert.throws(() => validateBundlerQualification(includedRejection), /receiptAbsent must be true/);
+
+  const missingExecution = validEvidence();
+  delete missingExecution.lifecycle[0].executions.batch;
+  assert.throws(() => validateBundlerQualification(missingExecution), /executions.batch/);
+
+  const mismatchedExecution = validEvidence();
+  mismatchedExecution.lifecycle[0].executions.vaultCancel.transactionHash = "0x" + "22".repeat(32);
+  assert.throws(() => validateBundlerQualification(mismatchedExecution), /must match lifecycle receipt/);
+
+  const uncheckedState = validEvidence();
+  uncheckedState.lifecycle[0].executions.recoveryProposal.stateChecks = 0;
+  assert.throws(() => validateBundlerQualification(uncheckedState), /stateChecks must be a positive integer/);
 });
