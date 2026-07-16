@@ -37,6 +37,32 @@ Spending accounting is updated in the hook pre-check. If the inner account
 execution later reverts, the whole transaction reverts and the accounting
 rolls back with it.
 
+## Token compatibility matrix
+
+The policy and vault hooks meter the amount requested by canonical ERC-20
+`transfer`, `transferFrom`, and `approve` calldata. They do not decode or
+endorse token return data. A successful account call therefore means the token
+call did not revert; it does not turn a `false` return value into token-level
+success.
+
+| Token class | Loom support level | Evidence and boundary |
+|---|---|---|
+| Boolean-return ERC-20 | Supported | Pinned mainnet USDC transfer tests assert exact balances, requested-amount policy accounting, exact limit error, and full rollback. |
+| No-return ERC-20 | Supported | Pinned mainnet USDT transfer tests exercise the deployed no-return implementation with the same accounting and rollback assertions. |
+| Wrapped native token | Supported as ERC-20 after wrapping | Pinned mainnet WETH deposit and transfer tests prove exact vault accounting. Native value used to wrap remains subject to any configured native-asset policy. |
+| ERC-4626 shares | Shares supported as canonical ERC-20 | Pinned mainnet sDAI deposit plus share transfer tests prove share-balance and vault accounting. `deposit`, `mint`, `withdraw`, and `redeem` economics are not interpreted by the generic hooks. |
+| Fee-on-transfer | Restricted | PR tests prove the requested amount, not the recipient's net amount, consumes policy budget. Fees and token valuation are not modeled. |
+| Rebasing | Unqualified | Generic transfer calldata can execute, but balances and limits are not adjusted for rebases. Do not treat a rebasing asset as protected without an asset-specific review. |
+| Callback-capable/ERC-777-like | Unqualified | Account execution is reentrancy-guarded, but callback and operator semantics are not part of the supported token profile. |
+| `false` return | Executed but not reported as token success | PR tests prove balances remain unchanged while the requested amount is conservatively consumed. Integrators must inspect token semantics or use a specialized adapter. |
+| Reverting or malformed token | Fails closed | PR tests require exact bubbled errors and accounting rollback; malformed canonical calldata cannot fit under a configured limit. |
+
+The real-token rows run against Ethereum mainnet block `20,000,000` using the
+deployed USDC, USDT, WETH, DAI, and sDAI contracts. `MAINNET_RPC_URL` must point
+to an archive-capable caller-selected endpoint. The endpoint is never stored in
+the repository or test output. Mock behavior tests run on every pull request;
+the pinned fork matrix is a nightly and release qualification gate.
+
 ## Vault path
 
 Large withdrawals are visible and delayed. A user first schedules a vault

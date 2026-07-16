@@ -45,6 +45,7 @@
     "fixtures:release": "node tools/evidence/validate-webauthn-fixtures.mjs --require-complete",
     "test:unit": "forge test --match-path \"test/unit/**/*.t.sol\"",
     "test:integration": "forge test --match-path \"test/integration/**/*.t.sol\"",
+    "test:fork:tokens": "forge test --match-path \"test/fork/MainnetTokenCompatibility.fork.t.sol\" -vvv",
     "test:evidence": "forge test --match-path \"test/evidence/**/*.t.sol\"",
     "test:invariant": "forge test --match-path \"test/invariant/**/*.t.sol\"",
     "test:regression": "forge test --match-path \"test/regression/**/*.t.sol\"",

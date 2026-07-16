@@ -13,6 +13,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  mainnet-token-fork:
+    name: Pinned mainnet token matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Require archive RPC
+        run: test -n "$MAINNET_RPC_URL"
+      - name: Run pinned token matrix
+        run: |
+          mkdir -p artifacts/nightly-token-fork
+          set -o pipefail
+          npm run test:fork:tokens 2>&1 | tee artifacts/nightly-token-fork/token-matrix.log
+      - name: Upload token fork evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-token-fork-${{ github.sha }}
+          path: artifacts/nightly-token-fork
+          retention-days: 30
+          if-no-files-found: error
+
   foundry-deep:
     name: Deep Foundry fuzz and invariants
     runs-on: ubuntu-latest

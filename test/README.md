@@ -10,6 +10,7 @@ wired together.
 |---|---|---|
 | `unit/` | Narrow contract, library, validator, hook, or verifier behavior. | Mocks are allowed when they isolate one dependency or create adversarial inputs. |
 | `integration/` | Real Loom components wired together across account, validator, hook, recovery, factory, EntryPoint, or SDK boundaries. | Prefer production contracts. Mocks are allowed only for external boundaries, targets, tokens, adversarial hooks, or test-only EntryPoint/paymaster surfaces. |
+| `fork/` | Pinned-chain compatibility against deployed external contracts. | Loom components and the external contract under test must be real. RPC URLs remain caller-supplied and uncommitted. |
 | `evidence/` | Deterministic external evidence such as WebAuthn fixture corpus validation. | No cryptographic verifier mocks for production claims. Fixture privacy/provenance checks are part of the test. |
 | `e2e/` | Node-side wallet developer journeys through SDK, signer, transport, receipt, safety-state, and walkaway boundaries. | In-memory transports are allowed only as external bundler/state boundaries. Do not use them for live-chain claims. |
 | `invariant/` | Stateful Foundry invariants over interacting transitions. | Mocks may drive adversarial state transitions but must not replace the invariant target. |
@@ -122,6 +123,7 @@ Focused checks:
 ```sh
 forge test --match-path "test/unit/**/*.t.sol"
 forge test --match-path "test/integration/**/*.t.sol"
+MAINNET_RPC_URL=<archive-rpc> npm run test:fork:tokens
 forge test --match-path "test/evidence/**/*.t.sol"
 forge test --match-path "test/invariant/**/*.t.sol"
 forge test --match-path "test/regression/**/*.t.sol"
