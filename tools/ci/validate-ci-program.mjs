@@ -138,6 +138,15 @@ function validateNightlyWorkflow() {
     "if-no-files-found: error",
     "--depth 100000 --width 500000",
     "cd formal/lean && lake build",
+    "name: nightly-halmos-${{ github.sha }}",
+    "path: artifacts/nightly-halmos",
+    "artifacts/nightly-halmos/run-metadata.json",
+    "artifacts/nightly-halmos/migration.log",
+    "name: nightly-lean-${{ github.sha }}",
+    "path: artifacts/nightly-lean",
+    "artifacts/nightly-lean/run-metadata.json",
+    "artifacts/nightly-lean/lake-build.log",
+    "cp formal/lean/lean-toolchain formal/lean/lake-manifest.json artifacts/nightly-lean/",
   ]) {
     assertIncludes(file, required, `missing required nightly verification step: ${required}`);
   }
