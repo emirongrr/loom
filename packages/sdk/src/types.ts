@@ -1,3 +1,7 @@
+// Public type surface of @loom/sdk. Extracted verbatim from the former
+// hand-written declarations during the TypeScript conversion; the runtime in
+// index.ts annotates its exports with these types so the compiler-generated
+// declarations preserve the same contract.
 import type {
   AccountLifecycleClient,
   LifecycleCallEncoder,
@@ -67,10 +71,6 @@ export interface ShieldedPoolAdapter {
   privateTransfer(request: unknown): Promise<unknown>;
 }
 
-export class InvalidSdkRequestError extends Error {
-  readonly details: Record<string, unknown>;
-}
-
 export interface KohakuRuntime {
   readonly host: KohakuHost;
   readonly providerProfile: KohakuProviderProfile;
@@ -78,8 +78,6 @@ export interface KohakuRuntime {
   metadataBudget(context: PrivacyContext): Promise<MetadataBudget>;
   request(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
-
-export function createKohakuRuntime(options: { host: KohakuHost }): KohakuRuntime;
 
 export interface AppScope {
   readonly applicationId: string;
@@ -98,11 +96,6 @@ export interface AppScopeManager {
   }): AppScope;
   bindPrivacyContext(context: PrivacyContext, scope: AppScope): PrivacyContext;
 }
-
-export function createAppScopeManager(options?: {
-  chainId?: number;
-  account?: Hex;
-}): AppScopeManager;
 
 export interface ClearSigningReview {
   readonly title: string;
@@ -137,12 +130,6 @@ export interface LoomSdk {
   buildAppSessionGrant(input: AppSessionGrantInput): AppSessionGrantIntent;
   preparePrivateVaultWithdrawal(input: PrivateVaultWithdrawalPreparationInput): Promise<PrivateVaultWithdrawalPreparation>;
 }
-
-export function createLoomSdk(options?: {
-  chainId?: number;
-  account?: Hex;
-  kohaku?: { host: KohakuHost };
-}): LoomSdk;
 
 export interface LoomSignerAdapter {
   signUserOperation(envelope: UserOperationEnvelope): Promise<Hex>;
@@ -534,30 +521,6 @@ export interface UserOperationOverrides {
   signature?: Hex;
 }
 
-export function createLoomClient(options: {
-  chainId: number;
-  account: Hex;
-  sdk?: LoomSdk;
-  kohaku?: { host: KohakuHost };
-  signer?: LoomSignerAdapter;
-  transport?: LoomTransportAdapter;
-  stateTransport?: LoomStateReadTransport;
-  middleware?: readonly ((envelope: UserOperationEnvelope) => Promise<UserOperationEnvelope> | UserOperationEnvelope)[];
-}): LoomClient;
-
-export function walletGetCapabilities(input: {
-  account: Hex;
-  chainId: number;
-  address?: Hex;
-  chainIds?: readonly (`0x${string}` | number)[];
-}): WalletCapabilities;
-
-export function prepareWalletSendCalls(input: WalletSendCallsInput & {
-  account: Hex;
-  enabledChainId?: number;
-  localChainId?: number;
-}): WalletSendCallsPreparation;
-
 export interface BundlerTransportOptions {
   endpoint: string;
   entryPoint: Hex;
@@ -567,11 +530,6 @@ export interface BundlerTransportOptions {
   pollIntervalMs?: number;
 }
 
-export function createBundlerTransport(options: BundlerTransportOptions): LoomTransportAdapter & {
-  readonly endpoint: string;
-  readonly entryPoint: Hex;
-};
-
 export interface RpcStateTransportOptions {
   endpoint: string;
   fetch?: typeof fetch;
@@ -579,57 +537,12 @@ export interface RpcStateTransportOptions {
   requestId?: number | string;
 }
 
-export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
-  readonly endpoint: string;
-};
-
-export function createEip1193StateTransport(options: {
-  provider: Eip1193Provider;
-  verification?: Partial<VerificationProfile>;
-}): LoomStateReadTransport & {
-  readonly provider: Eip1193Provider;
-  readonly verification: VerificationProfile;
-  describeVerification(): VerificationProfile;
-};
-
-export function verified<T>(value: T, profile?: Partial<VerificationProfile>): VerifiedState<T>;
-
-export function unverified<T = unknown>(
-  reason: string,
-  value?: T,
-  profile?: Partial<VerificationProfile>
-): UnverifiedState<T>;
-
-export function readAccountSafetyState(input: {
-  chainId: number;
-  account: Hex;
-  stateTransport?: LoomStateReadTransport;
-  transport?: LoomStateReadTransport;
-  recoveryModule?: Hex;
-  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
-  now?: bigint | string | number;
-}): Promise<AccountSafetyState>;
-
 export interface VaultPolicyState {
   readonly dailyLimit: bigint;
   readonly period: bigint;
   readonly delay: bigint;
   readonly enabled: boolean;
 }
-
-export function readVaultPolicyState(input: {
-  account: Hex;
-  vaultHook: Hex;
-  token: Hex;
-  stateTransport?: LoomStateReadTransport;
-  transport?: LoomStateReadTransport;
-  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
-}): Promise<VaultPolicyState>;
-
-export function toViemCalls(
-  prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
-  options?: { account?: Hex }
-): readonly ViemCall[];
 
 export interface PasskeyChallenge {
   readonly type: "loom.passkey-user-operation";
@@ -652,44 +565,6 @@ export interface PasskeyAssertion {
   readonly signature: Hex;
   readonly userHandle?: Hex;
 }
-
-export function createPasskeySigner(options: {
-  credentialId: string;
-  rpId: string;
-  origin: string;
-  /** The installed P-256 validator the signature envelope routes through. */
-  validator: Hex;
-  /** The EntryPoint the canonical user-operation hash is bound to. */
-  entryPoint: Hex;
-  signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion>;
-}): LoomSignerAdapter & {
-  readonly credentialId: string;
-  readonly rpId: string;
-  readonly origin: string;
-  readonly validator: Hex;
-  readonly entryPoint: Hex;
-  /** A representative signature-shaped envelope for gas estimation. */
-  readonly dummySignature: Hex;
-};
-
-export function prepareUserOperationEnvelope(input: {
-  chainId: number;
-  account: Hex;
-  intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
-} & UserOperationOverrides): UserOperationEnvelope;
-
-export function computeUserOperationHash(
-  envelope: UserOperationEnvelope,
-  options: { entryPoint: Hex }
-): Hex;
-
-export function fetchEntryPointNonce(input: {
-  stateTransport: LoomStateReadTransport;
-  entryPoint: Hex;
-  account: Hex;
-  key?: bigint;
-  blockTag?: "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
-}): Promise<bigint>;
 
 export interface AppSessionGrantInput {
   lifecycle?: AccountLifecycleClient;
@@ -721,8 +596,6 @@ export interface AppSessionGrantIntent extends LifecycleIntent {
   readonly appBindingHash: Hex;
   readonly review: ClearSigningReview;
 }
-
-export function buildAppSessionGrant(options: AppSessionGrantInput): AppSessionGrantIntent;
 
 export interface PrivateVaultWithdrawalPreparationInput {
   lifecycle?: AccountLifecycleClient;
@@ -773,10 +646,5 @@ export interface PrivateVaultWithdrawalPreparation {
   readonly review: ClearSigningReview;
 }
 
-export function preparePrivateVaultWithdrawal(
-  options: PrivateVaultWithdrawalPreparationInput
-): Promise<PrivateVaultWithdrawalPreparation>;
 
-export function explainLifecycleIntent(intent: LifecycleIntent): ClearSigningReview;
-
-export function hashCanonical(value: unknown): Hex;
+export type { Hex } from "@loom/account";

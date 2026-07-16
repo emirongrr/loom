@@ -69,6 +69,7 @@ run("WebAuthn fixture parser tests", process.execPath, [
 // gate that imports the SDK.
 run("Core SDK build", npm, ["run", "core:build"]);
 run("Account SDK build", npm, ["run", "account:build"]);
+run("Wallet engine SDK build", npm, ["run", "sdk:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);

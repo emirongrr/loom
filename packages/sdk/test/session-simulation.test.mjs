@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLoomClient, explainLifecycleIntent, hashCanonical } from "../src/index.js";
+import { createLoomClient, explainLifecycleIntent, hashCanonical } from "../dist/index.js";
 import { createKohakuHost } from "../../privacy/src/index.js";
 
 // Randomized SDK session simulation. The unit tests exercise fixed lifecycle

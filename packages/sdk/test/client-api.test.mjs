@@ -4,7 +4,7 @@ import {
   InvalidSdkRequestError,
   createLoomClient,
   createLoomSdk
-} from "../src/index.js";
+} from "../dist/index.js";
 import { createKohakuHost } from "../../privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";

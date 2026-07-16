@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLoomClient } from "../src/index.js";
+import { createLoomClient } from "../dist/index.js";
 import { createKohakuHost } from "../../privacy/src/index.js";
 
 // Walkaway example (executable): a Loom account's full authority lifecycle must
