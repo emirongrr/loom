@@ -35,6 +35,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error ModuleLimitReached();
     error InvalidTokenAllowance();
     error EmptyBatch();
+    error InvalidBatch();
+    error BatchLimitExceeded();
+    error ReturnDataLimitExceeded(uint256 size);
     error FreezeActive();
     error InvalidDirectExecution();
     error MigrationAlreadyPending();
@@ -71,6 +74,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
     uint256 public constant MAX_VALIDATORS = ValidatorSetLib.MAX_VALIDATORS;
     uint256 public constant MAX_HOOKS = 8;
+    uint256 public constant MAX_BATCH_SIZE = 32;
+    uint256 public constant MAX_REVERT_DATA_LENGTH = 2_048;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
     uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
@@ -339,6 +344,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
             revert UnsupportedExecutionMode();
         }
         (bytes1 callType,) = ExecutionLib.mode(mode);
+        if (callType == ExecutionLib.CALLTYPE_BATCH) _validateBatchSize(executionCalldata);
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < frozenUntil && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
@@ -351,7 +357,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
             _execute(abi.decode(executionCalldata, (ExecutionLib.Execution)));
         } else if (callType == ExecutionLib.CALLTYPE_BATCH) {
             ExecutionLib.Execution[] memory executions = abi.decode(executionCalldata, (ExecutionLib.Execution[]));
-            if (executions.length == 0) revert EmptyBatch();
             for (uint256 i; i < executions.length; ++i) {
                 _execute(executions[i]);
             }
@@ -937,14 +942,38 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function _execute(ExecutionLib.Execution memory execution) internal {
         if (execution.target == address(0)) revert CallFailed("");
+        bool ok;
+        uint256 returnDataSize;
+        address target = execution.target;
+        uint256 value = execution.value;
+        bytes memory callData = execution.callData;
         // A smart account must be able to send authorized ETH to arbitrary targets.
         // slither-disable-next-line arbitrary-send-eth
-        (bool ok, bytes memory result) = execution.target.call{value: execution.value}(execution.callData);
+        assembly ("memory-safe") {
+            ok := call(gas(), target, value, add(callData, 32), mload(callData), 0, 0)
+            returnDataSize := returndatasize()
+        }
         if (!ok) {
-            assembly {
-                revert(add(result, 32), mload(result))
+            if (returnDataSize > MAX_REVERT_DATA_LENGTH) revert ReturnDataLimitExceeded(returnDataSize);
+            assembly ("memory-safe") {
+                let result := mload(0x40)
+                returndatacopy(result, 0, returnDataSize)
+                revert(result, returnDataSize)
             }
         }
+    }
+
+    function _validateBatchSize(bytes calldata executionCalldata) internal pure {
+        if (executionCalldata.length < 64) revert InvalidBatch();
+        uint256 arrayOffset;
+        uint256 count;
+        assembly ("memory-safe") {
+            arrayOffset := calldataload(executionCalldata.offset)
+            count := calldataload(add(executionCalldata.offset, 32))
+        }
+        if (arrayOffset != 32) revert InvalidBatch();
+        if (count == 0) revert EmptyBatch();
+        if (count > MAX_BATCH_SIZE) revert BatchLimitExceeded();
     }
 
     function _isFrozenSafe(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {

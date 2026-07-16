@@ -211,6 +211,19 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_BATCH_SIZE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_GUARDIAN_PROOF_LENGTH",
     "inputs": [],
     "outputs": [
@@ -264,6 +277,19 @@ export const LoomAccountAbi = [
   {
     "type": "function",
     "name": "MAX_RECOVERY_MODULES",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_REVERT_DATA_LENGTH",
     "inputs": [],
     "outputs": [
       {
@@ -2077,6 +2103,11 @@ export const LoomAccountAbi = [
   },
   {
     "type": "error",
+    "name": "BatchLimitExceeded",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "CallFailed",
     "inputs": [
       {
@@ -2094,6 +2125,11 @@ export const LoomAccountAbi = [
   {
     "type": "error",
     "name": "FreezeActive",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidBatch",
     "inputs": []
   },
   {
@@ -2175,6 +2211,17 @@ export const LoomAccountAbi = [
     "type": "error",
     "name": "Reentrancy",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReturnDataLimitExceeded",
+    "inputs": [
+      {
+        "name": "size",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",

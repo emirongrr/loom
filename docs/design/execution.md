@@ -93,7 +93,7 @@ the shorter one with the same cancellable-during-the-delay guarantee.
 | Call type | Mode prefix | Calldata encoding | Behavior |
 |---|---|---|---|
 | Single | `0x00 0x00` | `abi.encode(Execution(target, value, callData))` | Executes one call |
-| Batch | `0x01 0x00` | `abi.encode(Execution[])` | Executes a non-empty atomic ordered batch |
+| Batch | `0x01 0x00` | `abi.encode(Execution[])` | Executes an atomic ordered batch of 1 to 32 calls |
 
 All remaining mode bytes must be zero. Delegatecall, try-mode, executor calls,
 and fallback execution are unsupported and revert.
@@ -124,6 +124,33 @@ encoding defined by ERC-7579.
   batches rolls back.
 - `supportsExecutionMode` reports only the two supported modes.
 - Failed inner calls bubble their revert data.
+
+## Resource ceilings
+
+Execution has explicit bounds so a supported path remains measurable and a
+malicious target cannot force the account to copy unbounded return data:
+
+- `MAX_BATCH_SIZE` is 32. The account reads and rejects an oversized batch
+  before freeze parsing, hooks, or target execution.
+- `MAX_HOOKS` is 8 and `MAX_VALIDATORS` is 16. These existing module limits
+  bound per-operation hook work and validator-set lifecycle work.
+- The 32-call batch with all 8 hooks installed must remain below 2,000,000 gas
+  in `ExecutionGasScalingTest`; the PR gas snapshot and nightly/release suites
+  enforce this ceiling with the pinned compiler and EVM profile.
+- Successful external-call returndata is intentionally discarded because Loom
+  execution has no return-value consumer. The target still pays to construct
+  its returndata, but the account does not allocate and copy it.
+- Revert data up to `MAX_REVERT_DATA_LENGTH` (2,048 bytes) is bubbled exactly.
+  Larger revert data fails with `ReturnDataLimitExceeded(size)` without copying
+  the payload. Wallets should surface this as a bounded target failure rather
+  than attempting to decode the omitted bytes.
+
+These are execution-layer ceilings, not a promise that every 32-call batch is
+economically sensible. Clients must still estimate the exact UserOperation and
+must not hardcode the ceiling as the operation's gas limit. WebAuthn, proof,
+guardian, and validator worst-case benchmarks are maintained as separate
+qualification rows because they exercise validation rather than target-call
+execution.
 
 ## Wallet and bundler integration
 

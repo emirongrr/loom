@@ -8,6 +8,10 @@ import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
 
+interface VmGasScaling {
+    function expectRevert(bytes calldata revertData) external;
+}
+
 contract ScalingHook is ILoomHook {
     uint256 public preChecks;
     uint256 public postChecks;
@@ -26,7 +30,24 @@ contract ScalingHook is ILoomHook {
     }
 }
 
+contract ReturndataBomb {
+    function returnBytes(uint256 size) external pure {
+        assembly {
+            return(0, size)
+        }
+    }
+
+    function revertBytes(uint256 size) external pure {
+        assembly {
+            revert(0, size)
+        }
+    }
+}
+
 contract ExecutionGasScalingTest {
+    VmGasScaling internal constant vm = VmGasScaling(address(uint160(uint256(keccak256("hevm cheat code")))));
+    uint256 internal constant MAXIMUM_COMPOSITION_GAS_CEILING = 2_000_000;
+
     function testBatchExecutionGasScalesApproximatelyLinearly() public {
         uint256 gasForOne = _measureBatch(1);
         uint256 gasForEight = _measureBatch(8);
@@ -52,8 +73,11 @@ contract ExecutionGasScalingTest {
         LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
         require(account.MAX_HOOKS() == hookCount, "test does not exercise declared hook maximum");
 
-        ExecutionLib.Execution[] memory executions = _executions(16);
+        ExecutionLib.Execution[] memory executions = _executions(account.MAX_BATCH_SIZE());
+        uint256 gasBefore = gasleft();
         account.execute(account.BATCH_EXECUTION_MODE(), abi.encode(executions));
+        uint256 gasUsed = gasBefore - gasleft();
+        require(gasUsed <= MAXIMUM_COMPOSITION_GAS_CEILING, "maximum composition exceeded gas ceiling");
 
         for (uint256 i; i < hookCount; ++i) {
             require(hooks[i].preChecks() == 1, "maximum hook composition missed pre-check");
@@ -62,6 +86,52 @@ contract ExecutionGasScalingTest {
         for (uint256 i; i < executions.length; ++i) {
             require(MockTarget(payable(executions[i].target)).value() == i + 1, "bounded batch call missing");
         }
+    }
+
+    function testOversizedBatchFailsBeforeHooksOrTargets() public {
+        ScalingHook hook = new ScalingHook();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(new MockValidator()), "");
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        MockTarget target = new MockTarget();
+
+        ExecutionLib.Execution[] memory executions = new ExecutionLib.Execution[](account.MAX_BATCH_SIZE() + 1);
+        for (uint256 i; i < executions.length; ++i) {
+            executions[i] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (i + 1)));
+        }
+
+        bytes32 batchMode = account.BATCH_EXECUTION_MODE();
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.BatchLimitExceeded.selector));
+        account.execute(batchMode, abi.encode(executions));
+        require(hook.preChecks() == 0 && hook.postChecks() == 0, "oversized batch reached hooks");
+        require(target.value() == 0, "oversized batch reached target");
+    }
+
+    function testSuccessfulReturndataIsDiscardedAndOversizedRevertIsBounded() public {
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(new MockValidator()), "");
+        LoomAccount account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+        ReturndataBomb bomb = new ReturndataBomb();
+        uint256 bombSize = 512 * 1024;
+        bytes32 singleMode = account.SINGLE_EXECUTION_MODE();
+
+        uint256 gasBefore = gasleft();
+        account.execute(
+            singleMode,
+            abi.encode(ExecutionLib.Execution(address(bomb), 0, abi.encodeCall(ReturndataBomb.returnBytes, (bombSize))))
+        );
+        uint256 gasUsed = gasBefore - gasleft();
+        require(gasUsed < 1_000_000, "successful returndata consumed unbounded caller gas");
+
+        uint256 revertSize = account.MAX_REVERT_DATA_LENGTH() + 1;
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.ReturnDataLimitExceeded.selector, revertSize));
+        account.execute(
+            singleMode,
+            abi.encode(
+                ExecutionLib.Execution(address(bomb), 0, abi.encodeCall(ReturndataBomb.revertBytes, (revertSize)))
+            )
+        );
     }
 
     function _measureBatch(uint256 count) internal returns (uint256 gasUsed) {
