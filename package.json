@@ -22,6 +22,8 @@
     "sdk:signature:test": "npm run core:build && node --test tools/sdk/generate-signature-envelope-fixture.test.mjs",
     "compile:solc": "solcjs --base-path . --include-path . --bin --abi -o out-solc",
     "coverage:check": "node tools/quality/check-coverage-gate.mjs",
+    "test:mutation:critical": "node tools/quality/run-critical-guard-mutations.mjs",
+    "test:mutation:critical:self-test": "node tools/quality/run-critical-guard-mutations.mjs --self-test",
     "certora:program:test": "node --test tools/formal/validate-certora-program.test.mjs",
     "certora:program:check": "node tools/formal/validate-certora-program.mjs",
     "certora:install": "node tools/formal/certora-local.mjs install",

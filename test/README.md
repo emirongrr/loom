@@ -130,6 +130,17 @@ forge test --match-path "test/regression/**/*.t.sol"
 npm run test:e2e
 ```
 
+Critical guard mutation testing runs in the weekly nightly workflow rather
+than under coverage instrumentation. It temporarily removes selected caller,
+timelock, stale-authority, and state-consumption guards in an isolated Foundry
+copy. Every mutant must compile and make its named security regression test
+fail; compilation failures do not count as killed mutants.
+
+```sh
+npm run test:mutation:critical:self-test
+npm run test:mutation:critical
+```
+
 Full verification:
 
 ```sh

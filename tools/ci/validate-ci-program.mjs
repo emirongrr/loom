@@ -129,6 +129,10 @@ function validateNightlyWorkflow() {
     "npm run test:fork:tokens 2>&1 | tee artifacts/nightly-token-fork/token-matrix.log",
     "name: nightly-token-fork-${{ github.sha }}",
     "path: artifacts/nightly-token-fork",
+    "critical-guard-mutations:",
+    "npm run test:mutation:critical -- --report artifacts/nightly-mutation/report.json 2>&1 | tee artifacts/nightly-mutation/mutation.log",
+    "name: nightly-mutation-${{ github.sha }}",
+    "path: artifacts/nightly-mutation",
     'test -n "$MAINNET_RPC_URL"',
     "retention-days: 30",
     "if-no-files-found: error",
@@ -238,6 +242,15 @@ function validateFormalProgramInPackage() {
   assert(
     packageJson.scripts["release:nightly:check"] === "node tools/ci/require-recent-nightly.mjs",
     "missing release:nightly:check script",
+  );
+  assert(
+    packageJson.scripts["test:mutation:critical"] === "node tools/quality/run-critical-guard-mutations.mjs",
+    "missing test:mutation:critical script",
+  );
+  assert(
+    packageJson.scripts["test:mutation:critical:self-test"] ===
+      "node tools/quality/run-critical-guard-mutations.mjs --self-test",
+    "missing test:mutation:critical:self-test script",
   );
 }
 
