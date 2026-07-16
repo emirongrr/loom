@@ -6,13 +6,14 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  actions: read
+  contents: read
 
 jobs:
-  release:
-    name: Verify and publish artifacts
+  qualification:
+    name: Release qualification
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,14 +30,68 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Install privacy SDK dependencies
+        run: npm --prefix packages/privacy ci
+      - name: Audit dependencies
+        run: npm run deps:audit
+      - name: Require recent same-commit nightly verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NIGHTLY_BRANCH: main
+        run: npm run release:nightly:check
+      - name: Require complete device evidence
+        run: npm run fixtures:release
       - name: Verify release candidate
         run: npm run verify
+      - name: Measure production coverage
+        run: npm run coverage:check
+      - name: Run hermetic SDK to EntryPoint lifecycle
+        run: npm run e2e:devnet
+
+  static-analysis:
+    name: Release static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Slither
+        run: python -m pip install slither-analyzer==0.11.5
+      - name: Run Slither
+        run: slither . --fail-high
+
+  publish:
+    name: Package and publish release
+    needs: [qualification, static-analysis]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
       - name: Build production artifacts
         run: forge build --skip "test/**" "script/**"
       - name: Package release evidence
         run: |
           tar -czf "loom-${GITHUB_REF_NAME}.tar.gz" \
-            src script docs out README.md CONTRIBUTING.md SECURITY.md LICENSE \
+            src script docs evidence fixtures out README.md CONTRIBUTING.md SECURITY.md LICENSE \
             foundry.toml package.json package-lock.json .gas-snapshot
           sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
       - name: Upload workflow artifact

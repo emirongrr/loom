@@ -34,6 +34,16 @@ function validateContractsWorkflow() {
     "npm run ci:program:check",
     "npm run formal:program:check",
     "npm run fixtures:check",
+    "set -o pipefail",
+    "npm run e2e:devnet 2>&1 | tee artifacts/devnet/devnet-lifecycle.log",
+    "broadcast/DeployDevnet.s.sol/31337/run-latest.json",
+    "broadcast/DevnetAccountLifecycle.s.sol/31337/run-latest.json",
+    "if: always()",
+    "actions/upload-artifact@v7",
+    "name: devnet-${{ github.sha }}",
+    "path: artifacts/devnet",
+    "retention-days: 30",
+    "if-no-files-found: error",
     "forge fmt --check",
     "forge lint --deny warnings",
     "forge build --sizes",
@@ -61,6 +71,7 @@ function validateTestWorkflow() {
     "npm run deployment:manifest:build:test",
     "npm run formal:program:test",
     "npm run ci:program:test",
+    "npm run release:nightly:test",
   ]) {
     assertIncludes(file, required, `missing required test CI step: ${required}`);
   }
@@ -107,12 +118,53 @@ function validateNightlyWorkflow() {
   for (const required of [
     "workflow_dispatch:",
     'cron: "17 2 * * 0"',
-    "FOUNDRY_PROFILE=deep forge test -vvv",
+    "set -o pipefail",
+    "FOUNDRY_PROFILE=deep forge test -vvv 2>&1 | tee artifacts/nightly-foundry/forge-test.log",
+    "run-metadata.json",
+    "if: always()",
+    "actions/upload-artifact@v7",
+    "name: nightly-foundry-${{ github.sha }}",
+    "path: artifacts/nightly-foundry",
+    "retention-days: 30",
+    "if-no-files-found: error",
     "--depth 100000 --width 500000",
     "cd formal/lean && lake build",
   ]) {
     assertIncludes(file, required, `missing required nightly verification step: ${required}`);
   }
+}
+
+function validateReleaseWorkflow() {
+  const file = ".github/workflows/release.yml";
+  const source = read(file);
+  assertWorkflowSecurityDefaults(file);
+  for (const required of [
+    'tags:',
+    '"v*"',
+    "actions: read",
+    "npm --prefix packages/privacy ci",
+    "npm run deps:audit",
+    "npm run release:nightly:check",
+    "npm run verify",
+    "npm run coverage:check",
+    "npm run fixtures:release",
+    "npm run e2e:devnet",
+    "slither . --fail-high",
+    "src script docs evidence fixtures out",
+    "actions/upload-artifact@v7",
+    "gh release create",
+  ]) {
+    assertIncludes(file, required, `missing required release qualification step: ${required}`);
+  }
+  assert(source.includes("needs: [qualification, static-analysis]"), `${file}: publishing must depend on every release qualification job`);
+  assert(
+    (source.match(/contents: write/gu) ?? []).length === 1,
+    `${file}: only the publishing job may receive release write authority`,
+  );
+  assert(
+    source.indexOf("contents: write") > source.indexOf("\n  publish:\n"),
+    `${file}: release write authority must be scoped to the publishing job`,
+  );
 }
 
 function validateKontrolWorkflow() {
@@ -171,6 +223,14 @@ function validateFormalProgramInPackage() {
     packageJson.scripts["ci:program:test"] === "node --test tools/ci/validate-ci-program.test.mjs",
     "missing ci:program:test script",
   );
+  assert(
+    packageJson.scripts["release:nightly:test"] === "node --test tools/ci/require-recent-nightly.test.mjs",
+    "missing release:nightly:test script",
+  );
+  assert(
+    packageJson.scripts["release:nightly:check"] === "node tools/ci/require-recent-nightly.mjs",
+    "missing release:nightly:check script",
+  );
 }
 
 function validateRepositoryMergePolicyDocs() {
@@ -191,6 +251,7 @@ validateContractsWorkflow();
 validateTestWorkflow();
 validateFormalWorkflow();
 validateNightlyWorkflow();
+validateReleaseWorkflow();
 validateKontrolWorkflow();
 validateSupplyChainWorkflow();
 validateCertoraWorkflow();

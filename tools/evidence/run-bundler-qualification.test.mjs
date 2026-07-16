@@ -29,6 +29,8 @@ test("runner builds validated evidence from two live-smoked independent bundlers
   assert.equal(JSON.stringify(evidence).includes("url"), false);
   assert.equal(evidence.lifecycle[0].entryPoint, ENTRYPOINT);
   assert.equal(evidence.lifecycle[1].chainId, 11155111);
+  assert.equal(evidence.lifecycle[0].rejections.staleNonceRejected.rpcCode, -32500);
+  assert.equal(JSON.stringify(evidence).includes("local-signed-vector"), false);
 });
 
 test("runner rejects config with fewer than two bundlers", async () => {
@@ -114,6 +116,22 @@ test("runner rejects wrong live chain or unsupported EntryPoint", async () => {
   );
 });
 
+test("runner rejects an accepted negative vector or an included rejected operation", async () => {
+  const accepted = liveResponses();
+  accepted["https://bundler-a.example/rpc"].eth_sendUserOperation = TX;
+  await assert.rejects(
+    () => buildBundlerQualificationEvidence({ config: validConfig(), fetch: fakeFetch(accepted) }),
+    /unexpectedly accepted/
+  );
+
+  const included = liveResponses();
+  included["https://bundler-a.example/rpc"].eth_getUserOperationReceipt = { transactionHash: TX };
+  await assert.rejects(
+    () => buildBundlerQualificationEvidence({ config: validConfig(), fetch: fakeFetch(included) }),
+    /unexpectedly has a receipt/
+  );
+});
+
 function validConfig() {
   return {
     version: 1,
@@ -140,6 +158,10 @@ function validConfig() {
     lifecycle: [
       lifecycleFor("local-rundler"),
       lifecycleFor("third-party-skandha")
+    ],
+    rejectionVectors: [
+      rejectionVectorsFor("local-rundler"),
+      rejectionVectorsFor("third-party-skandha")
     ],
     checks: {
       counterfactualDeploy: true,
@@ -195,7 +217,6 @@ function lifecycleFor(bundler) {
       batch: TX,
       nativeGas: TX,
       paymasterApproved: TX,
-      paymasterRejected: TX,
       sessionGrant: TX,
       sessionRevoke: TX,
       recoveryProposal: TX,
@@ -204,6 +225,23 @@ function lifecycleFor(bundler) {
       migrationCancel: TX,
       vaultSchedule: TX,
       vaultCancel: TX
+    }
+  };
+}
+
+function rejectionVectorsFor(bundler) {
+  const vector = () => ({
+    userOperation: { sender: "0x" + "33".repeat(20), signature: "local-signed-vector" },
+    userOperationHash: TX
+  });
+  return {
+    bundler,
+    vectors: {
+      paymasterRejected: vector(),
+      invalidSignatureRejected: vector(),
+      staleNonceRejected: vector(),
+      malformedCalldataRejected: vector(),
+      unsupportedModeRejected: vector()
     }
   };
 }
@@ -220,7 +258,14 @@ function stage() {
 function fakeFetch(responses) {
   return async (url, init) => {
     const body = JSON.parse(init.body);
-    const result = responses[url]?.[body.method];
+    let result = responses[url]?.[body.method];
+    if (result === undefined && body.method === "eth_sendUserOperation") {
+      return new Response(JSON.stringify({ error: { code: -32500, message: "rejected test vector" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (result === undefined && body.method === "eth_getUserOperationReceipt") result = null;
     if (result === undefined) {
       return new Response(JSON.stringify({ error: { code: -32601, message: "missing method" } }));
     }
@@ -228,5 +273,18 @@ function fakeFetch(responses) {
       status: 200,
       headers: { "content-type": "application/json" }
     });
+  };
+}
+
+function liveResponses() {
+  return {
+    "https://bundler-a.example/rpc": {
+      eth_supportedEntryPoints: [ENTRYPOINT],
+      eth_chainId: "0xaa36a7"
+    },
+    "https://bundler-b.example/rpc": {
+      eth_supportedEntryPoints: [ENTRYPOINT],
+      eth_chainId: "0xaa36a7"
+    }
   };
 }

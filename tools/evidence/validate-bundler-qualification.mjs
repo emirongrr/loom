@@ -22,7 +22,6 @@ const REQUIRED_LIFECYCLE_RECEIPTS = [
   "batch",
   "nativeGas",
   "paymasterApproved",
-  "paymasterRejected",
   "sessionGrant",
   "sessionRevoke",
   "recoveryProposal",
@@ -31,6 +30,13 @@ const REQUIRED_LIFECYCLE_RECEIPTS = [
   "migrationCancel",
   "vaultSchedule",
   "vaultCancel"
+];
+const REQUIRED_REJECTIONS = [
+  "paymasterRejected",
+  "invalidSignatureRejected",
+  "staleNonceRejected",
+  "malformedCalldataRejected",
+  "unsupportedModeRejected"
 ];
 const REQUIRED_LIFECYCLE_STAGES = [
   "session",
@@ -111,6 +117,19 @@ function assertLifecycle(lifecycle, bundlers, chainId, entryPoint) {
     assertObject(item.receipts, `${label}.receipts`);
     for (const key of REQUIRED_LIFECYCLE_RECEIPTS) {
       assertTxHash(item.receipts[key], `${label}.receipts.${key}`);
+    }
+
+    assertObject(item.rejections, `${label}.rejections`);
+    for (const key of REQUIRED_REJECTIONS) {
+      const rejection = item.rejections[key];
+      assertObject(rejection, `${label}.rejections.${key}`);
+      if (!Number.isSafeInteger(rejection.rpcCode) || rejection.rpcCode >= 0) {
+        throw new Error(`${label}.rejections.${key}.rpcCode must be a negative integer`);
+      }
+      assertTxHash(rejection.userOperationHash, `${label}.rejections.${key}.userOperationHash`);
+      if (rejection.receiptAbsent !== true) {
+        throw new Error(`${label}.rejections.${key}.receiptAbsent must be true`);
+      }
     }
   }
 }

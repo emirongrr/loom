@@ -86,13 +86,13 @@ function lifecycleFor(bundler) {
       migration: stage(),
       vault: stage()
     },
+    rejections: rejectionEvidence(),
     receipts: {
       deploy: TX,
       single: TX,
       batch: TX,
       nativeGas: TX,
       paymasterApproved: TX,
-      paymasterRejected: TX,
       sessionGrant: TX,
       sessionRevoke: TX,
       recoveryProposal: TX,
@@ -102,6 +102,17 @@ function lifecycleFor(bundler) {
       vaultSchedule: TX,
       vaultCancel: TX
     }
+  };
+}
+
+function rejectionEvidence() {
+  const rejected = () => ({ rpcCode: -32500, userOperationHash: TX, receiptAbsent: true });
+  return {
+    paymasterRejected: rejected(),
+    invalidSignatureRejected: rejected(),
+    staleNonceRejected: rejected(),
+    malformedCalldataRejected: rejected(),
+    unsupportedModeRejected: rejected()
   };
 }
 
@@ -199,4 +210,12 @@ test("bundler qualification requires lifecycle stage and receipt evidence", () =
   const missingCancellation = validEvidence();
   missingCancellation.lifecycle[0].stages.migration.cancelled = false;
   assert.throws(() => validateBundlerQualification(missingCancellation), /stages.migration.cancelled must be true/);
+
+  const missingRejection = validEvidence();
+  delete missingRejection.lifecycle[0].rejections.invalidSignatureRejected;
+  assert.throws(() => validateBundlerQualification(missingRejection), /rejections.invalidSignatureRejected/);
+
+  const includedRejection = validEvidence();
+  includedRejection.lifecycle[0].rejections.staleNonceRejected.receiptAbsent = false;
+  assert.throws(() => validateBundlerQualification(includedRejection), /receiptAbsent must be true/);
 });
