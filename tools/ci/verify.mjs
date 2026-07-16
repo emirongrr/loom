@@ -68,6 +68,7 @@ run("WebAuthn fixture parser tests", process.execPath, [
 // The wallet engine consumes @loom/core's built output, so build it before any
 // gate that imports the SDK.
 run("Core SDK build", npm, ["run", "core:build"]);
+run("Account SDK build", npm, ["run", "account:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);
@@ -114,7 +115,7 @@ run("User-operation hash fixture", npm, ["run", "sdk:userop-hash:test"]);
 run("Deployment manifest schema", npm, ["run", "manifest:schema:test"]);
 run("Account derivation fixture", npm, ["run", "sdk:derivation:test"]);
 run("Signature envelope fixture", npm, ["run", "sdk:signature:test"]);
-run("Account SDK tests", npm, ["--prefix", "packages/account", "test"]);
+run("Account SDK tests", npm, ["run", "account:test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("Wallet engine SDK install", npm, ["--prefix", "packages/sdk", "ci"]);
