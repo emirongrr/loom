@@ -52,7 +52,7 @@ export function validateBundlerQualification(evidence) {
   for (const key of ["version", "network", "entryPoint", "bundlers", "lifecycle", "checks", "receipts"]) {
     if (!(key in evidence)) throw new Error(`missing top-level evidence field: ${key}`);
   }
-  if (evidence.version !== 1) throw new Error("unsupported bundler qualification evidence version");
+  if (evidence.version !== 2) throw new Error("unsupported bundler qualification evidence version");
 
   assertNetwork(evidence.network);
   assertAddress(evidence.entryPoint, "entryPoint");
@@ -115,8 +115,27 @@ function assertLifecycle(lifecycle, bundlers, chainId, entryPoint) {
     }
 
     assertObject(item.receipts, `${label}.receipts`);
+    assertObject(item.executions, `${label}.executions`);
     for (const key of REQUIRED_LIFECYCLE_RECEIPTS) {
       assertTxHash(item.receipts[key], `${label}.receipts.${key}`);
+      const execution = item.executions[key];
+      assertObject(execution, `${label}.executions.${key}`);
+      assertTxHash(execution.userOperationHash, `${label}.executions.${key}.userOperationHash`);
+      assertTxHash(execution.transactionHash, `${label}.executions.${key}.transactionHash`);
+      if (execution.transactionHash.toLowerCase() !== item.receipts[key].toLowerCase()) {
+        throw new Error(`${label}.executions.${key}.transactionHash must match lifecycle receipt`);
+      }
+      assertTxHash(execution.blockHash, `${label}.executions.${key}.blockHash`);
+      assertRpcQuantity(execution.blockNumber, `${label}.executions.${key}.blockNumber`);
+      if (!Number.isSafeInteger(execution.stateChecks) || execution.stateChecks <= 0) {
+        throw new Error(`${label}.executions.${key}.stateChecks must be a positive integer`);
+      }
+      if (execution.eventReconciled !== true) {
+        throw new Error(`${label}.executions.${key}.eventReconciled must be true`);
+      }
+      if (execution.receiptReconciled !== true) {
+        throw new Error(`${label}.executions.${key}.receiptReconciled must be true`);
+      }
     }
 
     assertObject(item.rejections, `${label}.rejections`);
@@ -239,6 +258,12 @@ function assertAddress(value, label) {
 
 function assertTxHash(value, label) {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value ?? "")) throw new Error(`${label} must be bytes32`);
+}
+
+function assertRpcQuantity(value, label) {
+  if (typeof value !== "string" || !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)) {
+    throw new Error(`${label} must be an RPC quantity`);
+  }
 }
 
 function assertPublicReference(value, label) {
