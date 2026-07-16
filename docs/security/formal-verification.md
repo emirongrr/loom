@@ -47,6 +47,22 @@ See `test/formal/README.md` for local Foundry and Halmos commands.
 See `formal/README.md` and `formal/refinement/account-authority.md` for the
 tooling roadmap and refinement map.
 
+## Archived nightly evidence
+
+The weekly nightly workflow archives same-commit Halmos and Lean evidence for
+30 days. Each artifact includes the repository commit, workflow run and
+attempt, pinned tool versions, and raw command logs. Partial logs are uploaded
+even when a property or build fails; workflow success remains the qualification
+signal and an uploaded artifact alone is not proof of a passing run.
+
+Halmos evidence records the configured depth and width and keeps separate logs
+for initialization, authority, execution, recovery, and migration properties.
+Lean evidence records the toolchain, dependency manifest, tool versions, and
+the complete `lake build` output. These artifacts preserve reproducibility but
+do not broaden the claim boundaries below. Certora and Kontrol result
+archiving remains a separate qualification step because those provers run in
+independent workflows with different credentials and runtimes.
+
 ## Proof layers
 
 1. **Compiled-contract symbolic execution:** Halmos properties check selected

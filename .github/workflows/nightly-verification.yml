@@ -154,16 +154,39 @@ jobs:
         uses: astral-sh/setup-uv@v7
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
+      - name: Prepare Halmos evidence
+        run: |
+          mkdir -p artifacts/nightly-halmos
+          printf '%s\n' \
+            '{' \
+            '  "schemaVersion": 1,' \
+            '  "repository": "${{ github.repository }}",' \
+            '  "commit": "${{ github.sha }}",' \
+            '  "workflowRunId": "${{ github.run_id }}",' \
+            '  "workflowRunAttempt": "${{ github.run_attempt }}",' \
+            '  "depth": 100000,' \
+            '  "width": 500000' \
+            '}' > artifacts/nightly-halmos/run-metadata.json
+          halmos --version > artifacts/nightly-halmos/halmos-version.txt
+          forge --version > artifacts/nightly-halmos/forge-version.txt
       - name: Verify initialization properties
-        run: timeout 1200s halmos --contract LoomAccountInitializationFormal --depth 100000 --width 500000
+        run: set -o pipefail; timeout 1200s halmos --contract LoomAccountInitializationFormal --depth 100000 --width 500000 2>&1 | tee artifacts/nightly-halmos/initialization.log
       - name: Verify authority properties
-        run: timeout 1200s halmos --contract LoomAccountAuthorityFormal --depth 100000 --width 500000
+        run: set -o pipefail; timeout 1200s halmos --contract LoomAccountAuthorityFormal --depth 100000 --width 500000 2>&1 | tee artifacts/nightly-halmos/authority.log
       - name: Verify execution properties
-        run: timeout 1200s halmos --contract LoomAccountExecutionFormal --depth 100000 --width 500000
+        run: set -o pipefail; timeout 1200s halmos --contract LoomAccountExecutionFormal --depth 100000 --width 500000 2>&1 | tee artifacts/nightly-halmos/execution.log
       - name: Verify recovery properties
-        run: timeout 1200s halmos --contract LoomAccountRecoveryFormal --depth 100000 --width 500000
+        run: set -o pipefail; timeout 1200s halmos --contract LoomAccountRecoveryFormal --depth 100000 --width 500000 2>&1 | tee artifacts/nightly-halmos/recovery.log
       - name: Verify migration properties
-        run: timeout 1200s halmos --contract LoomAccountMigrationFormal --depth 100000 --width 500000
+        run: set -o pipefail; timeout 1200s halmos --contract LoomAccountMigrationFormal --depth 100000 --width 500000 2>&1 | tee artifacts/nightly-halmos/migration.log
+      - name: Upload Halmos evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-halmos-${{ github.sha }}
+          path: artifacts/nightly-halmos
+          retention-days: 30
+          if-no-files-found: error
 
   lean-full:
     name: Lean authority model
@@ -178,8 +201,30 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat formal/lean/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Prepare Lean evidence
+        run: |
+          mkdir -p artifacts/nightly-lean
+          printf '%s\n' \
+            '{' \
+            '  "schemaVersion": 1,' \
+            '  "repository": "${{ github.repository }}",' \
+            '  "commit": "${{ github.sha }}",' \
+            '  "workflowRunId": "${{ github.run_id }}",' \
+            '  "workflowRunAttempt": "${{ github.run_attempt }}"' \
+            '}' > artifacts/nightly-lean/run-metadata.json
+          lean --version > artifacts/nightly-lean/lean-version.txt
+          lake --version > artifacts/nightly-lean/lake-version.txt
+          cp formal/lean/lean-toolchain formal/lean/lake-manifest.json artifacts/nightly-lean/
       - name: Build Lean model
-        run: cd formal/lean && lake build
+        run: set -o pipefail; (cd formal/lean && lake build) 2>&1 | tee artifacts/nightly-lean/lake-build.log
+      - name: Upload Lean evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-lean-${{ github.sha }}
+          path: artifacts/nightly-lean
+          retention-days: 30
+          if-no-files-found: error
 
   # Future nightly-only candidates:
   # - Slither extended detectors
