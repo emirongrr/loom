@@ -93,6 +93,24 @@ The two session profiles and their deliberate limits are documented in
 `docs/design/permissions.md`.
 Multiple passkey and MFA behavior is documented in `docs/design/authentication.md`.
 
+Validation resource bounds are part of the supported authorization profile,
+not merely client recommendations. `ValidationGasCeilingsTest` exercises the
+declared maxima with the pinned compiler and EVM profile:
+
+- WebAuthn accepts at most 1,024 bytes of authenticator data, 1,024 bytes of
+  `clientDataJSON`, and 256 bytes of origin; the combined maximum-input
+  validation path must remain below 1,500,000 gas.
+- Guardian threshold verification accepts at most 32 sorted approvals and 32
+  Merkle siblings per proof. The maximum-approval path and maximum-proof path
+  must remain below 1,500,000 and 400,000 gas respectively.
+- Recovery validator-set validation accepts at most 16 validators and its
+  maximum replacement-set path must remain below 600,000 gas.
+
+Inputs above these limits fail before cryptographic verification or the full
+bounded loop. These ceilings are regression limits for supported validation
+work; bundlers must still estimate the complete UserOperation rather than use
+them as `verificationGasLimit` values.
+
 `RecoveryManager` verifies guardian threshold signatures directly against the
 account guardian root, records a visible pending recovery, enforces a
 three-day delay and seven-day execution window, supports account or guardian

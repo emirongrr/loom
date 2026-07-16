@@ -250,7 +250,12 @@ function main() {
       "--skip",
       "test/formal/**",
       "--skip",
-      "test/script/**"
+      "test/script/**",
+      // Gas ceilings use gasleft(), whose measurements are intentionally changed by
+      // coverage instrumentation. They remain enforced by the normal test and gas
+      // snapshot jobs; coverage is reserved for behavioral path accounting.
+      "--skip",
+      "test/integration/ValidationGasCeilings.t.sol"
     ],
     {
       cwd: root,
