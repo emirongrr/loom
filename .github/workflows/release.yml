@@ -47,6 +47,12 @@ jobs:
         run: npm run coverage:check
       - name: Run hermetic SDK to EntryPoint lifecycle
         run: npm run e2e:devnet
+      - name: Run pinned mainnet token matrix
+        env:
+          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+        run: |
+          test -n "$MAINNET_RPC_URL"
+          npm run test:fork:tokens
 
   static-analysis:
     name: Release static analysis
