@@ -41,8 +41,8 @@ Release candidates must add a real evidence manifest and validate it with:
 node tools/evidence/validate-bundler-qualification.mjs evidence/bundlers/<network>.json
 ```
 
-Live qualification evidence should be generated from a local, uncommitted
-runner config:
+Live qualification evidence must use schema version 2 and be generated from a
+local, uncommitted runner config:
 
 ```sh
 node tools/evidence/run-bundler-qualification.mjs \
@@ -50,11 +50,71 @@ node tools/evidence/run-bundler-qualification.mjs \
   evidence/bundlers/<network>.json
 ```
 
-The runner performs live `eth_supportedEntryPoints` and `eth_chainId` smoke
-checks for every configured bundler before writing evidence. The config may
-contain full endpoint URLs because it stays local. The output evidence records
-only RPC origins and the validated lifecycle receipts. Do not commit local
-runner configs.
+The local config must provide:
+
+- `version: 2`;
+- the target `network` and exact `entryPoint`;
+- an explicit `nodeUrl` used to reconcile chain receipts and post-state;
+- at least two independent `bundlers`;
+- one metadata-only `lifecycle` entry per bundler;
+- one `lifecycleVectors` entry per bundler containing all signed positive
+  UserOperations;
+- one `rejectionVectors` entry per bundler containing all signed negative
+  UserOperations;
+- aggregate `checks` and `receipts`, including the separately executed direct
+  `handleOps` fallback receipt.
+
+Each `lifecycleVectors[].operations` object must contain `deploy`, `single`,
+`batch`, `nativeGas`, `paymasterApproved`, `sessionGrant`, `sessionRevoke`,
+`recoveryProposal`, `recoveryCancel`, `migrationSchedule`, `migrationCancel`,
+`vaultSchedule`, and `vaultCancel`. Every operation contains a signed
+`userOperation` and at least one exact `postState` check:
+
+```json
+{
+  "userOperation": { "sender": "0x...", "signature": "0x..." },
+  "postState": [
+    {
+      "to": "0x...",
+      "data": "0x...",
+      "expectedResult": "0x..."
+    }
+  ]
+}
+```
+
+Prepare the vectors in execution order. Operations for the second bundler must
+use nonces valid after the first bundler's lifecycle completes. Keep the config
+local: it contains signed operations and may contain account or infrastructure
+metadata that does not belong in release evidence.
+
+## Runner Guarantees
+
+Before writing evidence, the runner:
+
+1. verifies `nodeUrl` and every bundler report the configured chain ID;
+2. verifies every bundler advertises the exact EntryPoint;
+3. submits all 13 positive lifecycle operations through each bundler in order;
+4. polls each UserOperation receipt with a bounded timeout;
+5. requires successful inner execution and outer transaction status;
+6. reconciles transaction hash, block hash, and block number through
+   `nodeUrl`;
+7. finds the exact EntryPoint `UserOperationEvent` for the submitted hash;
+8. executes every exact post-state `eth_call` at the inclusion block;
+9. submits all five negative vectors and requires a negative JSON-RPC error;
+10. confirms every rejected UserOperation still has no receipt.
+
+Positive checks, lifecycle stage completion, and positive receipts are derived
+from these live results. They are not copied from config declarations. A
+duplicate returned UserOperation hash, failed execution, missing event,
+receipt drift, post-state mismatch, unexpected negative-vector acceptance, or
+poll timeout aborts evidence generation.
+
+The output records only RPC origins and redacted execution evidence:
+UserOperation and transaction hashes, inclusion block binding, post-state check
+counts, receipt/event reconciliation, rejection codes, and receipt absence. It
+does not record `nodeUrl`, full bundler URLs, signed UserOperations, or exact
+post-state calls. Do not commit local runner configs.
 
 The manifest intentionally records only RPC origins, not full URLs. Do not
 commit API keys, endpoint paths, query strings, bearer tokens, private keys, or
@@ -70,10 +130,18 @@ wallet secrets. The validator requires:
 - native gas, approved paymaster, rejected paymaster, invalid signature, stale
   nonce, malformed calldata, unsupported mode, receipt reconciliation, and
   atomic batch checks;
+- schema version 2; legacy version 1 evidence is rejected;
 - per-bundler receipts for deploy, single call, batch call, native gas,
-  approved paymaster, rejected paymaster, session grant, session revoke,
-  recovery proposal, recovery cancellation, migration schedule, migration
-  cancellation, vault schedule, and vault cancellation;
+  approved paymaster, session grant, session revoke, recovery proposal,
+  recovery cancellation, migration schedule, migration cancellation, vault
+  schedule, and vault cancellation;
+- per-operation UserOperation hash, transaction and block binding, successful
+  receipt reconciliation, successful EntryPoint event reconciliation, and at
+  least one exact post-state check;
+- rejected paymaster, invalid signature, stale nonce, malformed calldata, and
+  unsupported mode evidence containing a negative RPC code, UserOperation hash,
+  and explicit receipt absence; rejected operations must not have transaction
+  receipts;
 - per-bundler stage evidence proving session, recovery, migration, and vault
   flows are scheduled, cancelled, config-bound, and receipt-reconciled;
 - one local, self-hosted, or otherwise permissionless direct `handleOps`
