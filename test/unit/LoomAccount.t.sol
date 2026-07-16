@@ -16,6 +16,7 @@ import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
 import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
+import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IGuardianVerifier} from "../../src/interfaces/IGuardianVerifier.sol";
 import {RejectingDirectValidator} from "../mocks/RejectingDirectValidator.sol";
 
@@ -136,6 +137,26 @@ contract LoomAccountTest {
         foreignAccount.execute(bytes32(0), abi.encode(item));
         require(target.value() == 0, "unauthorized execution changed state");
         require(foreignAccount.configVersion() == foreignConfigVersion, "unauthorized execution changed config");
+    }
+
+    function testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund() public {
+        MockEntryPoint foreignEntryPoint = new MockEntryPoint();
+        LoomAccount foreignAccount = new LoomAccount(
+            address(foreignEntryPoint), keccak256("guardians"), 1, keccak256("config"), _modules(validator)
+        );
+        vm.deal(address(foreignAccount), 1 ether);
+        uint256 accountBalanceBefore = address(foreignAccount).balance;
+        uint256 entryPointBalanceBefore = address(foreignEntryPoint).balance;
+        PackedUserOperation memory userOp;
+        userOp.sender = address(foreignAccount);
+
+        vm.expectRevert(abi.encodeWithSelector(LoomAccount.OnlyEntryPoint.selector));
+        foreignAccount.validateUserOp(userOp, keccak256("unauthorized-user-op"), 0.5 ether);
+
+        require(address(foreignAccount).balance == accountBalanceBefore, "unauthorized validation spent prefund");
+        require(
+            address(foreignEntryPoint).balance == entryPointBalanceBefore, "unauthorized validation funded entrypoint"
+        );
     }
 
     function testTokenReceiverCapabilities() public view {

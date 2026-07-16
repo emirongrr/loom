@@ -72,6 +72,7 @@ run("Account SDK build", npm, ["run", "account:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);
+run("Critical guard mutation manifest", npm, ["run", "test:mutation:critical:self-test"]);
 run("Release nightly evidence tests", npm, ["run", "release:nightly:test"]);
 run("Certora program structure", process.execPath, ["tools/formal/validate-certora-program.mjs"]);
 run("Certora program structure tests", process.execPath, ["--test", "tools/formal/validate-certora-program.test.mjs"]);

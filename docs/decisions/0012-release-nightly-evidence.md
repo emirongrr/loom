@@ -16,11 +16,12 @@ deployed accounts or wallet operation.
 
 ## Evidence
 
-The nightly workflow already runs deep fuzz/invariants, five full Halmos
-properties, and the Lean model. The production-readiness review requires a
-recent deep run to be joined to the same release commit. Unit tests demonstrate
-that branch, SHA, event, status, conclusion, age, future timestamps, and API
-failures are all checked fail-closed.
+The nightly workflow already runs deep fuzz/invariants, critical-guard mutation
+testing, five full Halmos properties, and the Lean model. The
+production-readiness review requires a recent deep run to be joined to the same
+release commit. Unit tests demonstrate that branch, SHA, event, status,
+conclusion, age, future timestamps, and API failures are all checked
+fail-closed.
 
 ## Options
 
