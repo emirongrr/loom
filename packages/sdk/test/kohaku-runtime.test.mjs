@@ -5,7 +5,7 @@ import {
   createAppScopeManager,
   createKohakuRuntime,
   createLoomSdk
-} from "../src/index.js";
+} from "../dist/index.js";
 import {
   ConsentRequiredError,
   createConsentStore,

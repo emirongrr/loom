@@ -10,7 +10,7 @@ import {
   prepareUserOperationEnvelope,
   unverified,
   verified
-} from "../src/index.js";
+} from "../dist/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";
 const target = "0x2222222222222222222222222222222222222222";
