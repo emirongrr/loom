@@ -84,6 +84,8 @@ jobs:
           path: artifacts/devnet
           retention-days: 30
           if-no-files-found: error
+      - name: Clean-room minimal account example
+        run: npm run e2e:clean-room
       - name: Check formatting
         run: forge fmt --check
       - name: Lint Solidity

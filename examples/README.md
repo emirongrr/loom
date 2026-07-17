@@ -22,6 +22,14 @@ node examples/individual-passkey-wallet.mjs
 No network access, no extra dependencies. The scripts import the workspace
 packages directly from `packages/`.
 
+The clean-room proof is separate: `minimal-account/` never imports repository
+paths, and its runner packs the SDK, installs the tarballs into an empty
+project, and executes the whole lifecycle against a live devnet:
+
+```sh
+npm run e2e:clean-room
+```
+
 ## Mobile app boilerplate
 
 `mobile-privacy-wallet/` is a production-oriented Expo Dev Client template for
@@ -33,6 +41,15 @@ missing, the corresponding feature is disabled and reported in
 `mobile-privacy-wallet/GAPS.md`.
 
 ## What each example shows
+
+### `minimal-account/`
+
+The smallest external integration, run clean-room from packed `@loom/core` and
+`@loom/sdk` tarballs: generate a P-256 passkey, derive the account address
+locally (chain-confirmed), deploy and operate through the real EntryPoint with
+passkey signatures over the canonical hash, then send a second operation with
+the nonce read through the public state transport. See
+[`minimal-account/README.md`](minimal-account/README.md).
 
 ### `enterprise-onboarding.mjs`
 
