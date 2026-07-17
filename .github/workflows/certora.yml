@@ -38,11 +38,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - id: authority
-            conf: formal/certora/conf/loom-account-authority.conf
-          - id: initialization
-            conf: formal/certora/conf/loom-account-initialization.conf
+        conf:
+          - formal/certora/conf/loom-account-authority.conf
+          - formal/certora/conf/loom-account-initialization.conf
     steps:
       - name: Checkout
         uses: actions/checkout@v7

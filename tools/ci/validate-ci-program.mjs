@@ -79,6 +79,7 @@ function validateTestWorkflow() {
 
 function validateCertoraWorkflow() {
   const file = ".github/workflows/certora.yml";
+  const source = read(file);
   assertWorkflowSecurityDefaults(file);
   assertIncludes(file, "pull_request:", "certora workflow must run on every pull request because it is branch-required");
   assert(!read(file).includes("paths:"), `${file}: branch-required certora workflow must not use pull_request paths filters`);
@@ -100,6 +101,11 @@ function validateCertoraWorkflow() {
   ]) {
     assertIncludes(file, required, `missing required certora workflow step: ${required}`);
   }
+  const compileOnly = source.slice(source.indexOf("\n  compile-only:\n"), source.indexOf("\n  prove:\n"));
+  assert(
+    compileOnly.includes("matrix:\n        conf:\n") && !compileOnly.includes("- id:"),
+    `${file}: compile-only matrix labels must stay stable because branch protection requires their exact check names`,
+  );
 }
 
 function validateFormalWorkflow() {
