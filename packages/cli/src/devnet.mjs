@@ -11,7 +11,7 @@
 // deterministic dev accounts (public constants, devnet only). The CLI never
 // accepts a private key as input.
 
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,11 +99,47 @@ function spawnLogged(name, command, args, logName) {
   return child.pid;
 }
 
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// fs.rmSync (with or without force) can return success WITHOUT deleting on
+// Windows when the path contains non-ASCII segments (observed on Node 23:
+// it internally mangles the path, lstats the mangled form, and treats the
+// ENOENT as "already gone"). unlink/rmdir take the path verbatim and work, so
+// removal goes through them explicitly.
+export function removeSync(path) {
+  if (!existsSync(path)) return;
+  if (statSync(path).isDirectory()) {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      removeSync(join(path, entry.name));
+    }
+    rmdirSync(path);
+  } else {
+    unlinkSync(path);
+  }
+}
+
 export async function up() {
-  if (readState()) {
-    throw Object.assign(new Error("devnet already running (state file exists); run `loom devnet down` first"), {
-      exitCode: 2
-    });
+  const existing = readState();
+  if (existing) {
+    // A crash or hard kill can leave the state file behind with nothing
+    // running. Reclaiming is still ownership-safe: it only ever inspects the
+    // pids this CLI recorded, and if either of them still answers a probe the
+    // devnet is treated as live and `up` refuses as before.
+    const alive = [existing.pids.anvil, existing.pids.alto].filter(pid => pid && isAlive(pid));
+    if (alive.length > 0) {
+      throw Object.assign(new Error("devnet already running (state file exists); run `loom devnet down` first"), {
+        exitCode: 2
+      });
+    }
+    console.error("loom: reclaiming stale devnet state (recorded processes are no longer running)");
+    removeSync(statePath);
   }
   mkdirSync(stateDir, { recursive: true });
   const rpcUrl = `http://127.0.0.1:${versions.ports.rpc}`;
@@ -277,7 +313,7 @@ export function down() {
   }
   stopPid(state.pids.alto);
   stopPid(state.pids.anvil);
-  rmSync(statePath, { force: true });
+  removeSync(statePath);
   return { stopped: state.pids };
 }
 

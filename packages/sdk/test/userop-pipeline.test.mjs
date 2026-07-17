@@ -215,3 +215,17 @@ test("batch execution matches the account's ERC-7579 execute encoding", () => {
       "abcdef012345000000000000000000000000000000000000000000000000000000".slice(0, 64)
   );
 });
+
+test("call values outside uint256 are rejected at the boundary with a clear error", () => {
+  const target = "0x2222222222222222222222222222222222222222";
+  assert.throws(
+    () => callData([{ target, value: -5n, data: "0x" }]),
+    error => error instanceof InvalidSdkRequestError && /value must fit uint256/.test(error.message)
+  );
+  assert.throws(
+    () => callData([{ target, value: 1n << 256n, data: "0x" }]),
+    error => error instanceof InvalidSdkRequestError && /value must fit uint256/.test(error.message)
+  );
+  // The boundary is inclusive of the maximum representable value.
+  assert.ok(callData([{ target, value: (1n << 256n) - 1n, data: "0x" }]).startsWith("0xe9ae5c53"));
+});

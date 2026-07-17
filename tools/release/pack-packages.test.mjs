@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { packReleasePackages, PUBLISHABLE } from "./pack-packages.mjs";
+import { packReleasePackages, PUBLISHABLE, removeTreeSync } from "./pack-packages.mjs";
 
 // The release packer is the single source of the published artifacts, so its
 // invariants are pinned here without needing a live devnet: it assumes the
@@ -60,7 +60,7 @@ test("stages each publishable package with a release-ready manifest", () => {
       }
     }
   } finally {
-    rmSync(outDir, { recursive: true, force: true });
+    removeTreeSync(outDir);
   }
 });
 
@@ -90,6 +90,6 @@ test("emits valid gzip tarballs plus SHA256SUMS and a release manifest that matc
       assert.equal(existsSync(join(outDir, pkg.filename)), true);
     }
   } finally {
-    rmSync(outDir, { recursive: true, force: true });
+    removeTreeSync(outDir);
   }
 });

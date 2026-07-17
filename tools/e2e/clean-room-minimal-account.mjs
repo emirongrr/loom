@@ -10,7 +10,7 @@
 // deploy, and operate a Loom account from published packages alone — and the
 // artifact that ships is the artifact that is proven here.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

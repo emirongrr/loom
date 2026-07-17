@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { removeSync } from "../src/devnet.mjs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -84,5 +85,60 @@ test("the --json failure envelope is well-formed", () => {
 test.after(() => {
   // Defensive: never leave a stray empty state directory behind.
   const dir = join(repoRoot, ".loom");
-  if (existsSync(dir) && !existsSync(statePath)) rmSync(dir, { recursive: true, force: true });
+  if (existsSync(dir) && !existsSync(statePath)) removeSync(dir);
+});
+
+// Teardown must be robust against the two states a crash can leave behind:
+// recorded processes already dead, and recorded processes still alive. Both
+// are exercised with real state files and (for the live case) a real child
+// process this suite owns — no devnet required.
+
+import { mkdirSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+
+function writeState(pids) {
+  mkdirSync(join(repoRoot, ".loom", "devnet"), { recursive: true });
+  writeFileSync(
+    statePath,
+    `${JSON.stringify({ startedAt: new Date().toISOString(), chainId: 31337, rpcUrl: "http://127.0.0.1:8545", bundlerUrl: "http://127.0.0.1:4337", pids, addresses: {} }, null, 2)}\n`
+  );
+}
+
+test("down removes state even when the recorded processes are already dead", () => {
+  assertNoOwnedState();
+  // A child that has already exited: its pid is real but dead.
+  const ghost = spawnSync(process.execPath, ["-e", "0"], { encoding: "utf8" });
+  assert.equal(ghost.status, 0);
+  writeState({ anvil: ghost.pid ?? 99999, alto: 999999 });
+
+  const { code } = loom("devnet", "down");
+  assert.equal(code, 0, "down succeeds on dead pids");
+  assert.equal(existsSync(statePath), false, "state file removed");
+});
+
+test("down terminates a live recorded process and removes state", async () => {
+  assertNoOwnedState();
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  assert.ok(child.pid, "test child started");
+  try {
+    writeState({ anvil: child.pid, alto: 999999 });
+
+    const { code } = loom("devnet", "down");
+    assert.equal(code, 0);
+    assert.equal(existsSync(statePath), false, "state file removed");
+
+    // The recorded process must actually be gone shortly after.
+    let alive = true;
+    for (let i = 0; i < 20 && alive; i += 1) {
+      try {
+        process.kill(child.pid, 0);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch {
+        alive = false;
+      }
+    }
+    assert.equal(alive, false, "recorded process was terminated by down");
+  } finally {
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  }
 });
