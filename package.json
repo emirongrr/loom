@@ -93,6 +93,8 @@
     "site:dev": "npm --prefix docs/site run dev",
     "verify:quick": "node tools/ci/verify.mjs",
     "verify": "node tools/ci/verify.mjs --full",
+    "release:packages": "node tools/release/pack-packages.mjs",
+    "release:packages:test": "node --test tools/release/pack-packages.test.mjs",
     "e2e:clean-room": "node tools/e2e/clean-room-minimal-account.mjs",
     "e2e:bundler-devnet": "npm run sdk:build && npm --prefix packages/cli ci && node tools/e2e/bundler-devnet.mjs",
     "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
