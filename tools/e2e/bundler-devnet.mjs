@@ -32,7 +32,6 @@ import {
   createRpcStateTransport
 } from "../../packages/sdk/dist/index.js";
 import { encodeAbiParameters, encodeFunctionData, keccak256, stringToHex } from "viem";
-import { createKohakuHost } from "../../packages/privacy/src/index.js";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RP_ID = "wallet.example";
@@ -142,24 +141,8 @@ try {
     chainId: state.chainId,
     account,
     signer,
-    kohaku: {
-      host: createKohakuHost({
-        providerProfile: {
-          mode: "user-rpc",
-          chainId: state.chainId,
-          endpoint: rpcUrl,
-          verified: false,
-          metadataBudget: {
-            protocol: "railgun",
-            chainId: state.chainId,
-            items: [
-              { surface: "rpc", reveals: "target chain and request timing", required: true, mitigation: "local devnet" }
-            ]
-          }
-        },
-        fetch: async () => new Response("{}")
-      })
-    },
+    // No kohaku host: privacy is an optional layer and this smoke proves the
+    // whole bundler pipeline needs none of it.
     transport: createBundlerTransport({ endpoint: bundlerUrl, entryPoint }),
     stateTransport: createRpcStateTransport({ endpoint: rpcUrl })
   });

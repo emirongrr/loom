@@ -653,3 +653,40 @@ test("sendWalletCalls returns the app id and rejects duplicate ids", async () =>
     /wallet_sendCalls id has already been used/
   );
 });
+
+// Privacy is an optional layer: a client with no Kohaku host must construct
+// and run the whole non-private path, and only touching the privacy runtime
+// itself may fail — at use, with the typed error.
+test("loom client works end to end without a kohaku host", async () => {
+  const submitted = [];
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    signer: {
+      async signUserOperation() {
+        return "0xdeadbeef";
+      }
+    },
+    transport: {
+      async sendUserOperation(envelope) {
+        submitted.push(envelope);
+        return { userOpHash: "0x" + "12".repeat(32) };
+      }
+    }
+  });
+
+  const prepared = client.prepareCalls({ calls: [{ target, value: 0n, data: "0x1234" }] });
+  assert.equal(prepared.kind, "account.calls.prepare");
+
+  const sent = await client.sendCalls({ calls: [{ target, value: 0n, data: "0x1234" }] });
+  assert.equal(sent.userOpHash, "0x" + "12".repeat(32));
+  assert.equal(submitted[0].userOperation.signature, "0xdeadbeef");
+});
+
+test("touching the kohaku runtime without a host fails at use with the typed error", () => {
+  const sdk = createLoomSdk({ chainId: 1, account });
+  assert.throws(
+    () => sdk.kohaku,
+    error => error instanceof InvalidSdkRequestError && /kohaku host is required/.test(error.message)
+  );
+});

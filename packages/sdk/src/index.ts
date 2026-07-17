@@ -154,13 +154,24 @@ function createLoomSdkImpl(options: any = {}) {
   const account = options.account === undefined ? undefined : normalizeAddress(options.account, "account");
   const lifecycle = createAccountLifecycleClient({ chainId, account } as any);
   const encoders = createLifecycleCallEncoder();
-  const kohaku = createKohakuRuntime(options.kohaku ?? {});
+  // Privacy is an optional layer, not a construction requirement: a wallet
+  // that never touches a private flow needs no Kohaku host. The runtime is
+  // built only when a host was injected; touching `sdk.kohaku` without one
+  // fails at use with the same typed error the runtime constructor raises.
+  const kohaku = options.kohaku === undefined ? undefined : createKohakuRuntime(options.kohaku);
   const appScopes = createAppScopeManager({ chainId, account } as any);
 
   return Object.freeze({
     lifecycle,
     encoders,
-    kohaku,
+    get kohaku() {
+      if (kohaku === undefined) {
+        throw new InvalidSdkRequestError(
+          "kohaku host is required; build one with @loom/privacy and pass kohaku: { host }"
+        );
+      }
+      return kohaku;
+    },
     appScopes,
     clearSigning: Object.freeze({
       explainIntent: explainLifecycleIntent
@@ -1971,6 +1982,8 @@ function normalizeBigInt(value, label) {
 // signatures, so the published types can no longer drift from the code.
 // ---------------------------------------------------------------------------
 
+// DEPRECATED here: the supported import point for the private-flow surface is
+// @loom/privacy; this export remains for one deprecation cycle.
 export function createKohakuRuntime(options: { host: KohakuHost }): KohakuRuntime {
   return createKohakuRuntimeImpl(options) as any;
 }
@@ -2100,6 +2113,8 @@ export function buildAppSessionGrant(options: AppSessionGrantInput): AppSessionG
   return buildAppSessionGrantImpl(options) as any;
 }
 
+// DEPRECATED here: the supported import point for the private-flow surface is
+// @loom/privacy; this export remains for one deprecation cycle.
 export async function preparePrivateVaultWithdrawal(
   options: PrivateVaultWithdrawalPreparationInput
 ): Promise<PrivateVaultWithdrawalPreparation> {

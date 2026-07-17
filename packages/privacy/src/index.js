@@ -1362,3 +1362,12 @@ function rejectingKeystore() {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Canonical home of the private-flow wallet surface. These live in the wallet
+// engine's runtime (they are adapter-parametric and pull no protocol code),
+// but privacy is an optional layer, so their supported import point is this
+// package; the same names on @loom/sdk are deprecated and will be removed
+// after one cycle.
+// ---------------------------------------------------------------------------
+export { createKohakuRuntime, preparePrivateVaultWithdrawal } from "@loom/sdk";
