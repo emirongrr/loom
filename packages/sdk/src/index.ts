@@ -1767,11 +1767,19 @@ const EXECUTE_SELECTOR = `0x${keccak_256("execute(bytes32,bytes)").slice(0, 8)}`
 
 function encodeCalls(calls) {
   if (!Array.isArray(calls) || calls.length === 0) return "0x";
-  const items = calls.map((call, index) => ({
-    target: normalizeAddress(call.target, `call ${index} target`),
-    value: call.value === undefined ? 0n : BigInt(call.value),
-    data: normalizeHex(call.data ?? "0x", `call ${index} data`)
-  }));
+  const items = calls.map((call, index) => {
+    const value = call.value === undefined ? 0n : BigInt(call.value);
+    // Validated at the boundary: without this, a negative or oversized value
+    // only fails later at the whole-callData hex check with a misleading error.
+    if (value < 0n || value >= 1n << 256n) {
+      throw new InvalidSdkRequestError(`call ${index} value must fit uint256`, { value: String(value) });
+    }
+    return {
+      target: normalizeAddress(call.target, `call ${index} target`),
+      value,
+      data: normalizeHex(call.data ?? "0x", `call ${index} data`)
+    };
+  });
   const uint = value => value.toString(16).padStart(64, "0");
   const executionTuple = item => {
     const data = item.data.slice(2);

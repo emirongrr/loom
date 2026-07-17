@@ -15,12 +15,28 @@
 // tarballs, so the artifact that ships is the artifact that is proven.
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
+// fs.rmSync can return success WITHOUT deleting on Windows when the path
+// contains non-ASCII segments (observed on Node 23), which would let stale
+// tarballs from a previous run leak into the packed output. unlink/rmdir take
+// the path verbatim and work, so removal walks the tree explicitly.
+export function removeTreeSync(path) {
+  if (!existsSync(path)) return;
+  if (statSync(path).isDirectory()) {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      removeTreeSync(join(path, entry.name));
+    }
+    rmdirSync(path);
+  } else {
+    unlinkSync(path);
+  }
+}
 
 // The publish order matters: core has no Loom dependency; sdk depends on core.
 const PUBLISHABLE = [
@@ -37,7 +53,7 @@ function tarballName(name, version) {
 function stageAndPack({ repoRoot, pkg, version, outDir }) {
   const source = join(repoRoot, pkg.dir);
   const stage = join(outDir, "stage", pkg.name.replace("/", "-").replace("@", ""));
-  rmSync(stage, { recursive: true, force: true });
+  removeTreeSync(stage);
   mkdirSync(stage, { recursive: true });
 
   const dist = join(source, "dist");
@@ -77,11 +93,11 @@ function stageAndPack({ repoRoot, pkg, version, outDir }) {
 }
 
 export function packReleasePackages({ repoRoot, version, outDir }) {
-  rmSync(outDir, { recursive: true, force: true });
+  removeTreeSync(outDir);
   mkdirSync(outDir, { recursive: true });
 
   const packed = PUBLISHABLE.map(pkg => stageAndPack({ repoRoot, pkg, version, outDir }));
-  rmSync(join(outDir, "stage"), { recursive: true, force: true });
+  removeTreeSync(join(outDir, "stage"));
 
   const sha256Lines = packed.map(p => `${p.sha256}  ${p.filename}`).join("\n");
   writeFileSync(join(outDir, "SHA256SUMS"), `${sha256Lines}\n`);

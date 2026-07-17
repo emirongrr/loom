@@ -228,6 +228,26 @@ try {
   assert.equal(await readValue(), 9001n, "third user operation did not execute");
   console.log(`    ok  executed via eth_sendUserOperation (${third.userOpHash})`);
 
+  // Atomic batch with nonzero call values: both items must land — the final
+  // stored value proves item 2 ran, and the exact balance delta (5 + 7 wei)
+  // proves item 1 ran and value forwarding encodes correctly on-chain.
+  console.log("==> op 4 through Alto: atomic batch with value transfers");
+  await rpcCall(rpcUrl, "eth_sendTransaction", [
+    { from: deployer, to: account, value: `0x${(10n ** 15n).toString(16)}` }
+  ]);
+  const balanceBefore = BigInt(await rpcCall(rpcUrl, "eth_getBalance", [target, "latest"]));
+  const fourth = await client.sendTransaction({
+    calls: [
+      { target, value: 5n, data: encodeFunctionData({ abi: setValueAbi, functionName: "setValue", args: [1111n] }) },
+      { target, value: 7n, data: encodeFunctionData({ abi: setValueAbi, functionName: "setValue", args: [4321n] }) }
+    ]
+  });
+  assert.equal(fourth.receipt?.success, true, "batch user operation was not successful");
+  assert.equal(await readValue(), 4321n, "batch item 2 did not execute");
+  const balanceAfter = BigInt(await rpcCall(rpcUrl, "eth_getBalance", [target, "latest"]));
+  assert.equal(balanceAfter - balanceBefore, 12n, "batch value transfers did not both arrive");
+  console.log(`    ok  atomic batch executed via eth_sendUserOperation (${fourth.userOpHash})`);
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {
