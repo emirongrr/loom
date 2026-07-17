@@ -9,12 +9,13 @@ The current Lean model starts with:
 - validator-set non-emptiness;
 - monotonic configuration versions;
 - freeze safety and exact recovery/cancellation exceptions;
+- recovery scheduling and execution delay against an explicit abstract clock;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
 
 - scheduled-operation invalidation after configuration change;
-- delayed, cancelable, expiring complete-set recovery;
+- recovery expiry and exact complete-set identity replacement;
 - migration hash binding and expiry;
 - batch atomicity as an abstract all-or-nothing transition;
 - a reviewed refinement table connecting each abstract transition to Solidity.
