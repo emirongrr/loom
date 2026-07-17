@@ -20,7 +20,7 @@ inductive Transition where
   | executeRecovery (newValidatorCount : Nat)
   | advanceTime (delta : Nat)
   | configChange
-  | scheduleMigration (delay : Nat) (callsHash : Nat)
+  | scheduleMigration (delay : Nat) (executionWindow : Nat) (callsHash : Nat)
   | executeMigration (callsHash : Nat)
   | initialize
   | upgradeImplementation (actor : Actor)
@@ -35,6 +35,7 @@ structure State where
   recoveryReadyAt : Nat
   migrationPending : Bool
   migrationReadyAt : Nat
+  migrationExpiresAt : Nat
   migrationCallsHash : Nat
   initialized : Bool
   deriving Repr
@@ -86,22 +87,24 @@ def step (s : State) : Transition -> Option State
       some { s with now := s.now + delta }
   | Transition.configChange =>
       some { s with configVersion := s.configVersion + 1 }
-  | Transition.scheduleMigration delay callsHash =>
+  | Transition.scheduleMigration delay executionWindow callsHash =>
       some {
         s with
           migrationPending := true,
           migrationReadyAt := s.now + delay,
+          migrationExpiresAt := s.now + delay + executionWindow,
           migrationCallsHash := callsHash
       }
   | Transition.executeMigration callsHash =>
       if s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ callsHash != s.migrationCallsHash then
+          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash then
         none
       else
         some {
           s with
             migrationPending := false,
             migrationReadyAt := 0,
+            migrationExpiresAt := 0,
             migrationCallsHash := 0
         }
   | Transition.initialize =>
@@ -169,6 +172,12 @@ theorem migration_rejects_mismatched_calls_hash
   intro hmismatch
   simp [step, hmismatch]
 
+theorem migration_cannot_execute_after_expiry (s : State) (callsHash : Nat) :
+    s.migrationExpiresAt < s.now ->
+    step s (Transition.executeMigration callsHash) = none := by
+  intro hexpired
+  simp [step, hexpired]
+
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
     (actor : Actor) :
@@ -235,14 +244,14 @@ theorem successful_step_preserves_validator_nonzero
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | scheduleMigration delay callsHash =>
+  | scheduleMigration delay executionWindow callsHash =>
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
   | executeMigration callsHash =>
       unfold step at hstep
       by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ callsHash != s.migrationCallsHash
+          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash
       · simp [h] at hstep
       · simp [h, hasValidator] at hstep
         cases hstep
@@ -305,14 +314,14 @@ theorem config_version_never_decreases_on_success
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | scheduleMigration delay callsHash =>
+  | scheduleMigration delay executionWindow callsHash =>
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
   | executeMigration callsHash =>
       unfold step at hstep
       by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ callsHash != s.migrationCallsHash
+          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash
       · simp [h] at hstep
       · simp [h] at hstep
         cases hstep
