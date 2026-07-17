@@ -20,7 +20,7 @@ inductive Transition where
   | executeRecovery (newValidatorCount : Nat)
   | advanceTime (delta : Nat)
   | configChange
-  | scheduleMigration
+  | scheduleMigration (delay : Nat)
   | executeMigration
   | initialize
   | upgradeImplementation (actor : Actor)
@@ -34,6 +34,7 @@ structure State where
   recoveryPending : Bool
   recoveryReadyAt : Nat
   migrationPending : Bool
+  migrationReadyAt : Nat
   initialized : Bool
   deriving Repr
 
@@ -84,13 +85,13 @@ def step (s : State) : Transition -> Option State
       some { s with now := s.now + delta }
   | Transition.configChange =>
       some { s with configVersion := s.configVersion + 1 }
-  | Transition.scheduleMigration =>
-      some { s with migrationPending := true }
+  | Transition.scheduleMigration delay =>
+      some { s with migrationPending := true, migrationReadyAt := s.now + delay }
   | Transition.executeMigration =>
-      if s.frozen = true \/ s.migrationPending = false then
+      if s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt then
         none
       else
-        some { s with migrationPending := false }
+        some { s with migrationPending := false, migrationReadyAt := 0 }
   | Transition.initialize =>
       if s.initialized = true then none else some { s with initialized := true }
   | Transition.upgradeImplementation _ =>
@@ -140,6 +141,13 @@ theorem recovery_cannot_execute_before_delay
     step s (Transition.executeRecovery newValidatorCount) = none := by
   intro hp hbefore
   simp [step, hp, Nat.not_le_of_gt hbefore]
+
+theorem migration_cannot_execute_before_delay (s : State) :
+    s.migrationPending = true ->
+    s.now < s.migrationReadyAt ->
+    step s Transition.executeMigration = none := by
+  intro hp hbefore
+  simp [step, hp, hbefore]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
@@ -207,13 +215,13 @@ theorem successful_step_preserves_validator_nonzero
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | scheduleMigration =>
+  | scheduleMigration delay =>
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
   | executeMigration =>
       unfold step at hstep
-      by_cases h : s.frozen = true \/ s.migrationPending = false
+      by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
       · simp [h] at hstep
       · simp [h, hasValidator] at hstep
         cases hstep
@@ -276,13 +284,13 @@ theorem config_version_never_decreases_on_success
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | scheduleMigration =>
+  | scheduleMigration delay =>
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
   | executeMigration =>
       unfold step at hstep
-      by_cases h : s.frozen = true \/ s.migrationPending = false
+      by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
       · simp [h] at hstep
       · simp [h] at hstep
         cases hstep
