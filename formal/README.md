@@ -10,13 +10,8 @@ wallet correctness.
 | Foundry fuzz and invariants | `test/` | Active in PR CI | Concrete adversarial exploration and stateful invariant checking. |
 | Halmos symbolic properties | `test/formal/` | Active in PR CI | Bounded symbolic execution over selected authority, execution, recovery, and migration properties. |
 | Lean abstract model | `formal/lean/` | Research/spec layer | Small theorem-prover model for Loom's authority-state-machine doctrine. Not deployed-contract proof. |
-
-## Planned Layers
-
-| Layer | Location | Status | Purpose |
-|---|---|---|---|
-| Kontrol / KEVM | `formal/kontrol/` | Targets defined | Reuse Foundry-style specifications with KEVM-backed symbolic execution. |
-| Certora CVL | `formal/certora/` | Initial rules defined | Audit-grade source-level rules for cross-function account invariants. |
+| Kontrol / KEVM | `formal/kontrol/` | Selected targets scheduled | Reuse selected Foundry-style specifications with KEVM-backed symbolic execution and archived evidence. |
+| Certora CVL | `formal/certora/` | Compile-only PR gate; manual prover | Source-level rules for selected account invariants with credentialed, archived prover runs. |
 
 ## Claims Policy
 

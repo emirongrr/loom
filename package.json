@@ -3,7 +3,6 @@
   "private": true,
   "workspaces": [
     "packages/core",
-    "packages/account",
     "packages/guardian",
     "packages/deployment"
   ],
@@ -76,13 +75,13 @@
     "privacy:profile:test": "node --test tools/evidence/validate-privacy-adapter-profile.test.mjs",
     "privacy:profile:check": "node tools/evidence/validate-privacy-adapter-profile.mjs",
     "privacy:railgun:rehearsal": "node tools/evidence/run-railgun-rehearsal.mjs",
-    "account:build": "tsc -p packages/account/tsconfig.json",
+    "account:build": "npm run sdk:build && npm --prefix packages/account ci && tsc -p packages/account/tsconfig.json",
     "account:test": "npm run account:build && npm --prefix packages/account test",
     "guardian:test": "npm --prefix packages/guardian test",
     "guardian:evidence:build": "node tools/evidence/build-guardian-onboarding-evidence.mjs",
     "privacy:test": "npm --prefix packages/privacy test",
-    "sdk:build": "tsc -p packages/sdk/tsconfig.json",
-    "sdk:test": "npm run core:build && npm run account:build && npm --prefix packages/sdk ci && npm run sdk:build && npm --prefix packages/sdk test",
+    "sdk:build": "npm run core:build && npm --prefix packages/sdk ci && tsc -p packages/sdk/tsconfig.json",
+    "sdk:test": "npm run sdk:build && npm --prefix packages/sdk test",
     "sdk:types:check": "tsc -p tools/sdk/type-fixture",
     "sdk:calldata:generate": "node tools/sdk/generate-sdk-calldata-fixture.mjs",
     "rehearsal:local": "node tools/evidence/rehearse-local-lifecycle.mjs",
@@ -93,6 +92,7 @@
     "site:dev": "npm --prefix docs/site run dev",
     "verify:quick": "node tools/ci/verify.mjs",
     "verify": "node tools/ci/verify.mjs --full",
+    "e2e:clean-room": "node tools/e2e/clean-room-minimal-account.mjs",
     "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
     "deployment:gas": "node tools/deployment/deployment-gas-report.mjs"
   },

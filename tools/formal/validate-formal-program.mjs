@@ -92,6 +92,41 @@ function validateFoundryWrappers() {
   for (const checkName of expected) {
     assert(found.has(checkName), `missing required symbolic property: ${checkName}`);
   }
+
+  return found;
+}
+
+function validateRefinementMap(foundChecks) {
+  const file = "formal/refinement/account-authority.md";
+  const source = read(file);
+  const matrixStart = source.indexOf("## Executable Refinement Matrix");
+  const matrixEnd = source.indexOf("## Abstract State Mapping");
+  assert(matrixStart >= 0 && matrixEnd > matrixStart, `${file}: executable refinement matrix is required`);
+  const matrix = source.slice(matrixStart, matrixEnd);
+  const documented = new Set(
+    [...matrix.matchAll(/`(check_[A-Za-z0-9_]+)`/gu)].map((match) => match[1]),
+  );
+
+  for (const checkName of foundChecks) {
+    const occurrences = matrix.split(`\`${checkName}\``).length - 1;
+    assert(occurrences === 1, `${file}: ${checkName} must appear exactly once in the executable matrix`);
+  }
+  for (const checkName of documented) {
+    assert(foundChecks.has(checkName), `${file}: stale or unknown executable property: ${checkName}`);
+  }
+  assert(
+    documented.size === foundChecks.size,
+    `${file}: executable matrix must cover the complete current symbolic property inventory`,
+  );
+
+  const lean = read("formal/lean/Loom/Authority.lean");
+  const theorems = [...lean.matchAll(/\btheorem\s+([a-z][A-Za-z0-9_]*)/gu)].map((match) => match[1]);
+  for (const theorem of theorems) {
+    assert(source.includes(`\`${theorem}\``), `${file}: Lean theorem is not mapped: ${theorem}`);
+  }
+
+  assert(!source.includes("Pending model extension"), `${file}: stale pending-model placeholders are not allowed`);
+  assert(!source.includes("Planned initialization theorem"), `${file}: stale planned-theorem placeholders are not allowed`);
 }
 
 function validateToolingPlan() {
@@ -107,7 +142,8 @@ function validateToolingPlan() {
 
 validateFormalDocs();
 validateHalmosConfig();
-validateFoundryWrappers();
+const foundChecks = validateFoundryWrappers();
+validateRefinementMap(foundChecks);
 validateToolingPlan();
 
 console.log("formal program structure ok");

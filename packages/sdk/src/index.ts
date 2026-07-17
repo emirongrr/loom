@@ -31,15 +31,17 @@ import type {
   WalletSendCallsInput,
   WalletSendCallsPreparation
 } from "./types.js";
-import type { AccountCallsIntent, Hex } from "./types.js";
-import type { AccountLifecycleClient, LifecycleIntent } from "@loom/account";
+import type { AccountCallsIntent } from "./types.js";
+import type { Hex } from "./lifecycle.js";
+import type { AccountLifecycleClient, LifecycleIntent } from "./lifecycle.js";
 
+export * from "./lifecycle.js";
 export * from "./types.js";
 
 type BlockTag = "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
 
 import sha3 from "js-sha3";
-import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
+import { createAccountLifecycleClient, createLifecycleCallEncoder } from "./lifecycle.js";
 import {
   base64UrlEncode,
   encodeValidatorSignature,
