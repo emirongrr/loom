@@ -19,7 +19,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const stateDir = join(repoRoot, ".loom", "devnet");
 const statePath = join(stateDir, "state.json");
+const bundlerCacheDir = join(repoRoot, ".loom", "bundler");
 const versions = JSON.parse(readFileSync(join(repoRoot, "devnet", "versions.json"), "utf8"));
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 // anvil's deterministic dev keys (public constants — devnet only).
 const ANVIL_KEYS = [
@@ -31,6 +33,30 @@ const ANVIL_KEYS = [
 function bin(name) {
   const local = join(repoRoot, "node_modules", "@foundry-rs", `${name}-win32-amd64`, "bin", `${name}.exe`);
   return existsSync(local) ? local : name;
+}
+
+// Resolve the pinned Alto bundler into .loom/bundler (gitignored) and return
+// its entry script. Installed once at the pinned version and reused across
+// up/down cycles; the transitive tree never enters the repository. Mirrors how
+// the Foundry binaries are external tooling rather than committed dependencies.
+function ensureAlto() {
+  const entry = join(bundlerCacheDir, "node_modules", "@pimlico", "alto", "esm", "cli", "alto.js");
+  const spec = `@pimlico/alto@${versions.alto}`;
+  const installedManifest = join(bundlerCacheDir, "node_modules", "@pimlico", "alto", "package.json");
+  const installed = existsSync(entry) && JSON.parse(readFileSync(installedManifest, "utf8")).version === versions.alto;
+  if (!installed) {
+    mkdirSync(bundlerCacheDir, { recursive: true });
+    writeFileSync(join(bundlerCacheDir, "package.json"), `${JSON.stringify({ name: "loom-devnet-bundler", private: true }, null, 2)}\n`);
+    const result = spawnSync(npm, ["install", "--no-save", "--no-audit", "--no-fund", spec], {
+      cwd: bundlerCacheDir,
+      stdio: "pipe",
+      shell: process.platform === "win32"
+    });
+    if (result.status !== 0 || !existsSync(entry)) {
+      throw Object.assign(new Error(`failed to install ${spec}: ${result.stderr ?? ""}`.trim()), { exitCode: 5 });
+    }
+  }
+  return entry;
 }
 
 async function rpc(url, method, params) {
@@ -160,13 +186,18 @@ export async function up() {
   addresses.EntryPoint = versions.entryPoint.address;
   const entryPoint = addresses.EntryPoint;
 
-  // Alto is a pinned dependency of this package; run its entry script with the
-  // current node directly (no npx, no shell) so the spawn is identical on
-  // every platform and needs no network at runtime.
-  const altoEntry = join(repoRoot, "packages", "cli", "node_modules", "@pimlico", "alto", "esm", "cli", "alto.js");
-  if (!existsSync(altoEntry)) {
+  // Alto is resolved at run time into a gitignored cache and never committed:
+  // its large transitive tree is third-party developer tooling, in the same
+  // category as the Foundry binaries, and is deliberately kept out of the
+  // repository's dependency graph. Once cached, the entry script is run with
+  // the current node directly (no npx, no shell) so the spawn is identical on
+  // every platform and needs no further network.
+  let altoEntry;
+  try {
+    altoEntry = ensureAlto();
+  } catch (error) {
     stopPid(anvilPid);
-    throw Object.assign(new Error("alto is not installed; run `npm --prefix packages/cli ci` first"), { exitCode: 2 });
+    throw error;
   }
   const altoPid = spawnLogged(
     "alto",

@@ -9,7 +9,10 @@ accepts a raw private key as an argument, and supports `--json` on every command
 
 A reproducible local stack — anvil, the repo-pinned Loom contracts, and the
 [Alto](https://github.com/pimlicolabs/alto) bundler. Every version is fixed in
-[`devnet/versions.json`](../../devnet/versions.json).
+[`devnet/versions.json`](../../devnet/versions.json). Alto is resolved at run
+time into a gitignored cache (`.loom/bundler`) rather than committed, so its
+large transitive tree stays out of the repository — the first `up` installs the
+pinned version and later runs reuse it.
 
 ```sh
 loom devnet up        # start anvil + deploy Loom + start Alto, health-checked
