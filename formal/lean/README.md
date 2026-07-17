@@ -11,13 +11,14 @@ The current Lean model starts with:
 - freeze safety and exact recovery/cancellation exceptions;
 - recovery scheduling and execution delay against an explicit abstract clock;
 - migration scheduling and execution delay against the same abstract clock;
+- migration execution binding to the scheduled call commitment;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
 
 - scheduled-operation invalidation after configuration change;
 - recovery expiry and exact complete-set identity replacement;
-- migration hash binding, destination/config binding, and expiry;
+- migration destination/config binding and expiry;
 - batch atomicity as an abstract all-or-nothing transition;
 - a reviewed refinement table connecting each abstract transition to Solidity.
 
