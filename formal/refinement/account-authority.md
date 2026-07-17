@@ -55,7 +55,7 @@ that the abstract model proves them.
 | `check_GuardianCannotPerformValidatorAction` | Guardian authority cannot become spending authority. | Not modeled. | `execute`, caller/EntryPoint guards | `ordinaryActorAllowed` rejects guardians but does not refine guardian proofs. |
 | `check_ValidatorCannotPerformGuardianRecoveryAction` | Validator authority cannot mutate guardian/recovery state directly. | Not modeled. | `setGuardianConfig`, recovery entry points | Lean has no action-specific actor permissions. |
 | `check_PrivilegedAccountFunctionsRejectExternalCall` | Privileged lifecycle functions remain self-only. | `platform_actors_cannot_ordinary_execute_when_not_frozen` is related but insufficient. | schedule/cancel/install/uninstall/unfreeze self-call guards | The theorem covers ordinary execution, not privileged selector routing. |
-| `check_MigrationDelayIsEnforced` | Migration cannot execute before its delay. | Not modeled. | `scheduleMigration`, `executeMigration`, `readyAt` | Lean has pending state but no time or readiness transition. |
+| `check_MigrationDelayIsEnforced` | Migration cannot execute before its delay. | `migration_cannot_execute_before_delay` | `scheduleMigration`, `executeMigration`, `readyAt` | Lean models schedule delay and time advancement, but not expiry or block-time irregularity. |
 | `check_MigrationHashBinding` | Migration executes only its committed call batch. | Not modeled. | `pendingMigration.callsHash`, `executeMigration` | Lean has no destination, config, or call hashes. |
 | `check_MigrationBatchAtomicity` | A failed migration batch preserves pending state and effects. | Not modeled. | `executeMigration`, batch loop, pending migration | Lean has no external calls or rollback semantics. |
 | `check_RecoveryDelayIsEnforced` | Recovery cannot execute before readiness. | `recovery_cannot_execute_before_delay` | `pendingRecoveries`, `executeRecovery`, `readyAt` | Lean models schedule delay and time advancement, but not expiry or block-time irregularity. |
@@ -78,6 +78,7 @@ that the abstract model proves them.
 | `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest, expiry, and validator set are abstracted. |
 | `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state and expiry remains concrete-only. |
 | `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped; destination, EntryPoint, code hash, config, and calls hash are abstracted. |
+| `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and expiry remains concrete-only. |
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
 
 ## Abstract Transition Mapping
@@ -91,8 +92,8 @@ that the abstract model proves them.
 | `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now`, non-zero replacement | expiry, exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
 | `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly | scheduling delay, operation hash, exact changed state, stale invalidation |
-| `scheduleMigration` | `scheduleMigration` | none | destination code hash, EntryPoint, config and call hash, delay/expiry |
-| `executeMigration` | `executeMigration` | pending and not frozen | time window, exact bindings, hook mediation, atomic external calls |
+| `scheduleMigration` | `scheduleMigration` | records `readyAt = now + delay` | destination code hash, EntryPoint, config and call hash, minimum/maximum delay, expiry |
+| `executeMigration` | `executeMigration` | pending, not frozen, `readyAt <= now` | expiry, exact bindings, hook mediation, atomic external calls |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 
@@ -106,6 +107,7 @@ Every current theorem has at least one concrete review anchor:
 - `frozen_guardian_cancel_recovery_allowed`: frozen recovery-cancel property;
 - `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
 - `recovery_cannot_execute_before_delay`: recovery delay symbolic and integration properties;
+- `migration_cannot_execute_before_delay`: migration delay symbolic and integration properties;
 - `platform_actors_cannot_ordinary_execute_when_not_frozen`: factory/proxy non-authority tests and privileged-call property;
 - `successful_step_preserves_validator_nonzero`: last-validator property and stateful invariants;
 - `config_version_never_decreases_on_success`: stale-schedule property and configuration invariants.
