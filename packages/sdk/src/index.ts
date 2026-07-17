@@ -1,3 +1,43 @@
+import type {
+  AccountSafetyState,
+  AppScope,
+  AppScopeManager,
+  AppSessionGrantInput,
+  AppSessionGrantIntent,
+  BundlerTransportOptions,
+  ClearSigningReview,
+  Eip1193Provider,
+  FillOverrides,
+  KohakuHost,
+  KohakuRuntime,
+  LoomClient,
+  LoomPreparedIntent,
+  LoomSdk,
+  LoomSignerAdapter,
+  LoomStateReadTransport,
+  LoomTransportAdapter,
+  PasskeyAssertion,
+  PasskeyChallenge,
+  PrivateVaultWithdrawalPreparation,
+  PrivateVaultWithdrawalPreparationInput,
+  RpcStateTransportOptions,
+  UnverifiedState,
+  UserOperationEnvelope,
+  UserOperationOverrides,
+  VaultPolicyState,
+  VerificationProfile,
+  VerifiedState,
+  WalletCapabilities,
+  WalletSendCallsInput,
+  WalletSendCallsPreparation
+} from "./types.js";
+import type { AccountCallsIntent, Hex } from "./types.js";
+import type { AccountLifecycleClient, LifecycleIntent } from "@loom/account";
+
+export * from "./types.js";
+
+type BlockTag = "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
+
 import sha3 from "js-sha3";
 import { createAccountLifecycleClient, createLifecycleCallEncoder } from "@loom/account";
 import {
@@ -13,7 +53,9 @@ const { keccak_256 } = sha3;
 const HEX_PATTERN = /^0x[0-9a-fA-F]*$/;
 
 export class InvalidSdkRequestError extends Error {
-  constructor(message, details = {}) {
+  readonly details: Record<string, unknown>;
+
+  constructor(message: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "InvalidSdkRequestError";
     this.details = details;
@@ -41,7 +83,7 @@ const VAULT_STATE_SELECTORS = Object.freeze({
 const MAX_GUARDIAN_THRESHOLD = 32;
 const MAX_VALIDATORS = 16;
 
-export function createKohakuRuntime(options = {}) {
+function createKohakuRuntimeImpl(options: any = {}) {
   // Privacy is reached only through an injected host (the structural adapter),
   // so the wallet engine never depends on a privacy protocol package. Build the
   // host with @loom/privacy (or any conforming adapter) and pass it in.
@@ -52,7 +94,7 @@ export function createKohakuRuntime(options = {}) {
   return freezeRuntime(options.host);
 }
 
-export function createAppScopeManager(options = {}) {
+function createAppScopeManagerImpl(options: any = {}) {
   const defaultChainId = options.chainId === undefined ? undefined : normalizeChainId(options.chainId);
   const defaultAccount = options.account === undefined ? undefined : normalizeAddress(options.account, "account");
 
@@ -105,13 +147,13 @@ export function createAppScopeManager(options = {}) {
   });
 }
 
-export function createLoomSdk(options = {}) {
+function createLoomSdkImpl(options: any = {}) {
   const chainId = options.chainId === undefined ? undefined : normalizeChainId(options.chainId);
   const account = options.account === undefined ? undefined : normalizeAddress(options.account, "account");
-  const lifecycle = createAccountLifecycleClient({ chainId, account });
+  const lifecycle = createAccountLifecycleClient({ chainId, account } as any);
   const encoders = createLifecycleCallEncoder();
   const kohaku = createKohakuRuntime(options.kohaku ?? {});
-  const appScopes = createAppScopeManager({ chainId, account });
+  const appScopes = createAppScopeManager({ chainId, account } as any);
 
   return Object.freeze({
     lifecycle,
@@ -138,7 +180,7 @@ export function createLoomSdk(options = {}) {
   });
 }
 
-export function createLoomClient(options = {}) {
+function createLoomClientImpl(options: any = {}) {
   const chainId = normalizeChainId(options.chainId);
   const account = normalizeAddress(options.account, "account");
   const sdk = options.sdk ?? createLoomSdk({
@@ -152,7 +194,7 @@ export function createLoomClient(options = {}) {
   const middleware = normalizeMiddleware(options.middleware ?? []);
   const submittedWalletCallIds = new Set();
 
-  function prepareIntent(intent, overrides = {}) {
+  function prepareIntent(intent, overrides: any = {}) {
     return prepareUserOperationEnvelope({
       account,
       chainId,
@@ -203,10 +245,10 @@ export function createLoomClient(options = {}) {
         kind: "account.calls.prepare",
         intent,
         intentHash: hashCanonical(intent),
-        review: explainLifecycleIntent(intent)
+        review: explainLifecycleIntent(intent as any)
       });
     },
-    getCapabilities(input = {}) {
+    getCapabilities(input: any = {}) {
       return walletGetCapabilities({
         account,
         chainId,
@@ -228,15 +270,15 @@ export function createLoomClient(options = {}) {
       }
       return prepared;
     },
-    prepareUserOperation(prepared, overrides = {}) {
+    prepareUserOperation(prepared, overrides: any = {}) {
       const intent = prepared?.intent ?? prepared;
       return prepareIntent(intent, overrides);
     },
-    computeUserOperationHash(envelope, input = {}) {
+    computeUserOperationHash(envelope, input: any = {}) {
       const entryPoint = input.entryPoint ?? transport?.entryPoint;
       return computeUserOperationHash(envelope, { entryPoint });
     },
-    async getEntryPointNonce(input = {}) {
+    async getEntryPointNonce(input: any = {}) {
       return fetchEntryPointNonce({
         stateTransport: input.stateTransport ?? stateTransport,
         entryPoint: input.entryPoint ?? transport?.entryPoint,
@@ -245,7 +287,7 @@ export function createLoomClient(options = {}) {
         blockTag: input.blockTag
       });
     },
-    async fillUserOperation(prepared, overrides = {}) {
+    async fillUserOperation(prepared, overrides: any = {}) {
       const selectedTransport = overrides.transport ?? transport;
       const selectedSigner = overrides.signer ?? signer;
       const base = await applyMiddleware(this.prepareUserOperation(prepared, overrides), middleware);
@@ -307,7 +349,7 @@ export function createLoomClient(options = {}) {
         maxPriorityFeePerGas
       });
     },
-    async sendTransaction(input, overrides = {}) {
+    async sendTransaction(input, overrides: any = {}) {
       const selectedSigner = overrides.signer ?? signer;
       const selectedTransport = overrides.transport ?? transport;
       if (!selectedSigner || typeof selectedSigner.signUserOperation !== "function") {
@@ -336,7 +378,7 @@ export function createLoomClient(options = {}) {
     toViemCalls(prepared) {
       return toViemCalls(prepared, { account });
     },
-    async sendPreparedUserOperation(prepared, overrides = {}) {
+    async sendPreparedUserOperation(prepared, overrides: any = {}) {
       const selectedSigner = overrides.signer ?? signer;
       const selectedTransport = overrides.transport ?? transport;
       if (!selectedSigner || typeof selectedSigner.signUserOperation !== "function") {
@@ -356,11 +398,11 @@ export function createLoomClient(options = {}) {
       });
       return selectedTransport.sendUserOperation(signedEnvelope);
     },
-    async sendCalls(input, overrides = {}) {
+    async sendCalls(input, overrides: any = {}) {
       const prepared = this.prepareCalls(input);
       return this.sendPreparedUserOperation(prepared, overrides);
     },
-    async sendWalletCalls(input, overrides = {}) {
+    async sendWalletCalls(input, overrides: any = {}) {
       const prepared = this.prepareWalletSendCalls(input);
       const sent = await this.sendPreparedUserOperation(prepared, overrides);
       submittedWalletCallIds.add(prepared.id);
@@ -372,7 +414,7 @@ export function createLoomClient(options = {}) {
         })
       });
     },
-    async sendCallsAndWait(input, overrides = {}) {
+    async sendCallsAndWait(input, overrides: any = {}) {
       const selectedTransport = overrides.transport ?? transport;
       if (!selectedTransport || typeof selectedTransport.waitForUserOperationReceipt !== "function") {
         throw new InvalidSdkRequestError("send and wait requires transport receipt support");
@@ -388,7 +430,7 @@ export function createLoomClient(options = {}) {
         receipt
       });
     },
-    async estimateCalls(input, overrides = {}) {
+    async estimateCalls(input, overrides: any = {}) {
       const selectedTransport = overrides.transport ?? transport;
       if (!selectedTransport || typeof selectedTransport.estimateUserOperationGas !== "function") {
         throw new InvalidSdkRequestError("estimate requires transport gas estimation support");
@@ -397,7 +439,7 @@ export function createLoomClient(options = {}) {
       const envelope = await applyMiddleware(this.prepareUserOperation(prepared, overrides), middleware);
       return selectedTransport.estimateUserOperationGas(envelope);
     },
-    async waitForUserOperationReceipt(input, overrides = {}) {
+    async waitForUserOperationReceipt(input, overrides: any = {}) {
       const selectedTransport = overrides.transport ?? transport;
       if (!selectedTransport || typeof selectedTransport.waitForUserOperationReceipt !== "function") {
         throw new InvalidSdkRequestError("wait requires transport receipt support");
@@ -407,7 +449,7 @@ export function createLoomClient(options = {}) {
         ...overrides
       });
     },
-    async readSafetyState(input = {}) {
+    async readSafetyState(input: any = {}) {
       const selectedTransport = input.stateTransport ?? input.transport ?? stateTransport;
       if (!selectedTransport || typeof selectedTransport.ethCall !== "function") {
         throw new InvalidSdkRequestError("account safety state requires an explicit state transport");
@@ -483,7 +525,7 @@ export function createLoomClient(options = {}) {
   });
 }
 
-export function createBundlerTransport(options = {}) {
+function createBundlerTransportImpl(options: any = {}) {
   if (!options.endpoint) throw new InvalidSdkRequestError("bundler endpoint is required");
   new URL(options.endpoint);
   const endpoint = options.endpoint;
@@ -584,7 +626,7 @@ export function createBundlerTransport(options = {}) {
   });
 }
 
-export function createRpcStateTransport(options = {}) {
+function createRpcStateTransportImpl(options: any = {}) {
   if (!options.endpoint) throw new InvalidSdkRequestError("state rpc endpoint is required");
   new URL(options.endpoint);
   const endpoint = options.endpoint;
@@ -638,7 +680,7 @@ export function createRpcStateTransport(options = {}) {
   });
 }
 
-export function createEip1193StateTransport(options = {}) {
+function createEip1193StateTransportImpl(options: any = {}) {
   const provider = options.provider;
   if (!provider || typeof provider.request !== "function") {
     throw new InvalidSdkRequestError("EIP-1193 state transport requires a provider");
@@ -678,7 +720,7 @@ export function createEip1193StateTransport(options = {}) {
   });
 }
 
-export function verified(value, profile) {
+function verifiedImpl(value, profile) {
   const verification = normalizeVerificationProfile({ ...(profile ?? {}), status: "verified" });
   return deepFreeze({
     status: "verified",
@@ -687,7 +729,7 @@ export function verified(value, profile) {
   });
 }
 
-export function unverified(reason, value, profile = {}) {
+function unverifiedImpl(reason, value, profile = {}) {
   assertNonEmptyString(reason, "unverified reason");
   return deepFreeze({
     status: "unverified",
@@ -697,7 +739,7 @@ export function unverified(reason, value, profile = {}) {
   });
 }
 
-export async function readAccountSafetyState(input = {}) {
+async function readAccountSafetyStateImpl(input: any = {}) {
   const chainId = normalizeChainId(input.chainId);
   const account = normalizeAddress(input.account, "account");
   const transport = input.stateTransport ?? input.transport;
@@ -813,7 +855,7 @@ export async function readAccountSafetyState(input = {}) {
   });
 }
 
-export async function readVaultPolicyState(input = {}) {
+async function readVaultPolicyStateImpl(input: any = {}) {
   const account = normalizeAddress(input.account, "account");
   const vaultHook = normalizeAddress(input.vaultHook, "vault hook");
   const token = normalizeAddress(input.token, "token");
@@ -833,7 +875,7 @@ export async function readVaultPolicyState(input = {}) {
   });
 }
 
-export function toViemCalls(prepared, options = {}) {
+function toViemCallsImpl(prepared, options: any = {}) {
   const intent = prepared?.intent ?? prepared;
   if (!intent || typeof intent !== "object") throw new InvalidSdkRequestError("prepared intent is required");
   if (intent.kind === "account.calls") {
@@ -848,7 +890,7 @@ export function toViemCalls(prepared, options = {}) {
   return Object.freeze([Object.freeze({ to, value: 0n, data })]);
 }
 
-export function walletGetCapabilities(input = {}) {
+function walletGetCapabilitiesImpl(input: any = {}) {
   const account = normalizeAddress(input.account, "account");
   const chainId = normalizeChainId(input.chainId);
   if (input.address !== undefined && normalizeAddress(input.address, "capability address") !== account) {
@@ -867,7 +909,7 @@ export function walletGetCapabilities(input = {}) {
   return Object.freeze(output);
 }
 
-export function prepareWalletSendCalls(input = {}) {
+function prepareWalletSendCallsImpl(input: any = {}) {
   const account = normalizeAddress(input.account, "account");
   const chainId = normalizeChainId(input.enabledChainId ?? input.localChainId ?? input.chainId);
   if (input.version !== undefined && input.version !== "2.0.0") {
@@ -929,11 +971,11 @@ export function prepareWalletSendCalls(input = {}) {
     capabilities: Object.freeze({
       atomic: Object.freeze({ status: "supported" })
     }),
-    review: explainLifecycleIntent(intent)
+    review: explainLifecycleIntent(intent as any)
   });
 }
 
-export function createPasskeySigner(options = {}) {
+function createPasskeySignerImpl(options: any = {}) {
   assertNonEmptyString(options.credentialId, "credential id");
   assertNonEmptyString(options.rpId, "rpId");
   assertNonEmptyString(options.origin, "origin");
@@ -970,7 +1012,7 @@ export function createPasskeySigner(options = {}) {
       const normalizedEnvelope = normalizeUserOperationEnvelope(envelope);
       // The authenticator signs over the canonical EntryPoint hash — the same
       // value the chain validates — carried as the WebAuthn challenge.
-      const userOperationHash = computeUserOperationHash(normalizedEnvelope, { entryPoint });
+      const userOperationHash = computeUserOperationHash(normalizedEnvelope as any, { entryPoint });
       const challenge = Object.freeze({
         type: "loom.passkey-user-operation",
         credentialId: options.credentialId,
@@ -986,7 +1028,7 @@ export function createPasskeySigner(options = {}) {
       let components;
       try {
         components = parseP256Signature(assertion.signature);
-      } catch (error) {
+      } catch (error: any) {
         throw new InvalidSdkRequestError("passkey signature must be 64-byte r||s or DER", {
           cause: error?.message
         });
@@ -1005,7 +1047,7 @@ export function createPasskeySigner(options = {}) {
   });
 }
 
-export function buildAppSessionGrant(options) {
+function buildAppSessionGrantImpl(options) {
   if (!options || typeof options !== "object") {
     throw new InvalidSdkRequestError("app session grant options are required");
   }
@@ -1063,7 +1105,7 @@ export function buildAppSessionGrant(options) {
   });
 }
 
-export async function preparePrivateVaultWithdrawal(options) {
+async function preparePrivateVaultWithdrawalImpl(options) {
   if (!options || typeof options !== "object") {
     throw new InvalidSdkRequestError("private vault withdrawal options are required");
   }
@@ -1155,7 +1197,7 @@ async function verifyVaultProtection({ vault, context }) {
   return Object.freeze({ verified: true, policy });
 }
 
-export function explainLifecycleIntent(intent) {
+function explainLifecycleIntentImpl(intent) {
   if (!intent || typeof intent !== "object") throw new InvalidSdkRequestError("lifecycle intent is required");
   const authority = intent.authority;
   if (!authority || typeof authority !== "object") {
@@ -1177,11 +1219,11 @@ export function explainLifecycleIntent(intent) {
   });
 }
 
-export function hashCanonical(value) {
+function hashCanonicalImpl(value) {
   return `0x${keccak_256(canonicalStringify(value))}`;
 }
 
-export function prepareUserOperationEnvelope(input) {
+function prepareUserOperationEnvelopeImpl(input) {
   if (!input || typeof input !== "object") throw new InvalidSdkRequestError("user operation input is required");
   const chainId = normalizeChainId(input.chainId);
   const account = normalizeAddress(input.account, "account");
@@ -1220,10 +1262,10 @@ export function prepareUserOperationEnvelope(input) {
  * the EntryPoint computes it (via the differentially-verified encoding in
  * `@loom/core`). Pure: the EntryPoint is an explicit input, never a default.
  */
-export function computeUserOperationHash(envelope, options = {}) {
+function computeUserOperationHashImpl(envelope, options: any = {}) {
   const normalized = normalizeUserOperationEnvelope(envelope);
   const entryPoint = normalizeAddress(options.entryPoint, "entry point");
-  return coreGetUserOpHash(corePackUserOperation(normalized.userOperation), entryPoint, BigInt(normalized.chainId));
+  return coreGetUserOpHash(corePackUserOperation(normalized.userOperation as any), entryPoint, BigInt(normalized.chainId));
 }
 
 const ENTRY_POINT_GET_NONCE_SELECTOR_SIGNATURE = "getNonce(address,uint192)";
@@ -1233,7 +1275,7 @@ const ENTRY_POINT_GET_NONCE_SELECTOR_SIGNATURE = "getNonce(address,uint192)";
  * an explicitly supplied state transport. Nothing is fetched implicitly and no
  * endpoint is defaulted.
  */
-export async function fetchEntryPointNonce(input = {}) {
+async function fetchEntryPointNonceImpl(input: any = {}) {
   const stateTransport = input.stateTransport;
   if (!stateTransport || typeof stateTransport.ethCall !== "function") {
     throw new InvalidSdkRequestError("nonce read requires an explicit state transport");
@@ -1284,7 +1326,7 @@ function normalizeUserOperationReceipt(receipt) {
   if (!receipt || typeof receipt !== "object") {
     throw new InvalidSdkRequestError("user operation receipt is invalid");
   }
-  const normalized = {
+  const normalized: any = {
     userOpHash: normalizeBytes32(receipt.userOpHash, "receipt userOpHash"),
     success: Boolean(receipt.success)
   };
@@ -1330,7 +1372,7 @@ function normalizePreparedUserOperation(userOperation) {
 
 function serializeUserOperation(userOperation) {
   const normalized = normalizePreparedUserOperation(userOperation);
-  const output = {
+  const output: any = {
     sender: normalized.sender,
     nonce: toRpcQuantity(normalized.nonce),
     callData: normalized.callData,
@@ -1360,7 +1402,7 @@ function normalizePasskeyAssertion(assertion) {
   });
 }
 
-function selector(signature) {
+function selector(signature: string): `0x${string}` {
   return `0x${keccak_256(signature).slice(0, 8)}`;
 }
 
@@ -1378,7 +1420,7 @@ function normalizeBlockTag(value) {
 function abiWords(result, label, expectedWords) {
   const hex = normalizeHex(result, label).slice(2);
   if (hex.length % 64 !== 0) throw new InvalidSdkRequestError(`${label} returned malformed ABI data`);
-  const words = [];
+  const words: string[] = [];
   for (let offset = 0; offset < hex.length; offset += 64) {
     words.push(hex.slice(offset, offset + 64));
   }
@@ -1492,7 +1534,7 @@ function accountSafetyStatus({ recoveryConfigured, freeze, pendingRecovery, pend
 }
 
 function accountSafetyWarnings({ recoveryConfigured, recoveryStateReadable, freeze, pendingRecovery, pendingMigration }) {
-  const warnings = [];
+  const warnings: string[] = [];
   if (!recoveryConfigured) {
     warnings.push("Guardian recovery is not configured; losing the primary credential can permanently lose access.");
   }
@@ -1560,7 +1602,7 @@ function normalizeMiddleware(middleware) {
   }));
 }
 
-function normalizeVerificationProfile(input = {}) {
+function normalizeVerificationProfile(input: any = {}) {
   const status = input.status === "verified" ? "verified" : "unverified";
   const source = input.source ?? (status === "verified" ? "verified-provider" : "unverified-provider");
   assertNonEmptyString(source, "verification source");
@@ -1684,7 +1726,7 @@ function rejectUnsupportedCapabilities(capabilities) {
   }
   for (const [name, value] of Object.entries(capabilities)) {
     if (name === "atomic") continue;
-    if (!value || typeof value !== "object" || value.optional !== true) {
+    if (!value || typeof value !== "object" || (value as any).optional !== true) {
       throw new InvalidSdkRequestError("unsupported non-optional capability", {
         code: 5700,
         capability: name
@@ -1819,23 +1861,23 @@ function normalizePositiveInteger(value, label) {
   return value;
 }
 
-function normalizeAddress(value, label) {
+function normalizeAddress(value: any, label: any): `0x${string}` {
   const hex = normalizeHex(value, label);
   if (hex.length !== 42) throw new InvalidSdkRequestError(`${label} must be a 20-byte address`);
   return hex;
 }
 
-function normalizeBytes32(value, label) {
+function normalizeBytes32(value: any, label: any): `0x${string}` {
   const hex = normalizeHex(value, label);
   if (hex.length !== 66) throw new InvalidSdkRequestError(`${label} must be 32 bytes`);
   return hex;
 }
 
-function normalizeHex(value, label) {
+function normalizeHex(value: any, label: any): `0x${string}` {
   if (typeof value !== "string" || !HEX_PATTERN.test(value)) {
     throw new InvalidSdkRequestError(`${label} must be hex`);
   }
-  return value;
+  return value as `0x${string}`;
 }
 
 function assertNonEmptyString(value, label) {
@@ -1854,3 +1896,178 @@ function normalizeBigInt(value, label) {
     throw new InvalidSdkRequestError(`${label} must be bigint-compatible`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Public surface. Each export carries the exact contract the former
+// hand-written declarations published; the implementations above are the
+// unchanged runtime. The compiler generates dist/index.d.ts from these
+// signatures, so the published types can no longer drift from the code.
+// ---------------------------------------------------------------------------
+
+export function createKohakuRuntime(options: { host: KohakuHost }): KohakuRuntime {
+  return createKohakuRuntimeImpl(options) as any;
+}
+
+export function createAppScopeManager(options?: { chainId?: number; account?: Hex }): AppScopeManager {
+  return createAppScopeManagerImpl(options) as any;
+}
+
+export function createLoomSdk(options?: { chainId?: number; account?: Hex; kohaku?: { host: KohakuHost } }): LoomSdk {
+  return createLoomSdkImpl(options) as any;
+}
+
+export function createLoomClient(options: {
+  chainId: number;
+  account: Hex;
+  sdk?: LoomSdk;
+  kohaku?: { host: KohakuHost };
+  signer?: LoomSignerAdapter;
+  transport?: LoomTransportAdapter;
+  stateTransport?: LoomStateReadTransport;
+  middleware?: readonly ((envelope: UserOperationEnvelope) => Promise<UserOperationEnvelope> | UserOperationEnvelope)[];
+}): LoomClient {
+  return createLoomClientImpl(options) as any;
+}
+
+export function createBundlerTransport(options: BundlerTransportOptions): LoomTransportAdapter & {
+  readonly endpoint: string;
+  readonly entryPoint: Hex;
+} {
+  return createBundlerTransportImpl(options) as any;
+}
+
+export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
+  readonly endpoint: string;
+} {
+  return createRpcStateTransportImpl(options) as any;
+}
+
+export function createEip1193StateTransport(options: {
+  provider: Eip1193Provider;
+  verification?: Partial<VerificationProfile>;
+}): LoomStateReadTransport & {
+  readonly provider: Eip1193Provider;
+  readonly verification: VerificationProfile;
+  describeVerification(): VerificationProfile;
+} {
+  return createEip1193StateTransportImpl(options) as any;
+}
+
+export function verified<T>(value: T, profile?: Partial<VerificationProfile>): VerifiedState<T> {
+  return verifiedImpl(value, profile) as any;
+}
+
+export function unverified<T = unknown>(
+  reason: string,
+  value?: T,
+  profile?: Partial<VerificationProfile>
+): UnverifiedState<T> {
+  return unverifiedImpl(reason, value, profile) as any;
+}
+
+export async function readAccountSafetyState(input: {
+  chainId: number;
+  account: Hex;
+  stateTransport?: LoomStateReadTransport;
+  transport?: LoomStateReadTransport;
+  recoveryModule?: Hex;
+  blockTag?: BlockTag;
+  now?: bigint | string | number;
+}): Promise<AccountSafetyState> {
+  return readAccountSafetyStateImpl(input) as any;
+}
+
+export async function readVaultPolicyState(input: {
+  account: Hex;
+  vaultHook: Hex;
+  token: Hex;
+  stateTransport?: LoomStateReadTransport;
+  transport?: LoomStateReadTransport;
+  blockTag?: BlockTag;
+}): Promise<VaultPolicyState> {
+  return readVaultPolicyStateImpl(input) as any;
+}
+
+export function toViemCalls(
+  prepared: LoomPreparedIntent | LifecycleIntent | AccountCallsIntent,
+  options?: { account?: Hex }
+): readonly import("./types.js").ViemCall[] {
+  return toViemCallsImpl(prepared, options) as any;
+}
+
+export function walletGetCapabilities(input: {
+  account: Hex;
+  chainId: number;
+  address?: Hex;
+  chainIds?: readonly (`0x${string}` | number)[];
+}): WalletCapabilities {
+  return walletGetCapabilitiesImpl(input) as any;
+}
+
+export function prepareWalletSendCalls(
+  input: WalletSendCallsInput & { account: Hex; enabledChainId?: number; localChainId?: number }
+): WalletSendCallsPreparation {
+  return prepareWalletSendCallsImpl(input) as any;
+}
+
+export function createPasskeySigner(options: {
+  credentialId: string;
+  rpId: string;
+  origin: string;
+  validator: Hex;
+  entryPoint: Hex;
+  signChallenge(challenge: PasskeyChallenge): Promise<PasskeyAssertion>;
+}): LoomSignerAdapter & {
+  readonly credentialId: string;
+  readonly rpId: string;
+  readonly origin: string;
+  readonly validator: Hex;
+  readonly entryPoint: Hex;
+  readonly dummySignature: Hex;
+} {
+  return createPasskeySignerImpl(options) as any;
+}
+
+export function buildAppSessionGrant(options: AppSessionGrantInput): AppSessionGrantIntent {
+  return buildAppSessionGrantImpl(options) as any;
+}
+
+export async function preparePrivateVaultWithdrawal(
+  options: PrivateVaultWithdrawalPreparationInput
+): Promise<PrivateVaultWithdrawalPreparation> {
+  return preparePrivateVaultWithdrawalImpl(options) as any;
+}
+
+export function explainLifecycleIntent(intent: LifecycleIntent): ClearSigningReview {
+  return explainLifecycleIntentImpl(intent) as any;
+}
+
+export function hashCanonical(value: unknown): Hex {
+  return hashCanonicalImpl(value) as any;
+}
+
+export function prepareUserOperationEnvelope(
+  input: {
+    chainId: number;
+    account: Hex;
+    intent: LifecycleIntent | AccountCallsIntent | AppSessionGrantIntent;
+  } & UserOperationOverrides
+): UserOperationEnvelope {
+  return prepareUserOperationEnvelopeImpl(input) as any;
+}
+
+export function computeUserOperationHash(envelope: UserOperationEnvelope, options: { entryPoint: Hex }): Hex {
+  return computeUserOperationHashImpl(envelope, options) as any;
+}
+
+export async function fetchEntryPointNonce(input: {
+  stateTransport: LoomStateReadTransport;
+  entryPoint: Hex;
+  account: Hex;
+  key?: bigint;
+  blockTag?: BlockTag;
+}): Promise<bigint> {
+  return fetchEntryPointNonceImpl(input) as any;
+}
+
+export type { FillOverrides };

@@ -9,7 +9,7 @@
     "types": [],
     "skipLibCheck": false,
     "paths": {
-      "@loom/sdk": ["./../../../packages/sdk/src/index.d.ts"],
+      "@loom/sdk": ["./../../../packages/sdk/dist/index.d.ts"],
       "@loom/account": ["./../../../packages/account/dist/index.d.ts"],
       "@loom/guardian": ["./../../../packages/guardian/src/index.d.ts"],
       "@loom/privacy": ["./../../../packages/privacy/src/index.d.ts"]

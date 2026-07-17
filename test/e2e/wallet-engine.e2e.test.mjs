@@ -5,7 +5,7 @@ import {
   createLoomClient,
   createPasskeySigner,
   hashCanonical
-} from "../../packages/sdk/src/index.js";
+} from "../../packages/sdk/dist/index.js";
 import { createKohakuHost } from "../../packages/privacy/src/index.js";
 
 const account = "0x1111111111111111111111111111111111111111";

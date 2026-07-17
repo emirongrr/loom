@@ -14,7 +14,7 @@
 // test suite enforces.
 
 import assert from "node:assert/strict";
-import { createLoomClient, createPasskeySigner } from "../packages/sdk/src/index.js";
+import { createLoomClient, createPasskeySigner } from "../packages/sdk/dist/index.js";
 // Privacy is optional: the wallet engine takes an injected host, so @loom/privacy
 // is a separate, explicit install rather than an SDK dependency.
 import { createKohakuHost } from "../packages/privacy/src/index.js";
