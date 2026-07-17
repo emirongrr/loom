@@ -120,6 +120,7 @@ run("Signature envelope fixture", npm, ["run", "sdk:signature:test"]);
 run("Account SDK tests", npm, ["run", "account:test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
+run("CLI tests", npm, ["run", "cli:test"]);
 run("Wallet engine SDK install", npm, ["--prefix", "packages/sdk", "ci"]);
 run("Wallet engine SDK tests", npm, ["--prefix", "packages/sdk", "test"]);
 run("SDK type integrity", npm, ["run", "sdk:types:check"]);

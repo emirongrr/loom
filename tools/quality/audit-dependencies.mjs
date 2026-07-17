@@ -8,6 +8,12 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 // root lockfile, so the root audit covers them. The account compatibility shim,
 // the privacy and wallet engine SDKs, and the documentation site keep their own
 // lockfiles and are audited separately.
+//
+// packages/cli is deliberately not audited here. It is a private local-devnet
+// orchestrator that ships to no user and touches no funds; its only runtime
+// dependency is the third-party Alto bundler, in the same category as the
+// Foundry `forge`/`anvil` binaries the CLI also drives — external developer
+// tooling outside Loom's trusted surface, not audited at the contract/SDK bar.
 const targets = [
   { name: "root workspace", args: ["audit", "--audit-level=low"] },
   { name: "account compatibility shim", args: ["--prefix", "packages/account", "audit", "--audit-level=low"] },

@@ -96,7 +96,10 @@ test("sendTransaction fills nonce, fees, and gas before signing, then sends and 
   assert.equal(sent.nonce, 7n);
   assert.equal(sent.maxFeePerGas, 2_000_000_000n);
   assert.equal(sent.callGasLimit, 90_000n);
-  assert.equal(sent.verificationGasLimit, 500_000n);
+  // Estimated 500k plus the passkey signer 400k buffer: a hash-bound WebAuthn
+  // challenge means estimation can never exercise the P-256 tail, so the signer
+  // declares the unseen verification gas and fill adds it.
+  assert.equal(sent.verificationGasLimit, 900_000n);
   // The sent signature is the real envelope (embeds the validator), not the dummy.
   assert.ok(sent.signature.includes(validator.slice(2)));
   assert.ok(sent.signature.includes("05".padStart(64, "0")));

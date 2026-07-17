@@ -135,6 +135,8 @@ export interface LoomSignerAdapter {
   signUserOperation(envelope: UserOperationEnvelope): Promise<Hex>;
   /** A representative signature-shaped envelope for gas estimation, if available. */
   readonly dummySignature?: Hex;
+  /** Verification gas the dummy signature cannot exercise (e.g. a hash-bound WebAuthn P-256 tail); added to estimated verificationGasLimit. */
+  readonly verificationGasBuffer?: bigint;
 }
 
 export interface LoomTransportAdapter {
@@ -388,6 +390,7 @@ export interface FillOverrides extends UserOperationOverrides {
   nonceKey?: bigint;
   feeTier?: string;
   dummySignature?: Hex;
+  verificationGasBuffer?: bigint;
 }
 
 export interface LoomClient {

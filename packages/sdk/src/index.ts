@@ -338,7 +338,15 @@ function createLoomClientImpl(options: any = {}) {
         });
         const estimate = await selectedTransport.estimateUserOperationGas(forEstimate);
         if (callGasLimit === 0n) callGasLimit = estimate.callGasLimit;
-        if (verificationGasLimit === 0n) verificationGasLimit = estimate.verificationGasLimit;
+        if (verificationGasLimit === 0n) {
+          // A dummy signature cannot reach the expensive tail of validation
+          // when the validator binds the WebAuthn challenge to the operation
+          // hash (the hash covers the gas fields being estimated), so the
+          // signer declares how much verification gas estimation cannot see.
+          const buffer =
+            overrides.verificationGasBuffer ?? selectedSigner?.verificationGasBuffer ?? 0n;
+          verificationGasLimit = estimate.verificationGasLimit + BigInt(buffer);
+        }
         if (preVerificationGas === 0n) preVerificationGas = estimate.preVerificationGas;
       }
 
@@ -1010,6 +1018,12 @@ function createPasskeySignerImpl(options: any = {}) {
     validator,
     entryPoint,
     dummySignature,
+    // WebAuthnP256 checks rpId, flags, origin, and the hash-bound challenge
+    // before the P-256 verification, so estimation with any static dummy exits
+    // before the curve check. This margin covers the unseen tail — sha256 of
+    // the WebAuthn preimage plus a Solidity-fallback P-256 verification — and
+    // stays well inside the documented 1.5M validation ceiling.
+    verificationGasBuffer: 400_000n,
     async signUserOperation(envelope) {
       const normalizedEnvelope = normalizeUserOperationEnvelope(envelope);
       // The authenticator signs over the canonical EntryPoint hash — the same
@@ -1744,12 +1758,55 @@ function normalizeWalletCallId(value) {
   return value;
 }
 
+// LoomAccount.execute(bytes32 mode, bytes executionCalldata) with the account's
+// narrowed ERC-7579 layout: mode first byte 0x00 = single (executionCalldata is
+// abi.encode(Execution)), 0x01 = atomic batch (abi.encode(Execution[])), where
+// Execution is (address target, uint256 value, bytes data). Proven against the
+// live account by tools/e2e/bundler-devnet.mjs.
+const EXECUTE_SELECTOR = `0x${keccak_256("execute(bytes32,bytes)").slice(0, 8)}`;
+
 function encodeCalls(calls) {
   if (!Array.isArray(calls) || calls.length === 0) return "0x";
-  return hashCanonical({
-    type: "loom.call-bundle",
-    calls
-  });
+  const items = calls.map((call, index) => ({
+    target: normalizeAddress(call.target, `call ${index} target`),
+    value: call.value === undefined ? 0n : BigInt(call.value),
+    data: normalizeHex(call.data ?? "0x", `call ${index} data`)
+  }));
+  const uint = value => value.toString(16).padStart(64, "0");
+  const executionTuple = item => {
+    const data = item.data.slice(2);
+    return (
+      item.target.slice(2).toLowerCase().padStart(64, "0") +
+      uint(item.value) +
+      uint(0x60n) +
+      uint(BigInt(data.length / 2)) +
+      data.padEnd(Math.ceil(data.length / 64) * 64, "0")
+    );
+  };
+  let mode;
+  let inner;
+  if (items.length === 1) {
+    mode = "00".repeat(32);
+    inner = uint(0x20n) + executionTuple(items[0]);
+  } else {
+    mode = `01${"00".repeat(31)}`;
+    const tails = items.map(executionTuple);
+    let offset = BigInt(items.length) * 32n;
+    const offsets: string[] = [];
+    for (const tail of tails) {
+      offsets.push(uint(offset));
+      offset += BigInt(tail.length / 2);
+    }
+    inner = uint(0x20n) + uint(BigInt(items.length)) + offsets.join("") + tails.join("");
+  }
+  const innerLength = BigInt(inner.length / 2);
+  return (
+    EXECUTE_SELECTOR +
+    mode +
+    uint(0x40n) +
+    uint(innerLength) +
+    inner.padEnd(Math.ceil(inner.length / 64) * 64, "0")
+  );
 }
 
 function preparedLifecycle(kind, intent) {
@@ -2026,6 +2083,7 @@ export function createPasskeySigner(options: {
   readonly validator: Hex;
   readonly entryPoint: Hex;
   readonly dummySignature: Hex;
+  readonly verificationGasBuffer: bigint;
 } {
   return createPasskeySignerImpl(options) as any;
 }
