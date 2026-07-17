@@ -243,3 +243,14 @@ later traffic runs as ordinary bundler operations.
 Packages are TypeScript compiled to ESM with generated type declarations. `viem`
 is used internally for ABI and ERC-4337 encoding, but never appears in a public
 interface: those stay defined by Loom's own structural provider types.
+
+The publishable surface is `@loom/core` and `@loom/sdk`. A single release packer
+stages each package with the release version, rewrites the sdk's in-repo
+`file:` dependency on core to that exact version, strips private and dev-only
+fields, and stamps a stability label — the packages are pre-audit and say so in
+their own metadata. The same packer feeds both the release workflow and the
+clean-room example test, so the tarballs an install would pull are byte-for-byte
+the ones proven to derive, deploy, and operate an account end to end. The
+release attaches those tarballs with checksums and an integrity manifest and
+runs a provenance-ready dry-run publish; the version is the git tag, so there is
+no separately maintained version to drift.

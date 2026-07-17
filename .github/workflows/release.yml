@@ -45,8 +45,12 @@ jobs:
         run: npm run verify
       - name: Measure production coverage
         run: npm run coverage:check
+      - name: Test the release packer
+        run: npm run release:packages:test
       - name: Run hermetic SDK to EntryPoint lifecycle
         run: npm run e2e:devnet
+      - name: Prove the packed packages clean-room
+        run: npm run e2e:clean-room
       - name: Run pinned mainnet token matrix
         env:
           MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
@@ -76,9 +80,56 @@ jobs:
       - name: Run Slither
         run: slither . --fail-high
 
+  packages:
+    name: Build and verify npm packages
+    needs: [qualification, static-analysis]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Provenance attestation on a real publish requires an OIDC token; the
+      # dry-run below exercises the same path without pushing to the registry.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and pack the publishable packages
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: node tools/release/pack-packages.mjs "$RELEASE_VERSION" dist-release
+      - name: Dry-run publish (provenance-ready; no registry push)
+        run: |
+          set -o pipefail
+          for tarball in dist-release/loom-*.tgz; do
+            echo "== $tarball =="
+            # --dry-run validates the exact publish the tag would perform. Drop
+            # it (and remove this guard) to publish for real once the packages
+            # leave pre-audit status; publishConfig already enables provenance.
+            npm publish "$tarball" --dry-run --access public
+          done
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: loom-packages-${{ github.ref_name }}
+          path: |
+            dist-release/loom-*.tgz
+            dist-release/SHA256SUMS
+            dist-release/release-manifest.json
+          if-no-files-found: error
+
   publish:
     name: Package and publish release
-    needs: [qualification, static-analysis]
+    needs: [qualification, static-analysis, packages]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -94,12 +145,17 @@ jobs:
           version: v1.7.1
       - name: Build production artifacts
         run: forge build --skip "test/**" "script/**"
+      - name: Download package artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: loom-packages-${{ github.ref_name }}
+          path: dist-release
       - name: Package release evidence
         run: |
           tar -czf "loom-${GITHUB_REF_NAME}.tar.gz" \
             src script docs evidence fixtures out README.md CONTRIBUTING.md SECURITY.md LICENSE \
             foundry.toml package.json package-lock.json .gas-snapshot
-          sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
+          sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" dist-release/loom-*.tgz > SHA256SUMS
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
@@ -117,4 +173,6 @@ jobs:
             --generate-notes \
             --title "$GITHUB_REF_NAME" \
             "loom-${GITHUB_REF_NAME}.tar.gz" \
-            SHA256SUMS
+            SHA256SUMS \
+            dist-release/loom-*.tgz \
+            dist-release/release-manifest.json

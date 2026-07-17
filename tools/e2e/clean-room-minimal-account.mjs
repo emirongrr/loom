@@ -2,18 +2,23 @@
 //
 //   npm run e2e:clean-room
 //
-// Builds and packs @loom/core and @loom/sdk exactly as a release would, installs
-// the tarballs into an EMPTY temporary project together with the example script,
-// statically asserts the consumer imports only public package names, then runs
-// it against a fresh devnet (anvil + DeployDevnet). If the example completes,
-// an external developer can derive, deploy, and operate a Loom account from
-// published packages alone.
+// Packs @loom/core and @loom/sdk through the SAME release packer that produces
+// the published tarballs, installs those exact tarballs into an EMPTY temporary
+// project together with the example script, statically asserts the consumer
+// imports only public package names, then runs it against a fresh devnet (anvil
+// + DeployDevnet). If the example completes, an external developer can derive,
+// deploy, and operate a Loom account from published packages alone — and the
+// artifact that ships is the artifact that is proven here.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJsonRpcClient, parseFoundryBroadcast } from "../../packages/deployment/src/index.js";
+import { packReleasePackages } from "../release/pack-packages.mjs";
+
+// A fixed non-release version for the clean-room proof, distinct from any tag.
+const CLEAN_ROOM_VERSION = "0.0.0-cleanroom";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RPC_URL = "http://127.0.0.1:8545";
@@ -57,29 +62,16 @@ async function waitForRpc(rpc, attempts = 60) {
 }
 
 function packPackages() {
-  rmSync(stageRoot, { recursive: true, force: true });
+  // The release packer is the single packing path: it wipes the output dir,
+  // stages each package with a release version, rewrites the sdk's file:../core
+  // dependency to that exact version, and strips private/dev fields. Using it
+  // here means the clean-room proof installs byte-for-byte the artifact a
+  // release would publish. It clears stageRoot, so create the app dir after.
+  console.log("==> Pack @loom/core and @loom/sdk (release packer)");
+  const manifest = packReleasePackages({ repoRoot, version: CLEAN_ROOM_VERSION, outDir: stageRoot });
   mkdirSync(join(stageRoot, "app"), { recursive: true });
-
-  run("Pack @loom/core", npm, ["pack", "--pack-destination", stageRoot], { cwd: join(repoRoot, "packages", "core") });
-
-  // @loom/sdk declares its sibling as file:../core, which is meaningless in a
-  // packed tarball. Stage a copy with the dependency pinned to the packed
-  // version so the tarball is externally installable; the tracked manifest is
-  // never touched.
-  const sdkStage = join(stageRoot, "stage-sdk");
-  mkdirSync(sdkStage, { recursive: true });
-  cpSync(join(repoRoot, "packages", "sdk", "dist"), join(sdkStage, "dist"), { recursive: true });
-  const manifest = JSON.parse(readFileSync(join(repoRoot, "packages", "sdk", "package.json"), "utf8"));
-  manifest.dependencies["@loom/core"] = "0.0.0";
-  delete manifest.devDependencies;
-  delete manifest.scripts;
-  writeFileSync(join(sdkStage, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  run("Pack @loom/sdk", npm, ["pack", "--pack-destination", stageRoot], { cwd: sdkStage });
-
-  return {
-    core: join(stageRoot, "loom-core-0.0.0.tgz"),
-    sdk: join(stageRoot, "loom-sdk-0.0.0.tgz")
-  };
+  const byName = Object.fromEntries(manifest.packages.map(p => [p.name, join(stageRoot, p.filename)]));
+  return { core: byName["@loom/core"], sdk: byName["@loom/sdk"] };
 }
 
 function assertCleanRoom(consumerSource) {
