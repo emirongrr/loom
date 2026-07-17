@@ -7,7 +7,7 @@ import type {
   LifecycleCallEncoder,
   LifecycleIntent,
   Hex
-} from "@loom/account";
+} from "./lifecycle.js";
 // Structural privacy-adapter types the wallet engine consumes. They are defined
 // here — not imported from @loom/privacy — so a TypeScript consumer of the base
 // SDK never needs a privacy protocol package installed. Any conforming adapter
@@ -647,4 +647,3 @@ export interface PrivateVaultWithdrawalPreparation {
 }
 
 
-export type { Hex } from "@loom/account";

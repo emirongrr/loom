@@ -2,7 +2,7 @@
   "name": "@loom/account",
   "version": "0.0.0",
   "private": true,
-  "description": "Local account lifecycle builders for Loom wallet clients.",
+  "description": "DEPRECATED: re-exports the lifecycle builders from @loom/sdk; import from @loom/sdk instead.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,9 +13,14 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@loom/sdk": "file:../sdk"
   }
 }
