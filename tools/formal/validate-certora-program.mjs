@@ -67,5 +67,11 @@ assert(certoraWorkflow.includes("persist-credentials: false"), "certora workflow
 assert(certoraWorkflow.includes("certoraRun"), "certora workflow must expose a manual prover job");
 assert(certoraWorkflow.includes("CERTORAKEY"), "certora workflow must use Certora secret through CERTORAKEY");
 assert(certoraWorkflow.includes("if: env.CERTORAKEY != ''"), "certoraRun must be gated on configured credentials");
+assert(certoraWorkflow.includes("Reject missing prover credential"), "missing Certora credentials must fail closed");
+assert(certoraWorkflow.includes("credentialConfigured"), "Certora evidence must record credential availability without exposing the credential");
+assert(certoraWorkflow.includes("prover.log"), "Certora evidence must preserve the raw prover log");
+assert(certoraWorkflow.includes("name: certora-prover-${{ matrix.id }}-${{ github.sha }}"), "Certora artifacts must bind target and commit");
+assert(certoraWorkflow.includes("path: artifacts/certora-prover"), "Certora workflow must archive prover evidence");
+assert(certoraWorkflow.includes("if: always()"), "Certora workflow must archive partial evidence after failure");
 
 console.log("certora program structure ok");

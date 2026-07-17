@@ -22,30 +22,55 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Prepare prover evidence
+        run: |
+          mkdir -p artifacts/kontrol
+          KONTROL_VERSION="$(cat formal/kontrol/version.txt)"
+          printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolVersion": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$KONTROL_VERSION" \
+            "LoomAccountAuthorityFormal.test_CannotRemoveLastValidator" \
+            "LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized" \
+            > artifacts/kontrol/run-metadata.json
+          cp formal/kontrol/version.txt formal/kontrol/targets.json artifacts/kontrol/
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.7.1
       - name: Install KUP and Kontrol
         run: |
+          set -euo pipefail
+          exec > >(tee artifacts/kontrol/install.log) 2>&1
           bash <(curl -sSfL https://kframework.org/install)
           export PATH="$HOME/.kup/bin:$HOME/.local/bin:$PATH"
-          KUP_BIN="$(command -v kup || find "$HOME" -type f -name kup -perm -111 2>/dev/null | head -n 1)"
+          KUP_BIN="$(command -v kup || find "$HOME" -type f -name kup -perm -111 -print -quit 2>/dev/null)"
           if [ -z "$KUP_BIN" ]; then
             echo "kup was not found after installation"
             exit 1
           fi
-          "$KUP_BIN" install kontrol
-          KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 2>/dev/null | head -n 1)"
+          "$KUP_BIN" install kontrol --version "$(cat formal/kontrol/version.txt)"
+          KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 -print -quit 2>/dev/null)"
           if [ -z "$KONTROL_BIN" ]; then
             echo "kontrol was not found after kup install kontrol"
             exit 1
           fi
           dirname "$KUP_BIN" >> "$GITHUB_PATH"
           dirname "$KONTROL_BIN" >> "$GITHUB_PATH"
+      - name: Record prover versions
+        run: |
+          kontrol version > artifacts/kontrol/kontrol-version.txt 2>&1
+          forge --version > artifacts/kontrol/forge-version.txt 2>&1
       - name: Build Kontrol project
-        run: kontrol build
+        run: set -o pipefail; kontrol build 2>&1 | tee artifacts/kontrol/build.log
       - name: Prove selected authority target
-        run: kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator
+        run: set -o pipefail; kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator 2>&1 | tee artifacts/kontrol/authority.log
       - name: Prove selected initialization target
-        run: kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized
+        run: set -o pipefail; kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized 2>&1 | tee artifacts/kontrol/initialization.log
+      - name: Upload Kontrol prover evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kontrol-prover-${{ github.sha }}
+          path: artifacts/kontrol
+          retention-days: 30
+          if-no-files-found: error

@@ -89,6 +89,14 @@ function validateCertoraWorkflow() {
     "--compilation_steps_only",
     "solc-select install 0.8.35",
     "CERTORAKEY: ${{ secrets.CERTORA_KEY }}",
+    "credentialConfigured",
+    "Reject missing prover credential",
+    "set -o pipefail; certoraRun ${{ matrix.conf }} --wait_for_results=all",
+    "name: certora-prover-${{ matrix.id }}-${{ github.sha }}",
+    "path: artifacts/certora-prover",
+    "if: always()",
+    "retention-days: 30",
+    "if-no-files-found: error",
   ]) {
     assertIncludes(file, required, `missing required certora workflow step: ${required}`);
   }
@@ -194,8 +202,15 @@ function validateKontrolWorkflow() {
   for (const required of [
     "workflow_dispatch:",
     "kontrol build",
+    '"$KUP_BIN" install kontrol --version "$(cat formal/kontrol/version.txt)"',
     "kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
     "kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
+    "artifacts/kontrol/run-metadata.json",
+    "name: kontrol-prover-${{ github.sha }}",
+    "path: artifacts/kontrol",
+    "if: always()",
+    "retention-days: 30",
+    "if-no-files-found: error",
   ]) {
     assertIncludes(file, required, `missing required kontrol workflow step: ${required}`);
   }

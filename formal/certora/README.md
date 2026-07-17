@@ -37,6 +37,10 @@ and compiler drift without spending prover credits or requiring credentials.
 The workflow also exposes a manual `certoraRun` prover job for configured
 environments with `CERTORA_KEY`. Loom must not claim Certora coverage until that
 prover job has recorded successful runtime evidence for the relevant rules.
+Each target uploads commit-bound metadata, its configuration and specs, tool
+versions, and the raw prover log for 30 days. A missing key fails the manual
+prover job and uploads explanatory metadata; an artifact by itself is never a
+successful prover result.
 
 ## GitHub Secret Setup
 
