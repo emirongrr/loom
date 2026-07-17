@@ -80,6 +80,7 @@
     "guardian:test": "npm --prefix packages/guardian test",
     "guardian:evidence:build": "node tools/evidence/build-guardian-onboarding-evidence.mjs",
     "privacy:test": "npm --prefix packages/privacy test",
+    "cli:test": "npm --prefix packages/cli ci && npm --prefix packages/cli test",
     "sdk:build": "npm run core:build && npm --prefix packages/sdk ci && tsc -p packages/sdk/tsconfig.json",
     "sdk:test": "npm run sdk:build && npm --prefix packages/sdk test",
     "sdk:types:check": "tsc -p tools/sdk/type-fixture",
@@ -93,6 +94,7 @@
     "verify:quick": "node tools/ci/verify.mjs",
     "verify": "node tools/ci/verify.mjs --full",
     "e2e:clean-room": "node tools/e2e/clean-room-minimal-account.mjs",
+    "e2e:bundler-devnet": "npm run sdk:build && npm --prefix packages/cli ci && node tools/e2e/bundler-devnet.mjs",
     "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
     "deployment:gas": "node tools/deployment/deployment-gas-report.mjs"
   },

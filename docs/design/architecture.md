@@ -225,9 +225,20 @@ transports are injected and provider replacement is a first-class path. Deployed
 addresses are trusted only against the canonical manifest — the SDK refuses a
 chain whose EntryPoint, proxy, implementation, or verifier code hash does not
 match, unless the caller explicitly selects an unverified mode. The `loom` CLI is
-a thin layer over these libraries: it never accepts a raw key as an argument,
-splits deployment into a secret-free plan and an externally signed apply, and
-redacts endpoints, headers, and signing material from every output.
+a thin layer over these libraries: it never accepts a raw key as an argument and
+supports machine-readable `--json` output with a stable exit-code contract.
+
+`loom devnet` composes a reproducible local stack — anvil, the repo-pinned
+contracts, and the Alto bundler, all versions fixed in `devnet/versions.json` —
+and records what it started in `.loom/devnet/state.json`. Teardown, status, and
+log commands act only on resources that state file names, so the CLI never kills
+or inspects a process it did not start. The EntryPoint is CREATE2-deployed at a
+version-prefixed address because bundlers infer the EntryPoint version from the
+address prefix. This devnet is what proves the wallet engine's send pipeline
+against a real bundler end to end (`tools/e2e/bundler-devnet.mjs`): account
+creation uses the sovereign direct-to-EntryPoint path — the factory fail-closes
+to the real SenderCreator, which no third-party simulator can satisfy — and all
+later traffic runs as ordinary bundler operations.
 
 Packages are TypeScript compiled to ESM with generated type declarations. `viem`
 is used internally for ABI and ERC-4337 encoding, but never appears in a public

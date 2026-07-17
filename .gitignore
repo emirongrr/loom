@@ -25,6 +25,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# cli-owned devnet state
+.loom/
+
 # package build output
 packages/*/dist/
 
