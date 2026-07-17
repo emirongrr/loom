@@ -31,7 +31,8 @@ the EntryPoint version from the address prefix); the salt is pinned to the exact
 creation code, and `up` fails closed if the code changes without a re-mined salt.
 
 The bundler executor and utility keys are anvil's well-known deterministic
-accounts — public constants, devnet only. The CLI accepts no private key.
+accounts — public constants, devnet only — and reach Alto through environment
+variables, never argv. The CLI accepts no private key.
 
 ## Exit codes
 

@@ -204,10 +204,11 @@ transport. Two standard options:
 - **Self-hosted** — run Pimlico's open-source Alto against Sepolia with the
   same env file as the deployment: `npm run bundler:local` (listens on
   `http://localhost:4337`; the executor key fronts gas and is refunded by the
-  EntryPoint). This is the sovereignty path. Alto receives the executor key
-  through CLI flags, so local process-inspection tools may see it while the
-  bundler is running; use only a low-balance Sepolia rehearsal key, never a
-  production deployer or user key.
+  EntryPoint). This is the sovereignty path. The script pins the Alto version
+  and passes the executor key and RPC URL through child-process environment
+  variables, never argv, so they stay out of local process listings; still
+  prefer a low-balance Sepolia rehearsal key over a production deployer or
+  user key.
 - **Hosted** — Pimlico, Alchemy, Biconomy, etc. This is the managed path most
   production wallets use, typically with two independent providers and
   failover (G-003 tracks the qualification evidence).

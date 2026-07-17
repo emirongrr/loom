@@ -8,7 +8,8 @@
 // processes it did not start.
 //
 // Key handling: the bundler executor/utility keys are anvil's well-known
-// deterministic dev accounts (public constants, devnet only). The CLI never
+// deterministic dev accounts (public constants, devnet only), handed to Alto
+// through ALTO_-prefixed environment variables — never argv. The CLI never
 // accepts a private key as input.
 
 import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -86,13 +87,14 @@ function readState() {
   return JSON.parse(readFileSync(statePath, "utf8"));
 }
 
-function spawnLogged(name, command, args, logName) {
+function spawnLogged(name, command, args, logName, env = {}) {
   const log = openSync(join(stateDir, `${logName}.log`), "a");
   const child = spawn(command, args, {
     cwd: repoRoot,
     detached: true,
     stdio: ["ignore", log, log],
-    shell: process.platform === "win32" && String(command).endsWith(".cmd")
+    shell: process.platform === "win32" && String(command).endsWith(".cmd"),
+    env: { ...process.env, ...env }
   });
   child.unref();
   if (!child.pid) throw Object.assign(new Error(`${name} failed to start`), { exitCode: 5 });
@@ -235,6 +237,10 @@ export async function up() {
     stopPid(anvilPid);
     throw error;
   }
+  // Signing keys go to Alto through ALTO_-prefixed environment variables, not
+  // argv. These are anvil's public dev constants so nothing is secret here,
+  // but the CLI-wide rule is that no key ever rides in an argument list, and
+  // the same mechanism carries real keys in the Sepolia bundler script.
   const altoPid = spawnLogged(
     "alto",
     process.execPath,
@@ -245,16 +251,16 @@ export async function up() {
       entryPoint,
       "--rpc-url",
       rpcUrl,
-      "--executor-private-keys",
-      ANVIL_KEYS[versions.devAccounts.bundlerExecutorIndex],
-      "--utility-private-key",
-      ANVIL_KEYS[versions.devAccounts.bundlerUtilityIndex],
       "--safe-mode",
       "false",
       "--port",
       String(versions.ports.bundler)
     ],
-    "alto"
+    "alto",
+    {
+      ALTO_EXECUTOR_PRIVATE_KEYS: ANVIL_KEYS[versions.devAccounts.bundlerExecutorIndex],
+      ALTO_UTILITY_PRIVATE_KEY: ANVIL_KEYS[versions.devAccounts.bundlerUtilityIndex]
+    }
   );
   let supported;
   try {
