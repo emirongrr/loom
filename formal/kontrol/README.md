@@ -33,11 +33,12 @@ kontrol prove --match-test LoomAccountRecoveryFormal.test_RecoveryDelayIsEnforce
 kontrol prove --match-test LoomAccountMigrationFormal.testFuzz_MigrationHashBinding
 ```
 
-The project-approved release is pinned in `formal/kontrol/version.txt`; both
-the weekly workflow and Linux setup script install that exact tag. Scheduled
-and manual workflow runs archive commit-bound metadata, the target manifest,
-tool versions, build output, and separate proof logs for 30 days. Failed runs
-upload partial evidence, but artifact presence alone is not a passing proof.
+The project-approved release and its immutable commit revision are bound in
+`formal/kontrol/toolchain.pin`. Both the weekly workflow and Linux setup script
+install the revision rather than trusting a movable tag. Scheduled and manual
+workflow runs archive both identities, the target manifest, tool versions,
+build output, and separate proof logs for 30 days. Failed runs upload partial
+evidence, but artifact presence alone is not a passing proof.
 
 These targets are selected KEVM/Kontrol proof targets, not complete wallet
 verification.
@@ -46,7 +47,8 @@ verification.
 
 Before enabling a PR job:
 
-1. Keep the release tag in `formal/kontrol/version.txt` pinned and reviewed.
+1. Keep the release and immutable revision in `formal/kontrol/toolchain.pin`
+   pinned and reviewed.
 2. Document expected runtime on a clean checkout.
 3. Prove at least one authority property locally.
 4. Add a nightly-only workflow first.

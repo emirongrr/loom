@@ -59,7 +59,8 @@ if ! command -v kup >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
 fi
 
-kup install kontrol --version "$(cat formal/kontrol/version.txt)"
+KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
+kup install kontrol --version "${KONTROL_PIN#*@}"
 kup list kontrol
 kontrol version || kontrol --version || true
 

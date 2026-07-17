@@ -202,7 +202,7 @@ function validateKontrolWorkflow() {
   for (const required of [
     "workflow_dispatch:",
     "kontrol build",
-    '"$KUP_BIN" install kontrol --version "$(cat formal/kontrol/version.txt)"',
+    '"$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"',
     "kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
     "kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
     "artifacts/kontrol/run-metadata.json",

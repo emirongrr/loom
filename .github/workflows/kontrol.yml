@@ -25,14 +25,16 @@ jobs:
       - name: Prepare prover evidence
         run: |
           mkdir -p artifacts/kontrol
-          KONTROL_VERSION="$(cat formal/kontrol/version.txt)"
-          printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolVersion": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
+          KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
+          KONTROL_RELEASE="${KONTROL_PIN%%@*}"
+          KONTROL_REVISION="${KONTROL_PIN#*@}"
+          printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolRelease": "%s",\n  "kontrolRevision": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            "$KONTROL_VERSION" \
+            "$KONTROL_RELEASE" "$KONTROL_REVISION" \
             "LoomAccountAuthorityFormal.test_CannotRemoveLastValidator" \
             "LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized" \
             > artifacts/kontrol/run-metadata.json
-          cp formal/kontrol/version.txt formal/kontrol/targets.json artifacts/kontrol/
+          cp formal/kontrol/toolchain.pin formal/kontrol/targets.json artifacts/kontrol/
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -48,7 +50,8 @@ jobs:
             echo "kup was not found after installation"
             exit 1
           fi
-          "$KUP_BIN" install kontrol --version "$(cat formal/kontrol/version.txt)"
+          KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
+          "$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"
           KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 -print -quit 2>/dev/null)"
           if [ -z "$KONTROL_BIN" ]; then
             echo "kontrol was not found after kup install kontrol"
