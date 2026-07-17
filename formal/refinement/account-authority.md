@@ -1,17 +1,22 @@
 # Account Authority Refinement Map
 
-This file maps Loom's abstract authority properties to executable evidence.
-It is not a proof by itself. It is the review checklist that prevents the Lean
-model, Halmos properties, and Solidity implementation from drifting apart.
+This file maps Loom's abstract authority model to the complete current
+`check_` property inventory and the Solidity boundaries those properties
+exercise. It is a review and drift-control artifact, not a refinement proof by
+itself.
 
 ## Scope
 
 Target contracts:
 
 - `src/LoomAccount.sol`
+- `src/LoomAccountProxy.sol`
+- `src/LoomAccountFactory.sol`
+- `src/AppAccountRegistry.sol`
 - `src/recovery/RecoveryManager.sol`
-- `src/modules/VaultHook.sol`
-- `src/modules/KeystoreSyncRecoveryModule.sol`
+- `src/recovery/KeystoreSyncRecoveryModule.sol`
+- `src/keystore/LoomKeystore.sol`
+- `src/hooks/VaultHook.sol`
 - validator modules under `src/validators/`
 
 Out of scope:
@@ -22,31 +27,107 @@ Out of scope:
 - privacy-protocol soundness;
 - compiler, chain, and precompile correctness.
 
-## Property Map
+The executable inventory below is complete for committed `check_` functions in
+`test/formal/`. The semantic refinement is intentionally partial: rows marked
+"not modeled" are concrete symbolic properties without a corresponding Lean
+state field or transition. Their presence is an explicit gap, not evidence
+that the abstract model proves them.
 
-| Property | Abstract model | Solidity boundary | Executable evidence |
+## Executable Refinement Matrix
+
+| Executable property | Security intent | Abstract relation | Solidity boundary | Explicit gap or assumption |
+|---|---|---|---|---|
+| `check_InitializedAccountCannotBeReinitialized` | Initialization is one-shot. | `initialized_state_rejects_reinitialization` | `initialize`, `_initialize` | Lean abstracts caller and initialization payload. |
+| `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | Not modeled. | `initializeDelegatedAccount` | Lean has no caller/self-call predicate. |
+| `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | Not modeled. | proxy constructor delegatecall and account storage | Lean has no proxy/implementation storage separation. |
+| `check_NoMutableUpgradeSelectorsThroughProxy` | The immutable proxy exposes no upgrade transition. | `immutable_proxy_has_no_upgrade_transition` | `LoomAccountProxy.implementation`, fallback path | The theorem abstracts bytecode selectors and delegatecall semantics. |
+| `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | Not modeled. | `executeDirect`, validator nonce storage | Lean has no nonce or signature state. |
+| `check_BatchExecutionAtomicity` | A reverting ordinary batch leaves no partial effect. | Not modeled. | `_executeAuthorized`, batch execution loop | Lean has no external-call state or EVM revert semantics. |
+| `check_FrozenAccountCannotExecute` | Freeze blocks ordinary EntryPoint execution. | `frozen_blocks_ordinary_execution` | `execute`, `_executeAuthorized` | Lean collapses EntryPoint and validator authorization into an actor. |
+| `check_FrozenAccountCannotDirectExecute` | Freeze blocks ordinary direct execution. | `frozen_blocks_ordinary_execution` | `executeDirect`, `_executeAuthorized` | Direct nonce/signature behavior is not modeled. |
+| `check_DirectBatchExecutionAtomicity` | A reverting direct batch preserves effects and nonce. | Not modeled. | `executeDirect`, batch loop, direct nonce | Lean has no nonce, external calls, or revert rollback. |
+| `check_ExternalCannotSetGuardianConfig` | External callers cannot change guardian authority. | Not modeled. | `setGuardianConfig`, self-call guard | Lean does not model guardian configuration fields or self-call routing. |
+| `check_GuardianlessBootstrapHasNoGuardianAuthority` | An empty guardian bootstrap grants no guardian power. | Not modeled. | constructor guardian fields, `freeze`, `setGuardianConfig` | Lean has no guardian root or threshold. |
+| `check_ExternalCannotRecoverConfiguration` | External callers cannot invoke account-internal recovery. | Not modeled. | `recoverConfiguration`, `recoverConfigurationSet` | Lean models the recovery transition but not its authorized caller. |
+| `check_UnsupportedExecutionModeNeverExecutes` | Unsupported ERC-7579 modes cannot call targets. | Not modeled. | `execute`, execution-mode decoder | Lean has no execution-mode domain. |
+| `check_CannotRemoveLastValidator` | Every successful transition retains a validator. | `successful_step_preserves_validator_nonzero` | `_uninstallModule`, validator-set validation | Concrete coverage is selected paths, not every future module transition. |
+| `check_ConfigUpdateInvalidatesStaleSchedule` | Authority changes invalidate stale scheduled calls. | `config_version_never_decreases_on_success` | `configVersion`, `configHash`, scheduled calls | Lean proves monotonicity, not schedule/version binding. |
+| `check_GuardianCannotPerformValidatorAction` | Guardian authority cannot become spending authority. | Not modeled. | `execute`, caller/EntryPoint guards | `ordinaryActorAllowed` rejects guardians but does not refine guardian proofs. |
+| `check_ValidatorCannotPerformGuardianRecoveryAction` | Validator authority cannot mutate guardian/recovery state directly. | Not modeled. | `setGuardianConfig`, recovery entry points | Lean has no action-specific actor permissions. |
+| `check_PrivilegedAccountFunctionsRejectExternalCall` | Privileged lifecycle functions remain self-only. | `platform_actors_cannot_ordinary_execute_when_not_frozen` is related but insufficient. | schedule/cancel/install/uninstall/unfreeze self-call guards | The theorem covers ordinary execution, not privileged selector routing. |
+| `check_MigrationDelayIsEnforced` | Migration cannot execute before its delay. | `migration_cannot_execute_before_delay` | `scheduleMigration`, `executeMigration`, `readyAt` | Lean models schedule delay, expiry, and time advancement, but not block-time irregularity. |
+| `check_MigrationHashBinding` | Migration executes only its committed call batch. | `migration_rejects_mismatched_calls_hash` | `pendingMigration.callsHash`, `executeMigration` | Lean treats the hash as an abstract natural value; collision resistance and ABI encoding are concrete assumptions. |
+| `check_MigrationBatchAtomicity` | A failed migration batch preserves pending state and effects. | Not modeled. | `executeMigration`, batch loop, pending migration | Lean has no external calls or rollback semantics. |
+| `check_RecoveryDelayIsEnforced` | Recovery cannot execute before readiness. | `recovery_cannot_execute_before_delay` | `pendingRecoveries`, `executeRecovery`, `readyAt` | Lean models schedule delay and time advancement, but not expiry or block-time irregularity. |
+| `check_RecoveryReplacesValidatorSet` | Recovery installs a non-empty committed replacement set. | `recovery_requires_nonzero_replacement` | `recoverConfigurationSet`, complete-set validation | The theorem proves non-zero count, not exact old/new set replacement. |
+| `check_FrozenAccountOnlyAllowsRecoveryCancel` | Frozen guardian cancellation removes pending recovery without spending. | `frozen_guardian_cancel_recovery_allowed` | `_isFrozenSafe`, `cancelRecovery` | Guardian proof uniqueness and cancellation digest are abstracted. |
+| `check_KeystoreUpdateRequiresController` | Only the identity controller can update keystore configuration. | Not modeled. | `LoomKeystore.updateConfig` | Lean has no identity, controller, or root/version tuple. |
+| `check_SyncDelayIsEnforced` | Keystore sync cannot replace validators before delay. | Not modeled. | `proposeSync`, `executeSync`, `pendingSyncs.readyAt` | Keystore proof, time, and validator-root binding are absent. |
+| `check_GuardianCancellationGrantsNoValidatorAuthority` | Cancelling sync grants no validator authority. | Not modeled. | `cancelSyncWithGuardians`, pending sync and validator set | Lean has no keystore sync transition or guardian proof model. |
+| `check_VaultWithdrawalDelayIsEnforced` | Protected assets cannot leave before vault delay. | Not modeled. | vault policy hook, `scheduleVaultWithdrawal`, account execution | Lean has no asset, hook, policy, or time state. |
+| `check_VaultGuardianCancellationGrantsNoSpendingAuthority` | Cancelling a withdrawal grants no spending authority. | Not modeled. | `cancelVaultWithdrawalWithGuardians`, pending withdrawal | Lean has no vault withdrawal or token-balance abstraction. |
+
+## Abstract State Mapping
+
+| Lean state | Concrete representation | Refinement status |
+|---|---|---|
+| `validatorCount` | `LoomAccount.validatorCount()` and installed validator modules | Count mapped; validator identities and init data are abstracted. |
+| `configVersion` | `LoomAccount.configVersion()` | Directly mapped; `configHash` and stale-operation bindings remain concrete-only. |
+| `now` | `block.timestamp` | Abstract monotonic clock used for recovery timing; miner/validator timestamp constraints are out of scope. |
+| `frozen` | `block.timestamp < LoomAccount.frozenUntil()` | Derived predicate mapped; the Lean Boolean omits the clock and expiry transition. |
+| `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest, expiry, and validator set are abstracted. |
+| `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state and expiry remains concrete-only. |
+| `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped; destination, EntryPoint, code hash, and config are abstracted. |
+| `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
+| `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
+| `migrationCallsHash` | `LoomAccount.pendingMigration().callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
+| `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
+
+## Abstract Transition Mapping
+
+| Lean transition | Concrete entry points | Preconditions represented in Lean | Concrete-only preconditions |
 |---|---|---|---|
-| Initialization can happen at most once | Planned initialization theorem | `initialize`, `initializeDelegatedAccount`, `_initialize` | `check_InitializedAccountCannotBeReinitialized`, `check_DelegatedInitializerRejectsExternalCaller`, Certora initialization rules |
-| Immutable proxy cannot become upgrade authority | Platform actor theorem plus proxy-specific planned theorem | `LoomAccountProxy.implementation`, fallback delegate path, absence of upgrade/admin mutators | `check_NoMutableUpgradeSelectorsThroughProxy`, proxy unit tests, Certora initialization rules |
-| Proxy initialization writes account state to proxy storage | Planned proxy refinement theorem | proxy constructor `delegatecall(initData)`, account storage layout | `check_ImmutableProxyInitializesProxyStorage`, proxy unit tests |
-| Validator count never becomes zero | `successful_step_preserves_validator_nonzero` | `_uninstallModule`, recovery replacement, validator-set validation | `check_CannotRemoveLastValidator`, `LoomAccountInvariantTest`, recovery unit tests |
-| Frozen accounts cannot perform ordinary execution | `frozen_blocks_ordinary_execution` | `_executeAuthorized`, `executeDirect`, `executeMigration` | `check_FrozenAccountCannotExecute`, `check_FrozenAccountCannotDirectExecute`, migration tests |
-| Frozen accounts may cancel recovery through the emergency carveout | `frozen_guardian_cancel_recovery_allowed` | `_isFrozenSafe`, `RecoveryManager.cancelRecovery` | `check_FrozenAccountOnlyAllowsRecoveryCancel` |
-| Recovery cannot execute before delay | Pending model extension | `RecoveryManager.pendingRecoveries`, `executeRecovery` | `check_RecoveryDelayIsEnforced`, recovery unit tests |
-| Recovery replaces the old validator set | `recovery_requires_nonzero_replacement` plus planned complete-set theorem | `recoverConfiguration`, `recoverConfigurationSet`, `_validateCompleteValidatorSet` | `check_RecoveryReplacesValidatorSet`, recovery unit tests |
-| Platform actors have no ordinary account authority | `platform_actors_cannot_ordinary_execute_when_not_frozen` | no owner/admin/deployer path, factory/registry non-authority | proxy/factory tests, `check_GuardianCannotPerformValidatorAction`, direct privileged-call tests |
-| Migration execution is bound to scheduled call hash | Pending model extension | `scheduleMigration`, `executeMigration`, `pendingMigration.callsHash` | `check_MigrationHashBinding` |
-| Failed batch execution is atomic | Pending model extension | `_executeAuthorized` batch loop, EVM revert behavior | `check_BatchExecutionAtomicity`, `check_DirectBatchExecutionAtomicity`, migration atomicity tests |
+| `ordinaryExecute` | `execute`, `executeDirect` | not frozen; abstract actor allowed | EntryPoint, validator signature, nonce, hooks, execution mode, call success |
+| `freezeByGuardian` | `freeze` | none | guardian root, threshold, unique proofs, config binding |
+| `scheduleRecovery` | `RecoveryManager.proposeRecovery` | records `readyAt = now + delay` | module installation, proposal hash, validator ordering, minimum/maximum delay, expiry |
+| `cancelRecoveryByGuardian` | `RecoveryManager.cancelRecovery` | frozen and pending | proof verification, exact cancellation digest, operation identity |
+| `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now`, non-zero replacement | expiry, exact set replacement, proof/digest and config binding |
+| `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
+| `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly | scheduling delay, operation hash, exact changed state, stale invalidation |
+| `scheduleMigration` | `scheduleMigration` | records `readyAt = now + delay`, `expiresAt = readyAt + executionWindow`, and the call commitment | destination code hash, EntryPoint, config hash, delay/window bounds |
+| `executeMigration` | `executeMigration` | pending, not frozen, `readyAt <= now <= expiresAt`, matching call commitment | destination/config bindings, hook mediation, atomic external calls |
+| `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
+| `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
+
+## Lean Theorem Coverage
+
+Every current theorem has at least one concrete review anchor:
+
+- `frozen_blocks_ordinary_execution`: frozen EntryPoint and direct-execution properties;
+- `initialized_state_rejects_reinitialization`: one-shot initialization property;
+- `immutable_proxy_has_no_upgrade_transition`: immutable proxy selector property;
+- `frozen_guardian_cancel_recovery_allowed`: frozen recovery-cancel property;
+- `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
+- `recovery_cannot_execute_before_delay`: recovery delay symbolic and integration properties;
+- `migration_cannot_execute_before_delay`: migration delay symbolic and integration properties;
+- `migration_rejects_mismatched_calls_hash`: migration call-hash binding symbolic and integration properties;
+- `migration_cannot_execute_after_expiry`: migration execution-window integration properties;
+- `platform_actors_cannot_ordinary_execute_when_not_frozen`: factory/proxy non-authority tests and privileged-call property;
+- `successful_step_preserves_validator_nonzero`: last-validator property and stateful invariants;
+- `config_version_never_decreases_on_success`: stale-schedule property and configuration invariants.
+
+These anchors show intent alignment. They do not establish a machine-checked
+simulation relation between Lean transitions and EVM executions.
 
 ## Historical Wallet Bug-Class Mapping
 
 | Bug class | Loom rule | Current evidence | Residual work |
 |---|---|---|---|
-| Uninitialized account or implementation takeover | Account initialization is one-shot and delegated initialization is self-only. | `check_InitializedAccountCannotBeReinitialized`, `check_DelegatedInitializerRejectsExternalCaller`, `LoomAccountInitialization.spec` | Add proxy-factory differential tests to the audit manifest. |
-| Mutable upgrade/admin takeover | Deployment efficiency must not introduce upgrade authority. | `check_NoMutableUpgradeSelectorsThroughProxy`, immutable implementation pointer unit tests | Add bytecode-level selector scan to deployment manifest tooling. |
-| Arbitrary module/delegatecall backdoor | Modules cannot execute unsupported executor paths or bypass self/scheduled gates. | `check_PrivilegedAccountFunctionsRejectExternalCall`, `executeFromExecutor` reverts, limited execution mode tests | Add module-adapter conformance tests for every production module. |
-| Signature replay | Signatures must bind account, chain, config version, nonce, validator, and call hash where applicable. | direct execution digest tests, migration hash-binding tests, recovery/migration digest docs | Add explicit cross-chain fork tests for digest separation. |
-| Partial batch state | Failed atomic execution must revert earlier effects and nonce changes. | `check_BatchExecutionAtomicity`, `check_DirectBatchExecutionAtomicity`, migration atomicity tests | Add token-portfolio rehearsal with non-standard ERC-20s. |
+| Uninitialized account or implementation takeover | Account initialization is one-shot and delegated initialization is self-only. | Initialization properties and `LoomAccountInitialization.spec` | Add proxy-factory differential evidence to the deployment manifest. |
+| Mutable upgrade/admin takeover | Deployment efficiency must not introduce upgrade authority. | Immutable proxy symbolic property, selector checks, and unit tests | Add bytecode-level selector evidence to deployment qualification. |
+| Arbitrary module/delegatecall backdoor | Modules cannot execute unsupported executor paths or bypass self/scheduled gates. | Privileged-call and unsupported-mode properties plus limited-mode tests | Add adapter conformance tests for every production module. |
+| Signature replay | Signatures bind account, chain, config version, nonce, validator, and call hash where applicable. | Direct-execution nonce property, digest tests, and migration binding property | Add explicit cross-chain fork tests for digest separation. |
+| Partial batch state | Failed atomic execution reverts earlier effects and nonce changes. | Ordinary, direct, and migration atomicity properties | Add token-portfolio rehearsal with non-standard ERC-20s. |
 
 ## Refinement Requirements Before Audit Freeze
 
@@ -58,5 +139,7 @@ Out of scope:
   explicit abstraction.
 - Every theorem cited externally must have at least one executable Solidity
   property or invariant covering the same intent.
+- Every committed `check_` property must appear exactly once in the executable
+  refinement matrix.
 - Any mismatch must either update the model, update the implementation, or be
   recorded as a deliberate abstraction with residual risk.
