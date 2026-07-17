@@ -46,3 +46,7 @@ not be cited as release evidence until:
 - secrets and license requirements are documented;
 - summaries for external modules are reviewed;
 - failures are deterministic on a clean checkout.
+
+Manual prover jobs retain target-specific, commit-bound evidence for 30 days.
+Partial artifacts aid diagnosis, but only a successful job with a completed
+prover log may be cited as runtime evidence. Missing credentials fail closed.

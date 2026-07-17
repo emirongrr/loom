@@ -79,6 +79,7 @@ function validateTestWorkflow() {
 
 function validateCertoraWorkflow() {
   const file = ".github/workflows/certora.yml";
+  const source = read(file);
   assertWorkflowSecurityDefaults(file);
   assertIncludes(file, "pull_request:", "certora workflow must run on every pull request because it is branch-required");
   assert(!read(file).includes("paths:"), `${file}: branch-required certora workflow must not use pull_request paths filters`);
@@ -89,9 +90,22 @@ function validateCertoraWorkflow() {
     "--compilation_steps_only",
     "solc-select install 0.8.35",
     "CERTORAKEY: ${{ secrets.CERTORA_KEY }}",
+    "credentialConfigured",
+    "Reject missing prover credential",
+    "set -o pipefail; certoraRun ${{ matrix.conf }} --wait_for_results=all",
+    "name: certora-prover-${{ matrix.id }}-${{ github.sha }}",
+    "path: artifacts/certora-prover",
+    "if: always()",
+    "retention-days: 30",
+    "if-no-files-found: error",
   ]) {
     assertIncludes(file, required, `missing required certora workflow step: ${required}`);
   }
+  const compileOnly = source.slice(source.indexOf("\n  compile-only:\n"), source.indexOf("\n  prove:\n"));
+  assert(
+    compileOnly.includes("matrix:\n        conf:\n") && !compileOnly.includes("- id:"),
+    `${file}: compile-only matrix labels must stay stable because branch protection requires their exact check names`,
+  );
 }
 
 function validateFormalWorkflow() {
@@ -194,8 +208,15 @@ function validateKontrolWorkflow() {
   for (const required of [
     "workflow_dispatch:",
     "kontrol build",
+    '"$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"',
     "kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
     "kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
+    "artifacts/kontrol/run-metadata.json",
+    "name: kontrol-prover-${{ github.sha }}",
+    "path: artifacts/kontrol",
+    "if: always()",
+    "retention-days: 30",
+    "if-no-files-found: error",
   ]) {
     assertIncludes(file, required, `missing required kontrol workflow step: ${required}`);
   }
