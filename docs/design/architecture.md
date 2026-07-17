@@ -217,8 +217,14 @@ The packages layer around one canonical core:
   separate packages because each sits on a real platform, secret, Node-runtime,
   or signer boundary.
 - `@loom/privacy` is optional and experimental and is never a dependency of
-  `@loom/sdk`. Privacy is reached only through a structural adapter, so a normal
-  wallet install pulls in no Kohaku, Railgun, or privacy-pool code.
+  `@loom/sdk` — the dependency points the other way: privacy layers on top of
+  the wallet engine and is the canonical import point for the private-flow
+  surface (`createKohakuRuntime`, `preparePrivateVaultWithdrawal`; the same
+  names on `@loom/sdk` are deprecated for one cycle). A client constructed
+  without a Kohaku host runs the entire non-private path; only touching the
+  privacy runtime fails, at use, with a typed error. Privacy is reached only
+  through a structural adapter, so a normal wallet install pulls in no Kohaku,
+  Railgun, or privacy-pool code.
 
 No package ships a default RPC, bundler, paymaster, or privacy provider:
 transports are injected and provider replacement is a first-class path. Deployed

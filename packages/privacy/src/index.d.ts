@@ -530,3 +530,17 @@ export interface KohakuAccountSecurityProfile {
   verification: "hybrid-ecdsa-and-post-quantum";
   productionGate: string;
 }
+
+// Canonical home of the private-flow wallet surface (the same names on
+// @loom/sdk are deprecated; import them from here).
+export {
+  createKohakuRuntime,
+  preparePrivateVaultWithdrawal
+} from "@loom/sdk";
+// KohakuHost is already declared by this package (privacy owns the host
+// contract); the engine-side runtime and preparation types re-export here.
+export type {
+  KohakuRuntime,
+  PrivateVaultWithdrawalPreparation,
+  PrivateVaultWithdrawalPreparationInput
+} from "@loom/sdk";
