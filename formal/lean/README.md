@@ -19,6 +19,7 @@ The current Lean model starts with:
 - rejected direct execution preserving its validator nonce;
 - batch execution as an all-or-nothing state transition;
 - external recovery calls preserving authority state;
+- non-controller keystore updates preserving authority state;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:

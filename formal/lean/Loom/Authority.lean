@@ -77,6 +77,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def keystoreConfigAttempt (s : State) (callerIsController : Bool) : State × Bool :=
+  if callerIsController then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
+
 def recoveryConfigurationAttempt (s : State) (callerIsRecoveryModule : Bool) : State × Bool :=
   if callerIsRecoveryModule then
     ({ s with configVersion := s.configVersion + 1 }, true)
@@ -188,6 +194,11 @@ theorem external_recovery_preserves_authority_state
     (s : State) :
     (recoveryConfigurationAttempt s false).1 = s := by
   simp [recoveryConfigurationAttempt]
+
+theorem non_controller_keystore_update_preserves_state
+    (s : State) :
+    (keystoreConfigAttempt s false).1 = s := by
+  simp [keystoreConfigAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
