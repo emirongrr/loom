@@ -58,8 +58,15 @@ structure State where
   migrationTarget : MigrationTarget
   migrationCallsHash : Nat
   migrationConfigVersion : Nat
+  batchEffect : Nat
   initialized : Bool
   deriving Repr
+
+def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
+  if fails then
+    (s, false)
+  else
+    ({ s with batchEffect := s.batchEffect + firstEffect + secondEffect }, true)
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
@@ -315,6 +322,19 @@ theorem scheduled_operation_rejects_config_change
     step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hchanged
   simp [step, hchanged]
+
+theorem failed_batch_preserves_state
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect true).1 = s := by
+  simp [executeBatch]
+
+theorem successful_batch_commits_all_effects
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect false).1.batchEffect =
+      s.batchEffect + firstEffect + secondEffect := by
+  simp [executeBatch]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
