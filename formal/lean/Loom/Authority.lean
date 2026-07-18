@@ -80,6 +80,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
   else
     ({ s with batchEffect := s.batchEffect + firstEffect + secondEffect }, true)
 
+def guardianConfigAttempt (s : State) (callerIsSelf : Bool) : State × Bool :=
+  if callerIsSelf then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
+
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
@@ -366,6 +372,11 @@ theorem scheduled_operation_rejects_config_change
     step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hchanged
   simp [step, hchanged]
+
+theorem external_guardian_config_preserves_state
+    (s : State) :
+    (guardianConfigAttempt s false).1 = s := by
+  simp [guardianConfigAttempt]
 
 theorem rejected_direct_execution_preserves_nonce
     (s : State) :
