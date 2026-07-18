@@ -58,8 +58,15 @@ structure State where
   migrationTarget : MigrationTarget
   migrationCallsHash : Nat
   migrationConfigVersion : Nat
+  directExecutionNonce : Nat
   initialized : Bool
   deriving Repr
+
+def executeDirectAttempt (s : State) (authorized : Bool) : State × Bool :=
+  if authorized then
+    ({ s with directExecutionNonce := s.directExecutionNonce + 1 }, true)
+  else
+    (s, false)
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
@@ -315,6 +322,11 @@ theorem scheduled_operation_rejects_config_change
     step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hchanged
   simp [step, hchanged]
+
+theorem rejected_direct_execution_preserves_nonce
+    (s : State) :
+    (executeDirectAttempt s false).1.directExecutionNonce = s.directExecutionNonce := by
+  simp [executeDirectAttempt]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)

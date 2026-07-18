@@ -16,6 +16,7 @@ The current Lean model starts with:
 - migration execution-window expiry;
 - migration execution binding to the scheduled call commitment;
 - migration destination, code-hash, and optional config-hash binding;
+- rejected direct execution preserving its validator nonce;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
