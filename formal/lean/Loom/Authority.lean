@@ -80,6 +80,9 @@ def hasValidator (s : State) : Prop :=
 def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.guardian then
     ({ s with configVersion := s.configVersion + 1 }, true)
+def syncAttempt (s : State) (readyAt replacementIdentity : Nat) : State × Bool :=
+  if readyAt <= s.now then
+    ({ s with validatorSetIdentity := replacementIdentity }, true)
   else
     (s, false)
 
@@ -206,6 +209,13 @@ theorem validator_cannot_perform_guardian_recovery_action
     (s : State) :
     (guardianRecoveryActionAttempt s Actor.validator).1 = s := by
   simp [guardianRecoveryActionAttempt]
+theorem sync_cannot_execute_before_delay
+    (s : State)
+    (readyAt replacementIdentity : Nat) :
+    s.now < readyAt ->
+    (syncAttempt s readyAt replacementIdentity).1 = s := by
+  intro hbefore
+  simp [syncAttempt, Nat.not_le_of_gt hbefore]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
