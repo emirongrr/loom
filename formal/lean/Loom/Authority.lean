@@ -77,6 +77,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
+  if actor = Actor.guardian then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
+
 def recoveryConfigurationAttempt (s : State) (callerIsRecoveryModule : Bool) : State × Bool :=
   if callerIsRecoveryModule then
     ({ s with configVersion := s.configVersion + 1 }, true)
@@ -188,6 +194,11 @@ theorem external_recovery_preserves_authority_state
     (s : State) :
     (recoveryConfigurationAttempt s false).1 = s := by
   simp [recoveryConfigurationAttempt]
+
+theorem validator_cannot_perform_guardian_recovery_action
+    (s : State) :
+    (guardianRecoveryActionAttempt s Actor.validator).1 = s := by
+  simp [guardianRecoveryActionAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
