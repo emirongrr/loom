@@ -12,6 +12,15 @@ inductive Actor where
   | proxy
   deriving DecidableEq, Repr
 
+structure MigrationTarget where
+  destination : Nat
+  codeHash : Nat
+  configHash : Nat
+  deriving DecidableEq, Repr
+
+def emptyMigrationTarget : MigrationTarget :=
+  { destination := 0, codeHash := 0, configHash := 0 }
+
 inductive Transition where
   | ordinaryExecute (actor : Actor)
   | freezeByGuardian
@@ -20,8 +29,12 @@ inductive Transition where
   | executeRecovery (newValidatorCount : Nat)
   | advanceTime (delta : Nat)
   | configChange
-  | scheduleMigration (delay : Nat) (executionWindow : Nat) (callsHash : Nat)
-  | executeMigration (callsHash : Nat)
+  | scheduleMigration
+      (delay : Nat)
+      (executionWindow : Nat)
+      (target : MigrationTarget)
+      (callsHash : Nat)
+  | executeMigration (observedTarget : MigrationTarget) (callsHash : Nat)
   | initialize
   | upgradeImplementation (actor : Actor)
   deriving DecidableEq, Repr
@@ -36,6 +49,7 @@ structure State where
   migrationPending : Bool
   migrationReadyAt : Nat
   migrationExpiresAt : Nat
+  migrationTarget : MigrationTarget
   migrationCallsHash : Nat
   initialized : Bool
   deriving Repr
@@ -54,6 +68,11 @@ def ordinaryActorAllowed : Actor -> Bool
   | Actor.account => true
   | Actor.validator => true
   | _ => false
+
+def migrationTargetMatches (scheduled observed : MigrationTarget) : Prop :=
+  scheduled.destination = observed.destination
+    /\ scheduled.codeHash = observed.codeHash
+    /\ (scheduled.configHash = 0 \/ scheduled.configHash = observed.configHash)
 
 def step (s : State) : Transition -> Option State
   | Transition.ordinaryExecute actor =>
@@ -87,17 +106,19 @@ def step (s : State) : Transition -> Option State
       some { s with now := s.now + delta }
   | Transition.configChange =>
       some { s with configVersion := s.configVersion + 1 }
-  | Transition.scheduleMigration delay executionWindow callsHash =>
+  | Transition.scheduleMigration delay executionWindow target callsHash =>
       some {
         s with
           migrationPending := true,
           migrationReadyAt := s.now + delay,
           migrationExpiresAt := s.now + delay + executionWindow,
+          migrationTarget := target,
           migrationCallsHash := callsHash
       }
-  | Transition.executeMigration callsHash =>
+  | Transition.executeMigration observedTarget callsHash =>
       if s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash then
+          \/ s.migrationExpiresAt < s.now \/ ¬ migrationTargetMatches s.migrationTarget observedTarget
+          \/ callsHash != s.migrationCallsHash then
         none
       else
         some {
@@ -105,6 +126,7 @@ def step (s : State) : Transition -> Option State
             migrationPending := false,
             migrationReadyAt := 0,
             migrationExpiresAt := 0,
+            migrationTarget := emptyMigrationTarget,
             migrationCallsHash := 0
         }
   | Transition.initialize =>
@@ -157,26 +179,62 @@ theorem recovery_cannot_execute_before_delay
   intro hp hbefore
   simp [step, hp, Nat.not_le_of_gt hbefore]
 
-theorem migration_cannot_execute_before_delay (s : State) (callsHash : Nat) :
+theorem migration_cannot_execute_before_delay
+    (s : State)
+    (observedTarget : MigrationTarget)
+    (callsHash : Nat) :
     s.migrationPending = true ->
     s.now < s.migrationReadyAt ->
-    step s (Transition.executeMigration callsHash) = none := by
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hp hbefore
   simp [step, hp, hbefore]
 
 theorem migration_rejects_mismatched_calls_hash
     (s : State)
+    (observedTarget : MigrationTarget)
     (callsHash : Nat) :
     callsHash != s.migrationCallsHash ->
-    step s (Transition.executeMigration callsHash) = none := by
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hmismatch
   simp [step, hmismatch]
 
-theorem migration_cannot_execute_after_expiry (s : State) (callsHash : Nat) :
+theorem migration_cannot_execute_after_expiry
+    (s : State)
+    (observedTarget : MigrationTarget)
+    (callsHash : Nat) :
     s.migrationExpiresAt < s.now ->
-    step s (Transition.executeMigration callsHash) = none := by
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
   intro hexpired
   simp [step, hexpired]
+
+theorem migration_rejects_mismatched_target
+    (s : State)
+    (observedTarget : MigrationTarget)
+    (callsHash : Nat) :
+    ¬ migrationTargetMatches s.migrationTarget observedTarget ->
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
+  intro hmismatch
+  simp [step, hmismatch]
+
+theorem migration_target_zero_config_is_wildcard
+    (scheduled observed : MigrationTarget) :
+    scheduled.destination = observed.destination ->
+    scheduled.codeHash = observed.codeHash ->
+    scheduled.configHash = 0 ->
+    migrationTargetMatches scheduled observed := by
+  intro hdestination hcode hconfig
+  simp [migrationTargetMatches, hdestination, hcode, hconfig]
+
+theorem migration_rejects_changed_bound_config
+    (s : State)
+    (observedTarget : MigrationTarget)
+    (callsHash : Nat) :
+    s.migrationTarget.configHash != 0 ->
+    s.migrationTarget.configHash != observedTarget.configHash ->
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
+  intro hbound hchanged
+  apply migration_rejects_mismatched_target
+  simp [migrationTargetMatches, hbound, hchanged]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
@@ -244,14 +302,15 @@ theorem successful_step_preserves_validator_nonzero
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | scheduleMigration delay executionWindow callsHash =>
+  | scheduleMigration delay executionWindow target callsHash =>
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | executeMigration callsHash =>
+  | executeMigration observedTarget callsHash =>
       unfold step at hstep
       by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash
+          \/ s.migrationExpiresAt < s.now \/ ¬ migrationTargetMatches s.migrationTarget observedTarget
+          \/ callsHash != s.migrationCallsHash
       · simp [h] at hstep
       · simp [h, hasValidator] at hstep
         cases hstep
@@ -314,14 +373,15 @@ theorem config_version_never_decreases_on_success
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | scheduleMigration delay executionWindow callsHash =>
+  | scheduleMigration delay executionWindow target callsHash =>
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | executeMigration callsHash =>
+  | executeMigration observedTarget callsHash =>
       unfold step at hstep
       by_cases h : s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
-          \/ s.migrationExpiresAt < s.now \/ callsHash != s.migrationCallsHash
+          \/ s.migrationExpiresAt < s.now \/ ¬ migrationTargetMatches s.migrationTarget observedTarget
+          \/ callsHash != s.migrationCallsHash
       · simp [h] at hstep
       · simp [h] at hstep
         cases hstep

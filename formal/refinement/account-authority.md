@@ -77,9 +77,10 @@ that the abstract model proves them.
 | `frozen` | `block.timestamp < LoomAccount.frozenUntil()` | Derived predicate mapped; the Lean Boolean omits the clock and expiry transition. |
 | `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest, expiry, and validator set are abstracted. |
 | `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state and expiry remains concrete-only. |
-| `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped; destination, EntryPoint, code hash, and config are abstracted. |
+| `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped independently from the target commitments represented by `migrationTarget`. |
 | `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
 | `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
+| `migrationTarget` | `pendingMigration.destination`, `destinationCodeHash`, `destinationConfigHash` | Destination and code hash match exactly; zero config hash preserves Solidity's optional config-binding semantics. |
 | `migrationCallsHash` | `LoomAccount.pendingMigration().callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
 
@@ -94,8 +95,8 @@ that the abstract model proves them.
 | `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now`, non-zero replacement | expiry, exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
 | `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly | scheduling delay, operation hash, exact changed state, stale invalidation |
-| `scheduleMigration` | `scheduleMigration` | records `readyAt = now + delay`, `expiresAt = readyAt + executionWindow`, and the call commitment | destination code hash, EntryPoint, config hash, delay/window bounds |
-| `executeMigration` | `executeMigration` | pending, not frozen, `readyAt <= now <= expiresAt`, matching call commitment | destination/config bindings, hook mediation, atomic external calls |
+| `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
+| `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target and call commitments | hook mediation and atomic external calls |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 
@@ -112,6 +113,9 @@ Every current theorem has at least one concrete review anchor:
 - `migration_cannot_execute_before_delay`: migration delay symbolic and integration properties;
 - `migration_rejects_mismatched_calls_hash`: migration call-hash binding symbolic and integration properties;
 - `migration_cannot_execute_after_expiry`: migration execution-window integration properties;
+- `migration_rejects_mismatched_target`: migration destination/code/config binding integration properties;
+- `migration_target_zero_config_is_wildcard`: optional destination-config binding semantics;
+- `migration_rejects_changed_bound_config`: non-zero destination-config binding integrity;
 - `platform_actors_cannot_ordinary_execute_when_not_frozen`: factory/proxy non-authority tests and privileged-call property;
 - `successful_step_preserves_validator_nonzero`: last-validator property and stateful invariants;
 - `config_version_never_decreases_on_success`: stale-schedule property and configuration invariants.
