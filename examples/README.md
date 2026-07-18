@@ -58,8 +58,11 @@ EntryPoint and factory events with the `@loom/core` ABIs, tracks each operation
 through idempotent `submitted → included → finalized` transitions with a
 finality policy, and survives reorgs, duplicates, replacement, and provider
 disagreement. It holds no keys and picks no framework — logs and head numbers in,
-webhook-shaped events and metrics out. The `e2e:bundler-devnet` proof replays
-the live devnet's real EntryPoint logs through it. See
+webhook-shaped events and metrics out. It also ships a monitoring layer —
+a manifest-driven indexer, a Prometheus exporter, and a provisioned Grafana
+dashboard (TVL, active users, TPS, accounts, gas cost, block-space share). The
+`e2e:bundler-devnet` proof replays the live devnet's real EntryPoint logs
+through both the tracker and the metrics/Prometheus chain. See
 [`backend-userop-tracker/README.md`](backend-userop-tracker/README.md).
 
 ### `enterprise-onboarding.mjs`

@@ -1,0 +1,35 @@
+# Local monitoring stack: Prometheus scrapes the example's /metrics endpoint,
+# Grafana provisions the Loom dashboard against Prometheus.
+#
+#   1. Run the exporter on the host (it reaches your RPC, not the containers):
+#        LOOM_RPC_URL=... LOOM_MANIFEST=... node server.mjs
+#   2. Bring up the stack:
+#        docker compose -f monitoring/docker-compose.yml up
+#   3. Open Grafana at http://localhost:3000 (admin / admin) -> "Loom Overview".
+#
+# Versions are pinned; nothing here talks to a chain — the exporter does, and
+# Prometheus only scrapes the exporter.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

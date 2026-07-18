@@ -272,6 +272,34 @@ try {
   }
   console.log(`    ok  tracked ${finalized.length} bundler operations from real logs to finalized`);
 
+  // The observability stack, live: connect this deployment from a manifest and
+  // index it end to end — real logs -> tracker -> dashboard metrics -> the
+  // Prometheus exposition an operator's Grafana would scrape.
+  console.log("==> observability indexer + Prometheus metrics against the live devnet");
+  const { createDashboardMetrics } = await import("../../examples/backend-userop-tracker/src/metrics.mjs");
+  const { createIndexer } = await import("../../examples/backend-userop-tracker/src/indexer.mjs");
+  const { renderPrometheus } = await import("../../examples/backend-userop-tracker/src/prometheus.mjs");
+  const dashTracker = createTracker({ chainId: state.chainId, entryPoint, factory, confirmations: 0 });
+  const dashMetrics = createDashboardMetrics({ activeWindowSeconds: 24 * 3600 });
+  const indexer = createIndexer({
+    rpc: doctorRpc,
+    tracker: dashTracker,
+    metrics: dashMetrics,
+    manifest: { chainId: state.chainId, entryPoint: { address: entryPoint }, factory: { address: factory }, deployBlock: 0 }
+  });
+  const indexed = await indexer.sync();
+  const summary = dashMetrics.update();
+  console.log(`    accounts=${summary.accounts} activeUsers=${summary.activeUsers} ops=${summary.totalOps} tvlWei=${summary.tvlWei}`);
+  assert.ok(indexed.accounts >= 1, "indexer connected the factory and saw account creation");
+  assert.ok(summary.totalOps >= 3, "indexer counted the bundler operations");
+  assert.ok(summary.activeUsers >= 1, "at least one active user");
+  assert.ok(summary.tvlWei > 0n, "TVL computed from real account balances");
+  const exposition = renderPrometheus(dashMetrics.registry.snapshot());
+  for (const metricName of ["loom_tvl_wei", "loom_active_users", "loom_userops_total", "loom_tps", "loom_gas_cost_wei_avg"]) {
+    assert.ok(exposition.includes(metricName), `Prometheus output missing ${metricName}`);
+  }
+  console.log("    ok  dashboard metrics computed and rendered as Prometheus exposition");
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {

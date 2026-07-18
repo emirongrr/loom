@@ -47,6 +47,45 @@ through this tracker and requires that every operation the send pipeline
 submitted is decoded and tracked to `finalized` — the proof that the decoders
 and state machine match a real EntryPoint, not just synthetic fixtures.
 
+## Monitoring dashboard
+
+The tracker doubles as the data source for an operator dashboard. Three modules
+turn tracked activity into metrics an operator watches:
+
+- `src/metrics.mjs` — a dependency-free metric registry plus an aggregator that
+  computes account count, active users, throughput (TPS), gas cost, block-space
+  share, and TVL (native balances, plus any ERC-20s you list) from the tracked
+  operations and a few read-only balance reads.
+- `src/indexer.mjs` — **connects a deployment straight from its manifest** (the
+  EntryPoint and factory are read from it — no manual wiring), polls chain logs,
+  feeds the tracker, and refreshes the metrics. Incremental and idempotent.
+- `src/prometheus.mjs` — renders the metrics as Prometheus exposition text and
+  offers a tiny `/metrics` HTTP handler (no Prometheus client library).
+
+Run the exporter against your own RPC and a deployment manifest:
+
+```sh
+LOOM_RPC_URL=https://your-rpc \
+LOOM_MANIFEST=./deployment/manifest.json \
+  node examples/backend-userop-tracker/server.mjs
+# metrics on http://localhost:9464/metrics
+```
+
+Then bring up Prometheus + Grafana with the provided stack — the `Loom Overview`
+dashboard (TVL, active users, TPS, accounts, gas cost, block-space share) is
+provisioned automatically:
+
+```sh
+docker compose -f examples/backend-userop-tracker/monitoring/docker-compose.yml up
+# Grafana at http://localhost:3000 (admin / admin)
+```
+
+Exposed series: `loom_accounts_total`, `loom_active_users`, `loom_userops_total`,
+`loom_userops_failed_total`, `loom_tps`, `loom_gas_cost_wei_total`,
+`loom_gas_cost_wei_avg`, `loom_gas_used_total`, `loom_block_space_fraction`,
+`loom_tvl_wei`, `loom_tvl_eth`. The metric shape is OpenTelemetry-compatible
+(named series with labels); nothing here mandates a Loom-operated collector.
+
 ## Not a package (yet)
 
 Per the SDK architecture guidance, there is no `@loom/backend` until a second
