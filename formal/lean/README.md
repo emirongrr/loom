@@ -16,12 +16,11 @@ The current Lean model starts with:
 - migration execution-window expiry;
 - migration execution binding to the scheduled call commitment;
 - migration destination, code-hash, and optional config-hash binding;
+- batch execution as an all-or-nothing state transition;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
 
-- scheduled-operation invalidation after configuration change;
-- batch atomicity as an abstract all-or-nothing transition;
 - a reviewed refinement table connecting each abstract transition to Solidity.
 
 Before any Lean theorem is cited as Loom assurance, the repository must also

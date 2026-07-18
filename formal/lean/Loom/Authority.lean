@@ -57,8 +57,16 @@ structure State where
   migrationExpiresAt : Nat
   migrationTarget : MigrationTarget
   migrationCallsHash : Nat
+  migrationConfigVersion : Nat
+  batchEffect : Nat
   initialized : Bool
   deriving Repr
+
+def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
+  if fails then
+    (s, false)
+  else
+    ({ s with batchEffect := s.batchEffect + firstEffect + secondEffect }, true)
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
@@ -136,12 +144,13 @@ def step (s : State) : Transition -> Option State
           migrationReadyAt := s.now + delay,
           migrationExpiresAt := s.now + delay + executionWindow,
           migrationTarget := target,
-          migrationCallsHash := callsHash
+          migrationCallsHash := callsHash,
+          migrationConfigVersion := s.configVersion
       }
   | Transition.executeMigration observedTarget callsHash =>
       if s.frozen = true \/ s.migrationPending = false \/ s.now < s.migrationReadyAt
           \/ s.migrationExpiresAt < s.now \/ ¬ migrationTargetMatches s.migrationTarget observedTarget
-          \/ callsHash != s.migrationCallsHash then
+          \/ callsHash != s.migrationCallsHash \/ s.migrationConfigVersion != s.configVersion then
         none
       else
         some {
@@ -150,7 +159,8 @@ def step (s : State) : Transition -> Option State
             migrationReadyAt := 0,
             migrationExpiresAt := 0,
             migrationTarget := emptyMigrationTarget,
-            migrationCallsHash := 0
+            migrationCallsHash := 0,
+            migrationConfigVersion := 0
         }
   | Transition.initialize =>
       if s.initialized = true then none else some { s with initialized := true }
@@ -303,6 +313,28 @@ theorem migration_rejects_changed_bound_config
   intro hbound hchanged
   apply migration_rejects_mismatched_target
   simp [migrationTargetMatches, hbound, hchanged]
+
+theorem scheduled_operation_rejects_config_change
+    (s : State)
+    (observedTarget : MigrationTarget)
+    (callsHash : Nat) :
+    s.migrationConfigVersion != s.configVersion ->
+    step s (Transition.executeMigration observedTarget callsHash) = none := by
+  intro hchanged
+  simp [step, hchanged]
+
+theorem failed_batch_preserves_state
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect true).1 = s := by
+  simp [executeBatch]
+
+theorem successful_batch_commits_all_effects
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect false).1.batchEffect =
+      s.batchEffect + firstEffect + secondEffect := by
+  simp [executeBatch]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
