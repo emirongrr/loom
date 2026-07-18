@@ -13,6 +13,7 @@ const requiredFiles = [
   "pages/index.mdx",
   "pages/getting-started.mdx",
   "pages/sdk.mdx",
+  "pages/operations.mdx",
   "pages/comparisons.mdx",
   "pages/security.mdx",
   "public/llms.txt",
@@ -27,6 +28,14 @@ for (const file of requiredFiles) {
 const config = readFileSync(join(siteRoot, "vocs.config.ts"), "utf8");
 assertIncludes(config, "basePath: '/loom'", "docs/site/vocs.config.ts");
 assertIncludes(config, "title: 'Loom'", "docs/site/vocs.config.ts");
+// The operations page must stay linked from the navigation, not just present.
+assertIncludes(config, "/operations", "docs/site/vocs.config.ts");
+
+// The operations page must actually cover the shipped operational surface.
+const operations = readFileSync(join(siteRoot, "pages", "operations.mdx"), "utf8");
+for (const phrase of ["loom devnet", "loom doctor", "e2e:clean-room", "pre-audit"]) {
+  assertIncludes(operations, phrase, "docs/site/pages/operations.mdx");
+}
 
 const index = readFileSync(join(siteRoot, "pages", "index.mdx"), "utf8");
 for (const phrase of [
