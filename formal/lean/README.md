@@ -18,6 +18,7 @@ The current Lean model starts with:
 - migration destination, code-hash, and optional config-hash binding;
 - rejected direct execution preserving its validator nonce;
 - batch execution as an all-or-nothing state transition;
+- external recovery calls preserving authority state;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
