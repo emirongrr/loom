@@ -63,6 +63,12 @@ structure State where
   initialized : Bool
   deriving Repr
 
+def delegatedInitialize (s : State) (callerIsSelf : Bool) : State × Bool :=
+  if callerIsSelf then
+    ({ s with initialized := true }, true)
+  else
+    (s, false)
+
 def executeDirectAttempt (s : State) (authorized : Bool) : State × Bool :=
   if authorized then
     ({ s with directExecutionNonce := s.directExecutionNonce + 1 }, true)
@@ -73,6 +79,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
     (s, false)
   else
     ({ s with batchEffect := s.batchEffect + firstEffect + secondEffect }, true)
+
+def guardianConfigAttempt (s : State) (callerIsSelf : Bool) : State × Bool :=
+  if callerIsSelf then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
@@ -368,6 +380,11 @@ theorem scheduled_operation_rejects_config_change
   intro hchanged
   simp [step, hchanged]
 
+theorem external_guardian_config_preserves_state
+    (s : State) :
+    (guardianConfigAttempt s false).1 = s := by
+  simp [guardianConfigAttempt]
+
 theorem rejected_direct_execution_preserves_nonce
     (s : State) :
     (executeDirectAttempt s false).1.directExecutionNonce = s.directExecutionNonce := by
@@ -377,6 +394,11 @@ theorem failed_batch_preserves_state
     (firstEffect secondEffect : Nat) :
     (executeBatch s firstEffect secondEffect true).1 = s := by
   simp [executeBatch]
+
+theorem external_delegated_initializer_preserves_state
+    (s : State) :
+    (delegatedInitialize s false).1 = s := by
+  simp [delegatedInitialize]
 
 theorem successful_batch_commits_all_effects
     (s : State)
