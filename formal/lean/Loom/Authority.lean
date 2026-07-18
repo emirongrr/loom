@@ -58,6 +58,7 @@ structure State where
   migrationTarget : MigrationTarget
   migrationCallsHash : Nat
   migrationConfigVersion : Nat
+  directExecutionNonce : Nat
   batchEffect : Nat
   initialized : Bool
   deriving Repr
@@ -68,6 +69,11 @@ def delegatedInitialize (s : State) (callerIsSelf : Bool) : State × Bool :=
   else
     (s, false)
 
+def executeDirectAttempt (s : State) (authorized : Bool) : State × Bool :=
+  if authorized then
+    ({ s with directExecutionNonce := s.directExecutionNonce + 1 }, true)
+  else
+    (s, false)
 def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
   if fails then
     (s, false)
@@ -76,6 +82,15 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
+
+def validatorActionAttempt (s : State) (actor : Actor) : State × Bool :=
+  if actor = Actor.validator then
+    ({ s with validatorCount := s.validatorCount + 1 }, true)
+def recoveryConfigurationAttempt (s : State) (callerIsRecoveryModule : Bool) : State × Bool :=
+  if callerIsRecoveryModule then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
 
 def noPlatformAuthority (actor : Actor) : Prop :=
   actor != Actor.developer
@@ -177,6 +192,15 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
     s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
   intro h
   simp [step, h]
+
+theorem guardian_cannot_perform_validator_action
+    (s : State) :
+    (validatorActionAttempt s Actor.guardian).1 = s := by
+  simp [validatorActionAttempt]
+theorem external_recovery_preserves_authority_state
+    (s : State) :
+    (recoveryConfigurationAttempt s false).1 = s := by
+  simp [recoveryConfigurationAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
@@ -329,6 +353,10 @@ theorem scheduled_operation_rejects_config_change
   intro hchanged
   simp [step, hchanged]
 
+theorem rejected_direct_execution_preserves_nonce
+    (s : State) :
+    (executeDirectAttempt s false).1.directExecutionNonce = s.directExecutionNonce := by
+  simp [executeDirectAttempt]
 theorem failed_batch_preserves_state
     (s : State)
     (firstEffect secondEffect : Nat) :

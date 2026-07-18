@@ -1,13 +1,19 @@
 # SDK
 
-Loom currently ships four early SDK packages:
+Loom ships these early SDK packages:
 
-- `@loom/account` for account lifecycle intent builders.
+- `@loom/core` for the canonical ABIs, types, hashing, manifest validation, and
+  account-derivation primitives every other package builds on.
+- `@loom/sdk` for the local wallet-engine client: account lifecycle intent
+  builders, passkey signing, the ERC-4337 send pipeline, and app-scoped session
+  helpers. The former `@loom/account` package folded into it and remains only as
+  a deprecated re-export for one cycle.
 - `@loom/guardian` for guardian Merkle-tree construction, inclusion proofs, and
   the guardian setup ceremony.
-- `@loom/privacy` for a Kohaku-compatible privacy runtime boundary.
-- `@loom/sdk` for the local wallet-engine client surface that joins account,
-  privacy, passkey, bundler, and app-scoped session helpers.
+- `@loom/privacy` for the optional Kohaku-compatible privacy runtime boundary,
+  and the canonical import point for the private-flow surface. Privacy layers on
+  top of the wallet engine; a wallet that never touches a private flow pulls in
+  no privacy code.
 
 These packages are wallet-engine primitives, not a finished wallet client.
 They must not hide trust assumptions, select default infrastructure, or claim
@@ -62,12 +68,12 @@ import {
   createPasskeySigner,
 } from '@loom/sdk'
 
+// Privacy is an optional layer: a wallet that never touches a private flow
+// passes no `kohaku` host and pulls in no privacy code. Add `kohaku: { host }`
+// (built with `@loom/privacy`) only when a private flow is needed.
 const wallet = createLoomClient({
   chainId: 1,
   account: '0x1111111111111111111111111111111111111111',
-  kohaku: {
-    providerProfile: profile,
-  },
 })
 
 await wallet.sendCallsAndWait(
