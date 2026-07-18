@@ -49,7 +49,7 @@ that the abstract model proves them.
 | `check_ExternalCannotSetGuardianConfig` | External callers cannot change guardian authority. | Not modeled. | `setGuardianConfig`, self-call guard | Lean does not model guardian configuration fields or self-call routing. |
 | `check_GuardianlessBootstrapHasNoGuardianAuthority` | An empty guardian bootstrap grants no guardian power. | Not modeled. | constructor guardian fields, `freeze`, `setGuardianConfig` | Lean has no guardian root or threshold. |
 | `check_ExternalCannotRecoverConfiguration` | External callers cannot invoke account-internal recovery. | Not modeled. | `recoverConfiguration`, `recoverConfigurationSet` | Lean models the recovery transition but not its authorized caller. |
-| `check_UnsupportedExecutionModeNeverExecutes` | Unsupported ERC-7579 modes cannot call targets. | Not modeled. | `execute`, execution-mode decoder | Lean has no execution-mode domain. |
+| `check_UnsupportedExecutionModeNeverExecutes` | Unsupported ERC-7579 modes cannot call targets. | `unsupported_execution_mode_preserves_state` | `execute`, execution-mode decoder | Lean abstracts mode support to a Boolean and does not model target calldata decoding. |
 | `check_CannotRemoveLastValidator` | Every successful transition retains a validator. | `successful_step_preserves_validator_nonzero` | `_uninstallModule`, validator-set validation | Concrete coverage is selected paths, not every future module transition. |
 | `check_ConfigUpdateInvalidatesStaleSchedule` | Authority changes invalidate stale scheduled calls. | `scheduled_operation_rejects_config_change` | `configVersion`, `configHash`, scheduled calls | Lean models the scheduled commitment's config-version binding; concrete call hashing and full state rollback remain Solidity-tested. |
 | `check_GuardianCannotPerformValidatorAction` | Guardian authority cannot become spending authority. | Not modeled. | `execute`, caller/EntryPoint guards | `ordinaryActorAllowed` rejects guardians but does not refine guardian proofs. |
@@ -105,6 +105,7 @@ that the abstract model proves them.
 | `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `executeDirectAttempt` | `executeDirect` | rejected authorization leaves the nonce unchanged | signature verification, validity window, validator installation, and nonce-map selection |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
+| `executionModeAttempt` | `execute` | unsupported modes return the original account state without executing | ERC-7579 mode layout, decoder, target calls, and exact revert data |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 

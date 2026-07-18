@@ -77,6 +77,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def executionModeAttempt (s : State) (modeSupported : Bool) : State × Bool :=
+  if modeSupported then
+    (s, true)
+  else
+    (s, false)
+
 def noPlatformAuthority (actor : Actor) : Prop :=
   actor != Actor.developer
     /\ actor != Actor.factory
@@ -177,6 +183,11 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
     s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
   intro h
   simp [step, h]
+
+theorem unsupported_execution_mode_preserves_state
+    (s : State) :
+    (executionModeAttempt s false).1 = s := by
+  simp [executionModeAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
