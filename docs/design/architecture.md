@@ -246,6 +246,15 @@ creation uses the sovereign direct-to-EntryPoint path — the factory fail-close
 to the real SenderCreator, which no third-party simulator can satisfy — and all
 later traffic runs as ordinary bundler operations.
 
+`loom doctor` is the read-only counterpart for production operation: it
+sequences existing verification primitives — manifest code-hash checks and the
+P-256 precompile probe from `@loom/deployment`, account safety-state reads from
+`@loom/sdk` — into one report covering chain identity, EntryPoint and
+SenderCreator code, native P-256 behaviour, bundler EntryPoint support, and
+account freeze/pending state. It signs and mutates nothing, exits nonzero on any
+verification failure, and redacts every endpoint to its origin in all output,
+error messages included.
+
 Packages are TypeScript compiled to ESM with generated type declarations. `viem`
 is used internally for ABI and ERC-4337 encoding, but never appears in a public
 interface: those stay defined by Loom's own structural provider types.

@@ -32,7 +32,9 @@ test("no arguments prints usage and exits zero", () => {
   assertNoOwnedState();
   const { code, stdout } = loom();
   assert.equal(code, 0);
-  assert.match(stdout, /usage: loom devnet/);
+  assert.match(stdout, /usage:/);
+  assert.match(stdout, /loom devnet/);
+  assert.match(stdout, /loom doctor/);
 });
 
 test("an unknown top-level command is an input error", () => {

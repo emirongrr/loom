@@ -34,6 +34,27 @@ The bundler executor and utility keys are anvil's well-known deterministic
 accounts — public constants, devnet only — and reach Alto through environment
 variables, never argv. The CLI accepts no private key.
 
+## `loom doctor`
+
+Read-only production-operation diagnostics. Each check delegates to an existing,
+tested primitive — manifest code-hash verification and the P-256 precompile
+probe from `@loom/deployment`, account safety-state reads from `@loom/sdk` — and
+the doctor only sequences them and normalizes the report. It never signs, sends,
+or mutates, and every endpoint is redacted to its origin in all output,
+including inside error messages.
+
+```sh
+loom doctor --rpc-url <url> [--bundler-url <url>] [--manifest <path>] \
+            [--entrypoint <addr>] [--account <addr>] [--chain-id <n>] \
+            [--recovery-module <addr>] [--json]
+```
+
+Checks: runtime/pinned-tool versions; chain reachability and id; deployment
+component code hashes (with `--manifest`) or EntryPoint code presence;
+`EntryPoint.senderCreator()` code; native P-256 precompile behaviour; bundler
+supported EntryPoints (with `--bundler-url`); and account freeze/pending state
+(with `--account` and `--chain-id`). Any verification failure exits `6`.
+
 ## Exit codes
 
 | Code | Meaning |
