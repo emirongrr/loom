@@ -59,6 +59,7 @@ structure State where
   migrationCallsHash : Nat
   migrationConfigVersion : Nat
   directExecutionNonce : Nat
+  batchEffect : Nat
   initialized : Bool
   deriving Repr
 
@@ -67,6 +68,11 @@ def executeDirectAttempt (s : State) (authorized : Bool) : State × Bool :=
     ({ s with directExecutionNonce := s.directExecutionNonce + 1 }, true)
   else
     (s, false)
+def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
+  if fails then
+    (s, false)
+  else
+    ({ s with batchEffect := s.batchEffect + firstEffect + secondEffect }, true)
 
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
@@ -327,6 +333,18 @@ theorem rejected_direct_execution_preserves_nonce
     (s : State) :
     (executeDirectAttempt s false).1.directExecutionNonce = s.directExecutionNonce := by
   simp [executeDirectAttempt]
+theorem failed_batch_preserves_state
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect true).1 = s := by
+  simp [executeBatch]
+
+theorem successful_batch_commits_all_effects
+    (s : State)
+    (firstEffect secondEffect : Nat) :
+    (executeBatch s firstEffect secondEffect false).1.batchEffect =
+      s.batchEffect + firstEffect + secondEffect := by
+  simp [executeBatch]
 
 theorem platform_actors_cannot_ordinary_execute_when_not_frozen
     (s : State)
