@@ -47,7 +47,7 @@ that the abstract model proves them.
 | `check_FrozenAccountCannotDirectExecute` | Freeze blocks ordinary direct execution. | `frozen_blocks_ordinary_execution` | `executeDirect`, `_executeAuthorized` | Direct nonce/signature behavior is not modeled. |
 | `check_DirectBatchExecutionAtomicity` | A reverting direct batch preserves effects and nonce. | `failed_batch_preserves_state` | `executeDirect`, batch loop, direct nonce | Lean abstracts nonce and external calls; concrete rollback remains covered by the Solidity property. |
 | `check_ExternalCannotSetGuardianConfig` | External callers cannot change guardian authority. | Not modeled. | `setGuardianConfig`, self-call guard | Lean does not model guardian configuration fields or self-call routing. |
-| `check_GuardianlessBootstrapHasNoGuardianAuthority` | An empty guardian bootstrap grants no guardian power. | Not modeled. | constructor guardian fields, `freeze`, `setGuardianConfig` | Lean has no guardian root or threshold. |
+| `check_GuardianlessBootstrapHasNoGuardianAuthority` | An empty guardian bootstrap grants no guardian power. | `guardianless_bootstrap_has_no_guardian_authority` | constructor guardian fields, `freeze`, `setGuardianConfig` | Lean abstracts guardian configuration to a Boolean; exact root and threshold validation remain concrete. |
 | `check_ExternalCannotRecoverConfiguration` | External callers cannot invoke account-internal recovery. | Not modeled. | `recoverConfiguration`, `recoverConfigurationSet` | Lean models the recovery transition but not its authorized caller. |
 | `check_UnsupportedExecutionModeNeverExecutes` | Unsupported ERC-7579 modes cannot call targets. | Not modeled. | `execute`, execution-mode decoder | Lean has no execution-mode domain. |
 | `check_CannotRemoveLastValidator` | Every successful transition retains a validator. | `successful_step_preserves_validator_nonzero` | `_uninstallModule`, validator-set validation | Concrete coverage is selected paths, not every future module transition. |
@@ -105,6 +105,7 @@ that the abstract model proves them.
 | `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `executeDirectAttempt` | `executeDirect` | rejected authorization leaves the nonce unchanged | signature verification, validity window, validator installation, and nonce-map selection |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
+| `guardianlessFreezeAttempt` | `freeze` and guardian configuration guards | an unconfigured guardian set cannot change frozen state | guardian proof verification, root/threshold storage, and exact revert data |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 

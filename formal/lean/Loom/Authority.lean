@@ -77,6 +77,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def guardianlessFreezeAttempt (s : State) (guardianConfigured : Bool) : State × Bool :=
+  if guardianConfigured then
+    ({ s with frozen := true }, true)
+  else
+    (s, false)
+
 def noPlatformAuthority (actor : Actor) : Prop :=
   actor != Actor.developer
     /\ actor != Actor.factory
@@ -177,6 +183,11 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
     s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
   intro h
   simp [step, h]
+
+theorem guardianless_bootstrap_has_no_guardian_authority
+    (s : State) :
+    (guardianlessFreezeAttempt s false).1 = s := by
+  simp [guardianlessFreezeAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
