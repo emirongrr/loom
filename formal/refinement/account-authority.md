@@ -41,7 +41,7 @@ that the abstract model proves them.
 | `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | Not modeled. | `initializeDelegatedAccount` | Lean has no caller/self-call predicate. |
 | `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | Not modeled. | proxy constructor delegatecall and account storage | Lean has no proxy/implementation storage separation. |
 | `check_NoMutableUpgradeSelectorsThroughProxy` | The immutable proxy exposes no upgrade transition. | `immutable_proxy_has_no_upgrade_transition` | `LoomAccountProxy.implementation`, fallback path | The theorem abstracts bytecode selectors and delegatecall semantics. |
-| `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | Not modeled. | `executeDirect`, validator nonce storage | Lean has no nonce or signature state. |
+| `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | `rejected_direct_execution_preserves_nonce` | `executeDirect`, validator nonce storage | Lean models one abstract validator nonce; signature digest, validator identity, and nonce map isolation remain concrete. |
 | `check_BatchExecutionAtomicity` | A reverting ordinary batch leaves no partial effect. | `failed_batch_preserves_state`, `successful_batch_commits_all_effects` | `_executeAuthorized`, batch execution loop | Lean abstracts external calls to a committed effect counter and does not model EVM revert data. |
 | `check_FrozenAccountCannotExecute` | Freeze blocks ordinary EntryPoint execution. | `frozen_blocks_ordinary_execution` | `execute`, `_executeAuthorized` | Lean collapses EntryPoint and validator authorization into an actor. |
 | `check_FrozenAccountCannotDirectExecute` | Freeze blocks ordinary direct execution. | `frozen_blocks_ordinary_execution` | `executeDirect`, `_executeAuthorized` | Direct nonce/signature behavior is not modeled. |
@@ -86,6 +86,7 @@ that the abstract model proves them.
 | `migrationTarget` | `pendingMigration.destination`, `destinationCodeHash`, `destinationConfigHash` | Destination and code hash match exactly; zero config hash preserves Solidity's optional config-binding semantics. |
 | `migrationCallsHash` | `LoomAccount.pendingMigration().callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
 | `migrationConfigVersion` | scheduled migration's `configVersion` binding | Abstract version binding; concrete pending-operation layout and hash encoding remain implementation details. |
+| `directExecutionNonce` | `LoomAccount.directExecutionNonces(validator)` | Abstract single-validator nonce; concrete mapping keys and digest domain separation remain implementation details. |
 | `batchEffect` | effects produced by an abstract execution batch | Abstract aggregate effect counter used only to state atomicity; concrete target storage and token balances remain external. |
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
 
@@ -102,6 +103,7 @@ that the abstract model proves them.
 | `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly and invalidates commitments bound to an older version | scheduling delay, operation hash, exact changed state, stale invalidation |
 | `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
 | `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
+| `executeDirectAttempt` | `executeDirect` | rejected authorization leaves the nonce unchanged | signature verification, validity window, validator installation, and nonce-map selection |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |

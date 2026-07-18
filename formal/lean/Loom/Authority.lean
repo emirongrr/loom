@@ -58,10 +58,16 @@ structure State where
   migrationTarget : MigrationTarget
   migrationCallsHash : Nat
   migrationConfigVersion : Nat
+  directExecutionNonce : Nat
   batchEffect : Nat
   initialized : Bool
   deriving Repr
 
+def executeDirectAttempt (s : State) (authorized : Bool) : State × Bool :=
+  if authorized then
+    ({ s with directExecutionNonce := s.directExecutionNonce + 1 }, true)
+  else
+    (s, false)
 def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
   if fails then
     (s, false)
@@ -323,6 +329,10 @@ theorem scheduled_operation_rejects_config_change
   intro hchanged
   simp [step, hchanged]
 
+theorem rejected_direct_execution_preserves_nonce
+    (s : State) :
+    (executeDirectAttempt s false).1.directExecutionNonce = s.directExecutionNonce := by
+  simp [executeDirectAttempt]
 theorem failed_batch_preserves_state
     (s : State)
     (firstEffect secondEffect : Nat) :
