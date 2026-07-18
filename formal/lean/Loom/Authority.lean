@@ -89,6 +89,9 @@ def guardianConfigAttempt (s : State) (callerIsSelf : Bool) : State × Bool :=
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def keystoreConfigAttempt (s : State) (callerIsController : Bool) : State × Bool :=
+  if callerIsController then
+    ({ s with configVersion := s.configVersion + 1 }, true)
 def syncAttempt (s : State) (readyAt replacementIdentity : Nat) : State × Bool :=
   if readyAt <= s.now then
     ({ s with validatorSetIdentity := replacementIdentity }, true)
@@ -214,6 +217,10 @@ theorem external_recovery_preserves_authority_state
     (recoveryConfigurationAttempt s false).1 = s := by
   simp [recoveryConfigurationAttempt]
 
+theorem non_controller_keystore_update_preserves_state
+    (s : State) :
+    (keystoreConfigAttempt s false).1 = s := by
+  simp [keystoreConfigAttempt]
 theorem sync_cannot_execute_before_delay
     (s : State)
     (readyAt replacementIdentity : Nat) :
