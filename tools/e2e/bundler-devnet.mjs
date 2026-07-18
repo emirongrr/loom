@@ -231,6 +231,25 @@ try {
   assert.equal(balanceAfter - balanceBefore, 12n, "batch value transfers did not both arrive");
   console.log(`    ok  atomic batch executed via eth_sendUserOperation (${fourth.userOpHash})`);
 
+  // The production-operation doctor, live: run the read-only diagnostics against
+  // this same devnet — chain, EntryPoint + SenderCreator code, native P-256, and
+  // the bundler serving the deployed EntryPoint — and require a clean report.
+  console.log("==> loom doctor against the live devnet");
+  const { runDoctor } = await import("../../packages/cli/src/doctor.mjs");
+  const doctorRpc = (method, params) => rpcCall(rpcUrl, method, params);
+  const bundlerRpc = (method, params) => rpcCall(bundlerUrl, method, params);
+  const report = await runDoctor({ rpc: doctorRpc, bundlerRpc, chainId: state.chainId, entryPoint });
+  for (const entry of report.checks) {
+    console.log(`    [${entry.status}] ${entry.name}: ${entry.detail}`);
+  }
+  assert.equal(report.ok, true, "doctor reported a failure against a healthy devnet");
+  const byName = Object.fromEntries(report.checks.map(c => [c.name, c.status]));
+  assert.equal(byName.chain, "ok", "doctor chain check");
+  assert.equal(byName.senderCreator, "ok", "doctor SenderCreator check");
+  assert.equal(byName.p256, "ok", "doctor native P-256 check");
+  assert.equal(byName.bundler, "ok", "doctor bundler check");
+  console.log("    ok  doctor reports a healthy devnet");
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {

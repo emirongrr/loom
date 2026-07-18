@@ -80,7 +80,7 @@
     "guardian:test": "npm --prefix packages/guardian test",
     "guardian:evidence:build": "node tools/evidence/build-guardian-onboarding-evidence.mjs",
     "privacy:test": "npm run sdk:build && npm --prefix packages/privacy ci && npm --prefix packages/privacy test",
-    "cli:test": "npm --prefix packages/cli ci && npm --prefix packages/cli test",
+    "cli:test": "npm run sdk:build && npm --prefix packages/cli ci && npm --prefix packages/cli test",
     "sdk:build": "npm run core:build && npm --prefix packages/sdk ci && tsc -p packages/sdk/tsconfig.json",
     "sdk:test": "npm run sdk:build && npm --prefix packages/sdk test",
     "sdk:types:check": "tsc -p tools/sdk/type-fixture",
