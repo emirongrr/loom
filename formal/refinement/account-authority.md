@@ -58,7 +58,7 @@ that the abstract model proves them.
 | `check_MigrationDelayIsEnforced` | Migration cannot execute before its delay. | `migration_cannot_execute_before_delay` | `scheduleMigration`, `executeMigration`, `readyAt` | Lean models schedule delay, expiry, and time advancement, but not block-time irregularity. |
 | `check_MigrationHashBinding` | Migration executes only its committed call batch. | `migration_rejects_mismatched_calls_hash` | `pendingMigration.callsHash`, `executeMigration` | Lean treats the hash as an abstract natural value; collision resistance and ABI encoding are concrete assumptions. |
 | `check_MigrationBatchAtomicity` | A failed migration batch preserves pending state and effects. | Not modeled. | `executeMigration`, batch loop, pending migration | Lean has no external calls or rollback semantics. |
-| `check_RecoveryDelayIsEnforced` | Recovery cannot execute before readiness. | `recovery_cannot_execute_before_delay` | `pendingRecoveries`, `executeRecovery`, `readyAt` | Lean models schedule delay and time advancement, but not expiry or block-time irregularity. |
+| `check_RecoveryDelayIsEnforced` | Recovery cannot execute before readiness. | `recovery_cannot_execute_before_delay` | `pendingRecoveries`, `executeRecovery`, `readyAt` | Lean models schedule delay, expiry, and time advancement, but not block-time irregularity. |
 | `check_RecoveryReplacesValidatorSet` | Recovery installs a non-empty committed replacement set. | `recovery_requires_nonzero_replacement` | `recoverConfigurationSet`, complete-set validation | The theorem proves non-zero count, not exact old/new set replacement. |
 | `check_FrozenAccountOnlyAllowsRecoveryCancel` | Frozen guardian cancellation removes pending recovery without spending. | `frozen_guardian_cancel_recovery_allowed` | `_isFrozenSafe`, `cancelRecovery` | Guardian proof uniqueness and cancellation digest are abstracted. |
 | `check_KeystoreUpdateRequiresController` | Only the identity controller can update keystore configuration. | Not modeled. | `LoomKeystore.updateConfig` | Lean has no identity, controller, or root/version tuple. |
@@ -75,8 +75,9 @@ that the abstract model proves them.
 | `configVersion` | `LoomAccount.configVersion()` | Directly mapped; `configHash` and stale-operation bindings remain concrete-only. |
 | `now` | `block.timestamp` | Abstract monotonic clock used for recovery timing; miner/validator timestamp constraints are out of scope. |
 | `frozen` | `block.timestamp < LoomAccount.frozenUntil()` | Derived predicate mapped; the Lean Boolean omits the clock and expiry transition. |
-| `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest, expiry, and validator set are abstracted. |
-| `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state and expiry remains concrete-only. |
+| `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest and validator set are abstracted. |
+| `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state. |
+| `recoveryExpiresAt` | `RecoveryManager.pendingRecoveries(account).expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
 | `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped independently from the target commitments represented by `migrationTarget`. |
 | `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
 | `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
@@ -90,9 +91,9 @@ that the abstract model proves them.
 |---|---|---|---|
 | `ordinaryExecute` | `execute`, `executeDirect` | not frozen; abstract actor allowed | EntryPoint, validator signature, nonce, hooks, execution mode, call success |
 | `freezeByGuardian` | `freeze` | none | guardian root, threshold, unique proofs, config binding |
-| `scheduleRecovery` | `RecoveryManager.proposeRecovery` | records `readyAt = now + delay` | module installation, proposal hash, validator ordering, minimum/maximum delay, expiry |
+| `scheduleRecovery` | `RecoveryManager.proposeRecovery` | records `readyAt = now + delay` and `expiresAt = readyAt + executionWindow` | module installation, proposal hash, validator ordering, fixed delay/window constants |
 | `cancelRecoveryByGuardian` | `RecoveryManager.cancelRecovery` | frozen and pending | proof verification, exact cancellation digest, operation identity |
-| `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now`, non-zero replacement | expiry, exact set replacement, proof/digest and config binding |
+| `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now <= expiresAt`, non-zero replacement | exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
 | `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly | scheduling delay, operation hash, exact changed state, stale invalidation |
 | `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
@@ -110,6 +111,7 @@ Every current theorem has at least one concrete review anchor:
 - `frozen_guardian_cancel_recovery_allowed`: frozen recovery-cancel property;
 - `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
 - `recovery_cannot_execute_before_delay`: recovery delay symbolic and integration properties;
+- `recovery_cannot_execute_after_expiry`: recovery execution-window integration properties;
 - `migration_cannot_execute_before_delay`: migration delay symbolic and integration properties;
 - `migration_rejects_mismatched_calls_hash`: migration call-hash binding symbolic and integration properties;
 - `migration_cannot_execute_after_expiry`: migration execution-window integration properties;

@@ -24,7 +24,7 @@ def emptyMigrationTarget : MigrationTarget :=
 inductive Transition where
   | ordinaryExecute (actor : Actor)
   | freezeByGuardian
-  | scheduleRecovery (delay : Nat)
+  | scheduleRecovery (delay : Nat) (executionWindow : Nat)
   | cancelRecoveryByGuardian
   | executeRecovery (newValidatorCount : Nat)
   | advanceTime (delta : Nat)
@@ -46,6 +46,7 @@ structure State where
   frozen : Bool
   recoveryPending : Bool
   recoveryReadyAt : Nat
+  recoveryExpiresAt : Nat
   migrationPending : Bool
   migrationReadyAt : Nat
   migrationExpiresAt : Nat
@@ -84,21 +85,28 @@ def step (s : State) : Transition -> Option State
         none
   | Transition.freezeByGuardian =>
       some { s with frozen := true }
-  | Transition.scheduleRecovery delay =>
-      some { s with recoveryPending := true, recoveryReadyAt := s.now + delay }
+  | Transition.scheduleRecovery delay executionWindow =>
+      some {
+        s with
+          recoveryPending := true,
+          recoveryReadyAt := s.now + delay,
+          recoveryExpiresAt := s.now + delay + executionWindow
+      }
   | Transition.cancelRecoveryByGuardian =>
       if s.frozen = true /\ s.recoveryPending = true then
-        some { s with recoveryPending := false, recoveryReadyAt := 0 }
+        some { s with recoveryPending := false, recoveryReadyAt := 0, recoveryExpiresAt := 0 }
       else
         none
   | Transition.executeRecovery newValidatorCount =>
-      if s.recoveryPending = true /\ s.recoveryReadyAt <= s.now /\ newValidatorCount > 0 then
+      if s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
+          /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0 then
         some {
           s with
             validatorCount := newValidatorCount,
             configVersion := s.configVersion + 1,
             recoveryPending := false,
-            recoveryReadyAt := 0
+            recoveryReadyAt := 0,
+            recoveryExpiresAt := 0
         }
       else
         none
@@ -152,7 +160,7 @@ theorem frozen_guardian_cancel_recovery_allowed (s : State) :
     s.frozen = true ->
     s.recoveryPending = true ->
     step s Transition.cancelRecoveryByGuardian =
-      some { s with recoveryPending := false, recoveryReadyAt := 0 } := by
+      some { s with recoveryPending := false, recoveryReadyAt := 0, recoveryExpiresAt := 0 } := by
   intro hf hp
   simp [step, hf, hp]
 
@@ -164,10 +172,11 @@ theorem recovery_requires_nonzero_replacement
   intro hstep
   unfold step at hstep
   by_cases h :
-      s.recoveryPending = true /\ s.recoveryReadyAt <= s.now /\ newValidatorCount > 0
+      s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
+        /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
   · simp [h] at hstep
     cases hstep
-    exact h.2.2
+    exact h.2.2.2
   · simp [h] at hstep
 
 theorem recovery_cannot_execute_before_delay
@@ -178,6 +187,14 @@ theorem recovery_cannot_execute_before_delay
     step s (Transition.executeRecovery newValidatorCount) = none := by
   intro hp hbefore
   simp [step, hp, Nat.not_le_of_gt hbefore]
+
+theorem recovery_cannot_execute_after_expiry
+    (s : State)
+    (newValidatorCount : Nat) :
+    s.recoveryExpiresAt < s.now ->
+    step s (Transition.executeRecovery newValidatorCount) = none := by
+  intro hexpired
+  simp [step, Nat.not_le_of_gt hexpired]
 
 theorem migration_cannot_execute_before_delay
     (s : State)
@@ -281,7 +298,7 @@ theorem successful_step_preserves_validator_nonzero
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | scheduleRecovery delay =>
+  | scheduleRecovery delay executionWindow =>
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
@@ -346,7 +363,7 @@ theorem config_version_never_decreases_on_success
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | scheduleRecovery delay =>
+  | scheduleRecovery delay executionWindow =>
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
@@ -360,7 +377,8 @@ theorem config_version_never_decreases_on_success
   | executeRecovery newValidatorCount =>
       unfold step at hstep
       by_cases h :
-          s.recoveryPending = true /\ s.recoveryReadyAt <= s.now /\ newValidatorCount > 0
+          s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
+            /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
       · simp [h] at hstep
         cases hstep
         exact Nat.le_succ s.configVersion
