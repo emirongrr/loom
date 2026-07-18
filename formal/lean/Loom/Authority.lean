@@ -77,6 +77,12 @@ def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : S
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def recoveryConfigurationAttempt (s : State) (callerIsRecoveryModule : Bool) : State × Bool :=
+  if callerIsRecoveryModule then
+    ({ s with configVersion := s.configVersion + 1 }, true)
+  else
+    (s, false)
+
 def noPlatformAuthority (actor : Actor) : Prop :=
   actor != Actor.developer
     /\ actor != Actor.factory
@@ -177,6 +183,11 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
     s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
   intro h
   simp [step, h]
+
+theorem external_recovery_preserves_authority_state
+    (s : State) :
+    (recoveryConfigurationAttempt s false).1 = s := by
+  simp [recoveryConfigurationAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
