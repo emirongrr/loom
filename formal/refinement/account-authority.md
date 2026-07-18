@@ -51,7 +51,7 @@ that the abstract model proves them.
 | `check_ExternalCannotRecoverConfiguration` | External callers cannot invoke account-internal recovery. | Not modeled. | `recoverConfiguration`, `recoverConfigurationSet` | Lean models the recovery transition but not its authorized caller. |
 | `check_UnsupportedExecutionModeNeverExecutes` | Unsupported ERC-7579 modes cannot call targets. | Not modeled. | `execute`, execution-mode decoder | Lean has no execution-mode domain. |
 | `check_CannotRemoveLastValidator` | Every successful transition retains a validator. | `successful_step_preserves_validator_nonzero` | `_uninstallModule`, validator-set validation | Concrete coverage is selected paths, not every future module transition. |
-| `check_ConfigUpdateInvalidatesStaleSchedule` | Authority changes invalidate stale scheduled calls. | `config_version_never_decreases_on_success` | `configVersion`, `configHash`, scheduled calls | Lean proves monotonicity, not schedule/version binding. |
+| `check_ConfigUpdateInvalidatesStaleSchedule` | Authority changes invalidate stale scheduled calls. | `scheduled_operation_rejects_config_change` | `configVersion`, `configHash`, scheduled calls | Lean models the scheduled commitment's config-version binding; concrete call hashing and full state rollback remain Solidity-tested. |
 | `check_GuardianCannotPerformValidatorAction` | Guardian authority cannot become spending authority. | Not modeled. | `execute`, caller/EntryPoint guards | `ordinaryActorAllowed` rejects guardians but does not refine guardian proofs. |
 | `check_ValidatorCannotPerformGuardianRecoveryAction` | Validator authority cannot mutate guardian/recovery state directly. | Not modeled. | `setGuardianConfig`, recovery entry points | Lean has no action-specific actor permissions. |
 | `check_PrivilegedAccountFunctionsRejectExternalCall` | Privileged lifecycle functions remain self-only. | `platform_actors_cannot_ordinary_execute_when_not_frozen` is related but insufficient. | schedule/cancel/install/uninstall/unfreeze self-call guards | The theorem covers ordinary execution, not privileged selector routing. |
@@ -72,7 +72,7 @@ that the abstract model proves them.
 | Lean state | Concrete representation | Refinement status |
 |---|---|---|
 | `validatorCount` | `LoomAccount.validatorCount()` and installed validator modules | Count mapped; validator identities and init data are abstracted. |
-| `configVersion` | `LoomAccount.configVersion()` | Directly mapped; `configHash` and stale-operation bindings remain concrete-only. |
+| `configVersion` | `LoomAccount.configVersion()` | Directly mapped; scheduled commitments capture and require the current version; concrete `configHash` encoding remains an assumption. |
 | `now` | `block.timestamp` | Abstract monotonic clock used for recovery timing; miner/validator timestamp constraints are out of scope. |
 | `frozen` | `block.timestamp < LoomAccount.frozenUntil()` | Derived predicate mapped; the Lean Boolean omits the clock and expiry transition. |
 | `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest and validator set are abstracted. |
@@ -85,6 +85,7 @@ that the abstract model proves them.
 | `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
 | `migrationTarget` | `pendingMigration.destination`, `destinationCodeHash`, `destinationConfigHash` | Destination and code hash match exactly; zero config hash preserves Solidity's optional config-binding semantics. |
 | `migrationCallsHash` | `LoomAccount.pendingMigration().callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
+| `migrationConfigVersion` | scheduled migration's `configVersion` binding | Abstract version binding; concrete pending-operation layout and hash encoding remain implementation details. |
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
 
 ## Abstract Transition Mapping
@@ -97,9 +98,9 @@ that the abstract model proves them.
 | `cancelRecoveryByGuardian` | `RecoveryManager.cancelRecovery` | frozen and pending | proof verification, exact cancellation digest, operation identity |
 | `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now <= expiresAt`, non-zero replacement | exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
-| `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly | scheduling delay, operation hash, exact changed state, stale invalidation |
+| `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly and invalidates commitments bound to an older version | scheduling delay, operation hash, exact changed state, stale invalidation |
 | `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
-| `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target and call commitments | hook mediation and atomic external calls |
+| `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 
