@@ -1,0 +1,76 @@
+# Operations
+
+The `loom` CLI and the repository's end-to-end tooling cover the operational
+path: standing up a realistic local stack, proving the wallet engine against a
+real bundler, and diagnosing a deployment before sending in production. Every
+command here is read-only or devnet-local, orchestrates the tested library
+primitives rather than reimplementing them, and never accepts a private key as
+an argument.
+
+## Local devnet
+
+`loom devnet` composes a reproducible stack — anvil, the repo-pinned Loom
+contracts, and the [Alto](https://github.com/pimlicolabs/alto) bundler — with
+every version fixed in `devnet/versions.json`.
+
+```sh
+loom devnet up        # start anvil + deploy Loom + start Alto, health-checked
+loom devnet status    # endpoints, addresses, and live health (--json for machines)
+loom devnet logs alto # tail a component log (anvil | alto | deploy)
+loom devnet down      # stop exactly what `up` started
+```
+
+`up` records what it started in `.loom/devnet/state.json`; `down`, `status`,
+and `logs` act only on the resources that file names, so the CLI never touches a
+process it did not start. The EntryPoint is CREATE2-deployed at a
+version-prefixed address because bundlers infer the EntryPoint version from the
+address prefix, and the bundler's signing keys reach Alto through the
+environment, never argv.
+
+## Doctor
+
+`loom doctor` is the read-only production-operation diagnostic. Each check
+delegates to an existing, tested primitive — manifest code-hash verification and
+the native P-256 precompile probe, account safety-state reads — and the doctor
+only sequences them and normalizes the report. Every endpoint is redacted to its
+origin in all output, error messages included.
+
+```sh
+loom doctor --rpc-url <url> [--bundler-url <url>] [--manifest <path>] \
+            [--entrypoint <addr>] [--account <addr>] [--chain-id <n>] \
+            [--recovery-module <addr>] [--json]
+```
+
+It reports chain reachability and id, deployment component code hashes (with a
+manifest) or EntryPoint code presence, `EntryPoint.senderCreator()` code, native
+P-256 behaviour, whether the bundler serves the expected EntryPoint, and account
+freeze/pending state. Any verification failure exits nonzero.
+
+## End-to-end proofs
+
+Two repository commands are the executable evidence that the packages work the
+way the docs claim:
+
+- `npm run e2e:clean-room` packs `@loom/core` and `@loom/sdk` into tarballs,
+  installs them into an empty project, statically rejects any repository-path
+  import, and runs the [minimal-account example](https://github.com/emirongrr/loom/blob/main/examples/minimal-account/README.md)
+  against a fresh devnet — the proof that an external developer can derive,
+  deploy, and operate an account from published packages alone.
+- `npm run e2e:bundler-devnet` brings the pinned devnet up and drives the full
+  `@loom/sdk` send pipeline against the live Alto bundler: bundler fee quote, gas
+  estimation, passkey signing over the canonical hash, submission and receipt,
+  and a final `loom doctor` pass over the running stack.
+
+## Release packaging
+
+A single packer stages `@loom/core` and `@loom/sdk` at the release version,
+pins the sdk's in-repo dependency to the packed core, and produces
+provenance-ready tarballs with a checksummed manifest. The release workflow
+dry-run publishes them (prerelease versions route to the `next` dist-tag) so the
+exact publish a tag would perform is validated while the packages remain
+pre-audit.
+
+:::warning
+Loom is pre-audit software. The devnet uses anvil's public dev keys, and none of
+these commands are a substitute for a security review before production use.
+:::

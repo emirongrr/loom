@@ -23,30 +23,55 @@ export default defineConfig({
       link: '/sdk',
     },
     {
-      text: 'Comparisons',
-      link: '/comparisons',
+      text: 'Operations',
+      link: '/operations',
     },
     {
       text: 'Security',
       link: '/security',
     },
   ],
+  // Task-oriented information architecture: start, build, operate, understand.
   sidebar: [
     {
-      text: 'Getting Started',
-      link: '/getting-started',
+      text: 'Start',
+      items: [
+        {
+          text: 'Getting Started',
+          link: '/getting-started',
+        },
+      ],
     },
     {
-      text: 'SDK',
-      link: '/sdk',
+      text: 'Build',
+      items: [
+        {
+          text: 'SDK',
+          link: '/sdk',
+        },
+      ],
     },
     {
-      text: 'Comparisons',
-      link: '/comparisons',
+      text: 'Operate',
+      items: [
+        {
+          text: 'CLI & devnet',
+          link: '/operations',
+        },
+      ],
     },
     {
-      text: 'Security',
-      link: '/security',
+      text: 'Understand',
+      items: [
+        {
+          text: 'Security',
+          link: '/security',
+        },
+        {
+          text: 'Comparisons',
+          link: '/comparisons',
+        },
+      ],
     },
     {
       text: 'LLM Context',
