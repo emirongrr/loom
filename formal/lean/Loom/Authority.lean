@@ -24,9 +24,12 @@ def emptyMigrationTarget : MigrationTarget :=
 inductive Transition where
   | ordinaryExecute (actor : Actor)
   | freezeByGuardian
-  | scheduleRecovery (delay : Nat) (executionWindow : Nat)
+  | scheduleRecovery
+      (delay : Nat)
+      (executionWindow : Nat)
+      (replacementIdentity : Nat)
   | cancelRecoveryByGuardian
-  | executeRecovery (newValidatorCount : Nat)
+  | executeRecovery (newValidatorCount : Nat) (replacementIdentity : Nat)
   | advanceTime (delta : Nat)
   | configChange
   | scheduleMigration
@@ -41,12 +44,14 @@ inductive Transition where
 
 structure State where
   validatorCount : Nat
+  validatorSetIdentity : Nat
   configVersion : Nat
   now : Nat
   frozen : Bool
   recoveryPending : Bool
   recoveryReadyAt : Nat
   recoveryExpiresAt : Nat
+  recoveryValidatorSetIdentity : Nat
   migrationPending : Bool
   migrationReadyAt : Nat
   migrationExpiresAt : Nat
@@ -85,28 +90,38 @@ def step (s : State) : Transition -> Option State
         none
   | Transition.freezeByGuardian =>
       some { s with frozen := true }
-  | Transition.scheduleRecovery delay executionWindow =>
+  | Transition.scheduleRecovery delay executionWindow replacementIdentity =>
       some {
         s with
           recoveryPending := true,
           recoveryReadyAt := s.now + delay,
-          recoveryExpiresAt := s.now + delay + executionWindow
+          recoveryExpiresAt := s.now + delay + executionWindow,
+          recoveryValidatorSetIdentity := replacementIdentity
       }
   | Transition.cancelRecoveryByGuardian =>
       if s.frozen = true /\ s.recoveryPending = true then
-        some { s with recoveryPending := false, recoveryReadyAt := 0, recoveryExpiresAt := 0 }
+        some {
+          s with
+            recoveryPending := false,
+            recoveryReadyAt := 0,
+            recoveryExpiresAt := 0,
+            recoveryValidatorSetIdentity := 0
+        }
       else
         none
-  | Transition.executeRecovery newValidatorCount =>
+  | Transition.executeRecovery newValidatorCount replacementIdentity =>
       if s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
-          /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0 then
+          /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
+          /\ replacementIdentity = s.recoveryValidatorSetIdentity then
         some {
           s with
             validatorCount := newValidatorCount,
+            validatorSetIdentity := replacementIdentity,
             configVersion := s.configVersion + 1,
             recoveryPending := false,
             recoveryReadyAt := 0,
-            recoveryExpiresAt := 0
+            recoveryExpiresAt := 0,
+            recoveryValidatorSetIdentity := 0
         }
       else
         none
@@ -160,39 +175,75 @@ theorem frozen_guardian_cancel_recovery_allowed (s : State) :
     s.frozen = true ->
     s.recoveryPending = true ->
     step s Transition.cancelRecoveryByGuardian =
-      some { s with recoveryPending := false, recoveryReadyAt := 0, recoveryExpiresAt := 0 } := by
+      some {
+        s with
+          recoveryPending := false,
+          recoveryReadyAt := 0,
+          recoveryExpiresAt := 0,
+          recoveryValidatorSetIdentity := 0
+      } := by
   intro hf hp
   simp [step, hf, hp]
 
 theorem recovery_requires_nonzero_replacement
     (s s' : State)
-    (newValidatorCount : Nat) :
-    step s (Transition.executeRecovery newValidatorCount) = some s' ->
+    (newValidatorCount : Nat)
+    (replacementIdentity : Nat) :
+    step s (Transition.executeRecovery newValidatorCount replacementIdentity) = some s' ->
     s'.validatorCount > 0 := by
   intro hstep
   unfold step at hstep
   by_cases h :
       s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
         /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
+        /\ replacementIdentity = s.recoveryValidatorSetIdentity
   · simp [h] at hstep
     cases hstep
-    exact h.2.2.2
+    exact h.2.2.2.1
   · simp [h] at hstep
+
+theorem recovery_installs_scheduled_validator_set
+    (s s' : State)
+    (newValidatorCount : Nat)
+    (replacementIdentity : Nat) :
+    step s (Transition.executeRecovery newValidatorCount replacementIdentity) = some s' ->
+    s'.validatorSetIdentity = replacementIdentity := by
+  intro hstep
+  unfold step at hstep
+  by_cases h :
+      s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
+        /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
+        /\ replacementIdentity = s.recoveryValidatorSetIdentity
+  · simp [h] at hstep
+    cases hstep
+    rfl
+  · simp [h] at hstep
+
+theorem recovery_rejects_mismatched_validator_set
+    (s : State)
+    (newValidatorCount : Nat)
+    (replacementIdentity : Nat) :
+    replacementIdentity != s.recoveryValidatorSetIdentity ->
+    step s (Transition.executeRecovery newValidatorCount replacementIdentity) = none := by
+  intro hmismatch
+  simp [step, hmismatch]
 
 theorem recovery_cannot_execute_before_delay
     (s : State)
-    (newValidatorCount : Nat) :
+    (newValidatorCount : Nat)
+    (replacementIdentity : Nat) :
     s.recoveryPending = true ->
     s.now < s.recoveryReadyAt ->
-    step s (Transition.executeRecovery newValidatorCount) = none := by
+    step s (Transition.executeRecovery newValidatorCount replacementIdentity) = none := by
   intro hp hbefore
   simp [step, hp, Nat.not_le_of_gt hbefore]
 
 theorem recovery_cannot_execute_after_expiry
     (s : State)
-    (newValidatorCount : Nat) :
+    (newValidatorCount : Nat)
+    (replacementIdentity : Nat) :
     s.recoveryExpiresAt < s.now ->
-    step s (Transition.executeRecovery newValidatorCount) = none := by
+    step s (Transition.executeRecovery newValidatorCount replacementIdentity) = none := by
   intro hexpired
   simp [step, Nat.not_le_of_gt hexpired]
 
@@ -298,7 +349,7 @@ theorem successful_step_preserves_validator_nonzero
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
-  | scheduleRecovery delay executionWindow =>
+  | scheduleRecovery delay executionWindow replacementIdentity =>
       simp [step, hasValidator] at hstep
       cases hstep
       exact hs
@@ -309,8 +360,8 @@ theorem successful_step_preserves_validator_nonzero
         cases hstep
         exact hs
       · simp [h] at hstep
-  | executeRecovery newValidatorCount =>
-      exact recovery_requires_nonzero_replacement s s' newValidatorCount hstep
+  | executeRecovery newValidatorCount replacementIdentity =>
+      exact recovery_requires_nonzero_replacement s s' newValidatorCount replacementIdentity hstep
   | advanceTime delta =>
       simp [step, hasValidator] at hstep
       cases hstep
@@ -363,7 +414,7 @@ theorem config_version_never_decreases_on_success
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
-  | scheduleRecovery delay executionWindow =>
+  | scheduleRecovery delay executionWindow replacementIdentity =>
       simp [step] at hstep
       cases hstep
       exact Nat.le_refl s.configVersion
@@ -374,11 +425,12 @@ theorem config_version_never_decreases_on_success
         cases hstep
         exact Nat.le_refl s.configVersion
       · simp [h] at hstep
-  | executeRecovery newValidatorCount =>
+  | executeRecovery newValidatorCount replacementIdentity =>
       unfold step at hstep
       by_cases h :
           s.recoveryPending = true /\ s.recoveryReadyAt <= s.now
             /\ s.now <= s.recoveryExpiresAt /\ newValidatorCount > 0
+            /\ replacementIdentity = s.recoveryValidatorSetIdentity
       · simp [h] at hstep
         cases hstep
         exact Nat.le_succ s.configVersion
