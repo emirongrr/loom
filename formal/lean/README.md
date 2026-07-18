@@ -18,6 +18,7 @@ The current Lean model starts with:
 - migration destination, code-hash, and optional config-hash binding;
 - rejected direct execution preserving its validator nonce;
 - batch execution as an all-or-nothing state transition;
+- delegated initialization rejecting external callers;
 - guardian authority cannot perform validator actions;
 - external recovery calls preserving authority state;
 - keystore sync rejecting execution before its delay;

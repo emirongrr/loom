@@ -38,7 +38,7 @@ that the abstract model proves them.
 | Executable property | Security intent | Abstract relation | Solidity boundary | Explicit gap or assumption |
 |---|---|---|---|---|
 | `check_InitializedAccountCannotBeReinitialized` | Initialization is one-shot. | `initialized_state_rejects_reinitialization` | `initialize`, `_initialize` | Lean abstracts caller and initialization payload. |
-| `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | Not modeled. | `initializeDelegatedAccount` | Lean has no caller/self-call predicate. |
+| `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | `external_delegated_initializer_preserves_state` | `initializeDelegatedAccount` | Lean abstracts the caller predicate to a self-call Boolean; proxy storage and initialization payload remain concrete. |
 | `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | Not modeled. | proxy constructor delegatecall and account storage | Lean has no proxy/implementation storage separation. |
 | `check_NoMutableUpgradeSelectorsThroughProxy` | The immutable proxy exposes no upgrade transition. | `immutable_proxy_has_no_upgrade_transition` | `LoomAccountProxy.implementation`, fallback path | The theorem abstracts bytecode selectors and delegatecall semantics. |
 | `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | `rejected_direct_execution_preserves_nonce` | `executeDirect`, validator nonce storage | Lean models one abstract validator nonce; signature digest, validator identity, and nonce map isolation remain concrete. |
@@ -105,6 +105,7 @@ that the abstract model proves them.
 | `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `executeDirectAttempt` | `executeDirect` | rejected authorization leaves the nonce unchanged | signature verification, validity window, validator installation, and nonce-map selection |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
+| `delegatedInitialize` | `initializeDelegatedAccount` | external callers return the original state; only self-calls may set initialized | proxy delegatecall context, initialization payload, and module setup |
 | `validatorActionAttempt` | validator module actions through `execute` | guardian actor returns the original state; only validator actor may change the validator-set count | validator signatures, module selectors, and target side effects |
 | `recoveryConfigurationAttempt` | `recoverConfiguration`, `recoverConfigurationSet` | external callers return the original authority state; only the installed recovery module may change configuration | validator-set payload, guardian proof, module routing, and exact revert data |
 | `syncAttempt` | `proposeSync`, `executeSync` | execution before `readyAt` returns the original validator-set state | keystore proof, validator-root binding, and pending-sync storage |
