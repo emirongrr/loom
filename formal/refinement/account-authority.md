@@ -59,7 +59,7 @@ that the abstract model proves them.
 | `check_MigrationHashBinding` | Migration executes only its committed call batch. | `migration_rejects_mismatched_calls_hash` | `pendingMigration.callsHash`, `executeMigration` | Lean treats the hash as an abstract natural value; collision resistance and ABI encoding are concrete assumptions. |
 | `check_MigrationBatchAtomicity` | A failed migration batch preserves pending state and effects. | Not modeled. | `executeMigration`, batch loop, pending migration | Lean has no external calls or rollback semantics. |
 | `check_RecoveryDelayIsEnforced` | Recovery cannot execute before readiness. | `recovery_cannot_execute_before_delay` | `pendingRecoveries`, `executeRecovery`, `readyAt` | Lean models schedule delay, expiry, and time advancement, but not block-time irregularity. |
-| `check_RecoveryReplacesValidatorSet` | Recovery installs a non-empty committed replacement set. | `recovery_requires_nonzero_replacement` | `recoverConfigurationSet`, complete-set validation | The theorem proves non-zero count, not exact old/new set replacement. |
+| `check_RecoveryReplacesValidatorSet` | Recovery installs a non-empty committed replacement set. | `recovery_requires_nonzero_replacement`, `recovery_installs_scheduled_validator_set` | `recoverConfigurationSet`, complete-set validation | Lean binds an abstract complete-set identity; validator ordering, key material, and guardian proof remain concrete. |
 | `check_FrozenAccountOnlyAllowsRecoveryCancel` | Frozen guardian cancellation removes pending recovery without spending. | `frozen_guardian_cancel_recovery_allowed` | `_isFrozenSafe`, `cancelRecovery` | Guardian proof uniqueness and cancellation digest are abstracted. |
 | `check_KeystoreUpdateRequiresController` | Only the identity controller can update keystore configuration. | Not modeled. | `LoomKeystore.updateConfig` | Lean has no identity, controller, or root/version tuple. |
 | `check_SyncDelayIsEnforced` | Keystore sync cannot replace validators before delay. | Not modeled. | `proposeSync`, `executeSync`, `pendingSyncs.readyAt` | Keystore proof, time, and validator-root binding are absent. |
@@ -78,6 +78,8 @@ that the abstract model proves them.
 | `recoveryPending` | `RecoveryManager.pendingRecoveries(account).readyAt != 0` | Predicate mapped; proposal digest and validator set are abstracted. |
 | `recoveryReadyAt` | `RecoveryManager.pendingRecoveries(account).readyAt` | Direct timing value mapped; zero is cleared state. |
 | `recoveryExpiresAt` | `RecoveryManager.pendingRecoveries(account).expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
+| `validatorSetIdentity` | `LoomAccount`'s installed validator-set commitment | Abstract complete-set identity; module addresses, ordering, and initialization data remain concrete. |
+| `recoveryValidatorSetIdentity` | `RecoveryManager.pendingRecoveries(account).newValidator` plus committed set payload | Abstract pending replacement identity; guardian approval and full set encoding remain concrete. |
 | `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped independently from the target commitments represented by `migrationTarget`. |
 | `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
 | `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
@@ -91,7 +93,7 @@ that the abstract model proves them.
 |---|---|---|---|
 | `ordinaryExecute` | `execute`, `executeDirect` | not frozen; abstract actor allowed | EntryPoint, validator signature, nonce, hooks, execution mode, call success |
 | `freezeByGuardian` | `freeze` | none | guardian root, threshold, unique proofs, config binding |
-| `scheduleRecovery` | `RecoveryManager.proposeRecovery` | records `readyAt = now + delay` and `expiresAt = readyAt + executionWindow` | module installation, proposal hash, validator ordering, fixed delay/window constants |
+| `scheduleRecovery` | `RecoveryManager.proposeRecovery` | records timing and the complete replacement-set identity | module installation, proposal hash, validator ordering, fixed delay/window constants |
 | `cancelRecoveryByGuardian` | `RecoveryManager.cancelRecovery` | frozen and pending | proof verification, exact cancellation digest, operation identity |
 | `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now <= expiresAt`, non-zero replacement | exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
@@ -112,6 +114,8 @@ Every current theorem has at least one concrete review anchor:
 - `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
 - `recovery_cannot_execute_before_delay`: recovery delay symbolic and integration properties;
 - `recovery_cannot_execute_after_expiry`: recovery execution-window integration properties;
+- `recovery_installs_scheduled_validator_set`: exact recovery replacement identity integration properties;
+- `recovery_rejects_mismatched_validator_set`: recovery replacement binding integration properties;
 - `migration_cannot_execute_before_delay`: migration delay symbolic and integration properties;
 - `migration_rejects_mismatched_calls_hash`: migration call-hash binding symbolic and integration properties;
 - `migration_cannot_execute_after_expiry`: migration execution-window integration properties;
