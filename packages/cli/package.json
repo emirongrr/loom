@@ -13,5 +13,10 @@
   ],
   "scripts": {
     "test": "node --test"
+  },
+  "dependencies": {
+    "@loom/core": "file:../core",
+    "@loom/deployment": "file:../deployment",
+    "@loom/sdk": "file:../sdk"
   }
 }
