@@ -80,6 +80,9 @@ def hasValidator (s : State) : Prop :=
 def validatorActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.validator then
     ({ s with validatorCount := s.validatorCount + 1 }, true)
+def recoveryConfigurationAttempt (s : State) (callerIsRecoveryModule : Bool) : State × Bool :=
+  if callerIsRecoveryModule then
+    ({ s with configVersion := s.configVersion + 1 }, true)
   else
     (s, false)
 
@@ -188,6 +191,10 @@ theorem guardian_cannot_perform_validator_action
     (s : State) :
     (validatorActionAttempt s Actor.guardian).1 = s := by
   simp [validatorActionAttempt]
+theorem external_recovery_preserves_authority_state
+    (s : State) :
+    (recoveryConfigurationAttempt s false).1 = s := by
+  simp [recoveryConfigurationAttempt]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
