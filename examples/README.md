@@ -51,6 +51,17 @@ passkey signatures over the canonical hash, then send a second operation with
 the nonce read through the public state transport. See
 [`minimal-account/README.md`](minimal-account/README.md).
 
+### `backend-userop-tracker/`
+
+A framework-neutral backend that tracks UserOperations from chain logs: decodes
+EntryPoint and factory events with the `@loom/core` ABIs, tracks each operation
+through idempotent `submitted → included → finalized` transitions with a
+finality policy, and survives reorgs, duplicates, replacement, and provider
+disagreement. It holds no keys and picks no framework — logs and head numbers in,
+webhook-shaped events and metrics out. The `e2e:bundler-devnet` proof replays
+the live devnet's real EntryPoint logs through it. See
+[`backend-userop-tracker/README.md`](backend-userop-tracker/README.md).
+
 ### `enterprise-onboarding.mjs`
 
 A fintech ("Acme Pay") embeds a self-custody wallet into its own product. The
