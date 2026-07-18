@@ -19,6 +19,8 @@ The current Lean model starts with:
 - rejected direct execution preserving its validator nonce;
 - batch execution as an all-or-nothing state transition;
 - guardianless bootstrap granting no guardian authority;
+- external guardian configuration calls preserving authority state;
+- delegated initialization rejecting external callers;
 - guardian authority cannot perform validator actions;
 - external recovery calls preserving authority state;
 - keystore sync rejecting execution before its delay;
