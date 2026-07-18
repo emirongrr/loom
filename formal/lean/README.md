@@ -21,6 +21,7 @@ The current Lean model starts with:
 - guardian authority cannot perform validator actions;
 - external recovery calls preserving authority state;
 - non-controller keystore updates preserving authority state;
+- keystore sync rejecting execution before its delay;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
