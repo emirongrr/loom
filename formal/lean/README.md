@@ -17,6 +17,7 @@ The current Lean model starts with:
 - migration execution binding to the scheduled call commitment;
 - migration destination, code-hash, and optional config-hash binding;
 - batch execution as an all-or-nothing state transition;
+- delegated initialization rejecting external callers;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:

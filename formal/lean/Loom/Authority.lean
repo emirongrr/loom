@@ -62,6 +62,12 @@ structure State where
   initialized : Bool
   deriving Repr
 
+def delegatedInitialize (s : State) (callerIsSelf : Bool) : State × Bool :=
+  if callerIsSelf then
+    ({ s with initialized := true }, true)
+  else
+    (s, false)
+
 def executeBatch (s : State) (firstEffect secondEffect : Nat) (fails : Bool) : State × Bool :=
   if fails then
     (s, false)
@@ -328,6 +334,11 @@ theorem failed_batch_preserves_state
     (firstEffect secondEffect : Nat) :
     (executeBatch s firstEffect secondEffect true).1 = s := by
   simp [executeBatch]
+
+theorem external_delegated_initializer_preserves_state
+    (s : State) :
+    (delegatedInitialize s false).1 = s := by
+  simp [delegatedInitialize]
 
 theorem successful_batch_commits_all_effects
     (s : State)

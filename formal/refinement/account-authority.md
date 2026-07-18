@@ -38,7 +38,7 @@ that the abstract model proves them.
 | Executable property | Security intent | Abstract relation | Solidity boundary | Explicit gap or assumption |
 |---|---|---|---|---|
 | `check_InitializedAccountCannotBeReinitialized` | Initialization is one-shot. | `initialized_state_rejects_reinitialization` | `initialize`, `_initialize` | Lean abstracts caller and initialization payload. |
-| `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | Not modeled. | `initializeDelegatedAccount` | Lean has no caller/self-call predicate. |
+| `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | `external_delegated_initializer_preserves_state` | `initializeDelegatedAccount` | Lean abstracts the caller predicate to a self-call Boolean; proxy storage and initialization payload remain concrete. |
 | `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | Not modeled. | proxy constructor delegatecall and account storage | Lean has no proxy/implementation storage separation. |
 | `check_NoMutableUpgradeSelectorsThroughProxy` | The immutable proxy exposes no upgrade transition. | `immutable_proxy_has_no_upgrade_transition` | `LoomAccountProxy.implementation`, fallback path | The theorem abstracts bytecode selectors and delegatecall semantics. |
 | `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | Not modeled. | `executeDirect`, validator nonce storage | Lean has no nonce or signature state. |
@@ -103,6 +103,7 @@ that the abstract model proves them.
 | `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
 | `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
+| `delegatedInitialize` | `initializeDelegatedAccount` | external callers return the original state; only self-calls may set initialized | proxy delegatecall context, initialization payload, and module setup |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 
