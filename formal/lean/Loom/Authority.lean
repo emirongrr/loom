@@ -80,6 +80,12 @@ def hasValidator (s : State) : Prop :=
 def executionModeAttempt (s : State) (modeSupported : Bool) : State × Bool :=
   if modeSupported then
     (s, true)
+def syncAttempt (s : State) (readyAt replacementIdentity : Nat) : State × Bool :=
+  if readyAt <= s.now then
+    ({ s with validatorSetIdentity := replacementIdentity }, true)
+  else
+    (s, false)
+
 def validatorActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.validator then
     ({ s with validatorCount := s.validatorCount + 1 }, true)
@@ -202,6 +208,14 @@ theorem external_recovery_preserves_authority_state
     (s : State) :
     (recoveryConfigurationAttempt s false).1 = s := by
   simp [recoveryConfigurationAttempt]
+
+theorem sync_cannot_execute_before_delay
+    (s : State)
+    (readyAt replacementIdentity : Nat) :
+    s.now < readyAt ->
+    (syncAttempt s readyAt replacementIdentity).1 = s := by
+  intro hbefore
+  simp [syncAttempt, Nat.not_le_of_gt hbefore]
 
 theorem initialized_state_rejects_reinitialization (s : State) :
     s.initialized = true -> step s Transition.initialize = none := by
