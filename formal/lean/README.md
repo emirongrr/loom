@@ -20,7 +20,6 @@ The current Lean model starts with:
 
 Planned model extensions:
 
-- scheduled-operation invalidation after configuration change;
 - batch atomicity as an abstract all-or-nothing transition;
 - a reviewed refinement table connecting each abstract transition to Solidity.
 
