@@ -1,0 +1,17 @@
+{
+  "name": "@loom/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Thin Loom command line: pinned local devnet lifecycle with owned state, human and JSON output.",
+  "type": "module",
+  "bin": {
+    "loom": "./bin/loom.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  }
+}

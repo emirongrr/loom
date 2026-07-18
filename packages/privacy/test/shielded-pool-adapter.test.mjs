@@ -189,3 +189,52 @@ test("private scan state is scoped by account application and scan scope", () =>
   assert.equal(scanState.get(vaultContext, "railgun"), null);
   assert.notEqual(scanState.key(dailyContext, "railgun"), scanState.key(vaultContext, "railgun"));
 });
+
+// The private-flow wallet surface is canonically imported from THIS package;
+// the wallet engine keeps the runtime but privacy owns the supported entry
+// point. This exercises the re-exported preparation end to end with an
+// adapter, proving the layering (privacy -> sdk) actually resolves and runs.
+test("canonical private-flow surface is importable and works from @loom/privacy", async () => {
+  const { createKohakuRuntime, preparePrivateVaultWithdrawal } = await import("../src/index.js");
+  assert.equal(typeof createKohakuRuntime, "function");
+  assert.equal(typeof preparePrivateVaultWithdrawal, "function");
+
+  const account = "0x1111111111111111111111111111111111111111";
+  const token = "0x2222222222222222222222222222222222222222";
+  const budget = {
+    protocol: "railgun",
+    chainId: 1,
+    items: [{ surface: "rpc", reveals: "chain and timing", required: true, mitigation: "user endpoint" }]
+  };
+  const prepared = await preparePrivateVaultWithdrawal({
+    adapter: {
+      protocol: "railgun",
+      async metadataBudget() {
+        return budget;
+      },
+      async privateTransfer(request) {
+        return this.buildOperation(request);
+      },
+      async buildOperation(request) {
+        return {
+          protocol: "railgun",
+          chainId: request.context.chainId,
+          calls: [{ target: token, value: 0n, data: "0x1234" }],
+          metadataBudget: budget,
+          operation: { kind: "private-transfer", applicationId: request.context.applicationId, amount: "100" },
+          requiresVaultDelay: true
+        };
+      }
+    },
+    context: { account, chainId: 1 },
+    vault: {
+      token,
+      recipient: "0x3333333333333333333333333333333333333333",
+      amount: 100n,
+      executeAfter: 1000n
+    }
+  });
+
+  assert.equal(prepared.intent.kind, "vault.privateWithdrawal.schedule");
+  assert.equal(prepared.intent.privacyProtocol, "railgun");
+});

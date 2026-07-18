@@ -7,7 +7,7 @@ import type {
   LifecycleCallEncoder,
   LifecycleIntent,
   Hex
-} from "@loom/account";
+} from "./lifecycle.js";
 // Structural privacy-adapter types the wallet engine consumes. They are defined
 // here — not imported from @loom/privacy — so a TypeScript consumer of the base
 // SDK never needs a privacy protocol package installed. Any conforming adapter
@@ -135,6 +135,8 @@ export interface LoomSignerAdapter {
   signUserOperation(envelope: UserOperationEnvelope): Promise<Hex>;
   /** A representative signature-shaped envelope for gas estimation, if available. */
   readonly dummySignature?: Hex;
+  /** Verification gas the dummy signature cannot exercise (e.g. a hash-bound WebAuthn P-256 tail); added to estimated verificationGasLimit. */
+  readonly verificationGasBuffer?: bigint;
 }
 
 export interface LoomTransportAdapter {
@@ -388,6 +390,7 @@ export interface FillOverrides extends UserOperationOverrides {
   nonceKey?: bigint;
   feeTier?: string;
   dummySignature?: Hex;
+  verificationGasBuffer?: bigint;
 }
 
 export interface LoomClient {
@@ -647,4 +650,3 @@ export interface PrivateVaultWithdrawalPreparation {
 }
 
 
-export type { Hex } from "@loom/account";

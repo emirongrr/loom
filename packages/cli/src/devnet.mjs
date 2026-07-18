@@ -1,0 +1,356 @@
+// Pinned local devnet lifecycle for the `loom` CLI.
+//
+// `up` composes the exact stack devnet/versions.json pins — anvil (Foundry),
+// the repo-pinned EntryPoint v0.9 + Loom contracts (DeployDevnet), and the
+// Alto bundler — then health-checks both endpoints and records ownership in
+// .loom/devnet/state.json. `down`, `status`, and `logs` operate ONLY on the
+// resources that state file records; the CLI never guesses at or kills
+// processes it did not start.
+//
+// Key handling: the bundler executor/utility keys are anvil's well-known
+// deterministic dev accounts (public constants, devnet only), handed to Alto
+// through ALTO_-prefixed environment variables — never argv. The CLI never
+// accepts a private key as input.
+
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const stateDir = join(repoRoot, ".loom", "devnet");
+const statePath = join(stateDir, "state.json");
+const bundlerCacheDir = join(repoRoot, ".loom", "bundler");
+const versions = JSON.parse(readFileSync(join(repoRoot, "devnet", "versions.json"), "utf8"));
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
+// anvil's deterministic dev keys (public constants — devnet only).
+const ANVIL_KEYS = [
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+  "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
+];
+
+function bin(name) {
+  const local = join(repoRoot, "node_modules", "@foundry-rs", `${name}-win32-amd64`, "bin", `${name}.exe`);
+  return existsSync(local) ? local : name;
+}
+
+// Resolve the pinned Alto bundler into .loom/bundler (gitignored) and return
+// its entry script. Installed once at the pinned version and reused across
+// up/down cycles; the transitive tree never enters the repository. Mirrors how
+// the Foundry binaries are external tooling rather than committed dependencies.
+function ensureAlto() {
+  const entry = join(bundlerCacheDir, "node_modules", "@pimlico", "alto", "esm", "cli", "alto.js");
+  const spec = `@pimlico/alto@${versions.alto}`;
+  const installedManifest = join(bundlerCacheDir, "node_modules", "@pimlico", "alto", "package.json");
+  const installed = existsSync(entry) && JSON.parse(readFileSync(installedManifest, "utf8")).version === versions.alto;
+  if (!installed) {
+    mkdirSync(bundlerCacheDir, { recursive: true });
+    writeFileSync(join(bundlerCacheDir, "package.json"), `${JSON.stringify({ name: "loom-devnet-bundler", private: true }, null, 2)}\n`);
+    const result = spawnSync(npm, ["install", "--no-save", "--no-audit", "--no-fund", spec], {
+      cwd: bundlerCacheDir,
+      stdio: "pipe",
+      shell: process.platform === "win32"
+    });
+    if (result.status !== 0 || !existsSync(entry)) {
+      throw Object.assign(new Error(`failed to install ${spec}: ${result.stderr ?? ""}`.trim()), { exitCode: 5 });
+    }
+  }
+  return entry;
+}
+
+async function rpc(url, method, params) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  const body = await response.json();
+  if (body.error) throw new Error(`${method}: ${body.error.message}`);
+  return body.result;
+}
+
+async function waitFor(label, probe, attempts = 120) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await probe();
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+  throw Object.assign(new Error(`${label} did not become healthy`), { exitCode: 5 });
+}
+
+function readState() {
+  if (!existsSync(statePath)) return null;
+  return JSON.parse(readFileSync(statePath, "utf8"));
+}
+
+function spawnLogged(name, command, args, logName, env = {}) {
+  const log = openSync(join(stateDir, `${logName}.log`), "a");
+  const child = spawn(command, args, {
+    cwd: repoRoot,
+    detached: true,
+    stdio: ["ignore", log, log],
+    shell: process.platform === "win32" && String(command).endsWith(".cmd"),
+    env: { ...process.env, ...env }
+  });
+  child.unref();
+  if (!child.pid) throw Object.assign(new Error(`${name} failed to start`), { exitCode: 5 });
+  return child.pid;
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// fs.rmSync (with or without force) can return success WITHOUT deleting on
+// Windows when the path contains non-ASCII segments (observed on Node 23:
+// it internally mangles the path, lstats the mangled form, and treats the
+// ENOENT as "already gone"). unlink/rmdir take the path verbatim and work, so
+// removal goes through them explicitly.
+export function removeSync(path) {
+  if (!existsSync(path)) return;
+  if (statSync(path).isDirectory()) {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      removeSync(join(path, entry.name));
+    }
+    rmdirSync(path);
+  } else {
+    unlinkSync(path);
+  }
+}
+
+export async function up() {
+  const existing = readState();
+  if (existing) {
+    // A crash or hard kill can leave the state file behind with nothing
+    // running. Reclaiming is still ownership-safe: it only ever inspects the
+    // pids this CLI recorded, and if either of them still answers a probe the
+    // devnet is treated as live and `up` refuses as before.
+    const alive = [existing.pids.anvil, existing.pids.alto].filter(pid => pid && isAlive(pid));
+    if (alive.length > 0) {
+      throw Object.assign(new Error("devnet already running (state file exists); run `loom devnet down` first"), {
+        exitCode: 2
+      });
+    }
+    console.error("loom: reclaiming stale devnet state (recorded processes are no longer running)");
+    removeSync(statePath);
+  }
+  mkdirSync(stateDir, { recursive: true });
+  const rpcUrl = `http://127.0.0.1:${versions.ports.rpc}`;
+  const bundlerUrl = `http://127.0.0.1:${versions.ports.bundler}`;
+
+  const anvilPid = spawnLogged(
+    "anvil",
+    bin("anvil"),
+    ["--port", String(versions.ports.rpc), "--chain-id", String(versions.chainId)],
+    "anvil"
+  );
+  await waitFor("anvil", () => rpc(rpcUrl, "eth_chainId", []));
+
+  // Pre-deploy the EntryPoint at its pinned version-prefixed CREATE2 address
+  // (bundlers detect the EntryPoint version from the address prefix). The
+  // pinned salt is only valid for the pinned creation code.
+  const entryPointArtifact = JSON.parse(readFileSync(join(repoRoot, "out", "EntryPoint.sol", "EntryPoint.json"), "utf8"));
+  const creationCode = entryPointArtifact.bytecode.object;
+  const { keccak_256 } = (await import("js-sha3")).default;
+  const creationCodeHash = `0x${keccak_256(Buffer.from(creationCode.slice(2), "hex"))}`;
+  if (creationCodeHash !== versions.entryPoint.creationCodeHash) {
+    stopPid(anvilPid);
+    throw Object.assign(
+      new Error(
+        "EntryPoint creation code changed; re-mine the CREATE2 salt for the 0x433709 prefix and update devnet/versions.json"
+      ),
+      { exitCode: 6 }
+    );
+  }
+  const deployerAccount = versions.devAccounts.deployer;
+  await rpc(rpcUrl, "eth_sendTransaction", [
+    {
+      from: deployerAccount,
+      to: "0x4e59b44847b379578588920ca78fbf26c0b4956c",
+      gas: "0x7a1200",
+      data: `${versions.entryPoint.salt}${creationCode.slice(2)}`
+    }
+  ]);
+  const entryPointCode = await waitFor("EntryPoint CREATE2 deployment", async () => {
+    const code = await rpc(rpcUrl, "eth_getCode", [versions.entryPoint.address, "latest"]);
+    if (code === "0x") throw new Error("no code yet");
+    return code;
+  }, 20);
+  if (entryPointCode === "0x") {
+    stopPid(anvilPid);
+    throw Object.assign(new Error("EntryPoint did not deploy at the pinned address"), { exitCode: 6 });
+  }
+
+  const deploy = spawnSync(
+    bin("forge"),
+    ["script", "script/DeployDevnet.s.sol:DeployDevnet", "--rpc-url", rpcUrl, "--broadcast", "--skip-simulation"],
+    {
+      cwd: repoRoot,
+      stdio: "pipe",
+      env: {
+        ...process.env,
+        DEVNET_DEPLOYER_PRIVATE_KEY: ANVIL_KEYS[0],
+        DEVNET_ENTRYPOINT: versions.entryPoint.address
+      }
+    }
+  );
+  writeFileSync(join(stateDir, "deploy.log"), `${deploy.stdout}\n${deploy.stderr}`);
+  if (deploy.status !== 0) {
+    stopPid(anvilPid);
+    throw Object.assign(new Error("DeployDevnet failed; see .loom/devnet/deploy.log"), { exitCode: 6 });
+  }
+
+  const broadcast = JSON.parse(
+    readFileSync(join(repoRoot, "broadcast", "DeployDevnet.s.sol", String(versions.chainId), "run-latest.json"), "utf8")
+  );
+  const addresses = {};
+  for (const tx of broadcast.transactions ?? []) {
+    if (tx?.transactionType === "CREATE" && tx.contractName) addresses[tx.contractName] = tx.contractAddress;
+    for (const extra of tx?.additionalContracts ?? []) {
+      if (extra.contractName) addresses[extra.contractName] = extra.address;
+    }
+  }
+  // The EntryPoint is CREATE2-pre-deployed, so it never appears in the
+  // forge broadcast; record the pinned address alongside the deployed stack.
+  addresses.EntryPoint = versions.entryPoint.address;
+  const entryPoint = addresses.EntryPoint;
+
+  // Alto is resolved at run time into a gitignored cache and never committed:
+  // its large transitive tree is third-party developer tooling, in the same
+  // category as the Foundry binaries, and is deliberately kept out of the
+  // repository's dependency graph. Once cached, the entry script is run with
+  // the current node directly (no npx, no shell) so the spawn is identical on
+  // every platform and needs no further network.
+  let altoEntry;
+  try {
+    altoEntry = ensureAlto();
+  } catch (error) {
+    stopPid(anvilPid);
+    throw error;
+  }
+  // Signing keys go to Alto through ALTO_-prefixed environment variables, not
+  // argv. These are anvil's public dev constants so nothing is secret here,
+  // but the CLI-wide rule is that no key ever rides in an argument list, and
+  // the same mechanism carries real keys in the Sepolia bundler script.
+  const altoPid = spawnLogged(
+    "alto",
+    process.execPath,
+    [
+      altoEntry,
+      "run",
+      "--entrypoints",
+      entryPoint,
+      "--rpc-url",
+      rpcUrl,
+      "--safe-mode",
+      "false",
+      "--port",
+      String(versions.ports.bundler)
+    ],
+    "alto",
+    {
+      ALTO_EXECUTOR_PRIVATE_KEYS: ANVIL_KEYS[versions.devAccounts.bundlerExecutorIndex],
+      ALTO_UTILITY_PRIVATE_KEY: ANVIL_KEYS[versions.devAccounts.bundlerUtilityIndex]
+    }
+  );
+  let supported;
+  try {
+    supported = await waitFor("alto", async () => {
+      const result = await rpc(bundlerUrl, "eth_supportedEntryPoints", []);
+      if (!Array.isArray(result) || result.length === 0) throw new Error("no entrypoints yet");
+      return result;
+    });
+  } catch (error) {
+    stopPid(altoPid);
+    stopPid(anvilPid);
+    throw error;
+  }
+  if (!supported.some(address => address.toLowerCase() === entryPoint.toLowerCase())) {
+    stopPid(altoPid);
+    stopPid(anvilPid);
+    throw Object.assign(new Error(`alto does not serve the deployed EntryPoint (${entryPoint})`), { exitCode: 6 });
+  }
+
+  const state = {
+    startedAt: new Date().toISOString(),
+    chainId: versions.chainId,
+    alto: versions.alto,
+    rpcUrl,
+    bundlerUrl,
+    pids: { anvil: anvilPid, alto: altoPid },
+    addresses
+  };
+  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  return state;
+}
+
+function stopPid(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+  } else {
+    try {
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+}
+
+export function down() {
+  const state = readState();
+  if (!state) {
+    throw Object.assign(new Error("no owned devnet state found (.loom/devnet/state.json); refusing to guess"), {
+      exitCode: 2
+    });
+  }
+  stopPid(state.pids.alto);
+  stopPid(state.pids.anvil);
+  removeSync(statePath);
+  return { stopped: state.pids };
+}
+
+export async function status() {
+  const state = readState();
+  if (!state) return { running: false };
+  const health = { rpc: false, bundler: false };
+  try {
+    health.rpc = (await rpc(state.rpcUrl, "eth_chainId", [])) === `0x${state.chainId.toString(16)}`;
+  } catch {
+    /* unhealthy */
+  }
+  try {
+    const supported = await rpc(state.bundlerUrl, "eth_supportedEntryPoints", []);
+    health.bundler = Array.isArray(supported) && supported.length > 0;
+  } catch {
+    /* unhealthy */
+  }
+  return { running: true, ...state, health };
+}
+
+export function logs(component) {
+  const allowed = ["anvil", "alto", "deploy"];
+  if (!allowed.includes(component)) {
+    throw Object.assign(new Error(`unknown log component: ${component} (expected ${allowed.join("|")})`), {
+      exitCode: 2
+    });
+  }
+  if (!readState()) {
+    throw Object.assign(new Error("no owned devnet state found; nothing to read"), { exitCode: 2 });
+  }
+  const path = join(stateDir, `${component}.log`);
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}

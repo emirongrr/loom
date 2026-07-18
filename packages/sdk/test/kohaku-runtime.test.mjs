@@ -89,8 +89,13 @@ test("kohaku runtime exposes a stable consent key for user-controlled providers"
   assert.equal(calls, 1);
 });
 
-test("loom sdk rejects construction without an explicit kohaku host", () => {
-  assert.throws(() => createLoomSdk({ chainId: 1, account }), InvalidSdkRequestError);
+test("loom sdk constructs without a kohaku host and fails only when the runtime is touched", () => {
+  // Privacy is an optional layer: construction must not demand a host, and
+  // there is still no silent fallback — the runtime access itself fails closed
+  // with the typed error until a host is injected.
+  const sdk = createLoomSdk({ chainId: 1, account });
+  assert.equal(sdk.lifecycle !== undefined, true);
+  assert.throws(() => sdk.kohaku, InvalidSdkRequestError);
 });
 
 test("app scopes hash origins and strip path query and fragment", () => {

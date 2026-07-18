@@ -52,9 +52,16 @@ contract DeployDevnet is Script {
     function run() external returns (LoomAccountFactory factory) {
         uint256 deployerKey = vm.envUint("DEVNET_DEPLOYER_PRIVATE_KEY");
 
+        // Devnet-only: the CLI pre-deploys the EntryPoint at a version-prefixed
+        // CREATE2 address (bundlers detect the EntryPoint version from the
+        // address prefix) and passes it here; without the override a fresh
+        // EntryPoint is deployed as before.
+        address entryPointOverride = vm.envOr("DEVNET_ENTRYPOINT", address(0));
+
         vm.startBroadcast(deployerKey);
 
-        EntryPoint entryPoint = new EntryPoint();
+        EntryPoint entryPoint =
+            entryPointOverride == address(0) ? new EntryPoint() : EntryPoint(payable(entryPointOverride));
         PolicyHook policyHook = new PolicyHook();
         VaultHook vaultHook = new VaultHook();
         ECDSAValidator ecdsaValidator = new ECDSAValidator();

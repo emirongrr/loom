@@ -188,10 +188,22 @@ function validateReleaseWorkflow() {
     "src script docs evidence fixtures out",
     "actions/upload-artifact@v7",
     "gh release create",
+    // The publishable npm packages are built, packed, and proven as part of the
+    // release: the packer is unit-tested and the exact tarballs are installed
+    // clean-room, then a provenance-ready dry-run publish validates the push.
+    "npm run release:packages:test",
+    "npm run e2e:clean-room",
+    "node tools/release/pack-packages.mjs",
+    "id-token: write",
+    "npm publish",
+    "--dry-run",
   ]) {
     assertIncludes(file, required, `missing required release qualification step: ${required}`);
   }
-  assert(source.includes("needs: [qualification, static-analysis]"), `${file}: publishing must depend on every release qualification job`);
+  assert(
+    source.includes("needs: [qualification, static-analysis, packages]"),
+    `${file}: publishing must depend on every release qualification job, including the package build`,
+  );
   assert(
     (source.match(/contents: write/gu) ?? []).length === 1,
     `${file}: only the publishing job may receive release write authority`,

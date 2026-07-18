@@ -25,6 +25,12 @@ Thumbs.db
 .idea/
 .vscode/
 
+# cli-owned devnet state
+.loom/
+
+# release packer output
+dist-release/
+
 # package build output
 packages/*/dist/
 

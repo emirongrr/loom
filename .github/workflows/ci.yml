@@ -76,6 +76,11 @@ jobs:
           npm run e2e:devnet 2>&1 | tee artifacts/devnet/devnet-lifecycle.log
           cp broadcast/DeployDevnet.s.sol/31337/run-latest.json artifacts/devnet/deployment-broadcast.json
           cp broadcast/DevnetAccountLifecycle.s.sol/31337/run-latest.json artifacts/devnet/account-lifecycle-broadcast.json
+      - name: Bundler-in-the-loop devnet
+        run: |
+          set -o pipefail
+          npm run e2e:bundler-devnet 2>&1 | tee artifacts/devnet/bundler-devnet.log
+          cp .loom/devnet/alto.log artifacts/devnet/alto.log || true
       - name: Upload devnet evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -84,6 +89,8 @@ jobs:
           path: artifacts/devnet
           retention-days: 30
           if-no-files-found: error
+      - name: Clean-room minimal account example
+        run: npm run e2e:clean-room
       - name: Check formatting
         run: forge fmt --check
       - name: Lint Solidity

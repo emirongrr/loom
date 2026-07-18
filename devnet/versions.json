@@ -1,0 +1,22 @@
+{
+  "comment": "Pinned local devnet composition. Every component is exact so `loom devnet up` is reproducible; bump deliberately and re-run the bundler smoke.",
+  "chainId": 31337,
+  "foundry": "1.7.1",
+  "alto": "0.0.20",
+  "entryPoint": {
+    "comment": "repo-pinned ERC-4337 v0.9, CREATE2-deployed at a 0x433709-prefixed vanity address because bundlers detect the EntryPoint version from the address prefix; re-mine the salt (tools/e2e docs) if the creation code hash changes",
+    "salt": "0x0000000000000000000000000000000000000000000000000000000000f892d7",
+    "address": "0x433709e09c7750b04c222fb46e0f27642f41f0b7",
+    "creationCodeHash": "0x98985119c163935f4a1d667a35338b4d2e155e667bad47aed2dfc112fd5ae340"
+  },
+  "ports": {
+    "rpc": 8545,
+    "bundler": 4337
+  },
+  "devAccounts": {
+    "comment": "anvil's well-known deterministic accounts — devnet only, never fund on a public chain",
+    "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "bundlerExecutorIndex": 1,
+    "bundlerUtilityIndex": 2
+  }
+}

@@ -9,6 +9,30 @@ and client layers on top.
 Node.js 22 and Foundry v1.7.1 are the supported development baseline.
 :::
 
+## Five-minute quickstart
+
+The fastest way to see a Loom account working end to end is the clean-room
+proof: it packs `@loom/core` and `@loom/sdk` into tarballs, installs them into
+an **empty** project, and runs the
+[minimal-account example](https://github.com/emirongrr/loom/blob/main/examples/minimal-account/README.md)
+against a fresh local devnet — derive the account address locally, confirm it
+on chain, deploy and execute with a passkey signature over the canonical
+EntryPoint hash, then send a second operation.
+
+```sh
+git clone https://github.com/emirongrr/loom.git
+cd loom
+npm ci
+npm run e2e:clean-room
+```
+
+The consumer script imports only the public package names (the runner rejects
+repository-path imports statically), so everything it does is exactly what an
+external integration can do today. The packages are not yet published to npm —
+the tarball path is the supported preview until the release pipeline lands —
+and the whole stack remains pre-audit: suitable for evaluation, not for
+production funds.
+
 ## Set up the repository
 
 <Steps>

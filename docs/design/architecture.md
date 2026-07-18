@@ -217,18 +217,46 @@ The packages layer around one canonical core:
   separate packages because each sits on a real platform, secret, Node-runtime,
   or signer boundary.
 - `@loom/privacy` is optional and experimental and is never a dependency of
-  `@loom/sdk`. Privacy is reached only through a structural adapter, so a normal
-  wallet install pulls in no Kohaku, Railgun, or privacy-pool code.
+  `@loom/sdk` — the dependency points the other way: privacy layers on top of
+  the wallet engine and is the canonical import point for the private-flow
+  surface (`createKohakuRuntime`, `preparePrivateVaultWithdrawal`; the same
+  names on `@loom/sdk` are deprecated for one cycle). A client constructed
+  without a Kohaku host runs the entire non-private path; only touching the
+  privacy runtime fails, at use, with a typed error. Privacy is reached only
+  through a structural adapter, so a normal wallet install pulls in no Kohaku,
+  Railgun, or privacy-pool code.
 
 No package ships a default RPC, bundler, paymaster, or privacy provider:
 transports are injected and provider replacement is a first-class path. Deployed
 addresses are trusted only against the canonical manifest — the SDK refuses a
 chain whose EntryPoint, proxy, implementation, or verifier code hash does not
 match, unless the caller explicitly selects an unverified mode. The `loom` CLI is
-a thin layer over these libraries: it never accepts a raw key as an argument,
-splits deployment into a secret-free plan and an externally signed apply, and
-redacts endpoints, headers, and signing material from every output.
+a thin layer over these libraries: it never accepts a raw key as an argument and
+supports machine-readable `--json` output with a stable exit-code contract.
+
+`loom devnet` composes a reproducible local stack — anvil, the repo-pinned
+contracts, and the Alto bundler, all versions fixed in `devnet/versions.json` —
+and records what it started in `.loom/devnet/state.json`. Teardown, status, and
+log commands act only on resources that state file names, so the CLI never kills
+or inspects a process it did not start. The EntryPoint is CREATE2-deployed at a
+version-prefixed address because bundlers infer the EntryPoint version from the
+address prefix. This devnet is what proves the wallet engine's send pipeline
+against a real bundler end to end (`tools/e2e/bundler-devnet.mjs`): account
+creation uses the sovereign direct-to-EntryPoint path — the factory fail-closes
+to the real SenderCreator, which no third-party simulator can satisfy — and all
+later traffic runs as ordinary bundler operations.
 
 Packages are TypeScript compiled to ESM with generated type declarations. `viem`
 is used internally for ABI and ERC-4337 encoding, but never appears in a public
 interface: those stay defined by Loom's own structural provider types.
+
+The publishable surface is `@loom/core` and `@loom/sdk`. A single release packer
+stages each package with the release version, rewrites the sdk's in-repo
+`file:` dependency on core to that exact version, strips private and dev-only
+fields, and stamps a stability label — the packages are pre-audit and say so in
+their own metadata. The same packer feeds both the release workflow and the
+clean-room example test, so the tarballs an install would pull are byte-for-byte
+the ones proven to derive, deploy, and operate an account end to end. The
+release attaches those tarballs with checksums and an integrity manifest and
+runs a provenance-ready dry-run publish; the version is the git tag, so there is
+no separately maintained version to drift.
