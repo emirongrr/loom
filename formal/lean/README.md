@@ -29,6 +29,8 @@ The current Lean model starts with:
 - non-controller keystore updates preserving authority state;
 - keystore sync rejecting execution before its delay;
 - guardian keystore-sync cancellation preserving validator and guardian authority;
+- vault withdrawals rejecting execution before their delay;
+- guardian vault cancellation preserving balances and spending authority;
 - absence of developer, factory, registry, or provider authority.
 
 Planned model extensions:
