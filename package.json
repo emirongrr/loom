@@ -82,6 +82,8 @@
     "privacy:test": "npm run sdk:build && npm --prefix packages/privacy ci && npm --prefix packages/privacy test",
     "cli:test": "npm run sdk:build && npm --prefix packages/cli ci && npm --prefix packages/cli test",
     "example:backend:test": "npm run core:build && npm --prefix examples/backend-userop-tracker ci && npm --prefix examples/backend-userop-tracker test",
+    "monitoring:test": "npm run core:build && npm --prefix monitoring ci && npm --prefix monitoring test",
+    "monitoring:demo": "npm run core:build && node monitoring/demo.mjs",
     "sdk:build": "npm run core:build && npm --prefix packages/sdk ci && tsc -p packages/sdk/tsconfig.json",
     "sdk:test": "npm run sdk:build && npm --prefix packages/sdk test",
     "sdk:types:check": "tsc -p tools/sdk/type-fixture",

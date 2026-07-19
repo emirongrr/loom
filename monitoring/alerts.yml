@@ -1,0 +1,47 @@
+# Prometheus alerting rules for a Loom deployment. Loaded by prometheus.yml.
+groups:
+  - name: loom-alerts
+    rules:
+      - alert: LoomHighUserOperationFailureRate
+        expr: |
+          sum(rate(loom_userops_total{status="failed"}[5m]))
+          /
+          clamp_min(sum(rate(loom_userops_total[5m])), 1)
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loom UserOperation failure rate is high"
+          description: "More than 5% of UserOperations have reverted over the last 10 minutes."
+
+      - alert: LoomRpcFailureRate
+        expr: |
+          sum by (provider) (rate(loom_rpc_errors_total[5m]))
+          /
+          clamp_min(sum by (provider) (rate(loom_rpc_requests_total[5m])), 1)
+          > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loom RPC failure rate is high for {{ $labels.provider }}"
+          description: "More than 2% of RPC calls to {{ $labels.provider }} are failing."
+
+      - alert: LoomIndexerLagging
+        expr: loom_indexer_lag_blocks > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loom indexer is falling behind the chain head"
+          description: "The indexer is more than 25 blocks behind for 5 minutes."
+
+      - alert: LoomReorgActivity
+        expr: increase(loom_userops_reorged_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "Loom operations were rolled back by a reorg"
+          description: "One or more tracked UserOperations were reorged in the last 15 minutes."

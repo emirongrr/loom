@@ -56,6 +56,8 @@ jobs:
         run: npm run privacy:test
       - name: Test backend tracker example
         run: npm run example:backend:test
+      - name: Test monitoring component
+        run: npm run monitoring:test
       - name: Prepare devnet evidence
         run: |
           mkdir -p artifacts/devnet

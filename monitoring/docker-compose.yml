@@ -1,0 +1,70 @@
+# Full local observability stack for a Loom deployment:
+#
+#   application/indexer --(OTLP)--> OpenTelemetry Collector
+#                                     |-- metrics --> Prometheus
+#                                     '-- traces  --> Tempo
+#   Prometheus (also scrapes the exporter's /metrics) ---.
+#   Tempo (traces) --------------------------------------+--> Grafana
+#   Loki (logs) -----------------------------------------'
+#
+#   1. Run the exporter on the host (it reaches your RPC, not the containers):
+#        loom monitor --rpc-url ... --manifest ...
+#        # for traces: LOOM_OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (+ SDK)
+#   2. Bring up the stack:
+#        docker compose -f monitoring/docker-compose.yml up
+#   3. Open Grafana at http://localhost:3000 (admin / admin) -> "Loom Overview".
+#
+# Versions are pinned; nothing here talks to a chain — the exporter does.
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: ["--config=/etc/otel/config.yaml"]
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exporter (Collector's own metrics passthrough)
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - tempo
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200"   # Tempo query
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - tempo
+      - loki

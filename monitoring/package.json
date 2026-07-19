@@ -1,0 +1,16 @@
+{
+  "name": "loom-monitoring",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repository monitoring component: connect a Loom deployment from its manifest and export TVL/throughput metrics for Prometheus and Grafana.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@loom/core": "file:../packages/core",
+    "@opentelemetry/api": "1.9.1",
+    "viem": "^2.55.1"
+  }
+}

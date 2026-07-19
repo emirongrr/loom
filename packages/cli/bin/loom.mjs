@@ -6,6 +6,7 @@
 // 5 transport/health, 6 verification.
 
 import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { down, logs, status, up } from "../src/devnet.mjs";
@@ -53,13 +54,17 @@ const usage = `usage:
   loom doctor --rpc-url <url> [--bundler-url <url>] [--manifest <path>]
               [--entrypoint <addr>] [--account <addr>] [--chain-id <n>]
               [--recovery-module <addr>] [--json]
+  loom monitor --rpc-url <url> --manifest <path> [--port <n>]
+               [--interval-ms <n>] [--tvl-tokens <addr,addr>]
 
-devnet: pinned local stack (anvil + Loom contracts + Alto bundler); composition
-        from devnet/versions.json, ownership from .loom/devnet/state.json.
-doctor: read-only production-operation diagnostics — chain, EntryPoint and
-        SenderCreator code, manifest code hashes, native P-256, bundler, and
-        account safety state. Exit 6 on any verification failure. Endpoints are
-        redacted in every output.`;
+devnet:  pinned local stack (anvil + Loom contracts + Alto bundler); composition
+         from devnet/versions.json, ownership from .loom/devnet/state.json.
+doctor:  read-only production-operation diagnostics — chain, EntryPoint and
+         SenderCreator code, manifest code hashes, native P-256, bundler, and
+         account safety state. Exit 6 on any verification failure. Endpoints are
+         redacted in every output.
+monitor: connect a deployment from its manifest and export TVL/throughput
+         metrics on /metrics for Prometheus + Grafana (the monitoring/ stack).`;
 
 // Human-readable status glyphs.
 const GLYPH = { ok: "PASS", warn: "WARN", fail: "FAIL", skip: "----" };
@@ -127,15 +132,37 @@ try {
   if (group === "doctor") {
     await doctorCommand();
     process.exit(0);
-  }
-  if (group !== "devnet" || !command) {
+  } else if (group === "monitor") {
+    // Start the monitoring exporter as a child process — a clean boundary that
+    // keeps the CLI decoupled from the monitoring component's dependencies. The
+    // RPC URL is passed through the environment, never argv, so it stays out of
+    // process listings. The parent stays alive until the child exits.
+    const rpcUrl = flag("rpc-url");
+    const manifestPath = flag("manifest");
+    if (!rpcUrl || !manifestPath) {
+      throw Object.assign(new Error("loom monitor requires --rpc-url and --manifest"), { exitCode: 2 });
+    }
+    const server = join(repoRoot, "monitoring", "server.mjs");
+    const child = spawn(process.execPath, [server], {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        LOOM_RPC_URL: rpcUrl,
+        LOOM_MANIFEST: manifestPath,
+        ...(flag("port") ? { LOOM_METRICS_PORT: flag("port") } : {}),
+        ...(flag("interval-ms") ? { LOOM_POLL_INTERVAL_MS: flag("interval-ms") } : {}),
+        ...(flag("tvl-tokens") ? { LOOM_TVL_TOKENS: flag("tvl-tokens") } : {})
+      }
+    });
+    child.on("exit", code => process.exit(code ?? 0));
+  } else if (group !== "devnet" || !command) {
     if (args.includes("--help") || args.length === 0) {
       console.log(usage);
       process.exit(0);
     }
     throw Object.assign(new Error(`unknown command; ${usage}`), { exitCode: 2 });
-  }
-  switch (command) {
+  } else {
+    switch (command) {
     case "up":
       emit(await up());
       break;
@@ -148,8 +175,9 @@ try {
     case "logs":
       emit(logs(argument));
       break;
-    default:
-      throw Object.assign(new Error(`unknown devnet command: ${command}`), { exitCode: 2 });
+      default:
+        throw Object.assign(new Error(`unknown devnet command: ${command}`), { exitCode: 2 });
+    }
   }
 } catch (error) {
   fail(error);
