@@ -19,6 +19,8 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const VERSION = "9.9.9-test";
 
 function build() {
+  const passkey = spawnSync(npm, ["run", "passkey:build"], { cwd: repoRoot, stdio: "pipe", shell: process.platform === "win32" });
+  if (passkey.status !== 0) throw new Error("passkey:build failed in test setup");
   const result = spawnSync(npm, ["run", "sdk:build"], {
     cwd: repoRoot,
     stdio: "ignore",

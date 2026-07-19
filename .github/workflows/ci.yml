@@ -52,6 +52,8 @@ jobs:
         run: npm run fixtures:check
       - name: Validate formal program structure
         run: npm run formal:program:check
+      - name: Test passkey package
+        run: npm run passkey:test
       - name: Test privacy SDK boundary
         run: npm run privacy:test
       - name: Test backend tracker example

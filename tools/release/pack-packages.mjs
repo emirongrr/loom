@@ -41,6 +41,7 @@ export function removeTreeSync(path) {
 // The publish order matters: core has no Loom dependency; sdk depends on core.
 const PUBLISHABLE = [
   { name: "@loom/core", dir: "packages/core", loomDeps: [] },
+  { name: "@loom/passkey", dir: "packages/passkey", loomDeps: ["@loom/core"] },
   { name: "@loom/sdk", dir: "packages/sdk", loomDeps: ["@loom/core"] }
 ];
 
