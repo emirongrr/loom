@@ -28,8 +28,11 @@ LOOM_MANIFEST=./deployment/manifest.json \
 # metrics on http://localhost:9464/metrics
 ```
 
-Optional env: `LOOM_METRICS_PORT` (9464), `LOOM_POLL_INTERVAL_MS` (5000),
-`LOOM_TVL_TOKENS` (comma-separated ERC-20 addresses to include in TVL).
+`loom monitor` also reads `LOOM_RPC_URL` / `LOOM_MANIFEST` from the environment.
+A `--rpc-url` value is visible in process listings for the exporter's lifetime,
+so if the RPC URL embeds a secret token, set `LOOM_RPC_URL` instead to keep it
+out of argv. Optional env: `LOOM_METRICS_PORT` (9464), `LOOM_POLL_INTERVAL_MS`
+(5000), `LOOM_TVL_TOKENS` (comma-separated ERC-20 addresses to include in TVL).
 
 ## Dashboard
 

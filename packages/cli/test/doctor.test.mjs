@@ -149,8 +149,20 @@ test("the doctor CLI requires --rpc-url", () => {
 });
 
 
-test("the monitor CLI requires --rpc-url and --manifest", () => {
+test("the monitor CLI requires an RPC URL and a manifest", () => {
   const missing = spawnSync(process.execPath, [bin, "monitor", "--rpc-url", "http://127.0.0.1:8545"], { encoding: "utf8" });
   assert.equal(missing.status, 2);
-  assert.match(missing.stderr, /requires --rpc-url and --manifest/);
+  assert.match(missing.stderr, /requires an RPC URL .* and a manifest/);
+});
+
+test("the monitor CLI accepts the RPC URL and manifest from the environment (keeping a token out of argv)", () => {
+  // With both supplied via env and neither as a flag, the input guard passes;
+  // it fails later only because the manifest path does not exist — proving the
+  // env values were accepted without --rpc-url appearing in argv.
+  const result = spawnSync(process.execPath, [bin, "monitor"], {
+    encoding: "utf8",
+    env: { ...process.env, LOOM_RPC_URL: "http://127.0.0.1:8545", LOOM_MANIFEST: "/no/such/manifest.json" }
+  });
+  assert.notEqual(result.status, 2, "the input guard did not reject env-supplied values");
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, /requires an RPC URL/);
 });

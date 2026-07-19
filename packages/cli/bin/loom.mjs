@@ -54,8 +54,8 @@ const usage = `usage:
   loom doctor --rpc-url <url> [--bundler-url <url>] [--manifest <path>]
               [--entrypoint <addr>] [--account <addr>] [--chain-id <n>]
               [--recovery-module <addr>] [--json]
-  loom monitor --rpc-url <url> --manifest <path> [--port <n>]
-               [--interval-ms <n>] [--tvl-tokens <addr,addr>]
+  loom monitor (--rpc-url <url> | LOOM_RPC_URL) (--manifest <path> | LOOM_MANIFEST)
+               [--port <n>] [--interval-ms <n>] [--tvl-tokens <addr,addr>]
 
 devnet:  pinned local stack (anvil + Loom contracts + Alto bundler); composition
          from devnet/versions.json, ownership from .loom/devnet/state.json.
@@ -64,7 +64,9 @@ doctor:  read-only production-operation diagnostics — chain, EntryPoint and
          account safety state. Exit 6 on any verification failure. Endpoints are
          redacted in every output.
 monitor: connect a deployment from its manifest and export TVL/throughput
-         metrics on /metrics for Prometheus + Grafana (the monitoring/ stack).`;
+         metrics on /metrics for Prometheus + Grafana (the monitoring/ stack).
+         Supply the RPC URL via LOOM_RPC_URL to keep a token-bearing URL out of
+         argv; --rpc-url is a convenience for non-secret endpoints.`;
 
 // Human-readable status glyphs.
 const GLYPH = { ok: "PASS", warn: "WARN", fail: "FAIL", skip: "----" };
@@ -134,13 +136,22 @@ try {
     process.exit(0);
   } else if (group === "monitor") {
     // Start the monitoring exporter as a child process — a clean boundary that
-    // keeps the CLI decoupled from the monitoring component's dependencies. The
-    // RPC URL is passed through the environment, never argv, so it stays out of
-    // process listings. The parent stays alive until the child exits.
-    const rpcUrl = flag("rpc-url");
-    const manifestPath = flag("manifest");
+    // keeps the CLI decoupled from the monitoring component's dependencies, and
+    // the parent stays alive until the child exits.
+    //
+    // The RPC URL may be supplied with `--rpc-url` or via the LOOM_RPC_URL
+    // environment variable. A `--rpc-url` value is visible in this process's
+    // argv (process listings) for the exporter's whole lifetime; if the URL
+    // embeds a secret token, set LOOM_RPC_URL instead to keep it out of argv.
+    // Either way it reaches the exporter through the environment, never the
+    // child's argv.
+    const rpcUrl = flag("rpc-url") ?? process.env.LOOM_RPC_URL;
+    const manifestPath = flag("manifest") ?? process.env.LOOM_MANIFEST;
     if (!rpcUrl || !manifestPath) {
-      throw Object.assign(new Error("loom monitor requires --rpc-url and --manifest"), { exitCode: 2 });
+      throw Object.assign(
+        new Error("loom monitor requires an RPC URL (--rpc-url or LOOM_RPC_URL) and a manifest (--manifest or LOOM_MANIFEST)"),
+        { exitCode: 2 }
+      );
     }
     const server = join(repoRoot, "monitoring", "server.mjs");
     const child = spawn(process.execPath, [server], {
