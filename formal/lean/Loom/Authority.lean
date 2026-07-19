@@ -95,6 +95,12 @@ def executionModeAttempt (s : State) (modeSupported : Bool) : State × Bool :=
   else
     (s, false)
 
+def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
+  if actor = Actor.guardian then
+    ({ s with frozen := true }, true)
+  else
+    (s, false)
+
 def guardianlessFreezeAttempt (s : State) (guardianConfigured : Bool) : State × Bool :=
   if guardianConfigured then
     ({ s with frozen := true }, true)
@@ -237,6 +243,10 @@ theorem external_recovery_preserves_authority_state
     (recoveryConfigurationAttempt s false).1 = s := by
   simp [recoveryConfigurationAttempt]
 
+theorem validator_cannot_perform_guardian_recovery_action
+    (s : State) :
+    (guardianRecoveryActionAttempt s Actor.validator).1 = s := by
+  simp [guardianRecoveryActionAttempt]
 theorem non_controller_keystore_update_preserves_state
     (s : State) :
     (keystoreConfigAttempt s false).1 = s := by
