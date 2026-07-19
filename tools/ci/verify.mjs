@@ -121,6 +121,7 @@ run("Account SDK tests", npm, ["run", "account:test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("CLI tests", npm, ["run", "cli:test"]);
+run("Backend tracker example tests", npm, ["run", "example:backend:test"]);
 run("Wallet engine SDK install", npm, ["--prefix", "packages/sdk", "ci"]);
 run("Wallet engine SDK tests", npm, ["--prefix", "packages/sdk", "test"]);
 run("SDK type integrity", npm, ["run", "sdk:types:check"]);

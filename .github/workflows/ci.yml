@@ -54,6 +54,8 @@ jobs:
         run: npm run formal:program:check
       - name: Test privacy SDK boundary
         run: npm run privacy:test
+      - name: Test backend tracker example
+        run: npm run example:backend:test
       - name: Prepare devnet evidence
         run: |
           mkdir -p artifacts/devnet
