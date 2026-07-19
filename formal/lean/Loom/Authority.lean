@@ -91,6 +91,8 @@ def hasValidator (s : State) : Prop :=
 
 def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.guardian then
+def keystoreConfigAttempt (s : State) (callerIsController : Bool) : State × Bool :=
+  if callerIsController then
     ({ s with configVersion := s.configVersion + 1 }, true)
 def syncAttempt (s : State) (readyAt replacementIdentity : Nat) : State × Bool :=
   if readyAt <= s.now then
@@ -221,6 +223,10 @@ theorem validator_cannot_perform_guardian_recovery_action
     (s : State) :
     (guardianRecoveryActionAttempt s Actor.validator).1 = s := by
   simp [guardianRecoveryActionAttempt]
+theorem non_controller_keystore_update_preserves_state
+    (s : State) :
+    (keystoreConfigAttempt s false).1 = s := by
+  simp [keystoreConfigAttempt]
 theorem sync_cannot_execute_before_delay
     (s : State)
     (readyAt replacementIdentity : Nat) :
