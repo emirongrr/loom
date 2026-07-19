@@ -63,7 +63,7 @@ that the abstract model proves them.
 | `check_FrozenAccountOnlyAllowsRecoveryCancel` | Frozen guardian cancellation removes pending recovery without spending. | `frozen_guardian_cancel_recovery_allowed` | `_isFrozenSafe`, `cancelRecovery` | Guardian proof uniqueness and cancellation digest are abstracted. |
 | `check_KeystoreUpdateRequiresController` | Only the identity controller can update keystore configuration. | `non_controller_keystore_update_preserves_state` | `LoomKeystore.updateConfig` | Lean abstracts controller identity to a Boolean; root/version tuple and signature verification remain concrete. |
 | `check_SyncDelayIsEnforced` | Keystore sync cannot replace validators before delay. | `sync_cannot_execute_before_delay` | `proposeSync`, `executeSync`, `pendingSyncs.readyAt` | Lean abstracts sync payload and proof binding; concrete block-time and keystore identity remain concrete. |
-| `check_GuardianCancellationGrantsNoValidatorAuthority` | Cancelling sync grants no validator authority. | Not modeled. | `cancelSyncWithGuardians`, pending sync and validator set | Lean has no keystore sync transition or guardian proof model. |
+| `check_GuardianCancellationGrantsNoValidatorAuthority` | Cancelling sync grants no validator authority. | `guardian_sync_cancellation_preserves_authority`, `approved_guardian_sync_cancellation_clears_pending` | `cancelSyncWithGuardians`, pending sync and validator set | Lean abstracts guardian proof and digest verification to an approval Boolean; validator addresses, proof uniqueness, and pending-sync payload remain concrete. |
 | `check_VaultWithdrawalDelayIsEnforced` | Protected assets cannot leave before vault delay. | Not modeled. | vault policy hook, `scheduleVaultWithdrawal`, account execution | Lean has no asset, hook, policy, or time state. |
 | `check_VaultGuardianCancellationGrantsNoSpendingAuthority` | Cancelling a withdrawal grants no spending authority. | Not modeled. | `cancelVaultWithdrawalWithGuardians`, pending withdrawal | Lean has no vault withdrawal or token-balance abstraction. |
 
@@ -91,6 +91,10 @@ that the abstract model proves them.
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
 | `ProxyStoragePair.proxy` | account state stored at the proxy address | Separate initialization storage context; concrete Solidity slot layout is abstracted. |
 | `ProxyStoragePair.implementation` | constructor-initialized state stored at the shared implementation address | Preserved by abstract proxy initialization; delegatecall context and bytecode semantics remain concrete. |
+| `KeystoreSyncState.validatorSetIdentity` | currently installed account validator set | Preserved across guardian sync cancellation; concrete validator addresses and module initialization data are abstracted. |
+| `KeystoreSyncState.guardianRoot` | `LoomAccount.guardianRoot()` | Preserved across guardian sync cancellation; guardian leaves and proof verification remain concrete. |
+| `KeystoreSyncState.pending` | `pendingSyncs(account).readyAt != 0` | Cleared by an approved guardian cancellation. |
+| `KeystoreSyncState.nonce` | `syncNonces(account)` | Incremented by an approved cancellation for replay protection. |
 
 ## Abstract Transition Mapping
 
@@ -117,6 +121,7 @@ that the abstract model proves them.
 | `guardianRecoveryActionAttempt` | guardian recovery and guardian configuration entry points | validator actors return the original authority state; only guardian actors may mutate recovery configuration | guardian proof verification, recovery digest, and module routing |
 | `keystoreConfigAttempt` | `LoomKeystore.updateConfig` | non-controller callers return the original authority state; only the controller may update configuration | controller identity proof, root/version tuple, and storage layout |
 | `syncAttempt` | `proposeSync`, `executeSync` | execution before `readyAt` returns the original validator-set state | keystore proof, validator-root binding, and pending-sync storage |
+| `cancelKeystoreSyncWithGuardians` | `cancelSyncWithGuardians` | an approved cancellation clears pending state and advances its nonce without changing validator-set identity or guardian root | guardian threshold, proof uniqueness, cancellation digest, validator addresses, and pending payload |
 | `initialize` | `initialize`, `initializeDelegatedAccount` | not already initialized | proxy context, self-call restriction, module initialization payload |
 | `upgradeImplementation` | no supported entry point | always rejected | bytecode-level absence of upgrade/admin selectors |
 
@@ -127,6 +132,8 @@ Every current theorem has at least one concrete review anchor:
 - `frozen_blocks_ordinary_execution`: frozen EntryPoint and direct-execution properties;
 - `initialized_state_rejects_reinitialization`: one-shot initialization property;
 - `proxy_initialization_updates_only_proxy_storage`: immutable proxy initialization storage-isolation property;
+- `guardian_sync_cancellation_preserves_authority`: guardian keystore-sync cancellation non-authority property;
+- `approved_guardian_sync_cancellation_clears_pending`: successful guardian sync-cancellation liveness property;
 - `immutable_proxy_has_no_upgrade_transition`: immutable proxy selector property;
 - `frozen_guardian_cancel_recovery_allowed`: frozen recovery-cancel property;
 - `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
