@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { down, up } from "../../packages/cli/src/devnet.mjs";
 import {
   deriveAccountAddress,
+  getUserOpHash as coreGetUserOpHash,
   packUserOperation as corePackUserOperation,
   encodeCreateAccountCall,
   EntryPointAbi,
@@ -230,6 +231,72 @@ try {
   const balanceAfter = BigInt(await rpcCall(rpcUrl, "eth_getBalance", [target, "latest"]));
   assert.equal(balanceAfter - balanceBefore, 12n, "batch value transfers did not both arrive");
   console.log(`    ok  atomic batch executed via eth_sendUserOperation (${fourth.userOpHash})`);
+
+  // The engine-free @loom/passkey signer, live: sign an operation with only
+  // @loom/passkey + @loom/core (no wallet engine) and execute it through the
+  // real EntryPoint. This is the web/mobile persona path — a passkey signer
+  // that needs neither the bundler transport nor the privacy runtime.
+  console.log("==> op 5 signed by @loom/passkey (engine-free) through the EntryPoint");
+  const { createWebAuthnSigner } = await import("../../packages/passkey/dist/index.js");
+  const passkeySigner = createWebAuthnSigner({
+    validator,
+    origin: ORIGIN,
+    rpId: RP_ID,
+    signChallenge(challenge) {
+      const authenticatorData = Buffer.concat([Buffer.from(rpIdHash.slice(2), "hex"), Buffer.from([0x05])]);
+      const clientDataJSON = Buffer.from(
+        `{"type":"webauthn.get","challenge":"${challenge.challenge}","origin":"${ORIGIN}","crossOrigin":false}`,
+        "utf8"
+      );
+      const preimage = Buffer.concat([authenticatorData, crypto.createHash("sha256").update(clientDataJSON).digest()]);
+      const signature = crypto.sign("sha256", preimage, { key: privateKey, dsaEncoding: "ieee-p1363" });
+      return {
+        authenticatorData: `0x${authenticatorData.toString("hex")}`,
+        clientDataJSON: `0x${clientDataJSON.toString("hex")}`,
+        signature: `0x${signature.toString("hex")}`
+      };
+    }
+  });
+  // Nonce via a raw EntryPoint getNonce(address,uint192) call (selector
+  // 0x35567e1a) — the op is assembled without the wallet engine on purpose.
+  const nonceWord = await rpcCall(rpcUrl, "eth_call", [
+    { to: entryPoint, data: `0x35567e1a${account.slice(2).toLowerCase().padStart(64, "0")}${"0".repeat(64)}` },
+    "latest"
+  ]);
+  const nonce = BigInt(nonceWord);
+  const passkeyOp = {
+    sender: account,
+    nonce,
+    callData: encodeFunctionData({
+      abi: [{ type: "function", name: "execute", inputs: [{ type: "bytes32" }, { type: "bytes" }], outputs: [], stateMutability: "payable" }],
+      functionName: "execute",
+      args: [
+        `0x${"00".repeat(32)}`,
+        encodeAbiParameters(
+          [{ type: "tuple", components: [{ type: "address" }, { type: "uint256" }, { type: "bytes" }] }],
+          [[target, 0n, encodeFunctionData({ abi: setValueAbi, functionName: "setValue", args: [5555n] })]]
+        )
+      ]
+    }),
+    callGasLimit: 500_000n,
+    verificationGasLimit: 800_000n,
+    preVerificationGas: 100_000n,
+    maxFeePerGas: 3_000_000_000n,
+    maxPriorityFeePerGas: 1_000_000_000n,
+    signature: "0x"
+  };
+  // The hash the account validates is computed with @loom/core; the signer only
+  // needs that hash, never the wallet engine.
+  const packedForHash = corePackUserOperation(passkeyOp);
+  const passkeyHash = coreGetUserOpHash(packedForHash, entryPoint, BigInt(state.chainId));
+  const passkeySignature = await passkeySigner.sign(passkeyHash);
+  const packedSigned = corePackUserOperation({ ...passkeyOp, signature: passkeySignature });
+  await rpcCall(rpcUrl, "eth_sendTransaction", [
+    { from: deployer, to: entryPoint, gas: "0x7a1200", data: encodeFunctionData({ abi: EntryPointAbi, functionName: "handleOps", args: [[packedSigned], deployer] }) }
+  ]);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.equal(await readValue(), 5555n, "the @loom/passkey-signed operation did not execute");
+  console.log("    ok  engine-free @loom/passkey signature validated on chain (value=5555)");
 
   // The production-operation doctor, live: run the read-only diagnostics against
   // this same devnet — chain, EntryPoint + SenderCreator code, native P-256, and

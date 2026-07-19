@@ -118,6 +118,7 @@ run("Deployment manifest schema", npm, ["run", "manifest:schema:test"]);
 run("Account derivation fixture", npm, ["run", "sdk:derivation:test"]);
 run("Signature envelope fixture", npm, ["run", "sdk:signature:test"]);
 run("Account SDK tests", npm, ["run", "account:test"]);
+run("Passkey SDK tests", npm, ["run", "passkey:test"]);
 run("Guardian SDK tests", npm, ["--prefix", "packages/guardian", "test"]);
 run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("CLI tests", npm, ["run", "cli:test"]);

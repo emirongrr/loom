@@ -213,9 +213,15 @@ The packages layer around one canonical core:
   canonical EntryPoint hash, the `(validator, validatorSignature)` envelope,
   simulation, send, and receipt. Passkey signatures are the on-chain
   `WebAuthnSignature` structure, never a bare hash.
-- `@loom/passkey`, `@loom/guardian`, `@loom/deployment`, and `@loom/cli` are
-  separate packages because each sits on a real platform, secret, Node-runtime,
-  or signer boundary.
+- `@loom/passkey` is the platform-neutral WebAuthn/P-256 surface: the canonical
+  signature encoding, the passkey provider contract, and an engine-free signer
+  that operates on a user-operation hash the caller computes with `@loom/core`.
+  It depends only on `@loom/core`, so a browser or mobile wallet signs without
+  the wallet engine's bundler, transport, or privacy runtime; `@loom/sdk`'s
+  `createPasskeySigner` is the higher-level equivalent that also builds and
+  submits the operation.
+- `@loom/guardian`, `@loom/deployment`, and `@loom/cli` are separate packages
+  because each sits on a real secret, Node-runtime, or signer boundary.
 - `@loom/privacy` is optional and experimental and is never a dependency of
   `@loom/sdk` — the dependency points the other way: privacy layers on top of
   the wallet engine and is the canonical import point for the private-flow
