@@ -35,11 +35,30 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Require archive RPC
-        run: test -n "$MAINNET_RPC_URL"
-      - name: Run pinned token matrix
+      - name: Prepare token fork evidence
         run: |
           mkdir -p artifacts/nightly-token-fork
+          if [ -n "$MAINNET_RPC_URL" ]; then configured=true; else configured=false; fi
+          printf '%s\n' \
+            '{' \
+            '  "schemaVersion": 1,' \
+            '  "repository": "${{ github.repository }}",' \
+            '  "commit": "${{ github.sha }}",' \
+            '  "workflowRunId": "${{ github.run_id }}",' \
+            '  "workflowRunAttempt": "${{ github.run_attempt }}",' \
+            '  "forkBlock": 20000000,' \
+            "  \"credentialConfigured\": $configured" \
+            '}' > artifacts/nightly-token-fork/run-metadata.json
+          forge --version > artifacts/nightly-token-fork/forge-version.txt
+          node --version > artifacts/nightly-token-fork/node-version.txt
+      - name: Require archive RPC
+        run: |
+          if [ -z "$MAINNET_RPC_URL" ]; then
+            echo "MAINNET_RPC_URL is not configured; no token fork result was produced." | tee artifacts/nightly-token-fork/token-matrix.log
+            exit 1
+          fi
+      - name: Run pinned token matrix
+        run: |
           set -o pipefail
           npm run test:fork:tokens 2>&1 | tee artifacts/nightly-token-fork/token-matrix.log
       - name: Upload token fork evidence

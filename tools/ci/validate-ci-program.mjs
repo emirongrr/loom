@@ -143,11 +143,14 @@ function validateNightlyWorkflow() {
     "npm run test:fork:tokens 2>&1 | tee artifacts/nightly-token-fork/token-matrix.log",
     "name: nightly-token-fork-${{ github.sha }}",
     "path: artifacts/nightly-token-fork",
+    "Prepare token fork evidence",
+    "artifacts/nightly-token-fork/run-metadata.json",
+    "credentialConfigured",
+    "MAINNET_RPC_URL is not configured; no token fork result was produced.",
     "critical-guard-mutations:",
     "npm run test:mutation:critical -- --report artifacts/nightly-mutation/report.json 2>&1 | tee artifacts/nightly-mutation/mutation.log",
     "name: nightly-mutation-${{ github.sha }}",
     "path: artifacts/nightly-mutation",
-    'test -n "$MAINNET_RPC_URL"',
     "retention-days: 30",
     "if-no-files-found: error",
     "--depth 100000 --width 500000",
@@ -164,6 +167,11 @@ function validateNightlyWorkflow() {
   ]) {
     assertIncludes(file, required, `missing required nightly verification step: ${required}`);
   }
+  const source = read(file);
+  assert(
+    source.indexOf("Prepare token fork evidence") < source.indexOf("Require archive RPC"),
+    `${file}: token fork evidence must be prepared before the credential gate can fail`,
+  );
 }
 
 function validateReleaseWorkflow() {
