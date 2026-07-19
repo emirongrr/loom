@@ -55,6 +55,34 @@ component code hashes (with `--manifest`) or EntryPoint code presence;
 supported EntryPoints (with `--bundler-url`); and account freeze/pending state
 (with `--account` and `--chain-id`). Any verification failure exits `6`.
 
+## `loom deploy` and `loom manifest`
+
+Read-only deployment inspection and verification. Every check delegates to the
+tested `@loom/core` (schema parsing, canonical hash) and `@loom/deployment`
+(on-chain code-hash verification) primitives — nothing is reimplemented, nothing
+signs or mutates, and no network is touched without `--rpc-url`.
+
+```sh
+loom manifest validate --manifest ./manifest.json [--rpc-url <url>] [--json]
+loom manifest diff --old ./a.json --new ./b.json [--json]
+loom deploy inspect --manifest ./manifest.json [--rpc-url <url>] [--json]
+loom deploy verify --manifest ./manifest.json --rpc-url <url> [--json]
+```
+
+- **`manifest validate`** — schema-checks the manifest and prints its canonical
+  hash; with `--rpc-url` it also confirms every component's code hash on chain.
+  A schema or on-chain mismatch exits `6`.
+- **`manifest diff`** — classifies the differences between two manifests:
+  EntryPoint / factory / implementation / validator / recovery changes are
+  **breaking**, a chain-id change is **incompatible**, hooks and metadata are
+  **notable**. An incompatible or breaking diff exits `6`.
+- **`deploy inspect`** — shows the manifest, labelling each contract *verified*
+  (chain-confirmed with `--rpc-url`) or *asserted* (manifest-only).
+- **`deploy verify`** — fails closed (exit `6`) on any code-hash mismatch.
+
+The signer-driven verbs (`plan` / `apply` / `resume`) are a separate,
+larger concern and are not part of this read-only family yet.
+
 ## Exit codes
 
 | Code | Meaning |

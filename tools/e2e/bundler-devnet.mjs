@@ -317,6 +317,39 @@ try {
   assert.ok(exposition.includes("loom_rpc_duration_seconds_bucket"), "histogram exposes buckets");
   console.log("    ok  best-practice metrics: counters with labels, histogram buckets, chain_id");
 
+  // The read-only deployment verbs, live: assemble a canonical manifest from the
+  // devnet's real code hashes and run `loom deploy verify` / `inspect` against
+  // the chain — a pass on the honest manifest, a fail on a tampered one.
+  console.log("==> loom deploy verify + manifest validate against the live devnet");
+  const { verifyDeployment, inspectManifest, validateManifest } = await import("../../packages/cli/src/deploy.mjs");
+  const codeHash = async address => keccak256(await rpcCall(rpcUrl, "eth_getCode", [address, "latest"]));
+  const proxyHash = keccak256(proxyArtifact.bytecode.object);
+  const canonicalManifest = {
+    schemaVersion: "1",
+    releaseChannel: "devnet",
+    chainId: state.chainId,
+    entryPoint: { address: entryPoint, runtimeCodeHash: await codeHash(entryPoint) },
+    factory: { address: factory, runtimeCodeHash: await codeHash(factory) },
+    account: {
+      implementation: { address: implementation, runtimeCodeHash: await codeHash(implementation) },
+      proxy: { creationCodeHash: proxyHash, runtimeCodeHash: proxyHash }
+    },
+    modules: [{ type: "validator", address: validator, runtimeCodeHash: await codeHash(validator), version: "0.0.0", status: "beta" }],
+    compatibility: { contractRelease: "0.0.0", sdkRange: "^0.0" }
+  };
+  const deployRpc = (method, params) => rpcCall(rpcUrl, method, params);
+  const validation = await validateManifest(canonicalManifest, { rpc: deployRpc });
+  assert.equal(validation.onChain.ok, true, "manifest validate confirmed all code hashes on chain");
+  const verified = await verifyDeployment(canonicalManifest, deployRpc);
+  assert.equal(verified.ok, true, "deploy verify passed against the honest manifest");
+  const inspection = await inspectManifest(canonicalManifest, { rpc: deployRpc });
+  assert.equal(inspection.entryPoint.state, "verified", "inspect labels the EntryPoint verified");
+  assert.equal(inspection.modules[0].state, "verified", "inspect labels the validator verified");
+  // A tampered EntryPoint hash must fail closed.
+  const tampered = { ...canonicalManifest, entryPoint: { address: entryPoint, runtimeCodeHash: `0x${"00".repeat(32)}` } };
+  await assert.rejects(verifyDeployment(tampered, deployRpc), e => e.exitCode === 6, "deploy verify fails on a tampered hash");
+  console.log(`    ok  manifest ${verified.manifestHash} verified on chain; tampered hash rejected`);
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {
