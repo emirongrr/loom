@@ -250,6 +250,28 @@ try {
   assert.equal(byName.bundler, "ok", "doctor bundler check");
   console.log("    ok  doctor reports a healthy devnet");
 
+  // The backend UserOperation tracker, live: replay this devnet's real
+  // EntryPoint logs through the framework-neutral tracker and require that
+  // every operation the smoke sent is decoded and tracked to finalized.
+  console.log("==> backend userop-tracker against the live devnet logs");
+  const { createTracker } = await import("../../examples/backend-userop-tracker/src/tracker.mjs");
+  const head = Number(BigInt(await rpcCall(rpcUrl, "eth_blockNumber", [])));
+  const logs = (
+    await rpcCall(rpcUrl, "eth_getLogs", [{ address: entryPoint, fromBlock: "0x0", toBlock: "latest" }])
+  ).map(log => ({ address: log.address, topics: log.topics, data: log.data, blockNumber: log.blockNumber, blockHash: log.blockHash }));
+  const tracked = [];
+  const tracker = createTracker({ chainId: state.chainId, entryPoint, confirmations: 0, onEvent: e => tracked.push(e.type) });
+  await tracker.ingest({ logs, head });
+  const finalized = [];
+  for (const userOpHash of [second.userOpHash, third.userOpHash, fourth.userOpHash]) {
+    const record = await tracker.get(userOpHash);
+    assert.ok(record, `tracker did not see ${userOpHash}`);
+    assert.equal(record.status, "finalized", `operation ${userOpHash} not finalized`);
+    assert.equal(record.success, true, `operation ${userOpHash} not successful on chain`);
+    finalized.push(userOpHash);
+  }
+  console.log(`    ok  tracked ${finalized.length} bundler operations from real logs to finalized`);
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {
