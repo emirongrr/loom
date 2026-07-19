@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { down, logs, status, up } from "../src/devnet.mjs";
 import { runDoctor, redactUrl } from "../src/doctor.mjs";
+import { diffManifests, inspectManifest, rpcClient, validateManifest, verifyDeployment } from "../src/deploy.mjs";
 
 const args = process.argv.slice(2);
 const json = args.includes("--json");
@@ -56,17 +57,25 @@ const usage = `usage:
               [--recovery-module <addr>] [--json]
   loom monitor (--rpc-url <url> | LOOM_RPC_URL) (--manifest <path> | LOOM_MANIFEST)
                [--port <n>] [--interval-ms <n>] [--tvl-tokens <addr,addr>]
+  loom deploy <inspect|verify> --manifest <path> [--rpc-url <url>] [--json]
+  loom manifest <validate --manifest <path> [--rpc-url <url>]
+                 | diff --old <path> --new <path>> [--json]
 
-devnet:  pinned local stack (anvil + Loom contracts + Alto bundler); composition
-         from devnet/versions.json, ownership from .loom/devnet/state.json.
-doctor:  read-only production-operation diagnostics — chain, EntryPoint and
-         SenderCreator code, manifest code hashes, native P-256, bundler, and
-         account safety state. Exit 6 on any verification failure. Endpoints are
-         redacted in every output.
-monitor: connect a deployment from its manifest and export TVL/throughput
-         metrics on /metrics for Prometheus + Grafana (the monitoring/ stack).
-         Supply the RPC URL via LOOM_RPC_URL to keep a token-bearing URL out of
-         argv; --rpc-url is a convenience for non-secret endpoints.`;
+devnet:   pinned local stack (anvil + Loom contracts + Alto bundler); composition
+          from devnet/versions.json, ownership from .loom/devnet/state.json.
+doctor:   read-only production-operation diagnostics — chain, EntryPoint and
+          SenderCreator code, manifest code hashes, native P-256, bundler, and
+          account safety state. Exit 6 on any verification failure. Endpoints are
+          redacted in every output.
+monitor:  connect a deployment from its manifest and export TVL/throughput
+          metrics on /metrics for Prometheus + Grafana (the monitoring/ stack).
+          Supply the RPC URL via LOOM_RPC_URL to keep a token-bearing URL out of
+          argv; --rpc-url is a convenience for non-secret endpoints.
+deploy:   read-only deployment inspection and verification. inspect shows a
+          manifest, labelling each contract verified (chain-confirmed with
+          --rpc-url) or asserted; verify fails (exit 6) on a code-hash mismatch.
+manifest: validate a manifest against the schema (and on chain with --rpc-url),
+          or diff two manifests, flagging authority/EntryPoint/module changes.`;
 
 // Human-readable status glyphs.
 const GLYPH = { ok: "PASS", warn: "WARN", fail: "FAIL", skip: "----" };
@@ -129,10 +138,79 @@ async function doctorCommand() {
   if (!report.ok) process.exit(6);
 }
 
+function readManifest(flagName = "manifest") {
+  const path = flag(flagName);
+  if (!path) throw Object.assign(new Error(`--${flagName} is required`), { exitCode: 2 });
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+async function deployCommand(command) {
+  const rpcUrl = flag("rpc-url");
+  const rpc = rpcUrl ? rpcClient(rpcUrl) : undefined;
+  if (command === "inspect") {
+    const view = await inspectManifest(readManifest(), { rpc });
+    if (json) {
+      emit(view);
+    } else {
+      console.log(`deployment ${view.manifestHash}  chain ${view.chainId} (${view.releaseChannel})  release ${view.contractRelease}`);
+      for (const [name, c] of [["entryPoint", view.entryPoint], ["factory", view.factory], ["implementation", view.implementation]]) {
+        console.log(`  [${c.state}] ${name}: ${c.address}`);
+      }
+      for (const m of view.modules) console.log(`  [${m.state}] module ${m.type} (${m.status}): ${m.address}`);
+    }
+    return;
+  }
+  if (command === "verify") {
+    if (!rpc) throw Object.assign(new Error("loom deploy verify requires --rpc-url"), { exitCode: 2 });
+    const report = await verifyDeployment(readManifest(), rpc);
+    if (json) emit(report);
+    else {
+      for (const c of report.checks) console.log(`  [${c.ok ? "PASS" : "FAIL"}] ${c.label}: ${c.address}`);
+      console.log("\nAll component code hashes match.");
+    }
+    return;
+  }
+  throw Object.assign(new Error(`unknown deploy command: ${command}`), { exitCode: 2 });
+}
+
+async function manifestCommand(command) {
+  if (command === "validate") {
+    const rpcUrl = flag("rpc-url");
+    const report = await validateManifest(readManifest(), { rpc: rpcUrl ? rpcClient(rpcUrl) : undefined });
+    if (json) emit(report);
+    else {
+      console.log(`manifest ${report.manifestHash}  chain ${report.chainId} (${report.releaseChannel})  schema ok`);
+      if (report.onChain) console.log(report.onChain.ok ? "on-chain code hashes match" : `on-chain failures: ${report.onChain.failures.join(", ")}`);
+    }
+    return;
+  }
+  if (command === "diff") {
+    const result = diffManifests(readManifest("old"), readManifest("new"));
+    if (json) {
+      emit(result);
+    } else {
+      console.log(`${result.from} -> ${result.to}  ${result.compatible ? "compatible" : "INCOMPATIBLE"}`);
+      for (const c of result.changes) console.log(`  [${c.severity}] ${c.field}: ${c.from ?? "∅"} -> ${c.to ?? "∅"}`);
+      if (result.changes.length === 0) console.log("  (no differences)");
+    }
+    if (!result.compatible) process.exit(6);
+    return;
+  }
+  throw Object.assign(new Error(`unknown manifest command: ${command}`), { exitCode: 2 });
+}
+
 try {
   const [group, command, argument] = positional;
   if (group === "doctor") {
     await doctorCommand();
+    process.exit(0);
+  } else if (group === "deploy") {
+    if (!command) throw Object.assign(new Error(`loom deploy needs a subcommand (inspect|verify)`), { exitCode: 2 });
+    await deployCommand(command);
+    process.exit(0);
+  } else if (group === "manifest") {
+    if (!command) throw Object.assign(new Error(`loom manifest needs a subcommand (validate|diff)`), { exitCode: 2 });
+    await manifestCommand(command);
     process.exit(0);
   } else if (group === "monitor") {
     // Start the monitoring exporter as a child process — a clean boundary that
