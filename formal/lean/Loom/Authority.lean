@@ -89,6 +89,12 @@ def guardianConfigAttempt (s : State) (callerIsSelf : Bool) : State × Bool :=
 def hasValidator (s : State) : Prop :=
   s.validatorCount > 0
 
+def executionModeAttempt (s : State) (modeSupported : Bool) : State × Bool :=
+  if modeSupported then
+    (s, true)
+  else
+    (s, false)
+
 def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.guardian then
     ({ s with frozen := true }, true)
@@ -218,6 +224,11 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
     s.frozen = true -> step s (Transition.ordinaryExecute actor) = none := by
   intro h
   simp [step, h]
+
+theorem unsupported_execution_mode_preserves_state
+    (s : State) :
+    (executionModeAttempt s false).1 = s := by
+  simp [executionModeAttempt]
 
 theorem guardianless_bootstrap_has_no_guardian_authority
     (s : State) :

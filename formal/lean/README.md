@@ -18,6 +18,7 @@ The current Lean model starts with:
 - migration destination, code-hash, and optional config-hash binding;
 - rejected direct execution preserving its validator nonce;
 - batch execution as an all-or-nothing state transition;
+- unsupported execution modes preserving account state;
 - guardianless bootstrap granting no guardian authority;
 - external guardian configuration calls preserving authority state;
 - delegated initialization rejecting external callers;
