@@ -22,6 +22,7 @@ The current Lean model starts with:
 - guardianless bootstrap granting no guardian authority;
 - external guardian configuration calls preserving authority state;
 - delegated initialization rejecting external callers;
+- proxy constructor initialization updating only proxy storage;
 - guardian authority cannot perform validator actions;
 - external recovery calls preserving authority state;
 - validator authority cannot perform guardian recovery actions;

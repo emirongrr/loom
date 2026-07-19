@@ -39,7 +39,7 @@ that the abstract model proves them.
 |---|---|---|---|---|
 | `check_InitializedAccountCannotBeReinitialized` | Initialization is one-shot. | `initialized_state_rejects_reinitialization` | `initialize`, `_initialize` | Lean abstracts caller and initialization payload. |
 | `check_DelegatedInitializerRejectsExternalCaller` | Delegated initialization is self-only. | `external_delegated_initializer_preserves_state` | `initializeDelegatedAccount` | Lean abstracts the caller predicate to a self-call Boolean; proxy storage and initialization payload remain concrete. |
-| `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | Not modeled. | proxy constructor delegatecall and account storage | Lean has no proxy/implementation storage separation. |
+| `check_ImmutableProxyInitializesProxyStorage` | Constructor delegation initializes proxy storage only. | `proxy_initialization_updates_only_proxy_storage` | proxy constructor delegatecall and account storage | Lean models separate proxy and implementation storage values; EVM delegatecall context, slot layout, and initialization payload decoding remain concrete. |
 | `check_NoMutableUpgradeSelectorsThroughProxy` | The immutable proxy exposes no upgrade transition. | `immutable_proxy_has_no_upgrade_transition` | `LoomAccountProxy.implementation`, fallback path | The theorem abstracts bytecode selectors and delegatecall semantics. |
 | `check_InvalidDirectExecutionDoesNotConsumeNonce` | Rejected direct execution preserves its nonce. | `rejected_direct_execution_preserves_nonce` | `executeDirect`, validator nonce storage | Lean models one abstract validator nonce; signature digest, validator identity, and nonce map isolation remain concrete. |
 | `check_BatchExecutionAtomicity` | A reverting ordinary batch leaves no partial effect. | `failed_batch_preserves_state`, `successful_batch_commits_all_effects` | `_executeAuthorized`, batch execution loop | Lean abstracts external calls to a committed effect counter and does not model EVM revert data. |
@@ -89,6 +89,8 @@ that the abstract model proves them.
 | `directExecutionNonce` | `LoomAccount.directExecutionNonces(validator)` | Abstract single-validator nonce; concrete mapping keys and digest domain separation remain implementation details. |
 | `batchEffect` | effects produced by an abstract execution batch | Abstract aggregate effect counter used only to state atomicity; concrete target storage and token balances remain external. |
 | `initialized` | `LoomAccount.configVersion() != 0` plus initialized module/configuration state | Derived predicate mapped; storage-slot and proxy context are concrete-only. |
+| `ProxyStoragePair.proxy` | account state stored at the proxy address | Separate initialization storage context; concrete Solidity slot layout is abstracted. |
+| `ProxyStoragePair.implementation` | constructor-initialized state stored at the shared implementation address | Preserved by abstract proxy initialization; delegatecall context and bytecode semantics remain concrete. |
 
 ## Abstract Transition Mapping
 
@@ -109,6 +111,7 @@ that the abstract model proves them.
 | `guardianlessFreezeAttempt` | `freeze` and guardian configuration guards | an unconfigured guardian set cannot change frozen state | guardian proof verification, root/threshold storage, and exact revert data |
 | `guardianConfigAttempt` | `setGuardianConfig` | external callers return the original authority state; only self-calls may increment configuration | guardian root, threshold, proof routing, and exact revert data |
 | `delegatedInitialize` | `initializeDelegatedAccount` | external callers return the original state; only self-calls may set initialized | proxy delegatecall context, initialization payload, and module setup |
+| `initializeProxyStorage` | `LoomAccountProxy` constructor delegatecall to `LoomAccount.initialize` | proxy config version and validator-set identity are replaced while implementation storage is preserved | EVM delegatecall context, exact storage slots, initialization calldata, and module initialization side effects |
 | `validatorActionAttempt` | validator module actions through `execute` | guardian actor returns the original state; only validator actor may change the validator-set count | validator signatures, module selectors, and target side effects |
 | `recoveryConfigurationAttempt` | `recoverConfiguration`, `recoverConfigurationSet` | external callers return the original authority state; only the installed recovery module may change configuration | validator-set payload, guardian proof, module routing, and exact revert data |
 | `guardianRecoveryActionAttempt` | guardian recovery and guardian configuration entry points | validator actors return the original authority state; only guardian actors may mutate recovery configuration | guardian proof verification, recovery digest, and module routing |
@@ -123,6 +126,7 @@ Every current theorem has at least one concrete review anchor:
 
 - `frozen_blocks_ordinary_execution`: frozen EntryPoint and direct-execution properties;
 - `initialized_state_rejects_reinitialization`: one-shot initialization property;
+- `proxy_initialization_updates_only_proxy_storage`: immutable proxy initialization storage-isolation property;
 - `immutable_proxy_has_no_upgrade_transition`: immutable proxy selector property;
 - `frozen_guardian_cancel_recovery_allowed`: frozen recovery-cancel property;
 - `recovery_requires_nonzero_replacement`: recovery replacement and last-validator properties;
