@@ -23,11 +23,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Prepare prover evidence
+        id: kontrol-pin
         run: |
           mkdir -p artifacts/kontrol
           KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
           KONTROL_RELEASE="${KONTROL_PIN%%@*}"
           KONTROL_REVISION="${KONTROL_PIN#*@}"
+          echo "revision=$KONTROL_REVISION" >> "$GITHUB_OUTPUT"
           printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolRelease": "%s",\n  "kontrolRevision": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
             "$KONTROL_RELEASE" "$KONTROL_REVISION" \
@@ -35,10 +37,15 @@ jobs:
             "LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized" \
             > artifacts/kontrol/run-metadata.json
           cp formal/kontrol/toolchain.pin formal/kontrol/targets.json artifacts/kontrol/
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+      - name: Reclaim prover disk
+        run: |
+          df -h > artifacts/kontrol/disk-before.txt
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h > artifacts/kontrol/disk-after.txt
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
         with:
-          version: v1.7.1
+          github_access_token: ${{ github.token }}
       - name: Install KUP and Kontrol
         run: |
           set -euo pipefail
@@ -50,8 +57,7 @@ jobs:
             echo "kup was not found after installation"
             exit 1
           fi
-          KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
-          "$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"
+          "$KUP_BIN" install kontrol --version "${{ steps.kontrol-pin.outputs.revision }}"
           KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 -print -quit 2>/dev/null)"
           if [ -z "$KONTROL_BIN" ]; then
             echo "kontrol was not found after kup install kontrol"
@@ -59,8 +65,13 @@ jobs:
           fi
           dirname "$KUP_BIN" >> "$GITHUB_PATH"
           dirname "$KONTROL_BIN" >> "$GITHUB_PATH"
+      - name: Install pinned Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
       - name: Record prover versions
         run: |
+          nix --version > artifacts/kontrol/nix-version.txt 2>&1
           kontrol version > artifacts/kontrol/kontrol-version.txt 2>&1
           forge --version > artifacts/kontrol/forge-version.txt 2>&1
       - name: Build Kontrol project

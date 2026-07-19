@@ -224,11 +224,23 @@ function validateReleaseWorkflow() {
 
 function validateKontrolWorkflow() {
   const file = ".github/workflows/kontrol.yml";
+  const source = read(file);
   assertWorkflowSecurityDefaults(file);
   for (const required of [
     "workflow_dispatch:",
     "kontrol build",
-    '"$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"',
+    "id: kontrol-pin",
+    'echo "revision=$KONTROL_REVISION" >> "$GITHUB_OUTPUT"',
+    "Reclaim prover disk",
+    "sudo rm -rf /usr/local/lib/android /usr/share/dotnet",
+    "artifacts/kontrol/disk-before.txt",
+    "artifacts/kontrol/disk-after.txt",
+    "cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0",
+    "github_access_token: ${{ github.token }}",
+    '"$KUP_BIN" install kontrol --version "${{ steps.kontrol-pin.outputs.revision }}"',
+    "artifacts/kontrol/install.log",
+    "artifacts/kontrol/nix-version.txt",
+    "version: v1.7.1",
     "kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
     "kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
     "artifacts/kontrol/run-metadata.json",
@@ -240,6 +252,12 @@ function validateKontrolWorkflow() {
   ]) {
     assertIncludes(file, required, `missing required kontrol workflow step: ${required}`);
   }
+  assert(
+    source.indexOf("Reclaim prover disk") < source.indexOf("Install Nix") &&
+      source.indexOf("Install Nix") < source.indexOf("Install KUP and Kontrol") &&
+      source.indexOf("Install KUP and Kontrol") < source.indexOf("Install pinned Foundry"),
+    `${file}: disk reclaim, Nix, pinned Kontrol, and pinned Foundry must run in order`,
+  );
 }
 
 function validateSupplyChainWorkflow() {

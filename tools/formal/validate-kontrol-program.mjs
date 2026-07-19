@@ -52,7 +52,23 @@ assert(names.has("initialization-one-shot"), "Kontrol targets must include initi
 assert(names.has("immutable-proxy-no-upgrade-selector"), "Kontrol targets must include immutable proxy anti-upgrade property");
 
 const workflow = read(".github/workflows/kontrol.yml");
-assert(workflow.includes('"$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"'), "Kontrol workflow must install the immutable revision");
+assert(
+  workflow.includes("sudo rm -rf /usr/local/lib/android /usr/share/dotnet"),
+  "Kontrol workflow must reclaim unused hosted-runner disk before installing the prover",
+);
+assert(
+  workflow.includes("cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0"),
+  "Kontrol workflow must pin the Nix installer action to an immutable revision",
+);
+assert(
+  workflow.includes('echo "revision=$KONTROL_REVISION" >> "$GITHUB_OUTPUT"'),
+  "Kontrol workflow must expose the immutable tool revision",
+);
+assert(
+  workflow.includes('"$KUP_BIN" install kontrol --version "${{ steps.kontrol-pin.outputs.revision }}"'),
+  "Kontrol workflow must install the tool revision from the repository pin",
+);
+assert(workflow.includes("artifacts/kontrol/install.log"), "Kontrol workflow must archive installer output");
 assert(workflow.includes("kontrolRelease"), "Kontrol evidence must record the readable release tag");
 assert(workflow.includes("kontrolRevision"), "Kontrol evidence must record the immutable revision");
 assert(workflow.includes("run-metadata.json"), "Kontrol workflow must record run metadata");
