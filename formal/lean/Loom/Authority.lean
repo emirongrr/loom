@@ -91,6 +91,15 @@ def hasValidator (s : State) : Prop :=
 
 def guardianRecoveryActionAttempt (s : State) (actor : Actor) : State × Bool :=
   if actor = Actor.guardian then
+    ({ s with frozen := true }, true)
+  else
+    (s, false)
+
+def guardianlessFreezeAttempt (s : State) (guardianConfigured : Bool) : State × Bool :=
+  if guardianConfigured then
+    ({ s with frozen := true }, true)
+  else
+    (s, false)
 def keystoreConfigAttempt (s : State) (callerIsController : Bool) : State × Bool :=
   if callerIsController then
     ({ s with configVersion := s.configVersion + 1 }, true)
@@ -210,6 +219,10 @@ theorem frozen_blocks_ordinary_execution (s : State) (actor : Actor) :
   intro h
   simp [step, h]
 
+theorem guardianless_bootstrap_has_no_guardian_authority
+    (s : State) :
+    (guardianlessFreezeAttempt s false).1 = s := by
+  simp [guardianlessFreezeAttempt]
 theorem guardian_cannot_perform_validator_action
     (s : State) :
     (validatorActionAttempt s Actor.guardian).1 = s := by
