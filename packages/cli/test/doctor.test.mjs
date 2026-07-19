@@ -148,3 +148,9 @@ test("the doctor CLI requires --rpc-url", () => {
   assert.match(result.stderr, /requires --rpc-url/);
 });
 
+
+test("the monitor CLI requires --rpc-url and --manifest", () => {
+  const missing = spawnSync(process.execPath, [bin, "monitor", "--rpc-url", "http://127.0.0.1:8545"], { encoding: "utf8" });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /requires --rpc-url and --manifest/);
+});

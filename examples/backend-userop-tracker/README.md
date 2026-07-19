@@ -47,6 +47,15 @@ through this tracker and requires that every operation the send pipeline
 submitted is decoded and tracked to `finalized` — the proof that the decoders
 and state machine match a real EntryPoint, not just synthetic fixtures.
 
+## Dashboards and metrics
+
+Operator-facing monitoring (TVL, active users, throughput, gas, block-space
+share, with a provisioned Grafana dashboard) is a first-class repository
+component, not part of this example: see [`monitoring/`](../../monitoring/) and
+`loom monitor`. This example stays focused on the backend state machine a
+sponsor/coordinator needs; the monitoring component is the read-only dashboard
+path any deployment can turn on.
+
 ## Not a package (yet)
 
 Per the SDK architecture guidance, there is no `@loom/backend` until a second

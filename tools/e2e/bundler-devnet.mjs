@@ -272,6 +272,51 @@ try {
   }
   console.log(`    ok  tracked ${finalized.length} bundler operations from real logs to finalized`);
 
+  // The observability stack, live: connect this deployment from a manifest and
+  // index it end to end — real logs -> tracker -> dashboard metrics -> the
+  // Prometheus exposition an operator's Grafana would scrape.
+  console.log("==> monitoring indexer + Prometheus metrics against the live devnet");
+  const { createDashboardMetrics } = await import("../../monitoring/src/metrics.mjs");
+  const { createIndexer } = await import("../../monitoring/src/indexer.mjs");
+  const { renderPrometheus } = await import("../../monitoring/src/prometheus.mjs");
+  const dashMetrics = createDashboardMetrics({ activeWindowSeconds: 24 * 3600, labels: { chain_id: String(state.chainId) } });
+  const indexer = createIndexer({
+    rpc: doctorRpc,
+    metrics: dashMetrics,
+    chainId: state.chainId,
+    manifest: { chainId: state.chainId, entryPoint: { address: entryPoint }, factory: { address: factory }, deployBlock: 0 }
+  });
+  const indexed = await indexer.sync();
+  const summary = dashMetrics.update();
+  console.log(`    accounts=${summary.accounts} activeUsers=${summary.activeUsers} ops=${summary.totalOps} tvlWei=${summary.tvlWei} head=${summary.indexerHead}`);
+  assert.ok(indexed.accounts >= 1, "indexer connected the factory and saw account creation");
+  assert.ok(summary.totalOps >= 3, "indexer counted the bundler operations");
+  assert.ok(summary.activeUsers >= 1, "at least one active user");
+  assert.ok(summary.tvlWei > 0n, "TVL computed from real account balances");
+  assert.ok(summary.indexerHead > 0, "indexer head recorded");
+  const exposition = renderPrometheus(dashMetrics.registry.snapshot());
+  // The full metric surface, including the RPC instrumentation the indexer's
+  // measured transport produced against the real endpoint.
+  for (const metricName of [
+    "loom_tvl_wei",
+    "loom_active_users",
+    "loom_userops_total",
+    "loom_tps",
+    "loom_gas_cost_wei_avg",
+    "loom_indexer_head_block",
+    "loom_rpc_requests_total"
+  ]) {
+    assert.ok(exposition.includes(metricName), `Prometheus output missing ${metricName}`);
+  }
+  assert.ok(exposition.includes('chain_id="31337"'), "metrics carry the chain_id label");
+  // Best-practice shape: totals are counters with a status label; RPC duration
+  // is a real histogram (so rate()/histogram_quantile() are valid downstream).
+  assert.ok(/# TYPE loom_userops_total counter/.test(exposition), "loom_userops_total is a counter");
+  assert.ok(exposition.includes('status="success"'), "userops carry a status label");
+  assert.ok(/# TYPE loom_rpc_duration_seconds histogram/.test(exposition), "rpc duration is a histogram");
+  assert.ok(exposition.includes("loom_rpc_duration_seconds_bucket"), "histogram exposes buckets");
+  console.log("    ok  best-practice metrics: counters with labels, histogram buckets, chain_id");
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
 } finally {
   try {

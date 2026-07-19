@@ -59,7 +59,9 @@ through idempotent `submitted → included → finalized` transitions with a
 finality policy, and survives reorgs, duplicates, replacement, and provider
 disagreement. It holds no keys and picks no framework — logs and head numbers in,
 webhook-shaped events and metrics out. The `e2e:bundler-devnet` proof replays
-the live devnet's real EntryPoint logs through it. See
+the live devnet's real EntryPoint logs through it. For operator dashboards
+(TVL, active users, TPS, gas, block-space share) see the top-level
+[`monitoring/`](../monitoring/) component and `loom monitor`. See
 [`backend-userop-tracker/README.md`](backend-userop-tracker/README.md).
 
 ### `enterprise-onboarding.mjs`
