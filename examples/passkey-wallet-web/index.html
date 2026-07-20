@@ -1,60 +1,289 @@
 <!doctype html>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Loom passkey wallet (web)</title>
 <style>
-  body { font: 15px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 3rem auto; padding: 0 1rem; }
-  button { font: inherit; padding: .5rem .9rem; margin-right: .5rem; }
-  pre { background: #f5f5f5; padding: .8rem; overflow-x: auto; border-radius: 6px; }
-  .warn { background: #fff6e5; border-left: 4px solid #e8a33d; padding: .8rem; }
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #16181d; --muted: #5b6272; --line: #e3e6ec;
+    --card: #f7f8fa; --accent: #0d7d6f; --warn: #b4690e; --warn-bg: #fff6e5;
+    --bad: #b3261e; --bad-bg: #fdecea; --good: #0d7d6f; --good-bg: #e7f5f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --fg: #e8eaf0; --muted: #99a1b3; --line: #2a2f3a;
+      --card: #181b22; --accent: #91f4c8; --warn: #f0c07a; --warn-bg: #2b2318;
+      --bad: #f2a7a1; --bad-bg: #2c1a19; --good: #91f4c8; --good-bg: #14241f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 .75rem; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; gap: 1rem;
+    padding: .35rem 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  .row:last-child { border-bottom: 0; }
+  .row .k { color: var(--muted); white-space: nowrap; }
+  .row .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .82rem; word-break: break-all; text-align: right; }
+  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+    font-size: .72rem; font-weight: 600; letter-spacing: .02em; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .note { background: var(--warn-bg); color: var(--warn); border-radius: 8px;
+    padding: .7rem .9rem; font-size: .87rem; margin-bottom: 1rem; }
+  button { font: inherit; font-weight: 500; padding: .5rem 1rem; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+    color: var(--fg); }
+  button.primary { background: var(--accent); border-color: var(--accent);
+    color: var(--bg); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+  textarea { width: 100%; min-height: 6.5rem; font-family: ui-monospace, monospace;
+    font-size: .8rem; padding: .6rem; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .8rem; overflow-x: auto; font-size: .8rem; margin: .5rem 0 0; }
+  .hint { color: var(--muted); font-size: .82rem; margin: .5rem 0 0; }
+  .row .v.muted { color: var(--muted); }
 </style>
 
-<h1>Loom passkey wallet</h1>
-<p class="warn">
-  Pre-audit software. This page needs a real platform authenticator and a Loom
-  deployment; fill <code>DEPLOYMENT</code> below from your deployment manifest.
-  Bare module specifiers are used, so serve it through a bundler/dev server that
-  resolves <code>node_modules</code> (for example <code>vite</code>).
-</p>
+<div class="wrap">
+  <h1>Loom passkey wallet</h1>
+  <p class="sub">Register a passkey, derive your account, reconnect, and sign — in the browser.</p>
 
-<p>
-  <button id="register">Register passkey</button>
-  <button id="reconnect">Reconnect</button>
-  <button id="sign">Sign a test hash</button>
-</p>
-<pre id="out">ready</pre>
+  <div class="note">
+    Pre-audit software, for evaluation only. WebAuthn needs a secure context
+    (<code>https</code> or <code>localhost</code>) and a real platform authenticator.
+    Bare module specifiers are used, so serve this through a bundler/dev server
+    that resolves <code>node_modules</code> (for example <code>vite</code>).
+  </div>
+
+  <!-- Which deployment am I bound to? Always visible, never implied. -->
+  <div class="card">
+    <h2>Deployment <span id="deploymentStatus" class="pill bad">not configured</span></h2>
+    <div class="row"><span class="k">Network</span><span class="v" id="dNetwork">—</span></div>
+    <div class="row"><span class="k">EntryPoint</span><span class="v" id="dEntryPoint">—</span></div>
+    <div class="row"><span class="k">Factory</span><span class="v" id="dFactory">—</span></div>
+    <div class="row"><span class="k">Account implementation</span><span class="v" id="dImplementation">—</span></div>
+    <div class="row"><span class="k">Passkey validator</span><span class="v" id="dValidator">—</span></div>
+    <div class="row"><span class="k">Policy hook</span><span class="v" id="dPolicyHook">—</span></div>
+    <div class="row"><span class="k">Proxy creation code</span><span class="v" id="dProxyCode">—</span></div>
+    <p class="hint" id="dHint">
+      Load a deployment to bind this wallet. Addresses come from your deployment
+      manifest (<code>loom deploy inspect --manifest …</code>); the proxy creation
+      code comes from the release artifact and is required to derive addresses
+      locally — a manifest alone carries only its hash.
+    </p>
+    <textarea id="deploymentJson" spellcheck="false" placeholder='{
+  "chainId": 11155111,
+  "entryPoint": "0x…",
+  "factory": "0x…",
+  "implementation": "0x…",
+  "validator": "0x…",
+  "policyHook": "0x…",
+  "proxyCreationCode": "0x…"
+}'></textarea>
+    <div class="actions">
+      <button id="loadDeployment">Load deployment</button>
+      <input id="deploymentFile" type="file" accept="application/json,.json" hidden />
+      <button id="pickFile">Load from file…</button>
+      <button id="clearDeployment">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Wallet <span id="walletStatus" class="pill warn">no passkey</span></h2>
+    <div class="row"><span class="k">Account</span><span class="v" id="wAccount">—</span></div>
+    <div class="row"><span class="k">Deployed</span><span class="v" id="wDeployed">counterfactual — not deployed until the first operation</span></div>
+    <div class="row"><span class="k">Credential</span><span class="v" id="wCredential">—</span></div>
+    <div class="actions">
+      <button id="register" class="primary" disabled>Register passkey</button>
+      <button id="reconnect" disabled>Reconnect</button>
+      <button id="sign" disabled>Sign a test hash</button>
+      <button id="forget" disabled>Forget</button>
+    </div>
+    <pre id="out">ready</pre>
+  </div>
+</div>
 
 <script type="module">
-  import {
-    registerPasskeyAccount,
-    reconnectPasskeyAccount,
-    walletSigner
-  } from "./src/wallet.mjs";
+  // The wallet module uses bare specifiers, so it only resolves when the page is
+  // served through a bundler/dev server. Import it dynamically: the deployment
+  // panel below is pure DOM and JSON and must work regardless, and a failure has
+  // to be visible rather than leaving dead buttons.
+  let walletModule = null;
+  let moduleError = null;
+  try {
+    walletModule = await import("./src/wallet.mjs");
+  } catch (error) {
+    moduleError = error;
+  }
 
-  // From your Loom deployment manifest (see `loom deploy inspect`).
-  const DEPLOYMENT = {
-    entryPoint: "0x0000000000000000000000000000000000000000",
-    factory: "0x0000000000000000000000000000000000000000",
-    implementation: "0x0000000000000000000000000000000000000000",
-    validator: "0x0000000000000000000000000000000000000000",
-    policyHook: "0x0000000000000000000000000000000000000000",
-    proxyCreationCode: "0x"
-  };
   const RP_ID = location.hostname;
   const ORIGIN = location.origin;
-  const CHAIN_ID = 11155111;
+  const DEPLOYMENT_KEY = "loom.passkey-wallet.deployment";
+  const WALLET_KEY = "loom.passkey-wallet.handle";
 
-  const out = document.querySelector("#out");
-  const show = value => (out.textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+  // Well-known chain ids, so the page can name the network instead of leaving
+  // the operator to decode a number.
+  const CHAINS = { 1: "Ethereum mainnet", 11155111: "Sepolia testnet", 31337: "Local devnet (anvil)" };
+  const ZERO = "0x0000000000000000000000000000000000000000";
+
+  const $ = id => document.getElementById(id);
+  const show = value => ($("out").textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+  const short = value => (typeof value === "string" && value.length > 22 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value ?? "—");
+
+  let deployment = null;
+  // The resolved half of an incomplete document, shown but never used to derive.
+  let partial = null;
+  let wallet = null;
+
+  // --- deployment binding --------------------------------------------------
+
+  const REQUIRED = ["chainId", "entryPoint", "factory", "implementation", "validator", "policyHook", "proxyCreationCode"];
+
+  // Accept the flat shape above, or lift the addresses out of a canonical Loom
+  // deployment manifest. The proxy creation code is never in a manifest (it
+  // carries only the hash), so it must always be supplied explicitly.
+  function normalizeDeployment(input) {
+    const fromManifest = {
+      chainId: input.chainId,
+      entryPoint: input.entryPoint?.address ?? input.entryPoint,
+      factory: input.factory?.address ?? input.factory ?? input.accountFactory,
+      implementation: input.account?.implementation?.address ?? input.implementation,
+      validator: input.validator ?? input.passkeyValidator ?? input.modules?.find(m => m.type === "validator")?.address,
+      policyHook: input.policyHook ?? input.modules?.find(m => m.type === "hook")?.address,
+      proxyCreationCode: input.proxyCreationCode
+    };
+    const missing = REQUIRED.filter(key => {
+      const value = fromManifest[key];
+      return value === undefined || value === null || value === "" || value === ZERO;
+    });
+    return { deployment: fromManifest, missing };
+  }
+
+  // Render whatever the loaded document actually resolved, even when it is
+  // incomplete: "which deployment am I bound to" is exactly the question a
+  // half-configured page still has to answer honestly.
+  function renderDeployment() {
+    const status = $("deploymentStatus");
+    const view = deployment ?? partial;
+    if (deployment) {
+      status.className = "pill good";
+      status.textContent = "configured";
+    } else if (partial) {
+      status.className = "pill bad";
+      status.textContent = "incomplete";
+    } else {
+      status.className = "pill bad";
+      status.textContent = "not configured";
+    }
+    const field = (id, value) => {
+      const cell = $(id);
+      const known = value !== undefined && value !== null && value !== "" && value !== ZERO;
+      cell.textContent = known ? value : view ? "not provided" : "—";
+      cell.className = known ? "v" : "v muted";
+    };
+    field("dNetwork", view?.chainId === undefined ? undefined
+      : `${CHAINS[view.chainId] ?? `Unknown chain ${view.chainId}`} (chainId ${view.chainId})`);
+    field("dEntryPoint", view?.entryPoint);
+    field("dFactory", view?.factory);
+    field("dImplementation", view?.implementation);
+    field("dValidator", view?.validator);
+    field("dPolicyHook", view?.policyHook);
+    field("dProxyCode", view?.proxyCreationCode ? `${view.proxyCreationCode.length - 2} hex chars` : undefined);
+    $("register").disabled = !deployment;
+    $("reconnect").disabled = !deployment || !localStorage.getItem(WALLET_KEY);
+    renderWallet();
+  }
+
+  function renderWallet() {
+    const status = $("walletStatus");
+    if (!wallet) {
+      status.className = "pill warn";
+      status.textContent = localStorage.getItem(WALLET_KEY) ? "saved — reconnect" : "no passkey";
+      $("wAccount").textContent = "—";
+      $("wCredential").textContent = "—";
+      $("sign").disabled = true;
+      $("forget").disabled = !localStorage.getItem(WALLET_KEY);
+      return;
+    }
+    status.className = "pill good";
+    status.textContent = "ready";
+    $("wAccount").textContent = wallet.account;
+    $("wCredential").textContent = short(wallet.credentialId);
+    $("wDeployed").textContent = `counterfactual on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`} — not deployed until the first operation`;
+    $("sign").disabled = false;
+    $("forget").disabled = false;
+  }
+
+  function applyDeployment(raw, { persist = true } = {}) {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const { deployment: candidate, missing } = normalizeDeployment(parsed);
+    if (missing.length > 0) {
+      deployment = null;
+      // Keep the resolved half on screen so the card still names the chain and
+      // the addresses that did load.
+      partial = candidate;
+      renderDeployment();
+      show(`deployment is incomplete — missing: ${missing.join(", ")}\n\nAddresses come from your deployment manifest; proxyCreationCode comes from the release artifact.`);
+      return false;
+    }
+    partial = null;
+    deployment = candidate;
+    if (persist) localStorage.setItem(DEPLOYMENT_KEY, JSON.stringify(candidate));
+    renderDeployment();
+    show({ boundTo: CHAINS[candidate.chainId] ?? `chain ${candidate.chainId}`, chainId: candidate.chainId, factory: candidate.factory });
+    return true;
+  }
+
+  $("loadDeployment").onclick = () => {
+    try {
+      applyDeployment($("deploymentJson").value.trim());
+    } catch (error) {
+      show(`could not parse deployment JSON: ${error.message}`);
+    }
+  };
+  $("pickFile").onclick = () => $("deploymentFile").click();
+  $("deploymentFile").onchange = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      $("deploymentJson").value = text;
+      applyDeployment(text);
+    } catch (error) {
+      show(`could not read file: ${error.message}`);
+    }
+  };
+  $("clearDeployment").onclick = () => {
+    localStorage.removeItem(DEPLOYMENT_KEY);
+    deployment = null;
+    partial = null;
+    wallet = null;
+    renderDeployment();
+    show("deployment cleared");
+  };
+
+  // --- WebAuthn provider ---------------------------------------------------
 
   const hex = bytes => `0x${[...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, "0")).join("")}`;
+  const hexToBytes = value => Uint8Array.from((value.slice(2).match(/../g) ?? []), byte => parseInt(byte, 16));
   const fromBase64Url = value => {
     const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
     return Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")), c => c.charCodeAt(0));
   };
 
-  // The only browser-specific code: wrap `navigator.credentials` in the
-  // provider shape the wallet module expects. Everything else is platform
-  // neutral and lives in src/wallet.mjs.
+  // The only browser-specific code: wrap `navigator.credentials` in the provider
+  // shape the wallet module expects. Everything else is platform neutral.
   const credentials = {
     async create({ rpId, userName }) {
       const credential = await navigator.credentials.create({
@@ -70,14 +299,9 @@
       });
       // `getPublicKey()` returns SPKI DER; the uncompressed point is its last
       // 65 bytes: 0x04 || x(32) || y(32).
-      const spki = new Uint8Array(credential.response.getPublicKey());
-      const point = spki.slice(-65);
+      const point = new Uint8Array(credential.response.getPublicKey()).slice(-65);
       if (point[0] !== 0x04) throw new Error("expected an uncompressed P-256 public key");
-      return {
-        credentialId: hex(credential.rawId),
-        publicKeyX: hex(point.slice(1, 33)),
-        publicKeyY: hex(point.slice(33, 65))
-      };
+      return { credentialId: hex(credential.rawId), publicKeyX: hex(point.slice(1, 33)), publicKeyY: hex(point.slice(33, 65)) };
     },
     async get({ credentialId, rpId, challenge }) {
       // The wallet hands over base64url(userOperationHash); WebAuthn wants the
@@ -100,42 +324,85 @@
     }
   };
 
-  function hexToBytes(value) {
-    const clean = value.slice(2);
-    return Uint8Array.from(clean.match(/../g) ?? [], byte => parseInt(byte, 16));
+  // --- wallet actions ------------------------------------------------------
+
+  // The deployment panel above is self-contained, so it stays usable even when
+  // the wallet module could not be resolved. These actions cannot be, and say so
+  // instead of failing silently.
+  function walletRuntime() {
+    if (walletModule) return walletModule;
+    show({
+      error: "wallet runtime not loaded",
+      reason: moduleError?.message ?? "unknown",
+      fix: "src/wallet.mjs imports @loom/core, @loom/passkey, @loom/sdk and viem by name, which a browser cannot resolve from a plain file. Serve this page through a bundler, e.g. `npx vite examples/passkey-wallet-web`."
+    });
+    return null;
   }
 
-  const STORAGE = "loom.passkey-wallet";
-  let wallet = null;
-
-  document.querySelector("#register").onclick = async () => {
+  $("register").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    if (!deployment) return show("load a deployment first");
     try {
-      wallet = await registerPasskeyAccount({ credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user", chainId: CHAIN_ID, deployment: DEPLOYMENT });
+      show("waiting for the authenticator…");
+      wallet = await runtime.registerPasskeyAccount({
+        credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user",
+        chainId: deployment.chainId, deployment
+      });
       // Persist only public data — the credential never leaves the authenticator.
-      localStorage.setItem(STORAGE, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
-      show({ registered: wallet.account, credentialId: wallet.credentialId });
+      localStorage.setItem(WALLET_KEY, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
+      renderWallet();
+      show({ registered: wallet.account, network: CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`, chainId: deployment.chainId, note: "counterfactual — fund it or send the first operation to deploy" });
     } catch (error) {
       show(`registration failed: ${error.message}`);
     }
   };
 
-  document.querySelector("#reconnect").onclick = () => {
-    const saved = localStorage.getItem(STORAGE);
-    if (!saved) return show("nothing stored — register first");
+  $("reconnect").onclick = () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    const saved = localStorage.getItem(WALLET_KEY);
+    if (!saved || !deployment) return show("load a deployment and register first");
     const { credentialId, publicKey } = JSON.parse(saved);
-    wallet = reconnectPasskeyAccount({ deployment: DEPLOYMENT, rpId: RP_ID, origin: ORIGIN, chainId: CHAIN_ID, credentialId, publicKey });
-    show({ reconnected: wallet.account, note: "same account, no new passkey prompt" });
+    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey });
+    renderWallet();
+    show({ reconnected: wallet.account, note: "same account re-derived from the stored public key — no new passkey prompt" });
   };
 
-  document.querySelector("#sign").onclick = async () => {
+  $("sign").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
     if (!wallet) return show("register or reconnect first");
     try {
-      // In a real flow this hash comes from the prepared user operation.
+      show("waiting for the authenticator…");
+      // In a real flow this hash is the canonical EntryPoint hash of a prepared
+      // user operation (see the SDK client in src/wallet.mjs).
       const hash = `0x${"ab".repeat(32)}`;
-      const signature = await walletSigner({ credentials, wallet }).sign(hash);
-      show({ hash, signature });
+      const signature = await runtime.walletSigner({ credentials, wallet }).sign(hash);
+      show({ signedHash: hash, signature, note: "(validator, WebAuthnSignature) envelope the account validates" });
     } catch (error) {
       show(`signing failed: ${error.message}`);
     }
   };
+
+  $("forget").onclick = () => {
+    localStorage.removeItem(WALLET_KEY);
+    wallet = null;
+    renderWallet();
+    show("local wallet handle cleared (the passkey itself stays in your authenticator)");
+  };
+
+  // Restore a previously bound deployment so the page always shows what it is
+  // connected to.
+  const savedDeployment = localStorage.getItem(DEPLOYMENT_KEY);
+  if (savedDeployment) {
+    $("deploymentJson").value = savedDeployment;
+    try {
+      applyDeployment(savedDeployment, { persist: false });
+    } catch {
+      renderDeployment();
+    }
+  } else {
+    renderDeployment();
+  }
 </script>
