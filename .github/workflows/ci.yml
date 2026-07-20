@@ -58,6 +58,8 @@ jobs:
         run: npm run privacy:test
       - name: Test backend tracker example
         run: npm run example:backend:test
+      - name: Test web passkey example
+        run: npm run example:web:test
       - name: Test monitoring component
         run: npm run monitoring:test
       - name: Prepare devnet evidence

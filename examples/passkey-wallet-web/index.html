@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Loom passkey wallet (web)</title>
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 3rem auto; padding: 0 1rem; }
+  button { font: inherit; padding: .5rem .9rem; margin-right: .5rem; }
+  pre { background: #f5f5f5; padding: .8rem; overflow-x: auto; border-radius: 6px; }
+  .warn { background: #fff6e5; border-left: 4px solid #e8a33d; padding: .8rem; }
+</style>
+
+<h1>Loom passkey wallet</h1>
+<p class="warn">
+  Pre-audit software. This page needs a real platform authenticator and a Loom
+  deployment; fill <code>DEPLOYMENT</code> below from your deployment manifest.
+  Bare module specifiers are used, so serve it through a bundler/dev server that
+  resolves <code>node_modules</code> (for example <code>vite</code>).
+</p>
+
+<p>
+  <button id="register">Register passkey</button>
+  <button id="reconnect">Reconnect</button>
+  <button id="sign">Sign a test hash</button>
+</p>
+<pre id="out">ready</pre>
+
+<script type="module">
+  import {
+    registerPasskeyAccount,
+    reconnectPasskeyAccount,
+    walletSigner
+  } from "./src/wallet.mjs";
+
+  // From your Loom deployment manifest (see `loom deploy inspect`).
+  const DEPLOYMENT = {
+    entryPoint: "0x0000000000000000000000000000000000000000",
+    factory: "0x0000000000000000000000000000000000000000",
+    implementation: "0x0000000000000000000000000000000000000000",
+    validator: "0x0000000000000000000000000000000000000000",
+    policyHook: "0x0000000000000000000000000000000000000000",
+    proxyCreationCode: "0x"
+  };
+  const RP_ID = location.hostname;
+  const ORIGIN = location.origin;
+  const CHAIN_ID = 11155111;
+
+  const out = document.querySelector("#out");
+  const show = value => (out.textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+
+  const hex = bytes => `0x${[...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, "0")).join("")}`;
+  const fromBase64Url = value => {
+    const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, "=")), c => c.charCodeAt(0));
+  };
+
+  // The only browser-specific code: wrap `navigator.credentials` in the
+  // provider shape the wallet module expects. Everything else is platform
+  // neutral and lives in src/wallet.mjs.
+  const credentials = {
+    async create({ rpId, userName }) {
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          rp: { id: rpId, name: "Loom" },
+          user: { id: crypto.getRandomValues(new Uint8Array(16)), name: userName, displayName: userName },
+          // ES256 (P-256) is what the Loom validator verifies.
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
+          attestation: "none"
+        }
+      });
+      // `getPublicKey()` returns SPKI DER; the uncompressed point is its last
+      // 65 bytes: 0x04 || x(32) || y(32).
+      const spki = new Uint8Array(credential.response.getPublicKey());
+      const point = spki.slice(-65);
+      if (point[0] !== 0x04) throw new Error("expected an uncompressed P-256 public key");
+      return {
+        credentialId: hex(credential.rawId),
+        publicKeyX: hex(point.slice(1, 33)),
+        publicKeyY: hex(point.slice(33, 65))
+      };
+    },
+    async get({ credentialId, rpId, challenge }) {
+      // The wallet hands over base64url(userOperationHash); WebAuthn wants the
+      // raw bytes, and the authenticator echoes base64url of them back inside
+      // clientDataJSON — exactly what the on-chain validator re-derives.
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: fromBase64Url(challenge),
+          rpId,
+          allowCredentials: [{ type: "public-key", id: hexToBytes(credentialId) }],
+          userVerification: "required"
+        }
+      });
+      return {
+        authenticatorData: hex(assertion.response.authenticatorData),
+        clientDataJSON: hex(assertion.response.clientDataJSON),
+        // DER — @loom/passkey's parseP256Signature normalizes it to low-s r/s.
+        signature: hex(assertion.response.signature)
+      };
+    }
+  };
+
+  function hexToBytes(value) {
+    const clean = value.slice(2);
+    return Uint8Array.from(clean.match(/../g) ?? [], byte => parseInt(byte, 16));
+  }
+
+  const STORAGE = "loom.passkey-wallet";
+  let wallet = null;
+
+  document.querySelector("#register").onclick = async () => {
+    try {
+      wallet = await registerPasskeyAccount({ credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user", chainId: CHAIN_ID, deployment: DEPLOYMENT });
+      // Persist only public data — the credential never leaves the authenticator.
+      localStorage.setItem(STORAGE, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
+      show({ registered: wallet.account, credentialId: wallet.credentialId });
+    } catch (error) {
+      show(`registration failed: ${error.message}`);
+    }
+  };
+
+  document.querySelector("#reconnect").onclick = () => {
+    const saved = localStorage.getItem(STORAGE);
+    if (!saved) return show("nothing stored — register first");
+    const { credentialId, publicKey } = JSON.parse(saved);
+    wallet = reconnectPasskeyAccount({ deployment: DEPLOYMENT, rpId: RP_ID, origin: ORIGIN, chainId: CHAIN_ID, credentialId, publicKey });
+    show({ reconnected: wallet.account, note: "same account, no new passkey prompt" });
+  };
+
+  document.querySelector("#sign").onclick = async () => {
+    if (!wallet) return show("register or reconnect first");
+    try {
+      // In a real flow this hash comes from the prepared user operation.
+      const hash = `0x${"ab".repeat(32)}`;
+      const signature = await walletSigner({ credentials, wallet }).sign(hash);
+      show({ hash, signature });
+    } catch (error) {
+      show(`signing failed: ${error.message}`);
+    }
+  };
+</script>

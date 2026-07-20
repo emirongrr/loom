@@ -1,0 +1,16 @@
+{
+  "name": "passkey-wallet-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser passkey wallet on Loom: register, reconnect, sign, and scope a session.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@loom/core": "file:../../packages/core",
+    "@loom/passkey": "file:../../packages/passkey",
+    "@loom/sdk": "file:../../packages/sdk",
+    "viem": "^2.55.1"
+  }
+}
