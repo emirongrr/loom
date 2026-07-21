@@ -10,6 +10,79 @@ import {MockValidator} from "../mocks/MockValidator.sol";
 import {FormalAccountBase, FormalGuardianVerifier, FormalTarget} from "./FormalHelpers.sol";
 
 contract LoomAccountRecoveryFormal is FormalAccountBase {
+    function test_GuardianProofCannotCountLeafTwice() public {
+        check_GuardianProofCannotCountLeafTwice();
+    }
+
+    function check_GuardianProofCannotCountLeafTwice() public {
+        RecoveryManager recovery = new RecoveryManager();
+        FormalGuardianVerifier verifier = new FormalGuardianVerifier();
+        MockValidator oldValidator = new MockValidator();
+        MockValidator newValidator = new MockValidator();
+        bytes32 keyCommitment = keccak256("duplicate-guardian-key");
+        bytes32 salt = keccak256("duplicate-guardian-salt");
+        bytes32 leaf = _guardianLeaf(verifier, keyCommitment, salt);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(oldValidator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        LoomAccount account = new LoomAccount(_entryPointAddress(), leaf, 2, keccak256("config"), modules);
+
+        address[] memory oldValidators = new address[](1);
+        oldValidators[0] = address(oldValidator);
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](2);
+        GuardianVerificationLib.Approval memory approval =
+            GuardianVerificationLib.Approval(address(verifier), keyCommitment, salt, "", new bytes32[](0));
+        approvals[0] = approval;
+        approvals[1] = approval;
+
+        uint64 configVersionBefore = account.configVersion();
+        (bool accepted, bytes memory revertData) = address(recovery)
+            .call(
+                abi.encodeCall(
+                    RecoveryManager.proposeRecovery,
+                    (
+                        address(account),
+                        oldValidators,
+                        address(newValidator),
+                        keccak256(bytes("")),
+                        keccak256("replacement-guardians"),
+                        1,
+                        approvals
+                    )
+                )
+            );
+
+        assert(!accepted);
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(RecoveryManager.InvalidRecovery.selector)));
+        (
+            bytes32 pendingOldValidatorsHash,
+            address pendingNewValidator,
+            bytes32 pendingInitDataHash,
+            bytes32 pendingNewGuardianRoot,
+            uint8 pendingNewGuardianThreshold,
+            uint48 readyAt,
+            uint48 expiresAt,
+            uint64 pendingConfigVersion,
+            uint64 pendingNonce
+        ) = recovery.pendingRecoveries(address(account));
+        assert(pendingOldValidatorsHash == bytes32(0));
+        assert(pendingNewValidator == address(0));
+        assert(pendingInitDataHash == bytes32(0));
+        assert(pendingNewGuardianRoot == bytes32(0));
+        assert(pendingNewGuardianThreshold == 0);
+        assert(readyAt == 0);
+        assert(expiresAt == 0);
+        assert(pendingConfigVersion == 0);
+        assert(pendingNonce == 0);
+        assert(recovery.recoveryNonces(address(account)) == 0);
+        assert(account.configVersion() == configVersionBefore);
+        assert(account.guardianRoot() == leaf);
+        assert(account.guardianThreshold() == 2);
+        assert(account.validatorCount() == 1);
+        assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(oldValidator)));
+        assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
+    }
+
     function test_RecoveryDelayIsEnforced() public {
         check_RecoveryDelayIsEnforced();
     }

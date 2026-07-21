@@ -18,7 +18,7 @@ static analysis, review, deployment rehearsals, and audit.
 | `LoomAccountInitializationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Initializer one-shot safety, delegated initializer access control, immutable proxy storage initialization, non-upgradeability selectors, and invalid direct-execution nonce rollback. |
 | `LoomAccountAuthorityFormal.t.sol` | Symbolic property tests | Authority separation, privileged call rejection, unsupported modes, and last-validator safety. |
 | `LoomAccountExecutionFormal.t.sol` | Symbolic and fuzz-compatible property tests | Batch atomicity, freeze restrictions, and direct-execution rollback behavior. |
-| `LoomAccountRecoveryFormal.t.sol` | Symbolic property tests | Recovery delay, validator replacement, guardian-root update, and frozen-account emergency carveouts. |
+| `LoomAccountRecoveryFormal.t.sol` | Symbolic property tests | Duplicate-guardian rejection with full proposal rollback, recovery delay, validator replacement, guardian-root update, and frozen-account emergency carveouts. |
 | `LoomAccountMigrationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Migration delay, scheduled call-hash binding, and migration batch atomicity. |
 | `LoomVaultHookFormal.t.sol` | Symbolic and fuzz-compatible property tests | Vault withdrawal delay enforcement and guardian-threshold cancellation grants no spending authority. |
 | `LoomKeystoreSyncFormal.t.sol` | Symbolic and fuzz-compatible property tests | L1 keystore controller-only updates, sync delay enforcement, and guardian-threshold sync cancellation grants no validator authority. |
