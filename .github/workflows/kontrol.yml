@@ -17,58 +17,110 @@ jobs:
     name: Kontrol selected KEVM targets
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      KONTROL_IMAGE: runtimeverificationinc/kontrol:ubuntu-jammy-1.0.255@sha256:858f004144d61b005997f56bb8b7cd15673850286c96e0e5ec0502d9c9a9e204
+      SOLC_BINARY: solc-linux-amd64-v0.8.35+commit.47b9dedd
+      SOLC_SHA256: fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Prepare prover evidence
+        id: kontrol-pin
         run: |
           mkdir -p artifacts/kontrol
           KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
           KONTROL_RELEASE="${KONTROL_PIN%%@*}"
           KONTROL_REVISION="${KONTROL_PIN#*@}"
-          printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolRelease": "%s",\n  "kontrolRevision": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
+          echo "revision=$KONTROL_REVISION" >> "$GITHUB_OUTPUT"
+          printf '{\n  "schemaVersion": 1,\n  "repository": "%s",\n  "commit": "%s",\n  "workflowRunId": "%s",\n  "workflowRunAttempt": "%s",\n  "kontrolRelease": "%s",\n  "kontrolRevision": "%s",\n  "kontrolImage": "%s",\n  "targets": [\n    "%s",\n    "%s"\n  ]\n}\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            "$KONTROL_RELEASE" "$KONTROL_REVISION" \
+            "$KONTROL_RELEASE" "$KONTROL_REVISION" "$KONTROL_IMAGE" \
             "LoomAccountAuthorityFormal.test_CannotRemoveLastValidator" \
             "LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized" \
             > artifacts/kontrol/run-metadata.json
           cp formal/kontrol/toolchain.pin formal/kontrol/targets.json artifacts/kontrol/
-      - name: Install Foundry
+      - name: Reclaim prover disk
+        run: |
+          df -h > artifacts/kontrol/disk-before.txt
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h > artifacts/kontrol/disk-after.txt
+      - name: Record prover resources
+        run: |
+          free -h > artifacts/kontrol/memory-before.txt
+      - name: Install pinned Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.7.1
-      - name: Install KUP and Kontrol
+      - name: Install pinned Solidity compiler
         run: |
           set -euo pipefail
-          exec > >(tee artifacts/kontrol/install.log) 2>&1
-          bash <(curl -sSfL https://kframework.org/install)
-          export PATH="$HOME/.kup/bin:$HOME/.local/bin:$PATH"
-          KUP_BIN="$(command -v kup || find "$HOME" -type f -name kup -perm -111 -print -quit 2>/dev/null)"
-          if [ -z "$KUP_BIN" ]; then
-            echo "kup was not found after installation"
-            exit 1
-          fi
-          KONTROL_PIN="$(cat formal/kontrol/toolchain.pin)"
-          "$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"
-          KONTROL_BIN="$(command -v kontrol || find "$HOME" -type f -name kontrol -perm -111 -print -quit 2>/dev/null)"
-          if [ -z "$KONTROL_BIN" ]; then
-            echo "kontrol was not found after kup install kontrol"
-            exit 1
-          fi
-          dirname "$KUP_BIN" >> "$GITHUB_PATH"
-          dirname "$KONTROL_BIN" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/solc"
+          SOLC_PATH="$RUNNER_TEMP/solc/solc"
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            "https://binaries.soliditylang.org/linux-amd64/$SOLC_BINARY" \
+            --output "$SOLC_PATH"
+          printf '%s  %s\n' "$SOLC_SHA256" "$SOLC_PATH" | sha256sum --check -
+          chmod 0555 "$SOLC_PATH"
+          "$SOLC_PATH" --version > artifacts/kontrol/solc-version.txt
+      - name: Pull pinned Kontrol image
+        run: |
+          set -euo pipefail
+          docker pull "$KONTROL_IMAGE" 2>&1 | tee artifacts/kontrol/image-pull.log
+          docker image inspect "$KONTROL_IMAGE" > artifacts/kontrol/image-inspect.json
+          df -h > artifacts/kontrol/disk-after-pull.txt
+      - name: Prepare writable prover state
+        run: |
+          mkdir -p "$RUNNER_TEMP/kontrol-workspace"
+          rsync -a --delete \
+            --exclude .git --exclude artifacts --exclude out --exclude cache \
+            "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/kontrol-workspace/"
+          sudo chown -R 1010:1010 "$RUNNER_TEMP/kontrol-workspace"
       - name: Record prover versions
         run: |
-          kontrol version > artifacts/kontrol/kontrol-version.txt 2>&1
           forge --version > artifacts/kontrol/forge-version.txt 2>&1
+          docker run --rm --network none "$KONTROL_IMAGE" kontrol version > artifacts/kontrol/kontrol-version.txt 2>&1
       - name: Build Kontrol project
-        run: set -o pipefail; kontrol build 2>&1 | tee artifacts/kontrol/build.log
+        run: |
+          set -o pipefail
+          docker run --rm --network none \
+            -e PATH=/opt/loom-foundry:/home/user/.local/bin:/home/user/.foundry/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            -e FOUNDRY_SOLC=/opt/loom-solc/solc \
+            -v "$RUNNER_TEMP/kontrol-workspace:/workspace" \
+            -v "$HOME/.foundry/bin:/opt/loom-foundry:ro" \
+            -v "$RUNNER_TEMP/solc:/opt/loom-solc:ro" \
+            -w /workspace \
+            "$KONTROL_IMAGE" kontrol build --verbose --no-llvm-kompile 2>&1 | tee artifacts/kontrol/build.log
       - name: Prove selected authority target
-        run: set -o pipefail; kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator 2>&1 | tee artifacts/kontrol/authority.log
+        run: |
+          set -o pipefail
+          docker run --rm --network none \
+            -e PATH=/opt/loom-foundry:/home/user/.local/bin:/home/user/.foundry/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            -e FOUNDRY_SOLC=/opt/loom-solc/solc \
+            -v "$RUNNER_TEMP/kontrol-workspace:/workspace" \
+            -v "$HOME/.foundry/bin:/opt/loom-foundry:ro" \
+            -v "$RUNNER_TEMP/solc:/opt/loom-solc:ro" \
+            -w /workspace \
+            "$KONTROL_IMAGE" kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator \
+            2>&1 | tee artifacts/kontrol/authority.log
       - name: Prove selected initialization target
-        run: set -o pipefail; kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized 2>&1 | tee artifacts/kontrol/initialization.log
+        run: |
+          set -o pipefail
+          docker run --rm --network none \
+            -e PATH=/opt/loom-foundry:/home/user/.local/bin:/home/user/.foundry/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            -e FOUNDRY_SOLC=/opt/loom-solc/solc \
+            -v "$RUNNER_TEMP/kontrol-workspace:/workspace" \
+            -v "$HOME/.foundry/bin:/opt/loom-foundry:ro" \
+            -v "$RUNNER_TEMP/solc:/opt/loom-solc:ro" \
+            -w /workspace \
+            "$KONTROL_IMAGE" kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized \
+            2>&1 | tee artifacts/kontrol/initialization.log
+      - name: Record final prover resources
+        if: always()
+        run: |
+          free -h > artifacts/kontrol/memory-after.txt
+          df -h > artifacts/kontrol/disk-final.txt
       - name: Upload Kontrol prover evidence
         if: always()
         uses: actions/upload-artifact@v7
