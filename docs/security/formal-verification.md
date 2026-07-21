@@ -28,6 +28,8 @@ exercise, within their harness assumptions:
 - guardians cannot perform validator-only ordinary execution;
 - validators cannot perform guardian/recovery-only configuration actions;
 - direct external calls to account-internal privileged functions revert;
+- duplicate guardian approvals cannot satisfy a recovery threshold and leave
+  the proposal, nonce, and account authority state unchanged;
 - recovery cannot execute before its delay;
 - successful recovery replaces the complete committed validator set and
   guardian root;
@@ -99,7 +101,6 @@ not broaden the claim boundaries below.
 - only the exact delayed installed-hook removal path can bypass hooks;
 - session permissions cannot authorize any call outside every committed
   dimension;
-- guardian proofs cannot count a leaf twice;
 - every successful module/config transition preserves module count bounds.
 - rejected and reverting direct execution cannot consume a validator nonce;
 - one direct-capable validator cannot advance another validator's nonce.
