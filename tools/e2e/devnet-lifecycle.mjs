@@ -145,7 +145,11 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
   console.log("==> SDK-driven operation (@loom/core end to end)");
 
   // 1. Rebuild the exact account configuration the lifecycle script committed.
-  const rpIdHash = keccak256(stringToHex(RP_ID));
+  // Real WebAuthn authenticators put sha256(rpId) in authenticatorData[0:32],
+  // and WebAuthnP256.verify compares those bytes against the registered
+  // rpIdHash — so registration must use sha256, not keccak256. originHash
+  // stays keccak256: the contract keccak-hashes the origin bytes itself.
+  const rpIdHash = `0x${crypto.createHash("sha256").update(RP_ID).digest("hex")}`;
   const originHash = keccak256(stringToHex(ORIGIN));
   const config = {
     entryPoint,
