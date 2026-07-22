@@ -68,7 +68,11 @@ contract DevnetAccountLifecycle is Script {
             address(ctx.validator),
             abi.encodeCall(
                 P256Validator.initialize,
-                (ctx.p256X, ctx.p256Y, keccak256(bytes(ctx.rpId)), keccak256(bytes(ctx.origin)), ctx.policyHook)
+                // sha256 for rpIdHash: a real authenticator puts sha256(rpId) in
+                // authenticatorData[0:32], which WebAuthnP256.verify compares against
+                // this registered value. originHash stays keccak256 — the library
+                // keccak-hashes the origin bytes it receives.
+                (ctx.p256X, ctx.p256Y, sha256(bytes(ctx.rpId)), keccak256(bytes(ctx.origin)), ctx.policyHook)
             )
         );
 
@@ -130,7 +134,7 @@ contract DevnetAccountLifecycle is Script {
     }
 
     function _webAuthnSignature(Ctx memory ctx, bytes32 userOpHash) internal pure returns (bytes memory) {
-        bytes memory authenticatorData = bytes.concat(keccak256(bytes(ctx.rpId)), hex"05");
+        bytes memory authenticatorData = bytes.concat(sha256(bytes(ctx.rpId)), hex"05");
         bytes memory clientDataJSON = bytes.concat(
             bytes('{"type":"webauthn.get","challenge":"'),
             _base64Url(userOpHash),
