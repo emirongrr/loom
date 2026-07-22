@@ -41,14 +41,21 @@ exercise, within their harness assumptions:
   exact self-call guards and preserve schedules and account authority;
 - duplicate guardian approvals cannot satisfy a recovery threshold and leave
   the proposal, nonce, and account authority state unchanged;
-- recovery cannot execute before its delay;
+- early recovery returns the exact `RecoveryNotReady` error and preserves all
+  nine pending-recovery fields, nonce, guardian configuration, and validator
+  identity;
 - successful recovery replaces the complete committed validator set and
   guardian root;
-- migration cannot execute before its delay;
-- migration rejects a non-committed call batch without consuming the pending
-  migration;
-- a reverting migration batch rolls back earlier calls and preserves the
-  pending migration.
+- early migration returns the exact `OperationNotReady` error and preserves all
+  eight pending-migration fields, nonce, configuration, and target state;
+- migration rejects a non-committed call batch with the exact
+  `InvalidMigration` error without consuming the pending migration;
+- a downstream target revert rolls back earlier migration calls and preserves
+  the complete pending migration, nonce, and account configuration;
+- a vault withdrawal before readiness returns `WithdrawalNotReady` and
+  preserves the complete pending withdrawal, spending counters, and balances;
+- guardian cancellation grants no spending authority: a later matching spend
+  returns `WithdrawalNotPending` and preserves policy, authority, and balances.
 
 These are symbolic property tests, not complete mathematical formal
 verification and not theorem-prover proofs that the wallet is "completely
