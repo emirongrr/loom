@@ -10,6 +10,45 @@ import {MockValidator} from "../mocks/MockValidator.sol";
 import {FormalAccountBase, FormalGuardianVerifier, FormalTarget} from "./FormalHelpers.sol";
 
 contract LoomAccountRecoveryFormal is FormalAccountBase {
+    function _pendingRecovery(RecoveryManager recovery, address account)
+        internal
+        view
+        returns (RecoveryManager.PendingRecovery memory pending)
+    {
+        (
+            pending.oldValidatorsHash,
+            pending.newValidator,
+            pending.initDataHash,
+            pending.newGuardianRoot,
+            pending.newGuardianThreshold,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.configVersion,
+            pending.nonce
+        ) = recovery.pendingRecoveries(account);
+    }
+
+    function _assertPendingRecoveryUnchanged(
+        RecoveryManager recovery,
+        address account,
+        RecoveryManager.PendingRecovery memory expected
+    ) internal view {
+        RecoveryManager.PendingRecovery memory actual = _pendingRecovery(recovery, account);
+        assert(actual.oldValidatorsHash == expected.oldValidatorsHash);
+        assert(actual.newValidator == expected.newValidator);
+        assert(actual.initDataHash == expected.initDataHash);
+        assert(actual.newGuardianRoot == expected.newGuardianRoot);
+        assert(actual.newGuardianThreshold == expected.newGuardianThreshold);
+        assert(actual.readyAt == expected.readyAt);
+        assert(actual.expiresAt == expected.expiresAt);
+        assert(actual.configVersion == expected.configVersion);
+        assert(actual.nonce == expected.nonce);
+    }
+
+    function _assertRevert(bytes memory revertData, bytes4 expectedSelector) internal pure {
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(expectedSelector)));
+    }
+
     function test_GuardianProofCannotCountLeafTwice() public {
         check_GuardianProofCannotCountLeafTwice();
     }
@@ -53,7 +92,7 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
             );
 
         assert(!accepted);
-        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(RecoveryManager.InvalidRecovery.selector)));
+        _assertRevert(revertData, RecoveryManager.InvalidRecovery.selector);
         (
             bytes32 pendingOldValidatorsHash,
             address pendingNewValidator,
@@ -107,10 +146,25 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         recovery.proposeRecovery(
             address(account), oldValidators, address(newValidator), keccak256(bytes("")), newGuardianRoot, 1, approvals
         );
+        RecoveryManager.PendingRecovery memory pendingBefore = _pendingRecovery(recovery, address(account));
+        uint64 recoveryNonceBefore = recovery.recoveryNonces(address(account));
+        bytes32 configHashBefore = account.configHash();
+        uint64 configVersionBefore = account.configVersion();
+        bytes32 guardianRootBefore = account.guardianRoot();
+        uint8 guardianThresholdBefore = account.guardianThreshold();
 
-        (bool early,) = address(recovery)
+        (bool early, bytes memory revertData) = address(recovery)
             .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), oldValidators, bytes(""))));
         assert(!early);
+        _assertRevert(revertData, RecoveryManager.RecoveryNotReady.selector);
+        _assertPendingRecoveryUnchanged(recovery, address(account), pendingBefore);
+        assert(recovery.recoveryNonces(address(account)) == recoveryNonceBefore);
+        assert(account.configHash() == configHashBefore);
+        assert(account.configVersion() == configVersionBefore);
+        assert(account.guardianRoot() == guardianRootBefore);
+        assert(account.guardianThreshold() == guardianThresholdBefore);
+        assert(account.validatorCount() == 1);
+        assert(account.validatorAt(0) == address(oldValidator));
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(oldValidator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
     }
@@ -194,7 +248,12 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         assert(recovery.recoveryNonces(address(account)) == 1);
 
         bytes memory cancelScheduled = abi.encodeCall(LoomAccount.cancelScheduled, (scheduledId));
-        (bool ordinaryCancel,) = address(account)
+        uint48 scheduledReadyAt = account.scheduledOperations(scheduledId);
+        uint48 frozenUntilBefore = account.frozenUntil();
+        bytes32 configHashBefore = account.configHash();
+        uint64 configVersionBefore = account.configVersion();
+        vm.prank(account.entryPoint());
+        (bool ordinaryCancel, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.execute,
@@ -202,6 +261,20 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
                 )
             );
         assert(!ordinaryCancel);
-        assert(account.scheduledOperations(scheduledId) != 0);
+        _assertRevert(revertData, LoomAccount.AccountFrozen.selector);
+        assert(account.scheduledOperations(scheduledId) == scheduledReadyAt);
+        _assertPendingRecoveryUnchanged(
+            recovery,
+            address(account),
+            RecoveryManager.PendingRecovery(bytes32(0), address(0), bytes32(0), bytes32(0), 0, 0, 0, 0, 0)
+        );
+        assert(recovery.recoveryNonces(address(account)) == 1);
+        assert(account.frozenUntil() == frozenUntilBefore);
+        assert(account.configHash() == configHashBefore);
+        assert(account.configVersion() == configVersionBefore);
+        assert(account.validatorCount() == 1);
+        assert(account.validatorAt(0) == address(oldValidator));
+        assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(oldValidator)));
+        assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
     }
 }
