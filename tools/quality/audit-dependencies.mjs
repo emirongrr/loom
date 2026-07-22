@@ -19,6 +19,7 @@ const targets = [
   { name: "account compatibility shim", args: ["--prefix", "packages/account", "audit", "--audit-level=low"] },
   { name: "privacy SDK", args: ["--prefix", "packages/privacy", "audit", "--audit-level=low"] },
   { name: "backend tracker example", args: ["--prefix", "examples/backend-userop-tracker", "audit", "--audit-level=low"] },
+  { name: "web passkey example", args: ["--prefix", "examples/passkey-wallet-web", "audit", "--audit-level=low"] },
   { name: "monitoring component", args: ["--prefix", "monitoring", "audit", "--audit-level=low"] },
   { name: "wallet engine SDK", args: ["--prefix", "packages/sdk", "audit", "--audit-level=low"] },
   { name: "documentation site", args: ["--prefix", "docs/site", "audit", "--audit-level=low"] }
