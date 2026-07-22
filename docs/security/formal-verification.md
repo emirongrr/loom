@@ -18,10 +18,14 @@ exercise, within their harness assumptions:
 - arbitrary direct callers cannot change guardian configuration;
 - arbitrary direct callers cannot invoke validator recovery;
 - unsupported execution modes cannot execute;
-- a reverting item rolls back an entire atomic batch;
-- a frozen account cannot execute an ordinary call;
-- a frozen account cannot execute an ordinary direct call;
-- a reverting direct batch rolls back every item and its validator nonce;
+- a downstream target revert, rather than a caller-authorization failure,
+  rolls back an entire EntryPoint batch;
+- a frozen account rejects ordinary EntryPoint execution with the exact
+  `AccountFrozen` error and preserves account authority state;
+- a frozen account rejects ordinary direct execution with the exact
+  `AccountFrozen` error and preserves its validator nonce;
+- a downstream target revert rolls back every direct-batch item and its
+  validator nonce;
 - the final validator cannot be removed;
 - a successful guardian configuration update advances configuration and
   invalidates a stale scheduled operation;
