@@ -87,6 +87,10 @@ jobs:
           set -o pipefail
           npm run e2e:bundler-devnet 2>&1 | tee artifacts/devnet/bundler-devnet.log
           cp .loom/devnet/alto.log artifacts/devnet/alto.log || true
+      - name: Guardian freeze and recovery devnet
+        run: |
+          set -o pipefail
+          npm run e2e:guardian-devnet 2>&1 | tee artifacts/devnet/guardian-devnet.log
       - name: Upload devnet evidence
         if: always()
         uses: actions/upload-artifact@v7
