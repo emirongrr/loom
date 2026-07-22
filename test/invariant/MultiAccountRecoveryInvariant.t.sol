@@ -69,6 +69,13 @@ contract MultiAccountRecoveryHandler {
         AccountSnapshot bobState;
     }
 
+    struct ExecutionExpectation {
+        AccountSnapshot accountBefore;
+        AccountSnapshot otherBefore;
+        RecoveryManager.PendingRecovery pending;
+        bytes32 validatorsHash;
+    }
+
     constructor() {
         entryPoint = new MockEntryPoint();
         recovery = new RecoveryManager();
@@ -243,37 +250,51 @@ contract MultiAccountRecoveryHandler {
     function _execute(LoomAccount account, LoomAccount other) internal {
         RecoveryManager.PendingRecovery memory pending = _pending(account);
         if (pending.readyAt == 0) return;
-        AccountSnapshot memory accountBefore = _snapshot(account);
-        AccountSnapshot memory otherBefore = _snapshot(other);
         address[] memory validators = _currentValidators(account);
+        ExecutionExpectation memory expected = ExecutionExpectation({
+            accountBefore: _snapshot(account),
+            otherBefore: _snapshot(other),
+            pending: pending,
+            validatorsHash: keccak256(abi.encode(validators))
+        });
         vm.warp(pending.readyAt);
 
         (bool ok,) = address(recovery)
             .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, bytes(""))));
+        _checkExecution(account, other, ok, expected);
+        if (ok) ++successfulExecutions;
+        _observeNonces();
+    }
+
+    function _checkExecution(LoomAccount account, LoomAccount other, bool ok, ExecutionExpectation memory expected)
+        internal
+    {
         AccountSnapshot memory accountAfter = _snapshot(account);
         if (!ok || accountAfter.pending.readyAt != 0) violated = true;
-        if (accountAfter.validator != pending.newValidator || accountAfter.validatorCount != 1) violated = true;
+        if (accountAfter.validator != expected.pending.newValidator || accountAfter.validatorCount != 1) {
+            violated = true;
+        }
         if (
-            accountAfter.guardianRoot != pending.newGuardianRoot
-                || accountAfter.guardianThreshold != pending.newGuardianThreshold
+            accountAfter.guardianRoot != expected.pending.newGuardianRoot
+                || accountAfter.guardianThreshold != expected.pending.newGuardianThreshold
         ) violated = true;
-        if (accountAfter.configVersion != accountBefore.configVersion + 1) violated = true;
-        if (accountAfter.recoveryNonce != accountBefore.recoveryNonce + 1) violated = true;
+        if (accountAfter.configVersion != expected.accountBefore.configVersion + 1) violated = true;
+        if (accountAfter.recoveryNonce != expected.accountBefore.recoveryNonce + 1) violated = true;
         bytes32 changeHash = keccak256(
             abi.encode(
                 CONFIGURATION_RECOVERED_HASH,
-                keccak256(abi.encode(validators)),
-                pending.newValidator,
+                expected.validatorsHash,
+                expected.pending.newValidator,
                 EMPTY_INIT_DATA_HASH,
-                pending.newGuardianRoot,
-                pending.newGuardianThreshold
+                expected.pending.newGuardianRoot,
+                expected.pending.newGuardianThreshold
             )
         );
-        if (accountAfter.configHash != keccak256(abi.encode(accountBefore.configHash, changeHash))) violated = true;
-        if (accountAfter.frozenUntil != accountBefore.frozenUntil) violated = true;
-        if (!_sameAccountState(otherBefore, _snapshot(other))) violated = true;
-        if (ok) ++successfulExecutions;
-        _observeNonces();
+        if (accountAfter.configHash != keccak256(abi.encode(expected.accountBefore.configHash, changeHash))) {
+            violated = true;
+        }
+        if (accountAfter.frozenUntil != expected.accountBefore.frozenUntil) violated = true;
+        if (!_sameAccountState(expected.otherBefore, _snapshot(other))) violated = true;
     }
 
     function _guardianApprovals(LoomAccount account, bytes32 digest)
