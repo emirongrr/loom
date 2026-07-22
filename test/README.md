@@ -120,10 +120,17 @@ to one account, and exact validation-failure rollback of the complete bundle.
 The invariants continuously check account-scoped authority, nonce-key identity,
 deposit backing, and full cross-account state isolation.
 
-The program models two pre-deployed ECDSA accounts and deterministic local
-signing. It does not claim coverage of counterfactual deployment, paymasters,
-P-256/WebAuthn, session validators, recovery, or arbitrary account population;
-those remain separate integration, invariant, and evidence boundaries.
+`EntryPointMultiAccountPaymasterInvariant.t.sol` extends that composition with
+independent sponsors, an underfunded sponsor, and a reverting `postOp` sponsor.
+It checks sponsor/account isolation, exact underfunded-bundle rollback,
+beneficiary/deposit conservation, and isolation of a failed sponsored execution
+from an independent operation in the same bundle.
+
+The programs model two pre-deployed ECDSA accounts, deterministic local signing,
+and local adversarial paymasters. They do not claim coverage of counterfactual
+deployment, production paymaster middleware, P-256/WebAuthn, session validators,
+recovery, or arbitrary account population; those remain separate integration,
+invariant, and evidence boundaries.
 
 ## Required Checks
 
