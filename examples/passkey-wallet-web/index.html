@@ -53,6 +53,10 @@
     padding: .8rem; overflow-x: auto; font-size: .8rem; margin: .5rem 0 0; }
   .hint { color: var(--muted); font-size: .82rem; margin: .5rem 0 0; }
   .row .v.muted { color: var(--muted); }
+  .tabs { display: flex; gap: .5rem; margin: 0 0 1rem; border-bottom: 1px solid var(--line); }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+    padding: .6rem .9rem; color: var(--muted); font-weight: 600; cursor: pointer; }
+  .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
 </style>
 
 <div class="wrap">
@@ -66,6 +70,14 @@
     that resolves <code>node_modules</code> (for example <code>vite</code>).
   </div>
 
+  <!-- Two audiences, two views: what the institution's customer sees, and what
+       the developer wiring it up needs. Same page, same state. -->
+  <div class="tabs">
+    <button id="tabCustomer" class="tab active">Open an account</button>
+    <button id="tabDeveloper" class="tab">Deployment &amp; wallet</button>
+  </div>
+
+  <div id="viewDeveloper" hidden>
   <!-- Which deployment am I bound to? Always visible, never implied. -->
   <div class="card">
     <h2>Deployment <span id="deploymentStatus" class="pill bad">not configured</span></h2>
@@ -108,9 +120,168 @@
       <button id="register" class="primary" disabled>Register passkey</button>
       <button id="reconnect" disabled>Reconnect</button>
       <button id="sign" disabled>Sign a test hash</button>
+      <button id="deploy" disabled>Sign deployment operation</button>
       <button id="forget" disabled>Forget</button>
     </div>
     <pre id="out">ready</pre>
+  </div>
+
+  <!-- Publishing the creation operation, driven from the page. The key stays in
+       the sponsor backend; this only decides who pays and asks it to send. -->
+  <div class="card">
+    <h2>Publish <span id="pubStatus" class="pill warn">no operation</span></h2>
+    <div class="row"><span class="k">Account</span><span class="v muted" id="pAccount">—</span></div>
+    <div class="row"><span class="k">On chain</span><span class="v muted" id="pChain">—</span></div>
+    <div class="row"><span class="k">Max cost</span><span class="v muted" id="pCost">—</span></div>
+    <div class="row"><span class="k">Funded by</span><span class="v">
+      <label><input type="radio" name="fundMode" value="sponsor" checked> sponsor pays</label>
+      <label style="margin-left:1rem"><input type="radio" name="fundMode" value="self-funded"> account pays its own</label>
+    </span></div>
+    <p class="hint" id="pHint">
+      Sign a deployment operation above, then publish it. The sponsor backend holds
+      the key and sends the transaction; creation cannot go through a public bundler
+      because the factory fail-closes to the EntryPoint's SenderCreator.
+    </p>
+    <div class="actions">
+      <button id="refreshChain">Refresh chain state</button>
+      <button id="publish" class="primary" disabled>Publish operation</button>
+    </div>
+    <pre id="pubOut">sign a deployment operation first</pre>
+  </div>
+  <!-- Arbitrary calls. An NFT mint, a Uniswap swap and a token approval are the
+       same thing to the account: a target, a value and calldata. Several of them
+       in one operation execute atomically under a single signature, which is the
+       thing an EOA cannot do. -->
+  <div class="card">
+    <h2>Contract calls <span id="callStatus" class="pill warn">idle</span></h2>
+    <p class="hint" id="callHint" style="margin-top:0">
+      A JSON array of calls. They run in order, in one operation: if any reverts,
+      none of them happened. <code>value</code> is in wei; omit <code>data</code>
+      for a plain transfer.
+    </p>
+    <textarea id="callsJson" spellcheck="false" placeholder='[
+  { "target": "0x…", "value": "0", "data": "0x…" }
+]'>[
+  { "target": "0xcac524bca292aaade2df8a05cc58f0a65b1b3bb9", "value": "0", "data": "0x" }
+]</textarea>
+    <div class="actions">
+      <button id="validateCalls">Validate</button>
+      <button id="runCalls" class="primary" disabled>Sign &amp; execute</button>
+    </div>
+    <pre id="callOut">describe the calls, then simulate before signing</pre>
+  </div>
+  <!-- The account's own account of itself: guardian protection, freeze window,
+       pending migration, config version — all read from the chain, no signature.
+       This is the surface the write flows (freeze, recovery, guardian change,
+       migration) act on; each of those is time-locked and needs a real guardian
+       set, so this panel is where their effects would show up. -->
+  <div class="card">
+    <h2>Safety state <span id="safetyStatus" class="pill warn">unknown</span></h2>
+    <div class="row"><span class="k">Protection</span><span class="v muted" id="sfProtection">—</span></div>
+    <div class="row"><span class="k">Guardians</span><span class="v muted" id="sfGuardians">—</span></div>
+    <div class="row"><span class="k">Recovery</span><span class="v muted" id="sfRecovery">—</span></div>
+    <div class="row"><span class="k">Freeze</span><span class="v muted" id="sfFreeze">—</span></div>
+    <div class="row"><span class="k">Migration</span><span class="v muted" id="sfMigration">—</span></div>
+    <div class="row"><span class="k">Config version</span><span class="v muted" id="sfConfig">—</span></div>
+    <p class="hint">
+      Freeze (2-day window, any guardian), recovery, and guardian changes (3-day
+      delay) are time-locked writes that need a real guardian set. This account
+      was created with a placeholder guardian root, so those flows are exercised
+      on devnet where the delays can be advanced — this panel is read-only.
+    </p>
+    <div class="actions">
+      <button id="refreshSafety">Read safety state</button>
+    </div>
+    <pre id="safetyOut">read the account's on-chain safety state</pre>
+  </div>
+  </div><!-- /viewDeveloper -->
+
+  <!-- What a customer of the institution actually sees: one button. The passkey
+       prompt is the only thing they interact with; funding, gas, and publication
+       happen behind the sponsor backend. -->
+  <div id="viewCustomer">
+    <div class="card">
+      <h2>Open an account <span id="onboardStatus" class="pill warn">ready</span></h2>
+      <p class="hint" style="margin-top:0">
+        One tap. A passkey is created on this device, the account address is derived from
+        it, and the institution pays to publish it on chain. You never hold ETH, approve a
+        transaction, or see a key.
+      </p>
+      <div class="row"><span class="k">Your account</span><span class="v muted" id="cAccount">—</span></div>
+      <div class="row"><span class="k">On chain</span><span class="v muted" id="cChain">—</span></div>
+      <div class="actions">
+        <button id="oneTap" class="primary" disabled>Create my account</button>
+        <button id="signIn" hidden>Sign in</button>
+        <button id="switchAccount" hidden>Use a different account</button>
+      </div>
+      <div class="row"><span class="k">Sponsor backend</span><span class="v"><input id="sponsorUrl" value="http://localhost:8787/deploy" style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <pre id="onboardOut">waiting for a deployment</pre>
+    </div>
+
+    <!-- The account acting on its own behalf: it pays from its EntryPoint
+         deposit, so no ETH has to move to a key first. -->
+    <div class="card">
+      <h2>Send <span id="sendStatus" class="pill warn">no account</span></h2>
+      <div class="row"><span class="k">Asset</span><span class="v">
+        <select id="asset" style="font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)">
+          <option value="">ETH</option>
+          <option value="custom">Another token…</option>
+        </select>
+        <button id="rescan" style="padding:.2rem .6rem;font-size:.8rem;margin-left:.4rem">Rescan</button></span></div>
+      <div class="row"><span class="k">Discovered via</span><span class="v">
+        <input id="explorerUrl" value="https://eth-sepolia.blockscout.com" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row" id="customTokenRow" hidden><span class="k">Token address</span><span class="v">
+        <input id="customToken" placeholder="0x…" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row"><span class="k">Balance</span><span class="v muted" id="sBalance">—</span></div>
+      <div class="row"><span class="k">Gas deposit</span><span class="v muted" id="sDeposit">—</span></div>
+      <div class="row"><span class="k">To</span><span class="v">
+        <input id="sendTo" placeholder="0x…" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row"><span class="k">Amount</span><span class="v">
+        <input id="sendAmount" value="0.0001" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row"><span class="k">Publish via</span><span class="v">
+        <label><input type="radio" name="route" value="relay" checked> our relay</label>
+        <label style="margin-left:1rem"><input type="radio" name="route" value="bundler"> public bundler</label>
+      </span></div>
+      <div class="row"><span class="k">Bundler</span><span class="v">
+        <input id="bundlerUrl" value="https://public.pimlico.io/v2/11155111/rpc" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row"><span class="k">Public RPC</span><span class="v">
+        <input id="publicRpc" value="https://ethereum-sepolia-rpc.publicnode.com" spellcheck="false"
+          style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <p class="hint">
+        Signed by your passkey and relayed for you. Gas comes from the account's
+        EntryPoint deposit, not from a key you hold. The public-bundler route sends
+        the same signature to a third party we do not operate — nobody along the way
+        can alter it, which is what makes the submitter replaceable.
+      </p>
+      <div class="actions">
+        <button id="send" class="primary" disabled>Sign &amp; send</button>
+      </div>
+      <pre id="sendOut">sign in first</pre>
+    </div>
+
+    <!-- Several transfers, one signature, one nonce, all-or-nothing. An EOA
+         cannot do this: it would need one transaction per transfer, each
+         separately signed and each able to land without the others. -->
+    <div class="card">
+      <h2>Batch <span id="batchStatus" class="pill warn">empty</span></h2>
+      <div id="batchRows"></div>
+      <div class="actions">
+        <button id="addRow">Add a transfer</button>
+        <button id="runBatch" class="primary" disabled>Sign &amp; send batch</button>
+      </div>
+      <p class="hint">
+        Everything below executes inside a single operation. If one transfer
+        reverts, none of them happened — there is no half-applied state to clean
+        up, and you approve the whole set once.
+      </p>
+      <pre id="batchOut">add a transfer to begin</pre>
+    </div>
+
   </div>
 </div>
 
@@ -131,6 +302,7 @@
   const ORIGIN = location.origin;
   const DEPLOYMENT_KEY = "loom.passkey-wallet.deployment";
   const WALLET_KEY = "loom.passkey-wallet.handle";
+  const VIEW_KEY = "loom.passkey-wallet.view";
 
   // Well-known chain ids, so the page can name the network instead of leaving
   // the operator to decode a number.
@@ -139,11 +311,25 @@
 
   const $ = id => document.getElementById(id);
   const show = value => ($("out").textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+  // Tabs are a view switch only: both views read the same deployment and wallet
+  // state, so configuring on one is immediately true on the other.
+  function selectView(name) {
+    const developer = name === "developer";
+    $("viewDeveloper").hidden = !developer;
+    $("viewCustomer").hidden = developer;
+    $("tabDeveloper").className = developer ? "tab active" : "tab";
+    $("tabCustomer").className = developer ? "tab" : "tab active";
+    localStorage.setItem(VIEW_KEY, name);
+  }
+
+  const showOnboard = value => ($("onboardOut").textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
   const short = value => (typeof value === "string" && value.length > 22 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value ?? "—");
 
   let deployment = null;
   // The resolved half of an incomplete document, shown but never used to derive.
   let partial = null;
+  // The last passkey-signed creation operation, held so it can be published.
+  let signedOperation = null;
   let wallet = null;
 
   // --- deployment binding --------------------------------------------------
@@ -200,6 +386,8 @@
     field("dValidator", view?.validator);
     field("dPolicyHook", view?.policyHook);
     field("dProxyCode", view?.proxyCreationCode ? `${view.proxyCreationCode.length - 2} hex chars` : undefined);
+    if (deployment) showOnboard(`ready on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`);
+    renderCustomer();
     $("register").disabled = !deployment;
     $("reconnect").disabled = !deployment || !localStorage.getItem(WALLET_KEY);
     renderWallet();
@@ -213,6 +401,7 @@
       $("wAccount").textContent = "—";
       $("wCredential").textContent = "—";
       $("sign").disabled = true;
+      $("deploy").disabled = true;
       $("forget").disabled = !localStorage.getItem(WALLET_KEY);
       return;
     }
@@ -222,6 +411,7 @@
     $("wCredential").textContent = short(wallet.credentialId);
     $("wDeployed").textContent = `counterfactual on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`} — not deployed until the first operation`;
     $("sign").disabled = false;
+    $("deploy").disabled = false;
     $("forget").disabled = false;
   }
 
@@ -239,6 +429,9 @@
     }
     partial = null;
     deployment = candidate;
+    // Deriving an account needs the deployment, so a deployment arriving after
+    // page load is the moment a saved account becomes restorable.
+    queueMicrotask(restoreWallet);
     if (persist) localStorage.setItem(DEPLOYMENT_KEY, JSON.stringify(candidate));
     renderDeployment();
     show({ boundTo: CHAINS[candidate.chainId] ?? `chain ${candidate.chainId}`, chainId: candidate.chainId, factory: candidate.factory });
@@ -385,12 +578,719 @@
     }
   };
 
+  // Produce the signed creation operation. The page never submits it: it has no
+  // funded key and should not have one. A sponsor publishes it through
+  // EntryPoint.handleOps and pays the gas, which is how an institution can open
+  // accounts for users who hold no ETH.
+  $("deploy").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    if (!wallet || !deployment) return show("register or reconnect first");
+    try {
+      show("waiting for the authenticator…");
+      const { userOpHash, packed } = await runtime.prepareDeployOperation({
+        credentials, wallet, deployment,
+        // A no-op self-call: the point is to bring the account into existence.
+        calls: [{ target: wallet.account, value: 0n, data: "0x" }]
+      });
+      const json = JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      // Hand it to the Publish card so the rest of the flow stays on the page.
+      signedOperation = JSON.parse(json);
+      renderPublish();
+      await refreshPublishChain();
+      show({ userOpHash, sender: packed.sender, note: "signed — publish it from the Publish card below, or download it", packed: signedOperation });
+      // Offer it as a file so it can be moved to whoever publishes it.
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const link = Object.assign(document.createElement("a"), { href: url, download: "deploy-userop.json", textContent: "download deploy-userop.json" });
+      $("out").after(link);
+    } catch (error) {
+      show(`could not prepare the deployment operation: ${error.message}`);
+    }
+  };
+
+  // The institution's onboarding path, start to finish. Everything the developer
+  // buttons below do separately happens here in one gesture.
+  $("oneTap").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    if (!deployment) return showOnboard("no deployment configured");
+    const status = $("onboardStatus");
+    const step = (text, cls = "warn") => { status.className = `pill ${cls}`; status.textContent = text; };
+    $("oneTap").disabled = true;
+    try {
+      if (!wallet) {
+        step("creating passkey…");
+        showOnboard("touch the sensor to create your passkey…");
+        wallet = await runtime.registerPasskeyAccount({
+          credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user",
+          chainId: deployment.chainId, deployment
+        });
+        localStorage.setItem(WALLET_KEY, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
+        renderWallet();
+      }
+
+      const existing = wallet.account;
+      step("signing…");
+      // WebAuthn needs a second gesture: creating a credential does not produce
+      // an assertion, and the account's first operation must carry one.
+      showOnboard(`account ${existing}\ntouch the sensor once more to authorize it…`);
+      const { packed } = await runtime.prepareDeployOperation({
+        credentials, wallet, deployment,
+        calls: [{ target: wallet.account, value: 0n, data: "0x" }]
+      });
+
+      step("publishing…");
+      showOnboard(`account ${existing}\nthe sponsor is publishing it on chain…`);
+      const response = await fetch($("sponsorUrl").value.trim(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? `sponsor returned ${response.status}`);
+
+      step("account is live", "good");
+      $("wDeployed").textContent = `deployed on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`;
+      renderCustomer();
+      await refreshChainStatus(result.account);
+      showOnboard(result.alreadyDeployed
+        ? { account: result.account, note: "this account was already on chain" }
+        : { account: result.account, publishedIn: result.opTx, codeSize: `${result.codeSize} B`, gasUsed: result.gasUsed,
+            note: "the account exists on chain — the user paid nothing and approved no transaction" });
+    } catch (error) {
+      step("failed", "bad");
+      showOnboard(`could not open the account: ${error.message}`);
+    } finally {
+      $("oneTap").disabled = false;
+    }
+  };
+
   $("forget").onclick = () => {
     localStorage.removeItem(WALLET_KEY);
     wallet = null;
     renderWallet();
     show("local wallet handle cleared (the passkey itself stays in your authenticator)");
   };
+
+  // --- publishing ----------------------------------------------------------
+
+  // accountGasLimits packs verificationGasLimit || callGasLimit; gasFees packs
+  // maxPriorityFeePerGas || maxFeePerGas — 16 bytes each.
+  const highHalf = word => BigInt(`0x${word.slice(2, 34)}`);
+  const lowHalf = word => BigInt(`0x${word.slice(34, 66)}`);
+  const maxCost = op =>
+    (BigInt(op.preVerificationGas) + highHalf(op.accountGasLimits) + lowHalf(op.accountGasLimits)) * lowHalf(op.gasFees);
+  const formatEth = wei => `${(Number(wei) / 1e18).toFixed(6)} ETH`;
+  const sponsorBase = () => $("sponsorUrl").value.trim().replace(/\/deploy$/, "");
+  const fundMode = () => document.querySelector('input[name="fundMode"]:checked').value;
+
+  function renderPublish() {
+    const status = $("pubStatus");
+    if (!signedOperation) {
+      status.className = "pill warn";
+      status.textContent = "no operation";
+      $("publish").disabled = true;
+      return;
+    }
+    status.className = "pill good";
+    status.textContent = "operation signed";
+    $("pAccount").textContent = signedOperation.sender;
+    $("pAccount").className = "v";
+    $("pCost").textContent = formatEth(maxCost(signedOperation));
+    $("pCost").className = "v";
+    $("publish").disabled = false;
+  }
+
+  async function refreshPublishChain() {
+    const address = signedOperation?.sender ?? wallet?.account;
+    if (!address) return void ($("pChain").textContent = "—");
+    $("pChain").textContent = "checking…";
+    try {
+      const response = await fetch(`${sponsorBase()}/account?address=${address}`);
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      const s = await response.json();
+      $("pChain").textContent = s.deployed
+        ? `deployed (${s.codeSize} B, balance ${s.balance} ETH)`
+        : `not deployed — balance ${s.balance} ETH`;
+      $("pChain").className = "v";
+      return s;
+    } catch (error) {
+      $("pChain").textContent = `unreachable (${error.message})`;
+      $("pChain").className = "v muted";
+      return null;
+    }
+  }
+
+  $("refreshChain").onclick = () => refreshPublishChain();
+
+  $("publish").onclick = async () => {
+    if (!signedOperation) return;
+    const mode = fundMode();
+    $("publish").disabled = true;
+    $("pubStatus").className = "pill warn";
+    $("pubStatus").textContent = "publishing…";
+    $("pubOut").textContent = `sending handleOps (${mode})…`;
+    try {
+      const response = await fetch(`${sponsorBase()}/deploy?mode=${mode}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(signedOperation, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? `sponsor returned ${response.status}`);
+      $("pubStatus").className = "pill good";
+      $("pubStatus").textContent = result.alreadyDeployed ? "already on chain" : "published";
+      $("pubOut").textContent = JSON.stringify(result, null, 2);
+      $("wDeployed").textContent = `deployed on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`;
+      await refreshPublishChain();
+    } catch (error) {
+      $("pubStatus").className = "pill bad";
+      $("pubStatus").textContent = "failed";
+      $("pubOut").textContent = `publish failed: ${error.message}`;
+    } finally {
+      $("publish").disabled = false;
+    }
+  };
+
+  // The customer view has two states: a first visit offers to create an account,
+  // a return visit offers to sign in to the one this device already holds.
+  function renderCustomer() {
+    const saved = localStorage.getItem(WALLET_KEY);
+    $("oneTap").hidden = Boolean(saved);
+    $("signIn").hidden = !saved;
+    $("switchAccount").hidden = !saved;
+    $("signIn").disabled = !deployment;
+    $("oneTap").disabled = !deployment;
+    if (wallet) {
+      $("cAccount").textContent = wallet.account;
+      $("cAccount").className = "v";
+    } else if (saved && deployment) {
+      // Re-derive from the stored public key so the address is on screen before
+      // any prompt: signing in should confirm an account, not reveal it.
+      try {
+        const { credentialId, publicKey } = JSON.parse(saved);
+        const preview = walletModule?.reconnectPasskeyAccount({
+          deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
+        });
+        $("cAccount").textContent = preview?.account ?? "—";
+        $("cAccount").className = preview ? "v" : "v muted";
+      } catch {
+        $("cAccount").textContent = "—";
+      }
+    }
+  }
+
+  // Ask the sponsor backend whether the account exists on chain. The page holds
+  // no RPC endpoint of its own, and a customer-facing view should not need one.
+  async function refreshChainStatus(address) {
+    const base = $("sponsorUrl").value.trim().replace(/\/deploy$/, "");
+    try {
+      const response = await fetch(`${base}/account?address=${address}`);
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      const status = await response.json();
+      $("cChain").textContent = status.deployed
+        ? `deployed (${status.codeSize} B, balance ${status.balance} ETH)`
+        : "not deployed yet — counterfactual";
+      $("cChain").className = "v";
+      return status;
+    } catch (error) {
+      $("cChain").textContent = `unknown — sponsor backend unreachable (${error.message})`;
+      $("cChain").className = "v muted";
+      return null;
+    }
+  }
+
+  $("signIn").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    if (!deployment) return showOnboard("no deployment configured");
+    const saved = localStorage.getItem(WALLET_KEY);
+    if (!saved) return showOnboard("no account on this device");
+    $("signIn").disabled = true;
+    try {
+      const { credentialId, publicKey } = JSON.parse(saved);
+      wallet = runtime.reconnectPasskeyAccount({
+        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
+      });
+      $("onboardStatus").className = "pill warn";
+      $("onboardStatus").textContent = "verifying…";
+      showOnboard(`account ${wallet.account}\ntouch the sensor to prove this passkey is yours…`);
+      // An assertion over a fresh challenge: proof that the credential is
+      // present on this device right now. It authorizes nothing by itself —
+      // every operation is authorized individually, on chain.
+      await runtime.walletSigner({ credentials, wallet }).sign(`0x${crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "")}`);
+      renderWallet();
+      renderCustomer();
+      const status = await refreshChainStatus(wallet.account);
+      await refreshSend();
+      $("onboardStatus").className = "pill good";
+      $("onboardStatus").textContent = "signed in";
+      showOnboard({
+        account: wallet.account,
+        onChain: status ? (status.deployed ? "deployed" : "not deployed yet") : "unknown",
+        note: "the passkey stayed in your authenticator — this proved possession, nothing more"
+      });
+    } catch (error) {
+      $("onboardStatus").className = "pill bad";
+      $("onboardStatus").textContent = "sign-in failed";
+      showOnboard(`sign-in failed: ${error.message}`);
+    } finally {
+      $("signIn").disabled = false;
+    }
+  };
+
+  // Whatever asset the Send card currently names, with its own decimals.
+  let asset = null;
+  // Assets the explorer reported, reused to populate the batch rows.
+  let discovered = [];
+
+  // --- safety state --------------------------------------------------------
+
+  async function refreshSafety() {
+    const runtime = walletModule;
+    if (!runtime || !wallet || !deployment) return;
+    $("safetyStatus").className = "pill warn";
+    $("safetyStatus").textContent = "reading…";
+    try {
+      const s = await runtime.readSafety({
+        wallet, deployment, rpcUrl: $("publicRpc").value.trim()
+      });
+      const frozen = s.freeze?.active;
+      $("safetyStatus").className = frozen ? "pill bad" : "pill good";
+      $("safetyStatus").textContent = frozen ? "frozen" : s.status;
+      $("sfProtection").textContent = s.status;
+      $("sfProtection").className = "v";
+      $("sfGuardians").textContent = `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)}`;
+      $("sfGuardians").className = "v";
+      $("sfRecovery").textContent = s.recoveryConfigured ? "configured" : "not configured";
+      $("sfRecovery").className = "v";
+      $("sfFreeze").textContent = frozen
+        ? `active until unix ${s.freeze.frozenUntil}`
+        : "not frozen";
+      $("sfFreeze").className = frozen ? "v" : "v muted";
+      $("sfMigration").textContent = s.pending?.migration?.active
+        ? `pending → ${short(s.pending.migration.destination)}`
+        : "none pending";
+      $("sfMigration").className = s.pending?.migration?.active ? "v" : "v muted";
+      $("sfConfig").textContent = s.config.configVersion;
+      $("sfConfig").className = "v";
+      $("safetyOut").textContent = JSON.stringify(s, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+    } catch (error) {
+      $("safetyStatus").className = "pill bad";
+      $("safetyStatus").textContent = "failed";
+      $("safetyOut").textContent = `could not read safety state: ${error.message}`;
+    }
+  }
+
+  $("refreshSafety").onclick = () => refreshSafety();
+
+  // --- batch builder -------------------------------------------------------
+
+  const inputStyle = "width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)";
+
+  function assetOptionsHtml() {
+    const options = ['<option value="">ETH</option>'];
+    for (const entry of discovered) {
+      options.push(`<option value="${entry.token}">${entry.symbol}</option>`);
+    }
+    return options.join("");
+  }
+
+  // Keep every row's asset list current without discarding what the user typed.
+  function renderBatchAssets() {
+    for (const select of $("batchRows").querySelectorAll("select")) {
+      const chosen = select.value;
+      select.innerHTML = assetOptionsHtml();
+      select.value = [...select.options].some(o => o.value === chosen) ? chosen : "";
+    }
+  }
+
+  function addBatchRow() {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+      <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
+        <select style="font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)">${assetOptionsHtml()}</select>
+        <input class="to" placeholder="to 0x…" spellcheck="false" style="${inputStyle}">
+        <input class="amt" placeholder="amount" spellcheck="false" style="${inputStyle};max-width:8rem">
+        <button class="rm" style="padding:.2rem .55rem">✕</button>
+      </span>`;
+    row.querySelector(".rm").onclick = () => {
+      row.remove();
+      updateBatchStatus();
+    };
+    for (const field of row.querySelectorAll("input,select")) field.oninput = updateBatchStatus;
+    $("batchRows").append(row);
+    updateBatchStatus();
+  }
+
+  function readBatchRows() {
+    return [...$("batchRows").children].map((row, index) => {
+      const token = row.querySelector("select").value || null;
+      const to = row.querySelector(".to").value.trim();
+      const amountText = row.querySelector(".amt").value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error(`row ${index + 1}: recipient is not an address`);
+      if (amountText === "") throw new Error(`row ${index + 1}: amount is empty`);
+      // Decimals come from the asset, never a default: sending "1" of a
+      // 6-decimal token as if it had 18 would move a millionth of the intent.
+      const found = token ? discovered.find(d => d.token.toLowerCase() === token.toLowerCase()) : null;
+      const decimals = token ? found?.decimals : 18;
+      if (token && decimals === undefined) throw new Error(`row ${index + 1}: unknown decimals for that token`);
+      return { token, to, decimals, amountText, symbol: token ? found.symbol : "ETH" };
+    });
+  }
+
+  function updateBatchStatus() {
+    const count = $("batchRows").children.length;
+    if (count === 0) {
+      $("batchStatus").className = "pill warn";
+      $("batchStatus").textContent = "empty";
+      $("runBatch").disabled = true;
+      $("batchOut").textContent = "add a transfer to begin";
+      return;
+    }
+    try {
+      const rows = readBatchRows();
+      $("batchStatus").className = "pill good";
+      $("batchStatus").textContent = `${count} transfer${count === 1 ? "" : "s"}`;
+      $("runBatch").disabled = !wallet || !deployment;
+      $("batchOut").textContent = rows.map(r => `${r.amountText} ${r.symbol} → ${r.to}`).join("\n")
+        + "\n\nOne signature, one nonce, all-or-nothing.";
+    } catch (error) {
+      $("batchStatus").className = "pill bad";
+      $("batchStatus").textContent = "incomplete";
+      $("runBatch").disabled = true;
+      $("batchOut").textContent = error.message;
+    }
+  }
+
+  $("addRow").onclick = () => addBatchRow();
+
+  $("runBatch").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet || !deployment) return;
+    $("runBatch").disabled = true;
+    try {
+      const rows = readBatchRows();
+      const calls = rows.map(r => runtime.transferCall({
+        token: r.token, to: r.to, amount: runtime.parseAmount(r.amountText, r.decimals)
+      }));
+      const route = document.querySelector('input[name="route"]:checked').value;
+      $("batchStatus").className = "pill warn";
+      $("batchStatus").textContent = "signing…";
+      $("batchOut").textContent = `touch the sensor to authorize ${calls.length} transfer(s) at once…`;
+      let result;
+      if (route === "bundler") {
+        result = await runtime.sendViaBundler({
+          credentials, wallet, deployment, calls,
+          rpcUrl: $("publicRpc").value.trim(), bundlerUrl: $("bundlerUrl").value.trim()
+        });
+      } else {
+        const status = await refreshSend();
+        if (!status) throw new Error("relay unreachable");
+        const { userOpHash, packed } = await runtime.prepareOperation({
+          credentials, wallet, deployment, calls, nonce: status.nonce,
+          gas: { maxFeePerGas: BigInt(status.maxFeePerGas), maxPriorityFeePerGas: BigInt(status.maxPriorityFeePerGas) }
+        });
+        const response = await fetch(`${sponsorBase()}/submit`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? `relay returned ${response.status}`);
+        result = { userOpHash, ...body };
+      }
+      $("batchStatus").className = "pill good";
+      $("batchStatus").textContent = "sent";
+      $("batchOut").textContent = JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      refreshSend().then(scanAssets);
+    } catch (error) {
+      $("batchStatus").className = "pill bad";
+      $("batchStatus").textContent = "failed";
+      $("batchOut").textContent = `batch failed: ${error.message}`;
+    } finally {
+      updateBatchStatus();
+    }
+  };
+
+  // The token the Asset selector currently names, or null for ether.
+  function selectedToken() {
+    const choice = $("asset").value;
+    if (choice === "") return null;
+    const address = choice === "custom" ? $("customToken").value.trim() : choice;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("token is not an address");
+    return address;
+  }
+
+  // Rebuild the asset list from whatever the account actually holds. The
+  // explorer only supplies candidates; the balance shown once an asset is
+  // selected is read from the chain, so a wrong or stale index cannot decide
+  // what gets sent.
+  async function scanAssets() {
+    const runtime = walletModule;
+    if (!runtime || !wallet) return;
+    const select = $("asset");
+    const previous = select.value;
+    try {
+      const found = await runtime.discoverAssets({
+        explorerUrl: $("explorerUrl").value.trim(), account: wallet.account
+      });
+      for (const option of [...select.options]) {
+        if (option.value !== "" && option.value !== "custom") option.remove();
+      }
+      const custom = select.querySelector('option[value="custom"]');
+      for (const entry of found) {
+        const option = document.createElement("option");
+        option.value = entry.token;
+        option.textContent = `${entry.symbol}${entry.name ? ` — ${entry.name}` : ""}`;
+        select.insertBefore(option, custom);
+      }
+      discovered = found;
+      renderBatchAssets();
+      select.value = [...select.options].some(o => o.value === previous) ? previous : "";
+      $("sendOut").textContent = found.length
+        ? `found ${found.length} token${found.length === 1 ? "" : "s"}: ${found.map(f => f.symbol).join(", ")}`
+        : "no ERC-20 balances reported for this account";
+    } catch (error) {
+      // Discovery is optional: ether and a manually entered token still work.
+      $("sendOut").textContent = `token discovery failed (${error.message}) — ETH and manual token entry still work`;
+    }
+  }
+
+  $("rescan").onclick = () => scanAssets();
+  $("explorerUrl").onchange = () => scanAssets();
+
+  $("asset").onchange = () => {
+    $("customTokenRow").hidden = $("asset").value !== "custom";
+    refreshSend();
+  };
+  $("customToken").onchange = () => refreshSend();
+
+  // Balances come from two places on purpose: gas is always ether held at the
+  // EntryPoint, while the asset being sent may be anything the account holds.
+  async function refreshSend() {
+    if (!wallet) return;
+    try {
+      const response = await fetch(`${sponsorBase()}/account?address=${wallet.account}`);
+      const s = await response.json();
+      $("sDeposit").textContent = `${s.deposit} ETH`;
+      $("sDeposit").className = "v";
+      $("sendStatus").className = s.deployed ? "pill good" : "pill warn";
+      $("sendStatus").textContent = s.deployed ? "ready" : "account not deployed";
+      $("send").disabled = !s.deployed;
+      $("sendOut").textContent = s.deployed ? "ready" : "the account must exist on chain before it can send";
+
+      const runtime = walletModule;
+      if (runtime && s.deployed) {
+        try {
+          asset = await runtime.readAsset({
+            rpcUrl: $("publicRpc").value.trim(), token: selectedToken(), account: wallet.account
+          });
+          $("sBalance").textContent = `${asset.formatted} ${asset.symbol}${asset.token ? ` · ${asset.decimals} decimals` : ""}`;
+          $("sBalance").className = "v";
+        } catch (error) {
+          asset = null;
+          $("sBalance").textContent = `could not read the asset: ${error.message}`;
+          $("sBalance").className = "v muted";
+          $("send").disabled = true;
+        }
+      }
+      return s;
+    } catch (error) {
+      $("sendStatus").className = "pill bad";
+      $("sendStatus").textContent = "backend unreachable";
+      $("sendOut").textContent = `cannot reach the relay: ${error.message}`;
+      return null;
+    }
+  }
+
+  $("send").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet || !deployment) return;
+    $("send").disabled = true;
+    try {
+      const status = await refreshSend();
+      if (!status) return;
+      const to = $("sendTo").value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("recipient is not an address");
+      if (!asset) throw new Error("the asset could not be read");
+      // The amount is interpreted in the asset's own precision, which was read
+      // from the token rather than assumed — ether's 18 is just one case.
+      const amount = runtime.parseAmount($("sendAmount").value, asset.decimals);
+      if (amount > asset.balance) {
+        throw new Error(`account holds ${asset.formatted} ${asset.symbol}, cannot send that much`);
+      }
+      const calls = [runtime.transferCall({ token: asset.token, to, amount })];
+      const route = document.querySelector('input[name="route"]:checked').value;
+      $("sendStatus").className = "pill warn";
+      $("sendStatus").textContent = "signing…";
+      $("sendOut").textContent = `touch the sensor to authorize sending ${$("sendAmount").value} ${asset.symbol}…`;
+
+      if (route === "bundler") {
+        // Straight from this page to a bundler nobody here operates: the SDK
+        // handles nonce, estimation and submission, the passkey signs, and no
+        // service of ours is in the path.
+        const result = await runtime.sendViaBundler({
+          credentials, wallet, deployment, calls,
+          rpcUrl: $("publicRpc").value.trim(),
+          bundlerUrl: $("bundlerUrl").value.trim()
+        });
+        $("sendStatus").className = "pill good";
+        $("sendStatus").textContent = "sent via public bundler";
+        $("sendOut").textContent = JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      } else {
+        const { userOpHash, packed } = await runtime.prepareOperation({
+          credentials, wallet, deployment, calls,
+          nonce: status.nonce,
+          // Fees estimated from the chain, so the relay is not tipped more than
+          // the network actually requires.
+          gas: { maxFeePerGas: BigInt(status.maxFeePerGas), maxPriorityFeePerGas: BigInt(status.maxPriorityFeePerGas) }
+        });
+        $("sendStatus").textContent = "relaying…";
+        $("sendOut").textContent = `signed ${userOpHash}\nrelaying…`;
+        const response = await fetch(`${sponsorBase()}/submit`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? `relay returned ${response.status}`);
+        $("sendStatus").className = "pill good";
+        $("sendStatus").textContent = "sent";
+        $("sendOut").textContent = JSON.stringify({ userOpHash, ...result }, null, 2);
+      }
+      await refreshSend();
+    } catch (error) {
+      $("sendStatus").className = "pill bad";
+      $("sendStatus").textContent = "failed";
+      $("sendOut").textContent = `send failed: ${error.message}`;
+    } finally {
+      $("send").disabled = false;
+    }
+  };
+
+
+  // --- arbitrary calls -----------------------------------------------------
+
+  let pendingCalls = null;
+
+  function parseCalls(text) {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("expected a non-empty array of calls");
+    return parsed.map((call, index) => {
+      const target = String(call.target ?? "").trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(target)) throw new Error(`call ${index}: target is not an address`);
+      const data = String(call.data ?? "0x").trim();
+      if (!/^0x([0-9a-fA-F]{2})*$/.test(data)) throw new Error(`call ${index}: data is not even-length hex`);
+      // Accept a decimal string so the field is writable by hand; wei only, to
+      // avoid a unit ambiguity that would silently move the wrong amount.
+      const value = BigInt(String(call.value ?? "0").trim() || "0");
+      if (value < 0n) throw new Error(`call ${index}: value is negative`);
+      return { target, value, data };
+    });
+  }
+
+  $("validateCalls").onclick = () => {
+    try {
+      pendingCalls = parseCalls($("callsJson").value);
+      $("callStatus").className = "pill good";
+      $("callStatus").textContent = `${pendingCalls.length} call${pendingCalls.length === 1 ? "" : "s"}`;
+      $("runCalls").disabled = !wallet || !deployment;
+      $("callOut").textContent = JSON.stringify(
+        pendingCalls.map(c => ({ target: c.target, value: `${c.value} wei`, dataBytes: (c.data.length - 2) / 2 })),
+        null, 2
+      ) + (pendingCalls.length > 1
+        ? "\n\nThese execute atomically in one operation: one signature, one nonce, all-or-nothing."
+        : "");
+    } catch (error) {
+      pendingCalls = null;
+      $("runCalls").disabled = true;
+      $("callStatus").className = "pill bad";
+      $("callStatus").textContent = "invalid";
+      $("callOut").textContent = `could not read the calls: ${error.message}`;
+    }
+  };
+
+  $("runCalls").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !pendingCalls || !wallet || !deployment) return;
+    $("runCalls").disabled = true;
+    try {
+      const route = document.querySelector('input[name="route"]:checked').value;
+      $("callStatus").className = "pill warn";
+      $("callStatus").textContent = "signing…";
+      $("callOut").textContent = `touch the sensor to authorize ${pendingCalls.length} call(s)…`;
+      let result;
+      if (route === "bundler") {
+        result = await runtime.sendViaBundler({
+          credentials, wallet, deployment, calls: pendingCalls,
+          rpcUrl: $("publicRpc").value.trim(), bundlerUrl: $("bundlerUrl").value.trim()
+        });
+      } else {
+        const status = await refreshSend();
+        if (!status) throw new Error("relay unreachable");
+        const { userOpHash, packed } = await runtime.prepareOperation({
+          credentials, wallet, deployment, calls: pendingCalls, nonce: status.nonce,
+          gas: { maxFeePerGas: BigInt(status.maxFeePerGas), maxPriorityFeePerGas: BigInt(status.maxPriorityFeePerGas) }
+        });
+        const response = await fetch(`${sponsorBase()}/submit`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? `relay returned ${response.status}`);
+        result = { userOpHash, ...body };
+      }
+      $("callStatus").className = "pill good";
+      $("callStatus").textContent = "executed";
+      $("callOut").textContent = JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      refreshSend().then(scanAssets);
+    } catch (error) {
+      $("callStatus").className = "pill bad";
+      $("callStatus").textContent = "failed";
+      $("callOut").textContent = `execution failed: ${error.message}`;
+    } finally {
+      $("runCalls").disabled = false;
+    }
+  };
+
+  $("switchAccount").onclick = () => {
+    localStorage.removeItem(WALLET_KEY);
+    wallet = null;
+    $("cAccount").textContent = "—";
+    $("cAccount").className = "v muted";
+    $("cChain").textContent = "—";
+    $("cChain").className = "v muted";
+    $("onboardStatus").className = "pill warn";
+    $("onboardStatus").textContent = "ready";
+    renderWallet();
+    renderCustomer();
+    showOnboard("this device forgot its account handle. The passkey itself is still in your authenticator, and the account still exists — creating a new one derives a different address.");
+  };
+
+  // Re-deriving an account needs no authenticator prompt — only signing does.
+  // So restore the session silently on load and save the biometric gesture for
+  // the moment it actually authorizes something.
+  function restoreWallet() {
+    const saved = localStorage.getItem(WALLET_KEY);
+    if (!saved || !deployment || !walletModule || wallet) return;
+    try {
+      const { credentialId, publicKey } = JSON.parse(saved);
+      wallet = walletModule.reconnectPasskeyAccount({
+        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
+      });
+      renderWallet();
+      renderCustomer();
+      refreshSend().then(scanAssets);
+      refreshChainStatus(wallet.account);
+    } catch (error) {
+      showOnboard(`could not restore the account: ${error.message}`);
+    }
+  }
+
+  $("tabCustomer").onclick = () => selectView("customer");
+  $("tabDeveloper").onclick = () => selectView("developer");
+  selectView(localStorage.getItem(VIEW_KEY) ?? "customer");
 
   // Restore a previously bound deployment so the page always shows what it is
   // connected to.
@@ -405,4 +1305,8 @@
   } else {
     renderDeployment();
   }
+
+  // The deployment is bound by now, so an account saved on this device can be
+  // re-derived and put to work without asking for a fingerprint first.
+  restoreWallet();
 </script>

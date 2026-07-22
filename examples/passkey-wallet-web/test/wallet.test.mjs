@@ -48,7 +48,11 @@ function softwareCredentials() {
       const privateKey = keys.get(credentialId);
       if (!privateKey) throw new Error("unknown credential");
       seen.push({ op: "get", credentialId, rpId, origin, challenge });
-      const authenticatorData = Buffer.concat([Buffer.from(keccak256(stringToHex(rpId)).slice(2), "hex"), Buffer.from([0x05])]);
+      // A real authenticator puts sha256(rpId) here. Hashing it any other way
+      // would make this fake agree with a registration that the on-chain
+      // validator rejects, which is exactly the bug this must not hide.
+      const rpIdHash = crypto.createHash("sha256").update(rpId).digest();
+      const authenticatorData = Buffer.concat([rpIdHash, Buffer.from([0x05])]);
       const clientDataJSON = Buffer.from(`{"type":"webauthn.get","challenge":"${challenge}","origin":"${origin}","crossOrigin":false}`, "utf8");
       const preimage = Buffer.concat([authenticatorData, crypto.createHash("sha256").update(clientDataJSON).digest()]);
       const signature = crypto.sign("sha256", preimage, { key: privateKey, dsaEncoding: "ieee-p1363" });
@@ -182,4 +186,30 @@ test("a session is granted with an explicit scope and revoked by key", async () 
   assert.equal(revoke.kind, "session.revoke.prepare");
   assert.equal(revoke.intent.kind, "session.revoke");
   assert.equal(revoke.intent.sessionKey.toLowerCase(), sessionKey);
+});
+
+// The account's registered rpIdHash must equal the rpId hash a real
+// authenticator actually puts in authenticatorData, because the on-chain
+// validator compares those two directly (WebAuthnP256.verify). Registering a
+// differently-hashed rpId produces an account that derives fine, signs fine,
+// and is rejected on chain with AA24 — a failure no local flow can surface,
+// so it is pinned here.
+test("the registered rpIdHash matches what the authenticator reports", async () => {
+  const credentials = softwareCredentials();
+  const wallet = await register(credentials);
+
+  const validatorModule = wallet.config.modules.find(module => module.moduleTypeId === 1n);
+  const [, , registeredRpIdHash, registeredOriginHash] = decodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "address" }],
+    `0x${validatorModule.initData.slice(10)}`
+  );
+
+  const assertion = await credentials.get({
+    credentialId: wallet.credentialId, rpId: RP_ID, origin: ORIGIN, challenge: base64UrlEncode(`0x${"11".repeat(32)}`)
+  });
+  const reportedRpIdHash = `0x${assertion.authenticatorData.slice(2, 66)}`;
+
+  assert.equal(registeredRpIdHash, reportedRpIdHash, "registered rpIdHash must equal authenticatorData[0:32]");
+  // The origin is hashed by the validator itself, so it stays keccak.
+  assert.equal(registeredOriginHash, keccak256(stringToHex(ORIGIN)));
 });
