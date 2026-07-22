@@ -8,13 +8,17 @@ in `test/formal/`. These checks are designed for Halmos or Kontrol-style
 symbolic execution and remain Foundry-compatible. The current properties
 exercise, within their harness assumptions:
 
-- initialized accounts cannot be initialized a second time;
-- delegated account initialization rejects direct external callers;
+- initialized accounts reject reinitialization with exact
+  `InvalidInitialization` data and preserve complete observable authority;
+- delegated account initialization rejects direct external callers with exact
+  `InvalidInitialization` data and preserves complete observable authority;
 - immutable proxy deployment initializes proxy storage without mutating
   implementation storage;
 - immutable proxy deployment exposes no mutable upgrade/admin selector path;
-- rejected direct execution through an uninstalled validator does not consume a
-  validator nonce;
+  each absent selector returns empty revert data and preserves proxy authority;
+- rejected direct execution through an uninstalled validator returns exact
+  `InvalidDirectExecution` data and preserves all validator nonces and target
+  state;
 - arbitrary direct callers receive the exact scheduled-self guard error when
   changing guardian configuration and preserve complete account authority;
 - arbitrary direct callers receive the exact recovery-module guard error and
@@ -55,7 +59,11 @@ exercise, within their harness assumptions:
 - a vault withdrawal before readiness returns `WithdrawalNotReady` and
   preserves the complete pending withdrawal, spending counters, and balances;
 - guardian cancellation grants no spending authority: a later matching spend
-  returns `WithdrawalNotPending` and preserves policy, authority, and balances.
+  returns `WithdrawalNotPending` and preserves policy, authority, and balances;
+- non-controller keystore updates return exact `Unauthorized` data and preserve
+  the complete controller-bound configuration;
+- early keystore sync returns exact `SyncNotReady` data and preserves all eleven
+  pending-sync fields, sync nonce, applied L1 version, and account authority.
 
 These are symbolic property tests, not complete mathematical formal
 verification and not theorem-prover proofs that the wallet is "completely
