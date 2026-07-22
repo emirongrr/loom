@@ -82,6 +82,7 @@
     "guardian:evidence:build": "node tools/evidence/build-guardian-onboarding-evidence.mjs",
     "privacy:test": "npm run sdk:build && npm --prefix packages/privacy ci && npm --prefix packages/privacy test",
     "cli:test": "npm run sdk:build && npm --prefix packages/cli ci && npm --prefix packages/cli test",
+    "example:web:test": "npm run passkey:build && npm run sdk:build && npm --prefix examples/passkey-wallet-web ci && npm --prefix examples/passkey-wallet-web test",
     "example:backend:test": "npm run core:build && npm --prefix examples/backend-userop-tracker ci && npm --prefix examples/backend-userop-tracker test",
     "monitoring:test": "npm run core:build && npm --prefix monitoring ci && npm --prefix monitoring test",
     "monitoring:demo": "npm run core:build && node monitoring/demo.mjs",
