@@ -15,9 +15,12 @@ exercise, within their harness assumptions:
 - immutable proxy deployment exposes no mutable upgrade/admin selector path;
 - rejected direct execution through an uninstalled validator does not consume a
   validator nonce;
-- arbitrary direct callers cannot change guardian configuration;
-- arbitrary direct callers cannot invoke validator recovery;
-- unsupported execution modes cannot execute;
+- arbitrary direct callers receive the exact scheduled-self guard error when
+  changing guardian configuration and preserve complete account authority;
+- arbitrary direct callers receive the exact recovery-module guard error and
+  cannot replace the validator set;
+- unsupported execution modes submitted by the EntryPoint receive the exact
+  mode error, cannot call their target, and preserve account authority;
 - a downstream target revert, rather than a caller-authorization failure,
   rolls back an entire EntryPoint batch;
 - a frozen account rejects ordinary EntryPoint execution with the exact
@@ -26,12 +29,16 @@ exercise, within their harness assumptions:
   `AccountFrozen` error and preserves its validator nonce;
 - a downstream target revert rolls back every direct-batch item and its
   validator nonce;
-- the final validator cannot be removed;
+- removing the final validator through a ready scheduled call returns the exact
+  module error and rolls back the schedule and validator state;
 - a successful guardian configuration update advances configuration and
   invalidates a stale scheduled operation;
-- guardians cannot perform validator-only ordinary execution;
-- validators cannot perform guardian/recovery-only configuration actions;
-- direct external calls to account-internal privileged functions revert;
+- guardians receive the exact EntryPoint guard error and cannot perform
+  validator-only ordinary execution or mutate account authority;
+- validators receive the exact scheduled-self and recovery-module guard errors
+  and cannot perform guardian/recovery-only configuration actions;
+- direct external calls to account-internal privileged functions receive their
+  exact self-call guards and preserve schedules and account authority;
 - duplicate guardian approvals cannot satisfy a recovery threshold and leave
   the proposal, nonce, and account authority state unchanged;
 - recovery cannot execute before its delay;

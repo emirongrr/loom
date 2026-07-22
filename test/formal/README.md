@@ -16,7 +16,7 @@ static analysis, review, deployment rehearsals, and audit.
 |---|---|---|
 | `FormalHelpers.sol` | Harness helpers | Minimal symbolic fixtures used by the property contracts. |
 | `LoomAccountInitializationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Initializer one-shot safety, delegated initializer access control, immutable proxy storage initialization, non-upgradeability selectors, and invalid direct-execution nonce rollback. |
-| `LoomAccountAuthorityFormal.t.sol` | Symbolic property tests | Authority separation, privileged call rejection, unsupported modes, and last-validator safety. |
+| `LoomAccountAuthorityFormal.t.sol` | Symbolic property tests | Exact authority-guard errors, privileged-call rollback, unsupported-mode target isolation, stale-schedule invalidation, and last-validator safety. |
 | `LoomAccountExecutionFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact downstream failure propagation, batch atomicity, freeze errors, and direct-execution rollback behavior. |
 | `LoomAccountRecoveryFormal.t.sol` | Symbolic property tests | Duplicate-guardian rejection with full proposal rollback, recovery delay, validator replacement, guardian-root update, and frozen-account emergency carveouts. |
 | `LoomAccountMigrationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Migration delay, scheduled call-hash binding, and migration batch atomicity. |
