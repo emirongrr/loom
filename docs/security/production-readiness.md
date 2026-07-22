@@ -20,6 +20,9 @@ does not make a deployment production-ready.
 - Stateful two-account sponsor accounting across independent paymaster deposits,
   mixed sponsored bundles, underfunded validation rollback, reverting `postOp`,
   beneficiary conservation, and cross-account execution isolation.
+- Stateful two-account recovery isolation across distinct guardian identities,
+  repeated complete validator/guardian replacement, cancellation, exact
+  cross-account approval rejection, and full pending-state rollback.
 - 2,048-run fuzz tests and 256-run/depth-50 stateful invariants on every pull
   request (`FOUNDRY_PROFILE=ci`). Nightly verification raises this to
   20,000-run fuzz and 2,000-run/depth-100 stateful invariants
