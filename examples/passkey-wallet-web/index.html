@@ -8,74 +8,188 @@
     --bg: #ffffff; --fg: #16181d; --muted: #5b6272; --line: #e3e6ec;
     --card: #f7f8fa; --accent: #0d7d6f; --warn: #b4690e; --warn-bg: #fff6e5;
     --bad: #b3261e; --bad-bg: #fdecea; --good: #0d7d6f; --good-bg: #e7f5f2;
+    /* Derived tokens — same palette, richer surfaces. */
+    --bg-elev: #ffffff; --accent-fg: #ffffff; --accent-soft: #e7f5f2;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+    --shadow-lg: 0 8px 32px rgba(16,24,40,.12);
+    --r-sm: 8px; --r: 12px; --r-lg: 16px;
+    --field: #ffffff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12141a; --fg: #e8eaf0; --muted: #99a1b3; --line: #2a2f3a;
-      --card: #181b22; --accent: #91f4c8; --warn: #f0c07a; --warn-bg: #2b2318;
+      --bg: #0e1014; --fg: #e8eaf0; --muted: #99a1b3; --line: #262b35;
+      --card: #171a21; --accent: #91f4c8; --warn: #f0c07a; --warn-bg: #2b2318;
       --bad: #f2a7a1; --bad-bg: #2c1a19; --good: #91f4c8; --good-bg: #14241f;
+      --bg-elev: #1b1f28; --accent-fg: #0b1512; --accent-soft: #14241f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.35);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
+      --field: #12151c;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #0e1014; --fg: #e8eaf0; --muted: #99a1b3; --line: #262b35;
+    --card: #171a21; --accent: #91f4c8; --warn: #f0c07a; --warn-bg: #2b2318;
+    --bad: #f2a7a1; --bad-bg: #2c1a19; --good: #91f4c8; --good-bg: #14241f;
+    --bg-elev: #1b1f28; --accent-fg: #0b1512; --accent-soft: #14241f;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.35);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,.5); --field: #12151c;
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff; --fg: #16181d; --muted: #5b6272; --line: #e3e6ec;
+    --card: #f7f8fa; --accent: #0d7d6f; --bg-elev: #ffffff; --accent-fg: #ffffff;
+    --accent-soft: #e7f5f2; --field: #ffffff;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+  }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body { margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  .wrap { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
-  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* App bar */
+  .appbar { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--line); }
+  .appbar-inner { max-width: 54rem; margin: 0 auto; padding: .7rem 1.25rem;
+    display: flex; align-items: center; gap: .6rem; }
+  .brand { display: flex; align-items: center; gap: .5rem; font-weight: 650;
+    letter-spacing: -.01em; }
+  .brand .logo { width: 26px; height: 26px; border-radius: 7px; flex: none;
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--fg)));
+    display: grid; place-items: center; color: var(--accent-fg); font-size: .8rem; font-weight: 800; }
+  .appbar .spacer { flex: 1; }
+  .net-badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .78rem;
+    font-weight: 600; color: var(--muted); padding: .3rem .6rem; border: 1px solid var(--line);
+    border-radius: 999px; background: var(--bg-elev); }
+  .net-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .net-badge.live .dot { background: var(--good); box-shadow: 0 0 0 3px var(--good-bg); }
+  .icon-btn { display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
+    border-radius: 9px; background: var(--bg-elev); border: 1px solid var(--line); font-size: .95rem; }
+  .icon-btn:hover { border-color: var(--accent); }
+
+  .wrap { max-width: 54rem; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
+
+  /* Account hero */
+  .hero { background:
+      radial-gradient(120% 140% at 100% 0%, var(--accent-soft) 0%, transparent 55%),
+      var(--card);
+    border: 1px solid var(--line); border-radius: var(--r-lg); padding: 1.25rem 1.35rem;
+    box-shadow: var(--shadow); margin-bottom: 1.25rem; }
+  .hero-top { display: flex; align-items: center; gap: .85rem; }
+  .avatar { width: 44px; height: 44px; border-radius: 12px; flex: none;
+    background-size: cover; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+  .hero-id { min-width: 0; }
+  .hero-id .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600; font-size: .95rem; display: flex; align-items: center; gap: .45rem; }
+  .hero-id .sub2 { color: var(--muted); font-size: .8rem; }
+  .hero-balance { margin: 1rem 0 .25rem; display: flex; align-items: baseline; gap: .5rem; }
+  .hero-balance .amt { font-size: 2rem; font-weight: 700; letter-spacing: -.02em; }
+  .hero-balance .unit { color: var(--muted); font-weight: 600; }
+  .copy { cursor: pointer; color: var(--muted); background: none; border: 0; padding: .1rem .25rem;
+    font-size: .8rem; border-radius: 6px; }
+  .copy:hover { color: var(--accent); background: var(--accent-soft); }
+
+  h1 { font-size: 1.5rem; margin: 0 0 .2rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 1.25rem; }
   .card { background: var(--card); border: 1px solid var(--line);
-    border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
-  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
-    color: var(--muted); margin: 0 0 .75rem; font-weight: 600; }
-  .row { display: flex; justify-content: space-between; gap: 1rem;
-    padding: .35rem 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+    border-radius: var(--r); padding: 1.15rem 1.2rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+  .card > h2:first-child { margin-top: 0; }
+  .card h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--muted); margin: 0 0 .85rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+  .row { display: flex; justify-content: space-between; gap: 1rem; align-items: center;
+    padding: .5rem 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
   .row:last-child { border-bottom: 0; }
   .row .k { color: var(--muted); white-space: nowrap; }
   .row .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: .82rem; word-break: break-all; text-align: right; }
-  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
-    font-size: .72rem; font-weight: 600; letter-spacing: .02em; }
+  .row .v.muted { color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: .35rem; padding: .18rem .55rem; border-radius: 999px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .02em; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .9; }
   .pill.good { background: var(--good-bg); color: var(--good); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
-  .note { background: var(--warn-bg); color: var(--warn); border-radius: 8px;
-    padding: .7rem .9rem; font-size: .87rem; margin-bottom: 1rem; }
-  button { font: inherit; font-weight: 500; padding: .5rem 1rem; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
-    color: var(--fg); }
-  button.primary { background: var(--accent); border-color: var(--accent);
-    color: var(--bg); }
+  .note { background: var(--warn-bg); color: var(--warn); border-radius: var(--r-sm);
+    padding: .7rem .9rem; font-size: .85rem; margin-bottom: 1.25rem; border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent); }
+  button { font: inherit; font-weight: 600; padding: .55rem 1rem; cursor: pointer;
+    border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-elev);
+    color: var(--fg); transition: background .12s, border-color .12s, transform .04s, opacity .12s; }
+  button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--fg)); }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.ghost:hover:not(:disabled) { color: var(--fg); background: var(--bg-elev); }
+  button.sm { padding: .3rem .6rem; font-size: .8rem; }
   button:disabled { opacity: .45; cursor: not-allowed; }
-  .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
-  textarea { width: 100%; min-height: 6.5rem; font-family: ui-monospace, monospace;
-    font-size: .8rem; padding: .6rem; border: 1px solid var(--line);
-    border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }
-  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: .8rem; overflow-x: auto; font-size: .8rem; margin: .5rem 0 0; }
-  .hint { color: var(--muted); font-size: .82rem; margin: .5rem 0 0; }
-  .row .v.muted { color: var(--muted); }
-  .tabs { display: flex; gap: .5rem; margin: 0 0 1rem; border-bottom: 1px solid var(--line); }
-  .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
-    padding: .6rem .9rem; color: var(--muted); font-weight: 600; cursor: pointer; }
-  .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .tab:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .35rem 0 0; }
+  input, select, textarea { font: inherit; color: var(--fg); background: var(--field);
+    border: 1px solid var(--line); border-radius: var(--r-sm); }
+  input, select { padding: .5rem .6rem; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+  textarea { width: 100%; min-height: 6rem; font-family: ui-monospace, monospace;
+    font-size: .8rem; padding: .65rem; resize: vertical; }
+  .field { width: 100%; }
+  pre { background: var(--field); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: .8rem; overflow-x: auto; font-size: .8rem; margin: .65rem 0 0; line-height: 1.5; }
+  .hint { color: var(--muted); font-size: .82rem; margin: .55rem 0 0; }
+
+  /* Segmented nav */
+  .nav { display: flex; gap: .25rem; margin: 0 0 1.25rem; padding: .28rem;
+    background: var(--card); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow); }
+  .tab { flex: 1; background: none; border: 0; border-radius: 8px; padding: .5rem .6rem;
+    color: var(--muted); font-weight: 600; cursor: pointer; font-size: .88rem; }
+  .tab:hover:not(.active) { color: var(--fg); }
+  .tab.active { color: var(--accent-fg); background: var(--accent); }
+
+  @media (max-width: 560px) {
+    .hero-balance .amt { font-size: 1.7rem; }
+    .row { flex-wrap: wrap; }
+  }
 </style>
 
+<header class="appbar">
+  <div class="appbar-inner">
+    <span class="brand"><span class="logo">L</span> Loom Wallet</span>
+    <span class="spacer"></span>
+    <span id="netBadge" class="net-badge"><span class="dot"></span><span id="netName">not connected</span></span>
+    <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
 <div class="wrap">
-  <h1>Loom passkey wallet</h1>
-  <p class="sub">Register a passkey, derive your account, reconnect, and sign — in the browser.</p>
+  <!-- Account hero: the identity, network and balance a wallet leads with.
+       Populated from the same account state the panels below use. -->
+  <section class="hero" id="hero" hidden>
+    <div class="hero-top">
+      <span class="avatar" id="heroAvatar"></span>
+      <div class="hero-id">
+        <div class="addr"><span id="heroAddr">—</span>
+          <button class="copy" id="heroCopy" title="Copy address">⧉</button></div>
+        <div class="sub2" id="heroSub">counterfactual</div>
+      </div>
+    </div>
+    <div class="hero-balance"><span class="amt num" id="heroBalance">0</span><span class="unit">ETH</span></div>
+    <div class="hint" id="heroDeposit">gas deposit —</div>
+  </section>
 
   <div class="note">
     Pre-audit software, for evaluation only. WebAuthn needs a secure context
     (<code>https</code> or <code>localhost</code>) and a real platform authenticator.
-    Bare module specifiers are used, so serve this through a bundler/dev server
-    that resolves <code>node_modules</code> (for example <code>vite</code>).
+    Serve it through a dev server that resolves <code>node_modules</code>
+    (<code>npm --prefix examples/passkey-wallet-web run dev</code>).
   </div>
 
   <!-- Two audiences, two views: what the institution's customer sees, and what
        the developer wiring it up needs. Same page, same state. -->
-  <div class="tabs">
-    <button id="tabCustomer" class="tab active">Open an account</button>
-    <button id="tabDeveloper" class="tab">Deployment &amp; wallet</button>
-  </div>
+  <nav class="nav">
+    <button id="tabCustomer" class="tab active">Wallet</button>
+    <button id="tabDeveloper" class="tab">Developer</button>
+  </nav>
 
   <div id="viewDeveloper" hidden>
   <!-- Which deployment am I bound to? Always visible, never implied. -->
@@ -311,6 +425,59 @@
 
   const $ = id => document.getElementById(id);
   const show = value => ($("out").textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+
+  // Theme toggle: default follows the OS, a click stamps an explicit choice on
+  // the root so the theme-aware variables switch deterministically.
+  const savedTheme = localStorage.getItem("loom.passkey-wallet.theme");
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  $("themeToggle").onclick = () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("loom.passkey-wallet.theme", next);
+  };
+
+  // A deterministic gradient avatar from the address, so an account is
+  // recognizable at a glance without pulling an external identicon.
+  function avatarFor(address) {
+    const h = address.toLowerCase();
+    const a = parseInt(h.slice(2, 8), 16) % 360;
+    const b = parseInt(h.slice(8, 14), 16) % 360;
+    const c = parseInt(h.slice(14, 20), 16) % 360;
+    return `conic-gradient(from ${a}deg, hsl(${a} 70% 55%), hsl(${b} 70% 50%), hsl(${c} 70% 55%), hsl(${a} 70% 55%))`;
+  }
+
+  const shorten = a => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a ?? "—");
+
+  // The account hero mirrors whatever the wallet currently resolves. It reads
+  // nothing itself; refreshSend and restoreWallet feed it the chain values.
+  function renderHero(state = {}) {
+    const bound = Boolean(deployment);
+    $("netBadge").className = bound ? "net-badge live" : "net-badge";
+    $("netName").textContent = bound ? (CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`) : "not connected";
+    if (!wallet) { $("hero").hidden = true; return; }
+    $("hero").hidden = false;
+    $("heroAvatar").style.background = avatarFor(wallet.account);
+    $("heroAddr").textContent = shorten(wallet.account);
+    $("heroSub").textContent = state.deployed === true ? "deployed"
+      : state.deployed === false ? "counterfactual — not yet deployed"
+      : "on " + (CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`);
+    if (state.balance !== undefined) {
+      // Trim to a readable length without rounding a wei off in a misleading way.
+      const n = Number(state.balance);
+      $("heroBalance").textContent = n === 0 ? "0"
+        : n < 0.00001 ? "<0.00001"
+        : n.toLocaleString(undefined, { maximumFractionDigits: 5 });
+    }
+    if (state.deposit !== undefined) $("heroDeposit").textContent = `gas deposit ${state.deposit} ETH`;
+  }
+  $("heroCopy").onclick = () => {
+    if (wallet) navigator.clipboard?.writeText(wallet.account);
+    $("heroCopy").textContent = "✓";
+    setTimeout(() => ($("heroCopy").textContent = "⧉"), 1200);
+  };
   // Tabs are a view switch only: both views read the same deployment and wallet
   // state, so configuring on one is immediately true on the other.
   function selectView(name) {
@@ -778,6 +945,7 @@
         $("cAccount").textContent = "—";
       }
     }
+    renderHero();
   }
 
   // Ask the sponsor backend whether the account exists on chain. The page holds
@@ -1075,6 +1243,8 @@
       const s = await response.json();
       $("sDeposit").textContent = `${s.deposit} ETH`;
       $("sDeposit").className = "v";
+      // Feed the account hero the same chain values.
+      renderHero({ balance: s.balance, deposit: s.deposit, deployed: s.deployed });
       $("sendStatus").className = s.deployed ? "pill good" : "pill warn";
       $("sendStatus").textContent = s.deployed ? "ready" : "account not deployed";
       $("send").disabled = !s.deployed;
