@@ -47,7 +47,7 @@ function validateContractsWorkflow() {
     "forge fmt --check",
     "forge lint --deny warnings",
     "forge build --sizes",
-    'forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|LoomAccount(Extended)?InvariantTest|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/(formal|script)/.*"',
+    'forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/{formal,invariant,script}/**"',
     "npm run coverage:check",
     "slither . --fail-high",
   ]) {
