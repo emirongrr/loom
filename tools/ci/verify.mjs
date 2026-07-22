@@ -140,9 +140,9 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  ".*Formal|LoomAccount(Extended)?InvariantTest|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
+  ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
   "--no-match-path",
-  "test/(formal|script)/.*"
+  "test/{formal,invariant,script}/**"
 ]);
 run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });

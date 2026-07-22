@@ -47,7 +47,7 @@ function validateContractsWorkflow() {
     "forge fmt --check",
     "forge lint --deny warnings",
     "forge build --sizes",
-    'forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|LoomAccount(Extended)?InvariantTest|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/(formal|script)/.*"',
+    'forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/{formal,invariant,script}/**"',
     "npm run coverage:check",
     "slither . --fail-high",
   ]) {
@@ -224,11 +224,44 @@ function validateReleaseWorkflow() {
 
 function validateKontrolWorkflow() {
   const file = ".github/workflows/kontrol.yml";
+  const source = read(file);
   assertWorkflowSecurityDefaults(file);
   for (const required of [
     "workflow_dispatch:",
     "kontrol build",
-    '"$KUP_BIN" install kontrol --version "${KONTROL_PIN#*@}"',
+    "id: kontrol-pin",
+    'echo "revision=$KONTROL_REVISION" >> "$GITHUB_OUTPUT"',
+    "Reclaim prover disk",
+    "sudo rm -rf /usr/local/lib/android /usr/share/dotnet",
+    "artifacts/kontrol/disk-before.txt",
+    "artifacts/kontrol/disk-after.txt",
+    "Record prover resources",
+    "Record final prover resources",
+    "artifacts/kontrol/memory-before.txt",
+    "artifacts/kontrol/memory-after.txt",
+    "artifacts/kontrol/disk-final.txt",
+    "runtimeverificationinc/kontrol:ubuntu-jammy-1.0.255@sha256:858f004144d61b005997f56bb8b7cd15673850286c96e0e5ec0502d9c9a9e204",
+    "solc-linux-amd64-v0.8.35+commit.47b9dedd",
+    "fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4",
+    "Install pinned Solidity compiler",
+    'printf \'%s  %s\\n\' "$SOLC_SHA256" "$SOLC_PATH" | sha256sum --check -',
+    "artifacts/kontrol/solc-version.txt",
+    'docker pull "$KONTROL_IMAGE"',
+    'docker image inspect "$KONTROL_IMAGE"',
+    "artifacts/kontrol/image-pull.log",
+    "artifacts/kontrol/image-inspect.json",
+    "artifacts/kontrol/disk-after-pull.txt",
+    "Prepare writable prover state",
+    'rsync -a --delete',
+    '--exclude .git --exclude artifacts --exclude out --exclude cache',
+    'sudo chown -R 1010:1010 "$RUNNER_TEMP/kontrol-workspace"',
+    'docker run --rm --network none',
+    '-v "$RUNNER_TEMP/kontrol-workspace:/workspace"',
+    '-v "$HOME/.foundry/bin:/opt/loom-foundry:ro"',
+    '-v "$RUNNER_TEMP/solc:/opt/loom-solc:ro"',
+    "FOUNDRY_SOLC=/opt/loom-solc/solc",
+    "kontrol build --verbose --no-llvm-kompile",
+    "version: v1.7.1",
     "kontrol prove --match-test LoomAccountAuthorityFormal.test_CannotRemoveLastValidator",
     "kontrol prove --match-test LoomAccountInitializationFormal.test_InitializedAccountCannotBeReinitialized",
     "artifacts/kontrol/run-metadata.json",
@@ -240,6 +273,15 @@ function validateKontrolWorkflow() {
   ]) {
     assertIncludes(file, required, `missing required kontrol workflow step: ${required}`);
   }
+  assert(
+    source.indexOf("Reclaim prover disk") < source.indexOf("Record prover resources") &&
+      source.indexOf("Record prover resources") < source.indexOf("Install pinned Foundry") &&
+      source.indexOf("Install pinned Foundry") < source.indexOf("Install pinned Solidity compiler") &&
+      source.indexOf("Install pinned Solidity compiler") < source.indexOf("Pull pinned Kontrol image") &&
+      source.indexOf("Pull pinned Kontrol image") < source.indexOf("Prepare writable prover state") &&
+      source.indexOf("Prepare writable prover state") < source.indexOf("Build Kontrol project"),
+    `${file}: disk reclaim, pins, writable state preparation, and build must run in order`,
+  );
 }
 
 function validateSupplyChainWorkflow() {

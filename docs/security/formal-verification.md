@@ -8,34 +8,62 @@ in `test/formal/`. These checks are designed for Halmos or Kontrol-style
 symbolic execution and remain Foundry-compatible. The current properties
 exercise, within their harness assumptions:
 
-- initialized accounts cannot be initialized a second time;
-- delegated account initialization rejects direct external callers;
+- initialized accounts reject reinitialization with exact
+  `InvalidInitialization` data and preserve complete observable authority;
+- delegated account initialization rejects direct external callers with exact
+  `InvalidInitialization` data and preserves complete observable authority;
 - immutable proxy deployment initializes proxy storage without mutating
   implementation storage;
 - immutable proxy deployment exposes no mutable upgrade/admin selector path;
-- rejected direct execution through an uninstalled validator does not consume a
+  each absent selector returns empty revert data and preserves proxy authority;
+- rejected direct execution through an uninstalled validator returns exact
+  `InvalidDirectExecution` data and preserves all validator nonces and target
+  state;
+- arbitrary direct callers receive the exact scheduled-self guard error when
+  changing guardian configuration and preserve complete account authority;
+- arbitrary direct callers receive the exact recovery-module guard error and
+  cannot replace the validator set;
+- unsupported execution modes submitted by the EntryPoint receive the exact
+  mode error, cannot call their target, and preserve account authority;
+- a downstream target revert, rather than a caller-authorization failure,
+  rolls back an entire EntryPoint batch;
+- a frozen account rejects ordinary EntryPoint execution with the exact
+  `AccountFrozen` error and preserves account authority state;
+- a frozen account rejects ordinary direct execution with the exact
+  `AccountFrozen` error and preserves its validator nonce;
+- a downstream target revert rolls back every direct-batch item and its
   validator nonce;
-- arbitrary direct callers cannot change guardian configuration;
-- arbitrary direct callers cannot invoke validator recovery;
-- unsupported execution modes cannot execute;
-- a reverting item rolls back an entire atomic batch;
-- a frozen account cannot execute an ordinary call;
-- a frozen account cannot execute an ordinary direct call;
-- a reverting direct batch rolls back every item and its validator nonce;
-- the final validator cannot be removed;
+- removing the final validator through a ready scheduled call returns the exact
+  module error and rolls back the schedule and validator state;
 - a successful guardian configuration update advances configuration and
   invalidates a stale scheduled operation;
-- guardians cannot perform validator-only ordinary execution;
-- validators cannot perform guardian/recovery-only configuration actions;
-- direct external calls to account-internal privileged functions revert;
-- recovery cannot execute before its delay;
+- guardians receive the exact EntryPoint guard error and cannot perform
+  validator-only ordinary execution or mutate account authority;
+- validators receive the exact scheduled-self and recovery-module guard errors
+  and cannot perform guardian/recovery-only configuration actions;
+- direct external calls to account-internal privileged functions receive their
+  exact self-call guards and preserve schedules and account authority;
+- duplicate guardian approvals cannot satisfy a recovery threshold and leave
+  the proposal, nonce, and account authority state unchanged;
+- early recovery returns the exact `RecoveryNotReady` error and preserves all
+  nine pending-recovery fields, nonce, guardian configuration, and validator
+  identity;
 - successful recovery replaces the complete committed validator set and
   guardian root;
-- migration cannot execute before its delay;
-- migration rejects a non-committed call batch without consuming the pending
-  migration;
-- a reverting migration batch rolls back earlier calls and preserves the
-  pending migration.
+- early migration returns the exact `OperationNotReady` error and preserves all
+  eight pending-migration fields, nonce, configuration, and target state;
+- migration rejects a non-committed call batch with the exact
+  `InvalidMigration` error without consuming the pending migration;
+- a downstream target revert rolls back earlier migration calls and preserves
+  the complete pending migration, nonce, and account configuration;
+- a vault withdrawal before readiness returns `WithdrawalNotReady` and
+  preserves the complete pending withdrawal, spending counters, and balances;
+- guardian cancellation grants no spending authority: a later matching spend
+  returns `WithdrawalNotPending` and preserves policy, authority, and balances;
+- non-controller keystore updates return exact `Unauthorized` data and preserve
+  the complete controller-bound configuration;
+- early keystore sync returns exact `SyncNotReady` data and preserves all eleven
+  pending-sync fields, sync nonce, applied L1 version, and account authority.
 
 These are symbolic property tests, not complete mathematical formal
 verification and not theorem-prover proofs that the wallet is "completely
@@ -99,7 +127,6 @@ not broaden the claim boundaries below.
 - only the exact delayed installed-hook removal path can bypass hooks;
 - session permissions cannot authorize any call outside every committed
   dimension;
-- guardian proofs cannot count a leaf twice;
 - every successful module/config transition preserves module count bounds.
 - rejected and reverting direct execution cannot consume a validator nonce;
 - one direct-capable validator cannot advance another validator's nonce.

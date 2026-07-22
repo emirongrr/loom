@@ -87,6 +87,10 @@ jobs:
           set -o pipefail
           npm run e2e:bundler-devnet 2>&1 | tee artifacts/devnet/bundler-devnet.log
           cp .loom/devnet/alto.log artifacts/devnet/alto.log || true
+      - name: Guardian freeze and recovery devnet
+        run: |
+          set -o pipefail
+          npm run e2e:guardian-devnet 2>&1 | tee artifacts/devnet/guardian-devnet.log
       - name: Upload devnet evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -113,7 +117,7 @@ jobs:
         # stable gas-regression targets. Script-policy tests cover deployment
         # configuration behavior, not production runtime gas. Correctness is
         # still covered by the main test job.
-        run: forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|LoomAccount(Extended)?InvariantTest|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/(formal|script)/.*"
+        run: forge snapshot --force --check --tolerance 1 --no-match-contract ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest" --no-match-path "test/{formal,invariant,script}/**"
       - name: Check production coverage gate
         run: npm run coverage:check
       - name: Assert no excluded cryptography

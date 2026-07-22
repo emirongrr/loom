@@ -9,6 +9,52 @@ import {MockValidator} from "../mocks/MockValidator.sol";
 import {FormalAccountBase, FormalTarget} from "./FormalHelpers.sol";
 
 contract LoomAccountInitializationFormal is FormalAccountBase {
+    struct AccountSnapshot {
+        address entryPoint;
+        address validator;
+        bytes32 configHash;
+        bytes32 guardianRoot;
+        uint256 validatorCount;
+        uint256 validatorNonce;
+        uint64 configVersion;
+        uint48 frozenUntil;
+        uint8 guardianThreshold;
+        bool executingScheduled;
+    }
+
+    function _accountSnapshot(LoomAccount account) internal view returns (AccountSnapshot memory snapshot) {
+        snapshot.entryPoint = account.entryPoint();
+        snapshot.validatorCount = account.validatorCount();
+        snapshot.validator = snapshot.validatorCount == 0 ? address(0) : account.validatorAt(0);
+        snapshot.configHash = account.configHash();
+        snapshot.guardianRoot = account.guardianRoot();
+        snapshot.validatorNonce = account.directExecutionNonces(snapshot.validator);
+        snapshot.configVersion = account.configVersion();
+        snapshot.frozenUntil = account.frozenUntil();
+        snapshot.guardianThreshold = account.guardianThreshold();
+        snapshot.executingScheduled = account.isExecutingScheduled();
+    }
+
+    function _assertAccountUnchanged(LoomAccount account, AccountSnapshot memory expected) internal view {
+        assert(account.entryPoint() == expected.entryPoint);
+        assert(account.validatorCount() == expected.validatorCount);
+        if (expected.validatorCount != 0) {
+            assert(account.validatorAt(0) == expected.validator);
+            assert(account.isModuleInstalled(ModuleType.VALIDATOR, expected.validator));
+            assert(account.directExecutionNonces(expected.validator) == expected.validatorNonce);
+        }
+        assert(account.configHash() == expected.configHash);
+        assert(account.guardianRoot() == expected.guardianRoot);
+        assert(account.configVersion() == expected.configVersion);
+        assert(account.frozenUntil() == expected.frozenUntil);
+        assert(account.guardianThreshold() == expected.guardianThreshold);
+        assert(account.isExecutingScheduled() == expected.executingScheduled);
+    }
+
+    function _assertRevert(bytes memory revertData, bytes4 expectedSelector) internal pure {
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(expectedSelector)));
+    }
+
     function test_InitializedAccountCannotBeReinitialized() public {
         check_InitializedAccountCannotBeReinitialized();
     }
@@ -16,12 +62,9 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
     function check_InitializedAccountCannotBeReinitialized() public {
         (LoomAccount account, MockValidator validator) = _account();
         MockValidator newValidator = new MockValidator();
-        bytes32 guardianRootBefore = account.guardianRoot();
-        uint8 guardianThresholdBefore = account.guardianThreshold();
-        bytes32 configHashBefore = account.configHash();
-        uint64 configVersionBefore = account.configVersion();
+        AccountSnapshot memory beforeState = _accountSnapshot(account);
 
-        (bool ok,) = address(account)
+        (bool ok, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.initialize,
@@ -36,11 +79,8 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
             );
 
         assert(!ok);
-        assert(account.guardianRoot() == guardianRootBefore);
-        assert(account.guardianThreshold() == guardianThresholdBefore);
-        assert(account.configHash() == configHashBefore);
-        assert(account.configVersion() == configVersionBefore);
-        assert(account.validatorCount() == 1);
+        _assertRevert(revertData, LoomAccount.InvalidInitialization.selector);
+        _assertAccountUnchanged(account, beforeState);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
     }
@@ -52,10 +92,9 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
     function check_DelegatedInitializerRejectsExternalCaller() public {
         (LoomAccount account, MockValidator validator) = _account();
         MockValidator newValidator = new MockValidator();
-        bytes32 configHashBefore = account.configHash();
-        uint64 configVersionBefore = account.configVersion();
+        AccountSnapshot memory beforeState = _accountSnapshot(account);
 
-        (bool ok,) = address(account)
+        (bool ok, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.initializeDelegatedAccount,
@@ -70,9 +109,8 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
             );
 
         assert(!ok);
-        assert(account.configHash() == configHashBefore);
-        assert(account.configVersion() == configVersionBefore);
-        assert(account.validatorCount() == 1);
+        _assertRevert(revertData, LoomAccount.InvalidInitialization.selector);
+        _assertAccountUnchanged(account, beforeState);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
     }
@@ -144,15 +182,23 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
             )
         );
         address implementationBefore = proxy.implementation();
+        LoomAccount proxyAccount = LoomAccount(payable(address(proxy)));
+        AccountSnapshot memory accountBefore = _accountSnapshot(proxyAccount);
 
-        (bool upgradeOk,) = address(proxy).call(abi.encodeWithSignature("upgradeTo(address)", address(this)));
-        (bool changeOk,) = address(proxy).call(abi.encodeWithSignature("changeImplementation(address)", address(this)));
-        (bool adminOk,) = address(proxy).call(abi.encodeWithSignature("admin()"));
+        (bool upgradeOk, bytes memory upgradeRevertData) =
+            address(proxy).call(abi.encodeWithSignature("upgradeTo(address)", address(this)));
+        (bool changeOk, bytes memory changeRevertData) =
+            address(proxy).call(abi.encodeWithSignature("changeImplementation(address)", address(this)));
+        (bool adminOk, bytes memory adminRevertData) = address(proxy).call(abi.encodeWithSignature("admin()"));
 
         assert(!upgradeOk);
+        assert(upgradeRevertData.length == 0);
         assert(!changeOk);
+        assert(changeRevertData.length == 0);
         assert(!adminOk);
+        assert(adminRevertData.length == 0);
         assert(proxy.implementation() == implementationBefore);
+        _assertAccountUnchanged(proxyAccount, accountBefore);
     }
 
     function testFuzz_InvalidDirectExecutionDoesNotConsumeNonce(uint48 validUntil, bytes calldata signature) public {
@@ -161,13 +207,14 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
 
     function check_InvalidDirectExecutionDoesNotConsumeNonce(uint48 validUntil, bytes calldata signature) public {
         (LoomAccount account,) = _account();
+        AccountSnapshot memory beforeState = _accountSnapshot(account);
         MockValidator uninstalledValidator = new MockValidator();
         FormalTarget target = new FormalTarget();
         bytes memory executionCalldata =
             abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (1))));
         uint256 nonceBefore = account.directExecutionNonces(address(uninstalledValidator));
 
-        (bool ok,) = address(account)
+        (bool ok, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.executeDirect,
@@ -176,6 +223,8 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
             );
 
         assert(!ok);
+        _assertRevert(revertData, LoomAccount.InvalidDirectExecution.selector);
+        _assertAccountUnchanged(account, beforeState);
         assert(account.directExecutionNonces(address(uninstalledValidator)) == nonceBefore);
         assert(target.value() == 0);
     }

@@ -110,6 +110,28 @@ New tests should use descriptive names:
 Existing files may be renamed gradually when touched. Avoid broad renames mixed
 with behavior changes.
 
+## Stateful Invariant Programs
+
+`EntryPointMultiAccountInvariant.t.sol` composes two real Loom accounts with the
+official EntryPoint, shared production ECDSA validator and policy hook, three
+nonce keys per account, and independently funded deposits. Its handler explores
+single-account operations, successful mixed bundles, execution failure isolated
+to one account, and exact validation-failure rollback of the complete bundle.
+The invariants continuously check account-scoped authority, nonce-key identity,
+deposit backing, and full cross-account state isolation.
+
+`EntryPointMultiAccountPaymasterInvariant.t.sol` extends that composition with
+independent sponsors, an underfunded sponsor, and a reverting `postOp` sponsor.
+It checks sponsor/account isolation, exact underfunded-bundle rollback,
+beneficiary/deposit conservation, and isolation of a failed sponsored execution
+from an independent operation in the same bundle.
+
+The programs model two pre-deployed ECDSA accounts, deterministic local signing,
+and local adversarial paymasters. They do not claim coverage of counterfactual
+deployment, production paymaster middleware, P-256/WebAuthn, session validators,
+recovery, or arbitrary account population; those remain separate integration,
+invariant, and evidence boundaries.
+
 ## Required Checks
 
 Fast local checks:

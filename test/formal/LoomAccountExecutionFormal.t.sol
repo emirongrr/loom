@@ -19,10 +19,13 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         executions[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue)));
         executions[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.fail, ()));
 
-        (bool ok,) = address(account)
-            .call(abi.encodeCall(LoomAccount.execute, (account.BATCH_EXECUTION_MODE(), abi.encode(executions))));
+        bytes32 batchMode = account.BATCH_EXECUTION_MODE();
+        vm.prank(account.entryPoint());
+        (bool ok, bytes memory revertData) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (batchMode, abi.encode(executions))));
 
         assert(!ok);
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSignature("Error(string)", "FAIL")));
         assert(target.value() == 0);
     }
 
@@ -43,11 +46,18 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution memory execution =
             ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue)));
+        uint48 frozenUntilBefore = account.frozenUntil();
+        uint64 configVersionBefore = account.configVersion();
 
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(execution))));
+        (bool ok, bytes memory revertData) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(execution))));
 
         assert(!ok);
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(LoomAccount.AccountFrozen.selector)));
         assert(target.value() == 0);
+        assert(account.frozenUntil() == frozenUntilBefore);
+        assert(account.configVersion() == configVersionBefore);
+        assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
     }
 
     function testFuzz_FrozenAccountCannotDirectExecute(uint256 newValue) public {
@@ -67,8 +77,10 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         FormalTarget target = new FormalTarget();
         bytes memory executionCalldata =
             abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue))));
+        uint48 frozenUntilBefore = account.frozenUntil();
+        uint64 configVersionBefore = account.configVersion();
 
-        (bool ok,) = address(account)
+        (bool ok, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.executeDirect,
@@ -77,7 +89,12 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
             );
 
         assert(!ok);
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSelector(LoomAccount.AccountFrozen.selector)));
         assert(target.value() == 0);
+        assert(account.directExecutionNonces(address(validator)) == 0);
+        assert(account.frozenUntil() == frozenUntilBefore);
+        assert(account.configVersion() == configVersionBefore);
+        assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
     }
 
     function testFuzz_DirectBatchExecutionAtomicity(uint256 newValue) public {
@@ -91,7 +108,7 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
         executions[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue)));
         executions[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.fail, ()));
 
-        (bool ok,) = address(account)
+        (bool ok, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.executeDirect,
@@ -106,6 +123,7 @@ contract LoomAccountExecutionFormal is FormalAccountBase {
             );
 
         assert(!ok);
+        assert(keccak256(revertData) == keccak256(abi.encodeWithSignature("Error(string)", "FAIL")));
         assert(target.value() == 0);
         assert(account.directExecutionNonces(address(validator)) == 0);
     }

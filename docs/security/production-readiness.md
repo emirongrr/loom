@@ -14,6 +14,12 @@ does not make a deployment production-ready.
   run separately because their randomized call distribution is not a stable
   gas benchmark.
 - Unit and official EntryPoint v0.9 integration tests.
+- Stateful two-account EntryPoint composition across independent authority,
+  three nonce keys per account, deposits, mixed bundles, isolated execution
+  failure, and exact validation-failure rollback.
+- Stateful two-account sponsor accounting across independent paymaster deposits,
+  mixed sponsored bundles, underfunded validation rollback, reverting `postOp`,
+  beneficiary conservation, and cross-account execution isolation.
 - 2,048-run fuzz tests and 256-run/depth-50 stateful invariants on every pull
   request (`FOUNDRY_PROFILE=ci`). Nightly verification raises this to
   20,000-run fuzz and 2,000-run/depth-100 stateful invariants
