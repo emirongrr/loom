@@ -51,6 +51,16 @@ passkey signatures over the canonical hash, then send a second operation with
 the nonce read through the public state transport. See
 [`minimal-account/README.md`](minimal-account/README.md).
 
+### `passkey-wallet-web/`
+
+A browser passkey wallet: register a passkey, derive the counterfactual account
+locally, reconnect on a later visit without a new prompt, sign the canonical
+EntryPoint hash through `@loom/passkey` (no bundler or privacy runtime in the
+signer), and grant/revoke a scoped session. WebAuthn is reached through an
+injected provider — `index.html` wires `navigator.credentials`, the tests wire a
+software P-256 authenticator so the whole flow runs deterministically. See
+[`passkey-wallet-web/README.md`](passkey-wallet-web/README.md).
+
 ### `backend-userop-tracker/`
 
 A framework-neutral backend that tracks UserOperations from chain logs: decodes
