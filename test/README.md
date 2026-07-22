@@ -126,11 +126,18 @@ It checks sponsor/account isolation, exact underfunded-bundle rollback,
 beneficiary/deposit conservation, and isolation of a failed sponsored execution
 from an independent operation in the same bundle.
 
+`MultiAccountRecoveryInvariant.t.sol` drives two accounts with distinct guardian
+identities through repeated proposal, guardian cancellation, and complete
+validator/guardian replacement. Cross-account proposal and cancellation
+approvals must return their exact custom errors while preserving both complete
+pending and live-authority snapshots.
+
 The programs model two pre-deployed ECDSA accounts, deterministic local signing,
 and local adversarial paymasters. They do not claim coverage of counterfactual
 deployment, production paymaster middleware, P-256/WebAuthn, session validators,
-recovery, or arbitrary account population; those remain separate integration,
-invariant, and evidence boundaries.
+multi-guardian recovery trees, recovery initializer payloads, or arbitrary
+account population; those remain separate integration, invariant, and evidence
+boundaries.
 
 ## Required Checks
 
