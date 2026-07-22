@@ -15,13 +15,13 @@ static analysis, review, deployment rehearsals, and audit.
 | File | Type | Purpose |
 |---|---|---|
 | `FormalHelpers.sol` | Harness helpers | Minimal symbolic fixtures used by the property contracts. |
-| `LoomAccountInitializationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Initializer one-shot safety, delegated initializer access control, immutable proxy storage initialization, non-upgradeability selectors, and invalid direct-execution nonce rollback. |
+| `LoomAccountInitializationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact initializer/direct-execution errors, complete authority rollback, immutable proxy storage initialization, and exact absent upgrade/admin selector behavior. |
 | `LoomAccountAuthorityFormal.t.sol` | Symbolic property tests | Exact authority-guard errors, privileged-call rollback, unsupported-mode target isolation, stale-schedule invalidation, and last-validator safety. |
 | `LoomAccountExecutionFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact downstream failure propagation, batch atomicity, freeze errors, and direct-execution rollback behavior. |
 | `LoomAccountRecoveryFormal.t.sol` | Symbolic property tests | Exact recovery-delay and frozen-account errors, complete pending-state rollback, duplicate-guardian rejection, validator replacement, and emergency cancellation carveouts. |
 | `LoomAccountMigrationFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact migration rejection errors, complete pending-state rollback, call-hash binding, and batch atomicity. |
 | `LoomVaultHookFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact withdrawal readiness errors, complete pending/spending/balance rollback, and guardian cancellation grants no spending authority. |
-| `LoomKeystoreSyncFormal.t.sol` | Symbolic and fuzz-compatible property tests | L1 keystore controller-only updates, sync delay enforcement, and guardian-threshold sync cancellation grants no validator authority. |
+| `LoomKeystoreSyncFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact controller/sync errors, complete configuration and pending-sync rollback, and guardian-threshold cancellation grants no validator authority. |
 
 Functions intended for symbolic execution use the `check_` prefix so Halmos can
 discover them directly. Stateful Foundry invariant tests live outside this
