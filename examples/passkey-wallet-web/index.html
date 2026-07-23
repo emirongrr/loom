@@ -345,6 +345,12 @@
         </div>
       </div>
 
+      <nav class="nav" id="walletNav">
+        <button id="tabAssets" class="tab active">Assets</button>
+        <button id="tabSecurity" class="tab">Security</button>
+        <button id="tabApps" class="tab">Apps</button>
+      </nav>
+      <div id="secAssets">
     <!-- The account acting on its own behalf: it pays from its EntryPoint
          deposit, so no ETH has to move to a key first. -->
     <div class="card">
@@ -408,6 +414,8 @@
       </p>
       <pre id="batchOut">add a transfer to begin</pre>
     </div>
+      </div>
+      <div id="secSecurity" hidden>
   <!-- Guardians. Every address is checked before it can be committed to: a
        mistyped or contract address here is authority handed to someone who can
        never use it, and the account would still report itself protected. -->
@@ -424,6 +432,21 @@
       <button id="openGuardianEditor" class="primary">Choose who can recover it</button>
       <button id="refreshRecovery" class="ghost">Refresh</button>
     </div>
+  </div>
+
+  <!-- Emergency stop. A guardian can halt an account without the owner, which
+       is the point: the owner may be the one compromised. -->
+  <div class="card">
+    <h2>Emergency freeze <span id="freezeStatusPill" class="pill warn">—</span></h2>
+    <p class="hint" style="margin-top:0">
+      If a device is stolen, any one of your guardians can freeze this account
+      immediately — no waiting, and without needing you. Spending stops for two
+      days, which is time to recover it. It cannot be lifted early, on purpose:
+      whoever took the passkey must not be able to undo it.
+    </p>
+    <div class="row"><span class="k">State</span><span class="v muted" id="freezeState">—</span></div>
+    <div class="row"><span class="k">Who can do this</span><span class="v muted" id="freezeWho">—</span></div>
+    <p class="hint" id="freezeHint"></p>
   </div>
 
   <div class="card" id="guardianEditor" hidden>
@@ -471,6 +494,33 @@
     </div>
     <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
   </div>
+      </div>
+      <div id="secApps" hidden>
+        <!-- Scoped permissions an application can spend under without holding
+             the passkey, and without being able to exceed what was granted. -->
+        <div class="card">
+          <h2>Connected apps <span id="sessionStatus" class="pill warn">none</span></h2>
+          <p class="hint" style="margin-top:0">
+            An app can be given a key that spends within limits you set, so it
+            acts without asking you to approve every step — and can never exceed
+            the limit or outlive the expiry. Revoking is immediate.
+          </p>
+          <div class="row"><span class="k">App</span><span class="v">
+            <input id="sessionApp" class="field" placeholder="https://app.example" spellcheck="false"></span></div>
+          <div class="row"><span class="k">Session key</span><span class="v">
+            <input id="sessionKey" class="field" placeholder="0x…" spellcheck="false"></span></div>
+          <div class="row"><span class="k">May call</span><span class="v">
+            <input id="sessionTarget" class="field" placeholder="contract 0x…" spellcheck="false"></span></div>
+          <div class="row"><span class="k">Spend limit</span><span class="v">
+            <input id="sessionLimit" class="field" value="0.01" style="max-width:8rem"> ETH</span></div>
+          <div class="row"><span class="k">Expires in</span><span class="v">
+            <input id="sessionHours" class="num" type="number" min="1" value="24" style="max-width:6rem"> hours</span></div>
+          <div class="actions">
+            <button id="prepareSession" class="primary">Review permission</button>
+          </div>
+          <pre id="sessionOut">describe what the app may do</pre>
+        </div>
+      </div>
     </div><!-- /opsSection -->
 
   </div>
@@ -1273,6 +1323,87 @@
   $("refreshSafety").onclick = () => refreshSafety();
 
   // --- guardians ------------------------------------------------------------
+
+  // Wallet sub-navigation. Everyday actions stay on the first screen; the things
+  // you set up once live behind their own sections rather than crowding it.
+  function selectWalletSection(name) {
+    for (const [tab, section] of [["tabAssets", "secAssets"], ["tabSecurity", "secSecurity"], ["tabApps", "secApps"]]) {
+      const active = tab === `tab${name}`;
+      $(section).hidden = !active;
+      $(tab).className = active ? "tab active" : "tab";
+    }
+    if (name === "Security") { refreshRecovery(); refreshFreeze(); }
+  }
+  $("tabAssets").onclick = () => selectWalletSection("Assets");
+  $("tabSecurity").onclick = () => selectWalletSection("Security");
+  $("tabApps").onclick = () => selectWalletSection("Apps");
+
+  // Freeze is a guardian power, so what the panel can offer depends entirely on
+  // whether real guardians exist. Saying that plainly beats a button that fails.
+  async function refreshFreeze() {
+    const runtime = walletModule;
+    if (!runtime || !wallet || !deployment) return;
+    try {
+      const s = await runtime.readSafety({ wallet, deployment, rpcUrl: $("publicRpc").value.trim() });
+      const placeholder = s.config.guardianRoot.toLowerCase() === LEGACY_GUARDIAN_ROOT.toLowerCase();
+      const none = s.config.guardianRoot === `0x${"00".repeat(32)}`;
+      const frozen = s.freeze?.active;
+      $("freezeStatusPill").className = frozen ? "pill bad" : (placeholder || none) ? "pill warn" : "pill good";
+      $("freezeStatusPill").textContent = frozen ? "frozen" : (placeholder || none) ? "unavailable" : "armed";
+      $("freezeState").textContent = frozen
+        ? `spending is halted until unix ${s.freeze.frozenUntil}`
+        : "spending is allowed";
+      $("freezeState").className = "v";
+      $("freezeWho").textContent = (placeholder || none)
+        ? "nobody — this account has no guardians who can act"
+        : `any one of your ${s.config.guardianThreshold === 1 ? "" : ""}guardians, on their own`;
+      $("freezeWho").className = "v";
+      $("freezeHint").textContent = (placeholder || none)
+        ? "Set up recovery above first. Freezing is something a guardian does from their own wallet — it is deliberately not a button here, because if your device is the one that was stolen, this page is in the wrong hands."
+        : "A guardian triggers this from their own wallet by signing a freeze approval. It is not a button here: if this device were stolen, the thief must not be able to reach it.";
+    } catch (error) {
+      $("freezeStatusPill").className = "pill bad";
+      $("freezeStatusPill").textContent = "unknown";
+      $("freezeState").textContent = `could not be read (${error.message})`;
+    }
+  }
+
+  // A session grant, reviewed before it is signed. The SDK builds the intent and
+  // its clear-signing review, which is what the holder should be approving —
+  // not an opaque blob.
+  $("prepareSession").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet) return;
+    try {
+      const sessionKey = $("sessionKey").value.trim();
+      const target = $("sessionTarget").value.trim();
+      if (!/^0x[0-9a-fA-F]{40}$/.test(sessionKey)) throw new Error("session key is not an address");
+      if (!/^0x[0-9a-fA-F]{40}$/.test(target)) throw new Error("the contract it may call is not an address");
+      const hours = Number($("sessionHours").value);
+      if (!Number.isFinite(hours) || hours <= 0) throw new Error("expiry must be a positive number of hours");
+      const client = runtime.walletClient({ credentials, wallet, computeUserOperationHash: undefined });
+      const grant = client.grantSession({
+        origin: $("sessionApp").value.trim() || ORIGIN,
+        sessionKey, target,
+        selector: "0x00000000",
+        token: `0x${"00".repeat(20)}`,
+        maxAmount: runtime.parseAmount($("sessionLimit").value, 18),
+        validUntil: BigInt(Math.floor(Date.now() / 1000) + hours * 3600),
+        maxUses: 1
+      });
+      $("sessionStatus").className = "pill good";
+      $("sessionStatus").textContent = "reviewed";
+      $("sessionOut").textContent = JSON.stringify({
+        review: grant.review,
+        limits: "the app can never exceed these — the account enforces them, not the app",
+        next: "this account has no session validator installed, so the grant cannot be submitted against it yet; installing one is a scheduled change like adding guardians"
+      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+    } catch (error) {
+      $("sessionStatus").className = "pill bad";
+      $("sessionStatus").textContent = "invalid";
+      $("sessionOut").textContent = `cannot prepare that permission: ${error.message}`;
+    }
+  };
 
   $("openGuardianEditor").onclick = () => {
     $("guardianEditor").hidden = !$("guardianEditor").hidden;
