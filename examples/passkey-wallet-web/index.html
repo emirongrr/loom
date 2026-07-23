@@ -329,6 +329,16 @@
       <button id="addGuardian">Add a guardian</button>
       <button id="checkGuardians" class="primary">Validate &amp; build root</button>
     </div>
+    <div id="guardianBackup" hidden>
+      <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
+      <p class="hint">
+        The chain stores only the root, never who your guardians are. That keeps
+        them private, and it means this list is the only way to rebuild the proof
+        a freeze or recovery needs — keep a copy somewhere you will still have if
+        this device is gone.
+      </p>
+      <div class="actions"><button id="exportGuardians">Download backup</button></div>
+    </div>
     <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
   </div>
   </div><!-- /viewDeveloper -->
@@ -1232,6 +1242,33 @@
 
   // --- guardians ------------------------------------------------------------
 
+  // The guardian set is kept per account: the chain holds only the root, so this
+  // is the record that makes a future proof possible.
+  let guardianSet = null;
+  const guardianKey = () => `loom.passkey-wallet.guardians.${(wallet?.account ?? "unbound").toLowerCase()}`;
+
+  function renderGuardianBackup() {
+    const saved = guardianSet ?? (() => {
+      try { return JSON.parse(localStorage.getItem(guardianKey()) ?? "null"); } catch { return null; }
+    })();
+    guardianSet = saved;
+    $("guardianBackup").hidden = !saved;
+    if (saved) {
+      $("guardianSaved").textContent = `${saved.guardians.length} guardian(s), threshold ${saved.threshold} · root ${short(saved.guardianRoot)}`;
+    }
+  }
+
+  $("exportGuardians").onclick = () => {
+    if (!guardianSet) return;
+    const blob = new Blob([JSON.stringify(guardianSet, null, 2)], { type: "application/json" });
+    const link = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(blob),
+      download: `loom-guardians-${(guardianSet.account ?? "account").slice(0, 10)}.json`
+    });
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   function addGuardianRow(value = "") {
     const row = document.createElement("div");
     row.className = "row";
@@ -1293,16 +1330,32 @@
         verifier: $("guardianVerifier").value.trim(),
         addresses: valid
       });
+      // The chain stores only the root. Guardian identities are never written
+      // anywhere on chain, which keeps them private but makes this record the
+      // only thing that can rebuild a merkle proof later — without it, the
+      // guardians exist and still cannot act.
+      const record = {
+        account: wallet?.account ?? null,
+        chainId: deployment?.chainId ?? null,
+        guardians: valid,
+        threshold,
+        verifier: set.verifier,
+        salt: set.salt,
+        guardianRoot: set.root,
+        savedAt: new Date().toISOString()
+      };
+      guardianSet = record;
+      localStorage.setItem(guardianKey(), JSON.stringify(record));
+      renderGuardianBackup();
+
       $("guardianStatus").className = "pill good";
       $("guardianStatus").textContent = `${valid.length} verified`;
       $("guardianOut").textContent = JSON.stringify({
-        guardians: valid,
-        threshold,
-        guardianRoot: set.root,
-        salt: set.salt,
-        note: `Committing this root to an existing account goes through setGuardianConfig, `
-          + `which is a scheduled self-call with a ${3}-day minimum delay — on this chain that is three real days. `
-          + `Validation proves these addresses are wallets, not that anyone holds their keys; only a signature from each does.`
+        ...record,
+        onChain: "only guardianRoot and threshold — no guardian address is ever written to the chain",
+        keepThis: "a root is a hash and cannot be reversed. Without this record nobody can build the merkle proof a freeze or recovery needs, so guardians you cannot list are guardians who cannot act.",
+        applying: "committing this root to an existing account goes through setGuardianConfig, a scheduled self-call with a three-day minimum delay",
+        limits: "this proves the addresses are wallets, not that anyone holds their keys — only a signature from each shows that"
       }, null, 2);
     } catch (error) {
       $("guardianStatus").className = "pill bad";
