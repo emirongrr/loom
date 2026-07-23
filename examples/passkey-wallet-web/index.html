@@ -1051,13 +1051,21 @@
       const response = await fetch(`${base}/account?address=${address}`);
       if (!response.ok) throw new Error(`status ${response.status}`);
       const status = await response.json();
+      // What a wallet holder needs to know is whether the account exists yet,
+      // not how many bytes of proxy stand at the address. The byte size stays in
+      // the developer view, where it is evidence rather than noise.
+      const network = CHAINS[status.chainId] ?? `chain ${status.chainId}`;
+      $("cChainPill").className = status.deployed ? "pill good" : "pill warn";
+      $("cChainPill").textContent = status.deployed ? "active" : "not deployed";
       $("cChain").textContent = status.deployed
-        ? `deployed (${status.codeSize} B, balance ${status.balance} ETH)`
-        : "not deployed yet — counterfactual";
+        ? `active on ${network}`
+        : `not created yet — the address is reserved on ${network} and can already receive funds`;
       $("cChain").className = "v";
       return status;
     } catch (error) {
-      $("cChain").textContent = `unknown — sponsor backend unreachable (${error.message})`;
+      $("cChainPill").className = "pill bad";
+      $("cChainPill").textContent = "unreachable";
+      $("cChain").textContent = `cannot reach the backend (${error.message})`;
       $("cChain").className = "v muted";
       return null;
     }
