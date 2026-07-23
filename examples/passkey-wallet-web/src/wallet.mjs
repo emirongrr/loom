@@ -21,8 +21,8 @@ import { deriveAccountAddress, encodeCreateAccountCall, getUserOpHash, packUserO
 import { createWebAuthnSigner } from "@loom/passkey";
 import { computeUserOperationHash, createBundlerTransport, createLoomClient, createRpcStateTransport } from "@loom/sdk";
 import {
-  createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, getAddress, http,
-  isAddress, keccak256, parseUnits, sha256, stringToHex
+  concatHex, createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, getAddress,
+  http, isAddress, keccak256, parseUnits, sha256, stringToHex
 } from "viem";
 
 // Accounts created before guardians were modelled honestly committed to this
@@ -451,6 +451,101 @@ export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardi
     readyAt: Number(readyAt),
     ready: readyAt !== 0 && now >= Number(readyAt),
     secondsRemaining: readyAt === 0 ? null : Math.max(0, Number(readyAt) - now)
+  };
+}
+
+// --- the guardian's side --------------------------------------------------
+//
+// A guardian cannot discover on chain that they are one: the account publishes
+// only a root, so nothing links an address to an account it guards. They learn
+// it out of band, from the record the owner exported — which is why that file
+// is the mechanism rather than a backup. Everything below runs from that record
+// plus the guardian's own key; none of it needs the account holder.
+
+const FREEZE_TYPEHASH = keccak256(stringToHex("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)"));
+const EIP712_DOMAIN_TYPEHASH = keccak256(stringToHex("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"));
+const LOOM_NAME_HASH = keccak256(stringToHex("LoomAccount"));
+const LOOM_VERSION_HASH = keccak256(stringToHex("1"));
+
+const FREEZE_ABI = [
+  { type: "function", name: "freeze", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32[]" }, { type: "bytes" }],
+    outputs: [] },
+  { type: "function", name: "guardianRoot", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "freezeNonces", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "frozenUntil", stateMutability: "view", inputs: [], outputs: [{ type: "uint48" }] }
+];
+
+// The sibling hashes that carry one guardian's leaf up to the root.
+function proofForLeaf(layers, leaf) {
+  let index = layers[0].indexOf(leaf);
+  if (index === -1) throw new Error("that guardian is not in this set");
+  const proof = [];
+  for (let level = 0; level < layers.length - 1; level += 1) {
+    const layer = layers[level];
+    const sibling = index % 2 === 0 ? index + 1 : index - 1;
+    if (sibling < layer.length) proof.push(layer[sibling]);
+    index = Math.floor(index / 2);
+  }
+  return proof;
+}
+
+// Everything a guardian needs to freeze an account, prepared from the exported
+// record: their membership proof, the exact digest their wallet must sign, and
+// the call to submit once it is signed.
+export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const account = getAddress(record.account);
+  const guardian = getAddress(guardianAddress);
+  if (!record.guardians?.some(a => getAddress(a) === guardian)) {
+    throw new Error("this address is not one of the guardians in that record");
+  }
+
+  const set = await buildGuardianSet({
+    rpcUrl, verifier: record.verifier, addresses: record.guardians, salt: record.salt
+  });
+  const onChainRoot = await client.readContract({ address: account, abi: FREEZE_ABI, functionName: "guardianRoot" });
+  if (set.root.toLowerCase() !== onChainRoot.toLowerCase()) {
+    throw new Error("this record does not match the account's current guardians — ask for an up-to-date copy");
+  }
+
+  const mine = set.leaves.find(l => getAddress(l.address) === guardian);
+  const proof = proofForLeaf(set.layers, mine.leaf);
+  const [configVersion, freezeNonce, frozenUntil] = await Promise.all([
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "configVersion" }),
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "freezeNonces", args: [mine.leaf] }),
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "frozenUntil" })
+  ]);
+
+  const domainSeparator = keccak256(encodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "address" }],
+    [EIP712_DOMAIN_TYPEHASH, LOOM_NAME_HASH, LOOM_VERSION_HASH, BigInt(record.chainId), account]
+  ));
+  const structHash = keccak256(encodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "uint64" }],
+    [FREEZE_TYPEHASH, mine.leaf, freezeNonce, configVersion]
+  ));
+  const digest = keccak256(concatHex(["0x1901", domainSeparator, structHash]));
+
+  return {
+    account, guardian, leaf: mine.leaf, keyCommitment: mine.keyCommitment,
+    salt: set.salt, verifier: set.verifier, proof, configVersion, freezeNonce,
+    alreadyFrozen: Number(frozenUntil) * 1000 > Date.now(),
+    frozenUntil: Number(frozenUntil),
+    // What the guardian's wallet signs. It commits to this account, this
+    // guardian and this config version, so it cannot be replayed elsewhere or
+    // after the account's configuration changes.
+    digest,
+    // Once signed, this is the call that freezes the account. Anyone can carry
+    // it — the authority is in the signature, not the sender.
+    freezeCall: signature => ({
+      target: account, value: 0n,
+      data: encodeFunctionData({
+        abi: FREEZE_ABI, functionName: "freeze",
+        args: [set.verifier, mine.keyCommitment, set.salt, proof, signature]
+      })
+    })
   };
 }
 

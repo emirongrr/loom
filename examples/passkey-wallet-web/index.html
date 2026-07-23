@@ -188,8 +188,43 @@
        the developer wiring it up needs. Same page, same state. -->
   <nav class="nav">
     <button id="tabCustomer" class="tab active">Wallet</button>
+    <button id="tabGuardian" class="tab">Guardian</button>
     <button id="tabDeveloper" class="tab">Developer</button>
   </nav>
+
+  <!-- The other side of the relationship. Someone who guards an account cannot
+       find that out from the chain — no address is published — so they are
+       given the owner's exported record and act from it with their own key. -->
+  <div id="viewGuardian" hidden>
+    <div class="card">
+      <h2>Accounts you guard <span id="guardianViewStatus" class="pill warn">none loaded</span></h2>
+      <p class="hint" style="margin-top:0">
+        Nothing on chain says who guards an account, so a wallet cannot discover
+        this for you. Paste the record the account holder gave you — it names the
+        account, everyone who guards it, and the salt needed to prove membership.
+      </p>
+      <textarea id="guardianRecord" spellcheck="false" placeholder='{ "account": "0x…", "guardians": ["0x…"], "salt": "0x…", "verifier": "0x…", "chainId": 11155111 }'></textarea>
+      <div class="row"><span class="k">Your wallet</span><span class="v">
+        <input id="guardianSelf" class="field" placeholder="0x… the address you were added as" spellcheck="false"></span></div>
+      <div class="actions">
+        <button id="loadGuardianRecord" class="primary">Load record</button>
+      </div>
+      <div id="guardianDuty" hidden>
+        <div class="row"><span class="k">Account</span><span class="v" id="dutyAccount">—</span></div>
+        <div class="row"><span class="k">Its state</span><span class="v muted" id="dutyState">—</span></div>
+        <div class="row"><span class="k">Your role</span><span class="v muted" id="dutyRole">—</span></div>
+        <p class="hint">
+          Freezing takes you alone and stops spending for two days. Recovering
+          the account needs the agreed number of guardians to approve, and is the
+          step that replaces the lost key — freeze first, recover after.
+        </p>
+        <div class="actions">
+          <button id="prepareFreezeBtn" class="primary">Prepare emergency freeze</button>
+        </div>
+      </div>
+      <pre id="guardianViewOut">paste a record to begin</pre>
+    </div>
+  </div>
 
   <div id="viewDeveloper" hidden>
   <!-- Which deployment am I bound to? Always visible, never implied. -->
@@ -699,11 +734,15 @@
   // Tabs are a view switch only: both views read the same deployment and wallet
   // state, so configuring on one is immediately true on the other.
   function selectView(name) {
-    const developer = name === "developer";
-    $("viewDeveloper").hidden = !developer;
-    $("viewCustomer").hidden = developer;
-    $("tabDeveloper").className = developer ? "tab active" : "tab";
-    $("tabCustomer").className = developer ? "tab" : "tab active";
+    for (const [tab, view, key] of [
+      ["tabCustomer", "viewCustomer", "customer"],
+      ["tabGuardian", "viewGuardian", "guardian"],
+      ["tabDeveloper", "viewDeveloper", "developer"]
+    ]) {
+      const active = key === name;
+      $(view).hidden = !active;
+      $(tab).className = active ? "tab active" : "tab";
+    }
     localStorage.setItem(VIEW_KEY, name);
   }
 
@@ -1643,6 +1682,67 @@
     }
   };
 
+  // --- guardian side --------------------------------------------------------
+
+  let duty = null;
+
+  $("loadGuardianRecord").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    $("guardianViewStatus").className = "pill warn";
+    $("guardianViewStatus").textContent = "checking";
+    $("guardianDuty").hidden = true;
+    try {
+      const record = JSON.parse($("guardianRecord").value);
+      const self = $("guardianSelf").value.trim();
+      duty = await runtime.prepareFreeze({
+        rpcUrl: $("publicRpc").value.trim(), record, guardianAddress: self
+      });
+      $("guardianViewStatus").className = "pill good";
+      $("guardianViewStatus").textContent = "you are a guardian";
+      $("guardianDuty").hidden = false;
+      $("dutyAccount").textContent = duty.account;
+      $("dutyState").textContent = duty.alreadyFrozen
+        ? `already frozen until unix ${duty.frozenUntil}`
+        : "operating normally";
+      $("dutyState").className = "v";
+      $("dutyRole").textContent = `you can freeze this account on your own · ${record.guardians.length} guardian(s), ${record.threshold} needed to recover`;
+      $("dutyRole").className = "v";
+      $("guardianViewOut").textContent = JSON.stringify({
+        account: duty.account,
+        verifiedAgainstChain: "the record matches the account's current guardian root",
+        yourLeaf: duty.leaf,
+        proofLength: duty.proof.length
+      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+    } catch (error) {
+      duty = null;
+      $("guardianViewStatus").className = "pill bad";
+      $("guardianViewStatus").textContent = "cannot act";
+      $("guardianViewOut").textContent = `${error.message}`;
+    }
+  };
+
+  $("prepareFreezeBtn").onclick = async () => {
+    if (!duty) return;
+    // The account is frozen by a signature, not by whoever sends the
+    // transaction — so the digest is what matters, and it is produced here for
+    // the guardian's own wallet to sign. This page never holds their key.
+    $("guardianViewOut").textContent = JSON.stringify({
+      signThisDigest: duty.digest,
+      withWallet: duty.guardian,
+      then: "submit freeze(verifier, keyCommitment, salt, proof, signature) to the account",
+      call: {
+        to: duty.account,
+        verifier: duty.verifier,
+        keyCommitment: duty.keyCommitment,
+        salt: duty.salt,
+        proof: duty.proof
+      },
+      note: "the digest commits to this account, this guardian and this config version, so it cannot be replayed elsewhere or after the account's configuration changes",
+      whoCanSubmit: "anyone — the authority is in the signature, not the sender"
+    }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+  };
+
   $("exportGuardians").onclick = () => {
     if (!guardianSet) return;
     const blob = new Blob([JSON.stringify(guardianSet, null, 2)], { type: "application/json" });
@@ -2167,6 +2267,7 @@
     }
   }
 
+  $("tabGuardian").onclick = () => selectView("guardian");
   $("tabCustomer").onclick = () => selectView("customer");
   $("tabDeveloper").onclick = () => selectView("developer");
   selectView(localStorage.getItem(VIEW_KEY) ?? "customer");
