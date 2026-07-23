@@ -308,6 +308,29 @@
     </div>
     <pre id="safetyOut">read the account's on-chain safety state</pre>
   </div>
+
+  <!-- Guardians. Every address is checked before it can be committed to: a
+       mistyped or contract address here is authority handed to someone who can
+       never use it, and the account would still report itself protected. -->
+  <div class="card">
+    <h2>Guardians <span id="guardianStatus" class="pill warn">none</span></h2>
+    <p class="hint" style="margin-top:0">
+      Guardians can freeze this account in an emergency and, together, recover it
+      if the passkey is lost. Each must be a wallet whose key someone actually
+      holds — a contract can never sign an approval, so it is rejected here.
+    </p>
+    <div id="guardianRows"></div>
+    <div class="row"><span class="k">Threshold</span><span class="v">
+      <input id="guardianThreshold" class="num" type="number" min="1" value="1" style="max-width:5rem"></span></div>
+    <div class="row"><span class="k">Verifier</span><span class="v">
+      <input id="guardianVerifier" class="field" spellcheck="false"
+        value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
+    <div class="actions">
+      <button id="addGuardian">Add a guardian</button>
+      <button id="checkGuardians" class="primary">Validate &amp; build root</button>
+    </div>
+    <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
+  </div>
   </div><!-- /viewDeveloper -->
 
   <!-- What a customer of the institution actually sees: one button. The passkey
@@ -1206,6 +1229,87 @@
   }
 
   $("refreshSafety").onclick = () => refreshSafety();
+
+  // --- guardians ------------------------------------------------------------
+
+  function addGuardianRow(value = "") {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<span class="k">Guardian</span>
+      <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
+        <input class="gaddr field" placeholder="0x…" spellcheck="false" value="${value}">
+        <button class="sm ghost rm" title="Remove">✕</button>
+      </span>
+      <div class="hint gnote" hidden></div>`;
+    row.style.flexWrap = "wrap";
+    row.querySelector(".rm").onclick = () => row.remove();
+    $("guardianRows").append(row);
+  }
+  $("addGuardian").onclick = () => addGuardianRow();
+  addGuardianRow();
+
+  $("checkGuardians").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    const rows = [...$("guardianRows").children];
+    const addresses = rows.map(r => r.querySelector(".gaddr").value);
+    $("guardianStatus").className = "pill warn";
+    $("guardianStatus").textContent = "checking…";
+    $("guardianOut").textContent = "validating each address on chain…";
+    try {
+      const { results, valid, ok } = await runtime.validateGuardians({
+        rpcUrl: $("publicRpc").value.trim(),
+        account: wallet?.account,
+        addresses
+      });
+      // Report per address, so a mistake points at the row that caused it.
+      results.forEach((result, index) => {
+        const note = rows[index]?.querySelector(".gnote");
+        if (!note) return;
+        const message = result.errors[0] ?? result.warnings[0] ?? "";
+        note.hidden = message === "";
+        note.textContent = message;
+        note.style.color = result.errors.length ? "var(--bad)" : "var(--warn)";
+        note.style.width = "100%";
+        note.style.textAlign = "right";
+      });
+
+      if (!ok) {
+        const bad = results.filter(r => r.errors.length).length;
+        $("guardianStatus").className = "pill bad";
+        $("guardianStatus").textContent = `${bad} rejected`;
+        $("guardianOut").textContent =
+          `${bad} address${bad === 1 ? "" : "es"} cannot be a guardian:\n` +
+          results.filter(r => r.errors.length).map(r => `  ${r.input || "(empty)"} — ${r.errors[0]}`).join("\n");
+        return;
+      }
+
+      const threshold = Number($("guardianThreshold").value);
+      if (!Number.isInteger(threshold) || threshold < 1 || threshold > valid.length) {
+        throw new Error(`threshold must be between 1 and ${valid.length}`);
+      }
+      const set = await runtime.buildGuardianSet({
+        rpcUrl: $("publicRpc").value.trim(),
+        verifier: $("guardianVerifier").value.trim(),
+        addresses: valid
+      });
+      $("guardianStatus").className = "pill good";
+      $("guardianStatus").textContent = `${valid.length} verified`;
+      $("guardianOut").textContent = JSON.stringify({
+        guardians: valid,
+        threshold,
+        guardianRoot: set.root,
+        salt: set.salt,
+        note: `Committing this root to an existing account goes through setGuardianConfig, `
+          + `which is a scheduled self-call with a ${3}-day minimum delay — on this chain that is three real days. `
+          + `Validation proves these addresses are wallets, not that anyone holds their keys; only a signature from each does.`
+      }, null, 2);
+    } catch (error) {
+      $("guardianStatus").className = "pill bad";
+      $("guardianStatus").textContent = "failed";
+      $("guardianOut").textContent = `could not build the guardian set: ${error.message}`;
+    }
+  };
 
   // --- batch builder -------------------------------------------------------
 

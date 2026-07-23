@@ -21,8 +21,8 @@ import { deriveAccountAddress, encodeCreateAccountCall, getUserOpHash, packUserO
 import { createWebAuthnSigner } from "@loom/passkey";
 import { computeUserOperationHash, createBundlerTransport, createLoomClient, createRpcStateTransport } from "@loom/sdk";
 import {
-  createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, http,
-  keccak256, parseUnits, sha256, stringToHex
+  createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, getAddress, http,
+  isAddress, keccak256, parseUnits, sha256, stringToHex
 } from "viem";
 
 // Accounts created before guardians were modelled honestly committed to this
@@ -245,6 +245,124 @@ export function sponsorCalls({ deployment, packed, beneficiary, depositWei }) {
       data: encodeFunctionData({ abi: EntryPointAbi, functionName: "handleOps", args: [[packed], beneficiary] })
     }
   ];
+}
+
+// --- guardians ------------------------------------------------------------
+
+// Validate the addresses someone proposes as guardians.
+//
+// What can actually be proven here is worth being precise about. Format and
+// checksum catch typing mistakes; the on-chain code check catches an address
+// that could never work. What none of it proves is that anyone holds the key —
+// only a signature from that address does, which is why a possession challenge
+// is a separate, later step rather than something inferred here.
+export async function validateGuardians({ rpcUrl, account, addresses }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const seen = new Map();
+  const results = [];
+
+  for (const raw of addresses) {
+    const input = String(raw ?? "").trim();
+    const entry = { input, address: null, errors: [], warnings: [] };
+    results.push(entry);
+    if (input === "") { entry.errors.push("empty"); continue; }
+
+    if (!isAddress(input, { strict: false })) {
+      entry.errors.push("not an Ethereum address — expected 0x followed by 40 hex characters");
+      continue;
+    }
+    // A mixed-case address carries its own EIP-55 checksum. If it fails, a
+    // character was mistyped, and accepting it would hand recovery authority to
+    // an address nobody controls.
+    const hasMixedCase = /[a-f]/.test(input.slice(2)) && /[A-F]/.test(input.slice(2));
+    let address;
+    try {
+      address = getAddress(input);
+      if (hasMixedCase && address !== input) {
+        entry.errors.push("checksum does not match — this address has a typo");
+        continue;
+      }
+    } catch {
+      entry.errors.push("checksum does not match — this address has a typo");
+      continue;
+    }
+    entry.address = address;
+
+    if (/^0x0{40}$/i.test(address)) { entry.errors.push("the zero address cannot be a guardian"); continue; }
+    if (account && address.toLowerCase() === account.toLowerCase()) {
+      entry.errors.push("an account cannot guard itself — recovery would depend on the key being recovered");
+      continue;
+    }
+    const duplicate = seen.get(address.toLowerCase());
+    if (duplicate !== undefined) { entry.errors.push(`already listed as guardian ${duplicate + 1}`); continue; }
+    seen.set(address.toLowerCase(), results.length - 1);
+
+    // An ECDSA guardian approves by signing, and a signature recovers to the
+    // signer's address. A contract has no private key, so a contract address
+    // can never produce one: it would be a guardian that can never act.
+    try {
+      const code = await client.getCode({ address });
+      if (code && code !== "0x") {
+        entry.errors.push("this is a contract, not a wallet — it holds no key and could never sign an approval");
+        continue;
+      }
+      const [nonce, balance] = await Promise.all([
+        client.getTransactionCount({ address }),
+        client.getBalance({ address })
+      ]);
+      entry.nonce = nonce;
+      if (nonce === 0 && balance === 0n) {
+        entry.warnings.push("this address has never been used on this chain — make sure someone holds its key");
+      }
+    } catch (error) {
+      entry.warnings.push(`could not be checked on chain (${error.message})`);
+    }
+  }
+
+  const valid = results.filter(r => r.errors.length === 0);
+  return { results, valid: valid.map(r => r.address), ok: valid.length === results.length && results.length > 0 };
+}
+
+// Build the guardian merkle root the account commits to. The leaf encoding
+// mirrors the contract exactly — keccak256(abi.encode(verifier, verifier
+// .codehash, keyCommitment, salt)) — and an ECDSA guardian's commitment is the
+// hash of its address, which is what the verifier recovers a signature to.
+export async function buildGuardianSet({ rpcUrl, verifier, addresses, salt }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const code = await client.getCode({ address: verifier });
+  if (!code || code === "0x") throw new Error(`no guardian verifier deployed at ${verifier}`);
+  const verifierCodeHash = keccak256(code);
+  const leafSalt = salt ?? keccak256(stringToHex("passkey-wallet-web.guardian-salt"));
+
+  const leaves = addresses.map(address => {
+    const keyCommitment = keccak256(encodeAbiParameters([{ type: "address" }], [address]));
+    return {
+      address,
+      keyCommitment,
+      leaf: keccak256(encodeAbiParameters(
+        [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
+        [verifier, verifierCodeHash, keyCommitment, leafSalt]
+      ))
+    };
+  });
+  // The contract requires strictly increasing leaves across approvals, so the
+  // set is sorted here and the tree is built over that order.
+  leaves.sort((a, b) => (BigInt(a.leaf) < BigInt(b.leaf) ? -1 : 1));
+
+  let layer = leaves.map(l => l.leaf);
+  const layers = [layer];
+  while (layer.length > 1) {
+    const next = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      const left = layer[i];
+      const right = layer[i + 1] ?? left;
+      const [a, b] = BigInt(left) <= BigInt(right) ? [left, right] : [right, left];
+      next.push(keccak256(`0x${a.slice(2)}${b.slice(2)}`));
+    }
+    layers.push(next);
+    layer = next;
+  }
+  return { root: layer[0], salt: leafSalt, verifier, verifierCodeHash, leaves, layers };
 }
 
 // Read the account's live safety posture straight from the chain: whether it is
