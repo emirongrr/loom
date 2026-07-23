@@ -22,7 +22,7 @@ import { createWebAuthnSigner } from "@loom/passkey";
 import { computeUserOperationHash, createBundlerTransport, createLoomClient, createRpcStateTransport } from "@loom/sdk";
 import {
   concatHex, createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, getAddress,
-  http, isAddress, keccak256, parseUnits, sha256, stringToHex
+  http, isAddress, keccak256, parseUnits, recoverAddress, sha256, stringToHex
 } from "viem";
 
 // Accounts created before guardians were modelled honestly committed to this
@@ -541,6 +541,9 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
   return {
     account, guardian, leaf: mine.leaf, keyCommitment: mine.keyCommitment,
     salt: set.salt, verifier: set.verifier, proof, configVersion, freezeNonce,
+    // The full set, so a caller can show every guardian and collect approvals
+    // from any of them rather than assuming a single signer.
+    set,
     alreadyFrozen: Number(frozenUntil) * 1000 > Date.now(),
     frozenUntil: Number(frozenUntil),
     // What the guardian's wallet signs. It commits to this account, this
@@ -557,6 +560,47 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
       })
     })
   };
+}
+
+// Check a guardian's signature before it is ever submitted. Recovering the
+// signer locally is what turns "someone pasted something" into "this specific
+// guardian approved this exact digest" — a wrong or forged signature is caught
+// here rather than by a reverted transaction someone paid for.
+export async function verifyGuardianSignature({ digest, signature, expectedAddress }) {
+  try {
+    const recovered = await recoverAddress({ hash: digest, signature });
+    return {
+      valid: getAddress(recovered) === getAddress(expectedAddress),
+      recovered: getAddress(recovered)
+    };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+// Assemble collected approvals into the array the account verifies.
+//
+// The contract accepts any `threshold` distinct guardians — which ones is
+// irrelevant — but requires them ordered by strictly increasing leaf. That is an
+// encoding rule, not a decision anyone should have to make, so the order is
+// imposed here and the caller collects signatures in whatever order they arrive.
+export function assembleGuardianApprovals({ set, signatures, threshold }) {
+  const collected = set.leaves
+    .map(leaf => ({ leaf, signature: signatures[getAddress(leaf.address)] }))
+    .filter(entry => typeof entry.signature === "string" && entry.signature.length > 2);
+
+  if (collected.length < threshold) {
+    return { ready: false, have: collected.length, need: threshold, approvals: [] };
+  }
+  // Already ordered: buildGuardianSet sorts its leaves ascending.
+  const approvals = collected.slice(0, threshold).map(entry => ({
+    verifier: set.verifier,
+    keyCommitment: entry.leaf.keyCommitment,
+    salt: set.salt,
+    signature: entry.signature,
+    proof: proofForLeaf(set.layers, entry.leaf.leaf)
+  }));
+  return { ready: true, have: collected.length, need: threshold, approvals };
 }
 
 // Read the account's live safety posture straight from the chain: whether it is

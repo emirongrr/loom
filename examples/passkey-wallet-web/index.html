@@ -214,12 +214,28 @@
         <div class="row"><span class="k">Its state</span><span class="v muted" id="dutyState">—</span></div>
         <div class="row"><span class="k">Your role</span><span class="v muted" id="dutyRole">—</span></div>
         <p class="hint">
-          Freezing takes you alone and stops spending for two days. Recovering
-          the account needs the agreed number of guardians to approve, and is the
-          step that replaces the lost key — freeze first, recover after.
+          Freezing takes any one guardian and stops spending for two days.
+          Recovering the account needs the agreed number to approve — any of
+          them, in any order. Freeze first, recover after.
         </p>
         <div class="actions">
           <button id="prepareFreezeBtn" class="primary">Prepare emergency freeze</button>
+          <button id="startCollecting">Collect approvals for recovery</button>
+        </div>
+
+        <div id="approvalPanel" hidden>
+          <div class="row"><span class="k">Everyone must sign</span><span class="v" id="approvalDigest">—</span></div>
+          <div class="row"><span class="k">Progress</span><span class="v muted" id="approvalProgress">—</span></div>
+          <div id="approvalRows"></div>
+          <p class="hint">
+            Each guardian signs the same digest with their own wallet and sends
+            you the signature. Every one is checked here before it counts: the
+            signer is recovered from the signature and matched against that
+            guardian, so a wrong or forged one is refused rather than wasting a
+            transaction. Order does not matter — the ordering the account
+            requires is applied when the approvals are assembled.
+          </p>
+          <pre id="approvalOut">paste each signature as it arrives</pre>
         </div>
       </div>
       <pre id="guardianViewOut">paste a record to begin</pre>
@@ -1717,7 +1733,9 @@
         ? `already frozen until unix ${duty.frozenUntil}`
         : "operating normally";
       $("dutyState").className = "v";
-      $("dutyRole").textContent = `you can freeze this account on your own · ${record.guardians.length} guardian(s), ${record.threshold} needed to recover`;
+      duty.threshold = record.threshold ?? 1;
+      $("approvalPanel").hidden = true;
+      $("dutyRole").textContent = `you can freeze this account on your own · ${record.guardians.length} guardian(s), any ${record.threshold} of them can recover it`;
       $("dutyRole").className = "v";
       $("guardianViewOut").textContent = JSON.stringify({
         account: duty.account,
@@ -1732,6 +1750,79 @@
       $("guardianViewOut").textContent = `${error.message}`;
     }
   };
+
+  // Approvals collected so far, keyed by guardian address. Which guardians sign
+  // is irrelevant to the account — only how many — so this tracks everyone and
+  // counts progress toward the threshold.
+  let approvals = {};
+
+  $("startCollecting").onclick = () => {
+    if (!duty) return;
+    approvals = {};
+    $("approvalPanel").hidden = false;
+    $("approvalDigest").textContent = short(duty.digest);
+    renderApprovalRows();
+  };
+
+  function renderApprovalRows() {
+    const host = $("approvalRows");
+    host.innerHTML = "";
+    for (const leaf of duty.set.leaves) {
+      const address = leaf.address;
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.flexWrap = "wrap";
+      row.innerHTML = `<span class="k">${shorten(address)}</span>
+        <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
+          <input class="sig field" placeholder="paste this guardian's signature" spellcheck="false">
+          <button class="sm check">Check</button>
+        </span>
+        <div class="hint note2" hidden style="width:100%;text-align:right"></div>`;
+      const note = row.querySelector(".note2");
+      row.querySelector(".check").onclick = async () => {
+        const runtime = walletRuntime();
+        if (!runtime) return;
+        const signature = row.querySelector(".sig").value.trim();
+        const result = await runtime.verifyGuardianSignature({
+          digest: duty.digest, signature, expectedAddress: address
+        });
+        note.hidden = false;
+        if (result.valid) {
+          approvals[address] = signature;
+          note.textContent = "verified — this guardian approved this exact digest";
+          note.style.color = "var(--good)";
+        } else {
+          delete approvals[address];
+          note.textContent = result.recovered
+            ? `refused — that signature is from ${shorten(result.recovered)}, not this guardian`
+            : `refused — ${result.error ?? "not a valid signature"}`;
+          note.style.color = "var(--bad)";
+        }
+        updateApprovalProgress();
+      };
+      host.append(row);
+    }
+    updateApprovalProgress();
+  }
+
+  function updateApprovalProgress() {
+    const runtime = walletModule;
+    if (!runtime || !duty) return;
+    const threshold = Number(duty.threshold ?? 1);
+    const assembled = runtime.assembleGuardianApprovals({ set: duty.set, signatures: approvals, threshold });
+    $("approvalProgress").textContent = assembled.ready
+      ? `${assembled.have} of ${duty.set.leaves.length} signed — enough to proceed`
+      : `${assembled.have} of ${duty.set.leaves.length} signed — ${assembled.need - assembled.have} more needed`;
+    $("approvalProgress").className = assembled.ready ? "v" : "v muted";
+    if (assembled.ready) {
+      $("approvalOut").textContent = JSON.stringify({
+        threshold,
+        usingApprovals: assembled.approvals.length,
+        orderedBy: "leaf, ascending — the order the account requires, applied for you",
+        approvals: assembled.approvals
+      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+    }
+  }
 
   $("prepareFreezeBtn").onclick = async () => {
     if (!duty) return;
