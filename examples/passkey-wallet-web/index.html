@@ -454,7 +454,20 @@
         of them can no longer be identified, the others cannot prove membership
         either, even when enough of them are willing.
       </p>
-      <div class="actions"><button id="exportGuardians">Download backup</button></div>
+      <div class="actions">
+        <button id="exportGuardians">Download backup</button>
+        <button id="scheduleGuardians" class="primary">Apply to my account</button>
+      </div>
+      <div class="row" id="pendingRow" hidden><span class="k">Pending change</span>
+        <span class="v muted" id="pendingState">—</span></div>
+      <div class="actions" id="applyRow" hidden>
+        <button id="applyGuardians" class="primary">Complete the change</button>
+      </div>
+      <p class="hint">
+        Changing who can recover an account takes three days on purpose. If
+        someone steals your passkey they cannot quietly replace your guardians
+        and empty the account — you have three days to notice and cancel.
+      </p>
     </div>
     <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
   </div>
@@ -1326,6 +1339,104 @@
     }
   }
 
+  // Send a call from the account itself, signed by the passkey and carried by
+  // whichever route the wallet is set to.
+  async function sendAccountCall(call, label) {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet || !deployment) throw new Error("no connected account");
+    const route = document.querySelector('input[name="route"]:checked')?.value ?? "relay";
+    if (route === "bundler") {
+      return runtime.sendViaBundler({
+        credentials, wallet, deployment, calls: [call],
+        rpcUrl: $("publicRpc").value.trim(), bundlerUrl: $("bundlerUrl").value.trim()
+      });
+    }
+    const status = await refreshSend();
+    if (!status) throw new Error("relay unreachable");
+    const { userOpHash, packed } = await runtime.prepareOperation({
+      credentials, wallet, deployment, calls: [call], nonce: status.nonce,
+      gas: { maxFeePerGas: BigInt(status.maxFeePerGas), maxPriorityFeePerGas: BigInt(status.maxPriorityFeePerGas) }
+    });
+    const response = await fetch(`${sponsorBase()}/submit`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error ?? `${label} failed (${response.status})`);
+    return { userOpHash, ...body };
+  }
+
+  async function refreshPendingGuardianChange() {
+    const runtime = walletModule;
+    if (!runtime || !wallet || !guardianSet) return null;
+    try {
+      const pending = await runtime.readGuardianChange({
+        rpcUrl: $("publicRpc").value.trim(), account: wallet.account,
+        guardianRoot: guardianSet.guardianRoot, guardianThreshold: guardianSet.threshold
+      });
+      $("pendingRow").hidden = !pending.scheduled;
+      $("applyRow").hidden = !pending.ready;
+      if (pending.scheduled) {
+        const hours = Math.ceil(pending.secondsRemaining / 3600);
+        $("pendingState").textContent = pending.ready
+          ? "ready — complete the change to make it live"
+          : `waiting ${hours} more hour${hours === 1 ? "" : "s"} before it can be completed`;
+        $("pendingState").className = "v";
+      }
+      return pending;
+    } catch { return null; }
+  }
+
+  $("scheduleGuardians").onclick = async () => {
+    if (!guardianSet) return;
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    $("scheduleGuardians").disabled = true;
+    try {
+      const { schedule } = runtime.guardianChangeCalls({
+        account: wallet.account,
+        guardianRoot: guardianSet.guardianRoot,
+        guardianThreshold: guardianSet.threshold
+      });
+      $("guardianOut").textContent = "touch the sensor to authorize the change…";
+      const result = await sendAccountCall(schedule, "scheduling");
+      $("guardianOut").textContent = JSON.stringify({
+        ...result,
+        scheduled: "the change is now on the clock and completes in three days",
+        meanwhile: "recovery is unchanged until then, and you can cancel if you did not expect this"
+      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      await refreshPendingGuardianChange();
+      await refreshRecovery();
+    } catch (error) {
+      $("guardianOut").textContent = `could not schedule the change: ${error.message}`;
+    } finally {
+      $("scheduleGuardians").disabled = false;
+    }
+  };
+
+  $("applyGuardians").onclick = async () => {
+    if (!guardianSet) return;
+    const runtime = walletRuntime();
+    if (!runtime) return;
+    $("applyGuardians").disabled = true;
+    try {
+      const { apply } = runtime.guardianChangeCalls({
+        account: wallet.account,
+        guardianRoot: guardianSet.guardianRoot,
+        guardianThreshold: guardianSet.threshold
+      });
+      const result = await sendAccountCall(apply, "applying");
+      $("guardianOut").textContent = JSON.stringify({ ...result, applied: "these people can now recover the account" },
+        (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      await refreshPendingGuardianChange();
+      await refreshRecovery();
+    } catch (error) {
+      $("guardianOut").textContent = `could not complete the change: ${error.message}`;
+    } finally {
+      $("applyGuardians").disabled = false;
+    }
+  };
+
   $("exportGuardians").onclick = () => {
     if (!guardianSet) return;
     const blob = new Blob([JSON.stringify(guardianSet, null, 2)], { type: "application/json" });
@@ -1415,6 +1526,7 @@
       guardianSet = record;
       localStorage.setItem(guardianKey(), JSON.stringify(record));
       renderGuardianBackup();
+      await refreshPendingGuardianChange();
 
       $("guardianStatus").className = "pill good";
       $("guardianStatus").textContent = `${valid.length} verified`;

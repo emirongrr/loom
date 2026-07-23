@@ -365,6 +365,81 @@ export async function buildGuardianSet({ rpcUrl, verifier, addresses, salt }) {
   return { root: layer[0], salt: leafSalt, verifier, verifierCodeHash, leaves, layers };
 }
 
+// Changing who guards an account is deliberately slow: `setGuardianConfig` can
+// only run from a scheduled self-call, and scheduling one that targets the
+// account itself carries a three-day minimum. A stolen passkey therefore cannot
+// quietly swap the guardians out and then drain the account — the real owner has
+// three days to see it and cancel.
+export const GUARDIAN_CHANGE_DELAY_SECONDS = 3 * 24 * 60 * 60;
+
+const ACCOUNT_ADMIN_ABI = [
+  { type: "function", name: "setGuardianConfig", stateMutability: "nonpayable",
+    inputs: [{ type: "bytes32" }, { type: "uint8" }], outputs: [] },
+  { type: "function", name: "scheduleCall", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "uint48" }],
+    outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "executeScheduled", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "uint256" }, { type: "bytes" }], outputs: [] },
+  { type: "function", name: "cancelScheduled", stateMutability: "nonpayable",
+    inputs: [{ type: "bytes32" }], outputs: [] },
+  { type: "function", name: "scheduledOperations", stateMutability: "view",
+    inputs: [{ type: "bytes32" }], outputs: [{ type: "uint48" }] },
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] }
+];
+
+// The three calls a guardian change moves through, plus the identity the chain
+// files it under. The operation id includes configVersion, so any other config
+// change in the meantime invalidates a pending one rather than letting it apply
+// against a state it was not reviewed against.
+export function guardianChangeCalls({ account, guardianRoot, guardianThreshold, delaySeconds = GUARDIAN_CHANGE_DELAY_SECONDS }) {
+  const inner = encodeFunctionData({
+    abi: ACCOUNT_ADMIN_ABI, functionName: "setGuardianConfig",
+    args: [guardianRoot, guardianThreshold]
+  });
+  return {
+    inner,
+    schedule: {
+      target: account, value: 0n,
+      data: encodeFunctionData({
+        abi: ACCOUNT_ADMIN_ABI, functionName: "scheduleCall",
+        args: [account, 0n, inner, delaySeconds]
+      })
+    },
+    apply: {
+      target: account, value: 0n,
+      data: encodeFunctionData({
+        abi: ACCOUNT_ADMIN_ABI, functionName: "executeScheduled",
+        args: [account, 0n, inner]
+      })
+    }
+  };
+}
+
+// Is such a change already pending, and when does it become applicable?
+export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardianThreshold }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const { inner } = guardianChangeCalls({ account, guardianRoot, guardianThreshold });
+  const configVersion = await client.readContract({
+    address: account, abi: ACCOUNT_ADMIN_ABI, functionName: "configVersion"
+  });
+  const operationId = keccak256(encodeAbiParameters(
+    [{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "uint64" }],
+    [account, 0n, inner, configVersion]
+  ));
+  const readyAt = await client.readContract({
+    address: account, abi: ACCOUNT_ADMIN_ABI, functionName: "scheduledOperations", args: [operationId]
+  });
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    operationId,
+    configVersion,
+    scheduled: readyAt !== 0,
+    readyAt: Number(readyAt),
+    ready: readyAt !== 0 && now >= Number(readyAt),
+    secondsRemaining: readyAt === 0 ? null : Math.max(0, Number(readyAt) - now)
+  };
+}
+
 // Read the account's live safety posture straight from the chain: whether it is
 // guardian-protected, frozen, or has a migration pending, and at what config
 // version. This is read-only and needs no signature — it is the truth the
