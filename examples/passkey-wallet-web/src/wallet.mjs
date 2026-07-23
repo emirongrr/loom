@@ -332,7 +332,14 @@ export async function buildGuardianSet({ rpcUrl, verifier, addresses, salt }) {
   const code = await client.getCode({ address: verifier });
   if (!code || code === "0x") throw new Error(`no guardian verifier deployed at ${verifier}`);
   const verifierCodeHash = keccak256(code);
-  const leafSalt = salt ?? keccak256(stringToHex("passkey-wallet-web.guardian-salt"));
+  // The salt is what stops the root from being searchable. A guardian's
+  // commitment is the hash of their address, so with a predictable salt anyone
+  // could hash candidate addresses, rebuild the leaf and test it against the
+  // root until they found who guards this account. A random salt per set makes
+  // that impossible — which is also why it has to be kept: the same guardians
+  // with a different salt produce a different root.
+  const leafSalt = salt ?? `0x${[...crypto.getRandomValues(new Uint8Array(32))]
+    .map(b => b.toString(16).padStart(2, "0")).join("")}`;
 
   const leaves = addresses.map(address => {
     const keyCommitment = keccak256(encodeAbiParameters([{ type: "address" }], [address]));
@@ -411,7 +418,14 @@ export function guardianChangeCalls({ account, guardianRoot, guardianThreshold, 
         abi: ACCOUNT_ADMIN_ABI, functionName: "executeScheduled",
         args: [account, 0n, inner]
       })
-    }
+    },
+    // Cancelling is what the delay is for. It is `onlySelf`, so it takes the
+    // passkey — the owner can call off a change they did not ask for, while
+    // whoever scheduled it cannot quietly reinstate it without waiting again.
+    cancel: operationId => ({
+      target: account, value: 0n,
+      data: encodeFunctionData({ abi: ACCOUNT_ADMIN_ABI, functionName: "cancelScheduled", args: [operationId] })
+    })
   };
 }
 

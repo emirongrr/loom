@@ -495,6 +495,9 @@
       <div class="actions" id="applyRow" hidden>
         <button id="applyGuardians" class="primary">Complete guardian change</button>
       </div>
+      <div class="actions" id="cancelRow" hidden>
+        <button id="cancelGuardians">Cancel pending change</button>
+      </div>
       <p class="hint">
         Changing who can recover an account takes three days on purpose. If
         someone steals your passkey they cannot quietly replace your guardians
@@ -1501,6 +1504,7 @@
   // The guardian set is kept per account: the chain holds only the root, so this
   // is the record that makes a future proof possible.
   let guardianSet = null;
+  let pendingOperationId = null;
   const guardianKey = () => `loom.passkey-wallet.guardians.${(wallet?.account ?? "unbound").toLowerCase()}`;
 
   function renderGuardianBackup() {
@@ -1551,6 +1555,8 @@
       });
       $("pendingRow").hidden = !pending.scheduled;
       $("applyRow").hidden = !pending.ready;
+      $("cancelRow").hidden = !pending.scheduled;
+      pendingOperationId = pending.scheduled ? pending.operationId : null;
       if (pending.scheduled) {
         const hours = Math.ceil(pending.secondsRemaining / 3600);
         $("pendingState").textContent = pending.ready
@@ -1609,6 +1615,31 @@
       $("guardianOut").textContent = `could not complete the change: ${error.message}`;
     } finally {
       $("applyGuardians").disabled = false;
+    }
+  };
+
+  $("cancelGuardians").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !guardianSet || !pendingOperationId) return;
+    $("cancelGuardians").disabled = true;
+    try {
+      const { cancel } = runtime.guardianChangeCalls({
+        account: wallet.account,
+        guardianRoot: guardianSet.guardianRoot,
+        guardianThreshold: guardianSet.threshold
+      });
+      $("guardianOut").textContent = "touch the sensor to cancel the pending change…";
+      const result = await sendAccountCall(cancel(pendingOperationId), "cancelling");
+      $("guardianOut").textContent = JSON.stringify({
+        ...result,
+        cancelled: "the pending change is gone and your current guardians are untouched"
+      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      await refreshPendingGuardianChange();
+      await refreshRecovery();
+    } catch (error) {
+      $("guardianOut").textContent = `could not cancel the change: ${error.message}`;
+    } finally {
+      $("cancelGuardians").disabled = false;
     }
   };
 
