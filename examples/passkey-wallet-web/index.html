@@ -309,41 +309,6 @@
     <pre id="safetyOut">read the account's on-chain safety state</pre>
   </div>
 
-  <!-- Guardians. Every address is checked before it can be committed to: a
-       mistyped or contract address here is authority handed to someone who can
-       never use it, and the account would still report itself protected. -->
-  <div class="card">
-    <h2>Guardians <span id="guardianStatus" class="pill warn">none</span></h2>
-    <p class="hint" style="margin-top:0">
-      Guardians can freeze this account in an emergency and, together, recover it
-      if the passkey is lost. Each must be a wallet whose key someone actually
-      holds — a contract can never sign an approval, so it is rejected here.
-    </p>
-    <div id="guardianRows"></div>
-    <div class="row"><span class="k">Threshold</span><span class="v">
-      <input id="guardianThreshold" class="num" type="number" min="1" value="1" style="max-width:5rem"></span></div>
-    <div class="row"><span class="k">Verifier</span><span class="v">
-      <input id="guardianVerifier" class="field" spellcheck="false"
-        value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
-    <div class="actions">
-      <button id="addGuardian">Add a guardian</button>
-      <button id="checkGuardians" class="primary">Validate &amp; build root</button>
-    </div>
-    <div id="guardianBackup" hidden>
-      <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
-      <p class="hint">
-        The chain stores only the root, never who your guardians are, which keeps
-        them private. Your guardians know who they are and can act without you,
-        so this is a convenience rather than the mechanism — with a single
-        guardian nothing here is needed at all. It matters once there are
-        several: a proof is built from <em>every</em> member's address, so if one
-        of them can no longer be identified, the others cannot prove membership
-        either, even when enough of them are willing.
-      </p>
-      <div class="actions"><button id="exportGuardians">Download backup</button></div>
-    </div>
-    <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
-  </div>
   </div><!-- /viewDeveloper -->
 
   <!-- What a customer of the institution actually sees: one button. The passkey
@@ -443,6 +408,56 @@
       </p>
       <pre id="batchOut">add a transfer to begin</pre>
     </div>
+  <!-- Guardians. Every address is checked before it can be committed to: a
+       mistyped or contract address here is authority handed to someone who can
+       never use it, and the account would still report itself protected. -->
+  <div class="card">
+    <h2>Recovery <span id="recoveryStatePill" class="pill warn">checking</span></h2>
+    <p class="hint" style="margin-top:0" id="recoveryLead">
+      If you lose this device, people you trust can bring the account back. They
+      can also freeze it immediately if something looks wrong. Nothing here is
+      written to the chain except a fingerprint, so who you choose stays private.
+    </p>
+    <div class="row"><span class="k">Status</span><span class="v muted" id="recoveryState">—</span></div>
+    <div class="row"><span class="k">If the passkey is lost</span><span class="v muted" id="recoveryOutcome">—</span></div>
+    <div class="actions">
+      <button id="openGuardianEditor" class="primary">Choose who can recover it</button>
+      <button id="refreshRecovery" class="ghost">Refresh</button>
+    </div>
+  </div>
+
+  <div class="card" id="guardianEditor" hidden>
+    <h2>People you trust <span id="guardianStatus" class="pill warn">none</span></h2>
+    <p class="hint" style="margin-top:0">
+      Add the wallets of people who could recover this account for you. Each has
+      to be a wallet someone actually holds the key to — an exchange address or a
+      contract can never approve a recovery, so those are refused here.
+    </p>
+    <div id="guardianRows"></div>
+    <div class="row"><span class="k">How many must agree</span><span class="v">
+      <input id="guardianThreshold" class="num" type="number" min="1" value="1" style="max-width:5rem"></span></div>
+    <div class="row"><span class="k">Verifier</span><span class="v">
+      <input id="guardianVerifier" class="field" spellcheck="false"
+        value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
+    <div class="actions">
+      <button id="addGuardian">Add another</button>
+      <button id="checkGuardians" class="primary">Check these wallets</button>
+    </div>
+    <div id="guardianBackup" hidden>
+      <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
+      <p class="hint">
+        The chain stores only the root, never who your guardians are, which keeps
+        them private. Your guardians know who they are and can act without you,
+        so this is a convenience rather than the mechanism — with a single
+        guardian nothing here is needed at all. It matters once there are
+        several: a proof is built from <em>every</em> member's address, so if one
+        of them can no longer be identified, the others cannot prove membership
+        either, even when enough of them are willing.
+      </p>
+      <div class="actions"><button id="exportGuardians">Download backup</button></div>
+    </div>
+    <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
+  </div>
     </div><!-- /opsSection -->
 
   </div>
@@ -587,16 +602,17 @@
         : n < 0.00001 ? "<0.00001"
         : n.toLocaleString(undefined, { maximumFractionDigits: 5 });
     }
-    // Prepaid gas held for this account at the EntryPoint. It is the account's
-    // own ETH and pays for its operations; it only means anything once the
-    // account exists, so it stays hidden until then.
+    // Prepaid gas at the EntryPoint is an account-abstraction detail, not
+    // something to put in front of someone every time they open the wallet. It
+    // surfaces only when it is low enough to stop the next operation.
     if (state.deposit !== undefined) {
       const n = Number(state.deposit);
-      const meaningful = state.deployed !== false && n > 0;
-      $("heroDeposit").hidden = !meaningful;
-      if (meaningful) {
-        $("heroDeposit").textContent =
-          `${n.toLocaleString(undefined, { maximumFractionDigits: 5 })} ETH prepaid for gas · covers this account's operations`;
+      const low = state.deployed !== false && n < 0.0005;
+      $("heroDeposit").hidden = !low;
+      if (low) {
+        $("heroDeposit").textContent = n === 0
+          ? "no gas left for this account — top it up before sending"
+          : `gas running low (${n.toLocaleString(undefined, { maximumFractionDigits: 5 })} ETH left)`;
       }
     }
   }
@@ -1245,6 +1261,55 @@
 
   // --- guardians ------------------------------------------------------------
 
+  $("openGuardianEditor").onclick = () => {
+    $("guardianEditor").hidden = !$("guardianEditor").hidden;
+  };
+  $("refreshRecovery").onclick = () => refreshRecovery();
+
+  // Say what recovery means for this account in the terms someone actually
+  // cares about: can my people bring it back, and what happens if I lose the
+  // passkey. The placeholder root is called out because the account reports
+  // itself protected while nothing can be proven against it.
+  async function refreshRecovery() {
+    const runtime = walletModule;
+    if (!runtime || !wallet || !deployment) return;
+    $("recoveryStatePill").className = "pill warn";
+    $("recoveryStatePill").textContent = "checking";
+    try {
+      const s = await runtime.readSafety({ wallet, deployment, rpcUrl: $("publicRpc").value.trim() });
+      const placeholder = s.config.guardianRoot.toLowerCase() === LEGACY_GUARDIAN_ROOT.toLowerCase();
+      const none = s.config.guardianRoot === `0x${"00".repeat(32)}`;
+      const frozen = s.freeze?.active;
+
+      if (frozen) {
+        $("recoveryStatePill").className = "pill bad";
+        $("recoveryStatePill").textContent = "frozen";
+        $("recoveryState").textContent = "a guardian has frozen this account";
+      } else if (placeholder) {
+        $("recoveryStatePill").className = "pill bad";
+        $("recoveryStatePill").textContent = "not protected";
+        $("recoveryState").textContent = "this account was set up with a stand-in fingerprint, so no one can actually recover or freeze it";
+      } else if (none) {
+        $("recoveryStatePill").className = "pill warn";
+        $("recoveryStatePill").textContent = "nobody set";
+        $("recoveryState").textContent = "no one can recover this account yet";
+      } else {
+        $("recoveryStatePill").className = "pill good";
+        $("recoveryStatePill").textContent = "protected";
+        $("recoveryState").textContent = `${s.config.guardianThreshold} of your chosen people must agree to recover it`;
+      }
+      $("recoveryState").className = "v";
+      $("recoveryOutcome").textContent = (placeholder || none)
+        ? "the account would be lost — nobody could bring it back"
+        : "the people you chose can restore access without you";
+      $("recoveryOutcome").className = "v";
+    } catch (error) {
+      $("recoveryStatePill").className = "pill bad";
+      $("recoveryStatePill").textContent = "unknown";
+      $("recoveryState").textContent = `could not be read (${error.message})`;
+    }
+  }
+
   // The guardian set is kept per account: the chain holds only the root, so this
   // is the record that makes a future proof possible.
   let guardianSet = null;
@@ -1771,6 +1836,7 @@
       renderCustomer();
       refreshSend().then(scanAssets);
       refreshChainStatus(wallet.account);
+      refreshRecovery();
     } catch (error) {
       showOnboard(`could not restore the account: ${error.message}`);
     }
