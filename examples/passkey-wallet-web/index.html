@@ -536,7 +536,9 @@
       <p class="hint">
         Changing who can recover an account takes three days on purpose. If
         someone steals your passkey they cannot quietly replace your guardians
-        and empty the account — you have three days to notice and cancel.
+        and empty the account — you have three days to notice and cancel. The
+        account enforces the wait itself: completing it early is refused on
+        chain, not just hidden here.
       </p>
     </div>
     <pre id="guardianOut">add the addresses you would trust to recover this account</pre>
@@ -1600,7 +1602,7 @@
         const hours = Math.ceil(pending.secondsRemaining / 3600);
         $("pendingState").textContent = pending.ready
           ? "ready — complete the change to make it live"
-          : `waiting ${hours} more hour${hours === 1 ? "" : "s"} before it can be completed`;
+          : `${hours} more hour${hours === 1 ? "" : "s"} before the account will accept it`;
         $("pendingState").className = "v";
       }
       return pending;
@@ -1640,12 +1642,21 @@
     if (!runtime) return;
     $("applyGuardians").disabled = true;
     try {
-      const { apply } = runtime.guardianChangeCalls({
+      const { applyDirect } = runtime.guardianChangeCalls({
         account: wallet.account,
         guardianRoot: guardianSet.guardianRoot,
         guardianThreshold: guardianSet.threshold
       });
-      const result = await sendAccountCall(apply, "applying");
+      // Sent as a plain transaction, not a user operation: the account holds its
+      // execution lock while running a scheduled call, so wrapping this in the
+      // account's own execute would revert with Reentrancy. No signature is
+      // needed either — the account already authorised it when it was scheduled.
+      const response = await fetch(`${sponsorBase()}/execute-scheduled`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: applyDirect.to, data: applyDirect.data })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? `completing failed (${response.status})`);
       $("guardianOut").textContent = JSON.stringify({ ...result, applied: "these people can now recover the account" },
         (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
       await refreshPendingGuardianChange();

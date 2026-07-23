@@ -186,6 +186,43 @@ const server = createServer((req, res) => {
     })();
   }
 
+  // Complete a change the account already scheduled.
+  //
+  // This is a plain transaction rather than a user operation: executeScheduled
+  // takes the account's execution lock, so routing it through the account's own
+  // execute would revert with Reentrancy. It carries no authority of its own —
+  // the account verifies the operation was scheduled and is due — so relaying it
+  // cannot cause anything the owner did not already schedule and wait out.
+  if (req.method === "POST" && req.url.startsWith("/execute-scheduled")) {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk;
+      if (body.length > 20_000) req.destroy();
+    });
+    return void req.on("end", () => {
+      serialize(async () => {
+        try {
+          const { to, data } = JSON.parse(body);
+          if (!/^0x[0-9a-fA-F]{40}$/.test(to ?? "")) throw new Error("account address required");
+          if (!/^0x([0-9a-fA-F]{2})*$/.test(data ?? "")) throw new Error("calldata required");
+          console.log(`==> execute-scheduled for ${to}`);
+          // Refuse before spending: the account rejects an operation that is not
+          // scheduled or not yet due, and that is not worth a transaction fee.
+          await publicClient.call({ account: sponsor.address, to, data });
+          const hash = await wallet.sendTransaction({ to, data });
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          const result = { tx: hash, status: receipt.status, gasUsed: receipt.gasUsed.toString() };
+          console.log(`    ${JSON.stringify(result)}`);
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+        } catch (error) {
+          const detail = revertDetail(error);
+          console.log(`    refused: ${detail}`);
+          res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: detail }));
+        }
+      });
+    });
+  }
+
   // Relay an operation for an account that already exists. No deposit and no
   // creation: the account pays from its own EntryPoint deposit and this only
   // carries the operation to the chain.

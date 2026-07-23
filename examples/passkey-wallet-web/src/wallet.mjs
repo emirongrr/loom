@@ -412,8 +412,14 @@ export function guardianChangeCalls({ account, guardianRoot, guardianThreshold, 
         args: [account, 0n, inner, delaySeconds]
       })
     },
-    apply: {
-      target: account, value: 0n,
+    // Completing a scheduled change is NOT a user operation. `executeScheduled`
+    // holds the account's execution lock, and routing it through the account's
+    // own `execute` would take that lock twice and revert with Reentrancy —
+    // whatever the clock says. It also needs no authority: the account checks
+    // that the operation was scheduled and is due, so anyone may send it as a
+    // plain transaction.
+    applyDirect: {
+      to: account, value: 0n,
       data: encodeFunctionData({
         abi: ACCOUNT_ADMIN_ABI, functionName: "executeScheduled",
         args: [account, 0n, inner]
@@ -443,7 +449,11 @@ export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardi
   const readyAt = await client.readContract({
     address: account, abi: ACCOUNT_ADMIN_ABI, functionName: "scheduledOperations", args: [operationId]
   });
-  const now = Math.floor(Date.now() / 1000);
+  // Readiness is decided by the chain's clock, not the device's. The contract
+  // compares against block.timestamp, so a device running fast would otherwise
+  // offer to complete a change that reverts with OperationNotReady.
+  const latest = await client.getBlock();
+  const now = Number(latest.timestamp);
   return {
     operationId,
     configVersion,
