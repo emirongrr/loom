@@ -454,17 +454,26 @@
     <p class="hint" style="margin-top:0">
       Add the wallets of people who could recover this account for you. Each has
       to be a wallet someone actually holds the key to — an exchange address or a
-      contract can never approve a recovery, so those are refused here.
+      contract can never approve a recovery, so those are refused here. Checking
+      them changes nothing on chain: it verifies each address, works out the
+      fingerprint the account would commit to, and saves the list on this device.
+      Applying it is the separate, three-day step below.
     </p>
     <div id="guardianRows"></div>
-    <div class="row"><span class="k">How many must agree</span><span class="v">
-      <input id="guardianThreshold" class="num" type="number" min="1" value="1" style="max-width:5rem"></span></div>
+    <div class="row"><span class="k">Needed to recover</span><span class="v">
+      <input id="guardianThreshold" class="num" type="number" min="1" max="32" value="1" style="max-width:5rem">
+      <span class="hint" style="margin:0 0 0 .5rem">of the guardians above</span></span></div>
+    <p class="hint" style="margin-top:0">
+      This is the account's own threshold, enforced on chain. It applies to
+      recovery only — freezing takes a single guardian, because waiting to
+      gather several is the wrong behaviour in an emergency.
+    </p>
     <div class="row"><span class="k">Verifier</span><span class="v">
       <input id="guardianVerifier" class="field" spellcheck="false"
         value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
     <div class="actions">
       <button id="addGuardian">Add guardian</button>
-      <button id="checkGuardians" class="primary">Verify guardians</button>
+      <button id="checkGuardians" class="primary">Check &amp; save guardians</button>
     </div>
     <div id="guardianBackup" hidden>
       <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
@@ -1354,9 +1363,14 @@
         ? `spending is halted until unix ${s.freeze.frozenUntil}`
         : "spending is allowed";
       $("freezeState").className = "v";
+      // Freezing takes one guardian, not the threshold — so what matters here is
+      // whether any guardian exists at all, and whether we can name them.
+      const check = (placeholder || none) ? { known: false } : await verifySavedGuardians(s.config.guardianRoot);
       $("freezeWho").textContent = (placeholder || none)
         ? "nobody — this account has no guardians who can act"
-        : `any one of your ${s.config.guardianThreshold === 1 ? "" : ""}guardians, on their own`;
+        : check.known && check.matches
+          ? `any one of your ${check.count} guardian${check.count === 1 ? "" : "s"}, on their own`
+          : "any one of the account's guardians — this device has no copy of the list to name them";
       $("freezeWho").className = "v";
       $("freezeHint").textContent = (placeholder || none)
         ? "Set up recovery above first. Freezing is something a guardian does from their own wallet — it is deliberately not a button here, because if your device is the one that was stolen, this page is in the wrong hands."
@@ -1410,6 +1424,28 @@
   };
   $("refreshRecovery").onclick = () => refreshRecovery();
 
+  // A root is a hash, so a non-zero one only means the account claims guardians
+  // — it cannot say who they are. The one thing that turns that claim into a
+  // check is a saved list: rebuild the root from it and see whether the chain
+  // agrees. Anything else is an assumption, and is labelled as one.
+  async function verifySavedGuardians(onChainRoot) {
+    const runtime = walletModule;
+    if (!runtime || !guardianSet?.guardians?.length) return { known: false };
+    try {
+      const rebuilt = await runtime.buildGuardianSet({
+        rpcUrl: $("publicRpc").value.trim(),
+        verifier: guardianSet.verifier,
+        addresses: guardianSet.guardians,
+        salt: guardianSet.salt
+      });
+      return {
+        known: true,
+        matches: rebuilt.root.toLowerCase() === onChainRoot.toLowerCase(),
+        count: guardianSet.guardians.length
+      };
+    } catch { return { known: false }; }
+  }
+
   // Say what recovery means for this account in the terms someone actually
   // cares about: can my people bring it back, and what happens if I lose the
   // passkey. The placeholder root is called out because the account reports
@@ -1438,9 +1474,17 @@
         $("recoveryStatePill").textContent = "nobody set";
         $("recoveryState").textContent = "no one can recover this account yet";
       } else {
-        $("recoveryStatePill").className = "pill good";
-        $("recoveryStatePill").textContent = "protected";
-        $("recoveryState").textContent = `${s.config.guardianThreshold} of your chosen people must agree to recover it`;
+        // Non-zero only means the account claims guardians. If a saved list
+        // rebuilds to the same root, that claim is checked rather than assumed.
+        const check = await verifySavedGuardians(s.config.guardianRoot);
+        const confirmed = check.known && check.matches;
+        $("recoveryStatePill").className = confirmed ? "pill good" : "pill warn";
+        $("recoveryStatePill").textContent = confirmed ? "protected" : "unverified";
+        $("recoveryState").textContent = confirmed
+          ? `${s.config.guardianThreshold} of your ${check.count} guardian${check.count === 1 ? "" : "s"} must agree to recover it`
+          : check.known
+            ? "the guardians saved on this device do not match what the account committed to — the saved list is out of date"
+            : `the account commits to ${s.config.guardianThreshold} of some guardian set, but this device has no copy of it to check against`;
       }
       $("recoveryState").className = "v";
       $("recoveryOutcome").textContent = (placeholder || none)
@@ -1631,10 +1675,17 @@
         return;
       }
 
+      // The contract stores the threshold as a uint8 capped at 32, and a
+      // threshold above the number of guardians would be unsatisfiable — an
+      // account nobody could ever recover.
       const threshold = Number($("guardianThreshold").value);
-      if (!Number.isInteger(threshold) || threshold < 1 || threshold > valid.length) {
-        throw new Error(`threshold must be between 1 and ${valid.length}`);
+      if (!Number.isInteger(threshold) || threshold < 1) {
+        throw new Error("at least one guardian must be required to recover");
       }
+      if (threshold > valid.length) {
+        throw new Error(`${threshold} guardians would be required but only ${valid.length} listed — recovery would be impossible`);
+      }
+      if (threshold > 32) throw new Error("the account allows at most 32 guardians to be required");
       const set = await runtime.buildGuardianSet({
         rpcUrl: $("publicRpc").value.trim(),
         verifier: $("guardianVerifier").value.trim(),
