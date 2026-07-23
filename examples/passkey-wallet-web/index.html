@@ -332,10 +332,13 @@
     <div id="guardianBackup" hidden>
       <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
       <p class="hint">
-        The chain stores only the root, never who your guardians are. That keeps
-        them private, and it means this list is the only way to rebuild the proof
-        a freeze or recovery needs — keep a copy somewhere you will still have if
-        this device is gone.
+        The chain stores only the root, never who your guardians are, which keeps
+        them private. Your guardians know who they are and can act without you,
+        so this is a convenience rather than the mechanism — with a single
+        guardian nothing here is needed at all. It matters once there are
+        several: a proof is built from <em>every</em> member's address, so if one
+        of them can no longer be identified, the others cannot prove membership
+        either, even when enough of them are willing.
       </p>
       <div class="actions"><button id="exportGuardians">Download backup</button></div>
     </div>
@@ -1353,7 +1356,10 @@
       $("guardianOut").textContent = JSON.stringify({
         ...record,
         onChain: "only guardianRoot and threshold — no guardian address is ever written to the chain",
-        keepThis: "a root is a hash and cannot be reversed. Without this record nobody can build the merkle proof a freeze or recovery needs, so guardians you cannot list are guardians who cannot act.",
+        whoActs: "your guardians act on their own: each knows their address, and the salt here is derived deterministically, so they do not depend on you being present",
+        whyKeepIt: valid.length === 1
+          ? "with one guardian the root is their leaf and the proof is empty, so this record is convenience only"
+          : "a proof is built from every member's leaf, not just the threshold — if one member can no longer be identified, the remaining guardians cannot prove membership either. This record is what keeps the full membership knowable.",
         applying: "committing this root to an existing account goes through setGuardianConfig, a scheduled self-call with a three-day minimum delay",
         limits: "this proves the addresses are wallets, not that anyone holds their keys — only a signature from each shows that"
       }, null, 2);
