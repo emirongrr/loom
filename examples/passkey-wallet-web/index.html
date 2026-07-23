@@ -327,7 +327,7 @@
       </p>
       <div id="accountList"></div>
       <div class="actions">
-        <button id="oneTap" class="primary" disabled>Create a wallet</button>
+        <button id="oneTap" class="primary" disabled>Create new wallet</button>
       </div>
       <div class="row"><span class="k">Sponsor backend</span><span class="v"><input id="sponsorUrl" class="field" value="http://localhost:8787/deploy"></span></div>
       <pre id="onboardOut">waiting for a deployment</pre>
@@ -429,7 +429,7 @@
     <div class="row"><span class="k">Status</span><span class="v muted" id="recoveryState">—</span></div>
     <div class="row"><span class="k">If the passkey is lost</span><span class="v muted" id="recoveryOutcome">—</span></div>
     <div class="actions">
-      <button id="openGuardianEditor" class="primary">Choose who can recover it</button>
+      <button id="openGuardianEditor" class="primary">Manage guardians</button>
       <button id="refreshRecovery" class="ghost">Refresh</button>
     </div>
   </div>
@@ -450,7 +450,7 @@
   </div>
 
   <div class="card" id="guardianEditor" hidden>
-    <h2>People you trust <span id="guardianStatus" class="pill warn">none</span></h2>
+    <h2>Guardians <span id="guardianStatus" class="pill warn">none</span></h2>
     <p class="hint" style="margin-top:0">
       Add the wallets of people who could recover this account for you. Each has
       to be a wallet someone actually holds the key to — an exchange address or a
@@ -463,8 +463,8 @@
       <input id="guardianVerifier" class="field" spellcheck="false"
         value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
     <div class="actions">
-      <button id="addGuardian">Add another</button>
-      <button id="checkGuardians" class="primary">Check these wallets</button>
+      <button id="addGuardian">Add guardian</button>
+      <button id="checkGuardians" class="primary">Verify guardians</button>
     </div>
     <div id="guardianBackup" hidden>
       <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
@@ -478,13 +478,13 @@
         either, even when enough of them are willing.
       </p>
       <div class="actions">
-        <button id="exportGuardians">Download backup</button>
-        <button id="scheduleGuardians" class="primary">Apply to my account</button>
+        <button id="exportGuardians">Export guardian list</button>
+        <button id="scheduleGuardians" class="primary">Schedule guardian change</button>
       </div>
       <div class="row" id="pendingRow" hidden><span class="k">Pending change</span>
         <span class="v muted" id="pendingState">—</span></div>
       <div class="actions" id="applyRow" hidden>
-        <button id="applyGuardians" class="primary">Complete the change</button>
+        <button id="applyGuardians" class="primary">Complete guardian change</button>
       </div>
       <p class="hint">
         Changing who can recover an account takes three days on purpose. If
@@ -516,7 +516,7 @@
           <div class="row"><span class="k">Expires in</span><span class="v">
             <input id="sessionHours" class="num" type="number" min="1" value="24" style="max-width:6rem"> hours</span></div>
           <div class="actions">
-            <button id="prepareSession" class="primary">Review permission</button>
+            <button id="prepareSession" class="primary">Review session</button>
           </div>
           <pre id="sessionOut">describe what the app may do</pre>
         </div>
@@ -1172,8 +1172,8 @@
       row.innerHTML = `<span class="k">${entry.label}</span>
         <span class="v" style="display:flex;gap:.5rem;align-items:center;justify-content:flex-end">
           <span>${shorten(address)}</span>
-          <button class="sm use">Sign in</button>
-          <button class="sm ghost drop" title="Remove from this device">Remove</button>
+          <button class="sm use">Open wallet</button>
+          <button class="sm ghost drop" title="Remove this account from this device">Forget account</button>
         </span>`;
       row.querySelector(".use").disabled = !deployment;
       row.querySelector(".use").onclick = () => connectAccount(entry);
@@ -1466,7 +1466,7 @@
     guardianSet = saved;
     $("guardianBackup").hidden = !saved;
     if (saved) {
-      $("guardianSaved").textContent = `${saved.guardians.length} guardian(s), threshold ${saved.threshold} · root ${short(saved.guardianRoot)}`;
+      $("guardianSaved").textContent = `${saved.guardians.length} guardian${saved.guardians.length === 1 ? "" : "s"}, ${saved.threshold} must agree`;
     }
   }
 
@@ -1585,7 +1585,7 @@
     row.innerHTML = `<span class="k">Guardian</span>
       <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
         <input class="gaddr field" placeholder="0x…" spellcheck="false" value="${value}">
-        <button class="sm ghost rm" title="Remove">✕</button>
+        <button class="sm ghost rm" title="Remove this guardian">Remove guardian</button>
       </span>
       <div class="hint gnote" hidden></div>`;
     row.style.flexWrap = "wrap";
@@ -1624,7 +1624,7 @@
       if (!ok) {
         const bad = results.filter(r => r.errors.length).length;
         $("guardianStatus").className = "pill bad";
-        $("guardianStatus").textContent = `${bad} rejected`;
+        $("guardianStatus").textContent = `${bad} guardian${bad === 1 ? "" : "s"} rejected`;
         $("guardianOut").textContent =
           `${bad} address${bad === 1 ? "" : "es"} cannot be a guardian:\n` +
           results.filter(r => r.errors.length).map(r => `  ${r.input || "(empty)"} — ${r.errors[0]}`).join("\n");
@@ -1660,7 +1660,7 @@
       await refreshPendingGuardianChange();
 
       $("guardianStatus").className = "pill good";
-      $("guardianStatus").textContent = `${valid.length} verified`;
+      $("guardianStatus").textContent = `${valid.length} guardian${valid.length === 1 ? "" : "s"} verified`;
       $("guardianOut").textContent = JSON.stringify({
         ...record,
         onChain: "only guardianRoot and threshold — no guardian address is ever written to the chain",
