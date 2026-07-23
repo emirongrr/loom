@@ -431,6 +431,9 @@
   const WALLET_KEY = "loom.passkey-wallet.handle";     // legacy single handle, migrated below
   const ACCOUNTS_KEY = "loom.passkey-wallet.accounts"; // [{credentialId, publicKey, label, createdAt}]
   const ACTIVE_KEY = "loom.passkey-wallet.active";     // credentialId of the connected account
+  // The root accounts created before guardians were modelled honestly were
+  // derived under. Kept so those accounts still resolve to the same address.
+  const LEGACY_GUARDIAN_ROOT = "0x552a103562656ed9d47147186c73ed6cca633a0bf8bfee32bfab3ad0f1b09336";
   const VIEW_KEY = "loom.passkey-wallet.view";
 
   // A device can hold several accounts. Creating one must never overwrite
@@ -439,12 +442,31 @@
   function loadAccounts() {
     let list = [];
     try { list = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]"); } catch { list = []; }
+    // Entries saved before the guardian configuration was recorded were all
+    // derived under the placeholder root. Backfilling it is what keeps those
+    // accounts resolving to the address they actually have on chain; without
+    // it they would silently re-derive to a different, empty address.
+    let backfilled = false;
+    for (const entry of list) {
+      if (entry.guardianRoot === undefined) {
+        entry.guardianRoot = LEGACY_GUARDIAN_ROOT;
+        entry.guardianThreshold = 1;
+        backfilled = true;
+      }
+    }
+    if (backfilled) localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
     const legacy = localStorage.getItem(WALLET_KEY);
     if (legacy) {
       try {
         const h = JSON.parse(legacy);
         if (h.credentialId && !list.some(a => a.credentialId === h.credentialId)) {
-          list.push({ credentialId: h.credentialId, publicKey: h.publicKey, label: `Account ${list.length + 1}`, createdAt: Date.now() });
+          // Accounts from before guardians were modelled honestly were derived
+          // under the placeholder root, so record it or they stop resolving.
+          list.push({
+            credentialId: h.credentialId, publicKey: h.publicKey,
+            guardianRoot: LEGACY_GUARDIAN_ROOT, guardianThreshold: 1,
+            label: `Account ${list.length + 1}`, createdAt: Date.now()
+          });
         }
       } catch {}
       if (wallet) forgetAccount(wallet.credentialId);
@@ -455,7 +477,12 @@
   function rememberAccount(handle) {
     const list = loadAccounts();
     if (!list.some(a => a.credentialId === handle.credentialId)) {
-      list.push({ credentialId: handle.credentialId, publicKey: handle.publicKey, label: `Account ${list.length + 1}`, createdAt: Date.now() });
+      list.push({
+        credentialId: handle.credentialId, publicKey: handle.publicKey,
+        // Persist what the address was derived from, never a current default.
+        guardianRoot: handle.config?.guardianRoot, guardianThreshold: handle.config?.guardianThreshold,
+        label: `Account ${list.length + 1}`, createdAt: Date.now()
+      });
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
     }
     localStorage.setItem(ACTIVE_KEY, handle.credentialId);
@@ -787,8 +814,8 @@
     if (!runtime) return;
     const saved = activeHandle();
     if (!saved || !deployment) return show("load a deployment and register first");
-    const { credentialId, publicKey } = saved;
-    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey });
+    const { credentialId, publicKey, guardianRoot, guardianThreshold } = saved;
+    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey, guardianRoot, guardianThreshold });
     renderWallet();
     show({ reconnected: wallet.account, note: "same account re-derived from the stored public key — no new passkey prompt" });
   };
@@ -1021,7 +1048,8 @@
       try {
         address = walletModule?.reconnectPasskeyAccount({
           deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment?.chainId,
-          credentialId: entry.credentialId, publicKey: entry.publicKey
+          credentialId: entry.credentialId, publicKey: entry.publicKey,
+          guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold
         })?.account ?? "—";
       } catch {}
       const row = document.createElement("div");
@@ -1082,7 +1110,8 @@
     try {
       const candidate = runtime.reconnectPasskeyAccount({
         deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
-        credentialId: entry.credentialId, publicKey: entry.publicKey
+        credentialId: entry.credentialId, publicKey: entry.publicKey,
+        guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold
       });
       $("onboardStatus").className = "pill warn";
       $("onboardStatus").textContent = "verifying…";
@@ -1141,10 +1170,23 @@
       $("safetyStatus").textContent = frozen ? "frozen" : s.status;
       $("sfProtection").textContent = s.status;
       $("sfProtection").className = "v";
-      $("sfGuardians").textContent = `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)}`;
-      $("sfGuardians").className = "v";
-      $("sfRecovery").textContent = s.recoveryConfigured ? "configured" : "not configured";
+      // A non-zero root only proves the account *claims* guardians. It cannot
+      // prove anyone holds a key that verifies against it, and this example's
+      // early accounts committed to a root that hashes a plain string, so the
+      // account reports itself protected while nothing can be proven. Say so.
+      const placeholder = s.config.guardianRoot.toLowerCase() === LEGACY_GUARDIAN_ROOT.toLowerCase();
+      $("sfGuardians").textContent = placeholder
+        ? `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)} — placeholder, no guardian stands behind it`
+        : `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)}`;
+      $("sfGuardians").className = placeholder ? "v muted" : "v";
+      $("sfRecovery").textContent = placeholder
+        ? "NOT usable — the root commits to no guardian, so nobody can freeze or recover this account"
+        : s.recoveryConfigured ? "configured" : "not configured — losing the passkey loses the account";
       $("sfRecovery").className = "v";
+      if (placeholder) {
+        $("safetyStatus").className = "pill bad";
+        $("safetyStatus").textContent = "unprotected";
+      }
       $("sfFreeze").textContent = frozen
         ? `active until unix ${s.freeze.frozenUntil}`
         : "not frozen";
@@ -1557,9 +1599,10 @@
     const saved = activeHandle();
     if (!saved || !deployment || !walletModule || wallet) return;
     try {
-      const { credentialId, publicKey } = saved;
+      const { credentialId, publicKey, guardianRoot, guardianThreshold } = saved;
       wallet = walletModule.reconnectPasskeyAccount({
-        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
+        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
+        credentialId, publicKey, guardianRoot, guardianThreshold
       });
       renderWallet();
       renderCustomer();

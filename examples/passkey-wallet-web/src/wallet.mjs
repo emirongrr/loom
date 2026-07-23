@@ -25,14 +25,28 @@ import {
   keccak256, parseUnits, sha256, stringToHex
 } from "viem";
 
-// Build the account configuration a registered passkey controls. Onboarding is
-// passkey-only (no guardians yet); a wallet adds recovery afterwards and must
-// show that state — see @loom/sdk's account safety snapshot.
-function buildAccountConfig({ entryPoint, validator, policyHook, rpId, origin, publicKey }) {
+// Accounts created before guardians were modelled honestly committed to this
+// root. It is the hash of a string, not a merkle root over real guardian
+// leaves, so nothing can ever be proven against it: the account reports itself
+// guardian-protected while no one can freeze or recover it. It survives only so
+// those accounts keep deriving to the same address.
+export const LEGACY_PLACEHOLDER_GUARDIAN_ROOT = keccak256(stringToHex("passkey-wallet-web.guardians"));
+const ZERO_BYTES32 = `0x${"00".repeat(32)}`;
+
+// Build the account configuration a registered passkey controls.
+//
+// Onboarding is passkey-only, and the contract has a state for exactly that:
+// root zero with threshold zero, which makes `recoveryConfigured` report false.
+// Fabricating a root instead would claim a protection nobody holds a key for,
+// so guardians are added deliberately later rather than invented here.
+function buildAccountConfig({
+  entryPoint, validator, policyHook, rpId, origin, publicKey,
+  guardianRoot = ZERO_BYTES32, guardianThreshold = 0
+}) {
   return {
     entryPoint,
-    guardianRoot: keccak256(stringToHex("passkey-wallet-web.guardians")),
-    guardianThreshold: 1,
+    guardianRoot,
+    guardianThreshold,
     configHash: keccak256(stringToHex("passkey-wallet-web.config")),
     modules: [
       { moduleTypeId: 4n, module: policyHook, initData: "0x" },
@@ -59,8 +73,15 @@ function saltFor(publicKey) {
   return keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [publicKey.x, publicKey.y]));
 }
 
-function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey }) {
-  const config = buildAccountConfig({ entryPoint: deployment.entryPoint, validator: deployment.validator, policyHook: deployment.policyHook, rpId, origin, publicKey });
+// The guardian configuration is part of what the address is derived from, so a
+// saved account must be re-derived with the values it was created under — not
+// with whatever the current default happens to be. Callers persist these with
+// the account handle and pass them back on reconnect.
+function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold }) {
+  const config = buildAccountConfig({
+    entryPoint: deployment.entryPoint, validator: deployment.validator, policyHook: deployment.policyHook,
+    rpId, origin, publicKey, guardianRoot, guardianThreshold
+  });
   const salt = saltFor(publicKey);
   const account = deriveAccountAddress({
     factory: deployment.factory,
@@ -82,8 +103,10 @@ export async function registerPasskeyAccount({ credentials, rpId, origin, userNa
 
 // Reconnect on a later visit from the persisted handle — re-derives the same
 // account address deterministically, with no new registration prompt.
-export function reconnectPasskeyAccount({ deployment, rpId, origin, chainId, credentialId, publicKey }) {
-  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey });
+export function reconnectPasskeyAccount({
+  deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold
+}) {
+  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold });
 }
 
 // An engine-free @loom/passkey signer bound to this wallet's credential. Pass
