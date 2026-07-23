@@ -39,9 +39,14 @@ const ZERO_BYTES32 = `0x${"00".repeat(32)}`;
 // root zero with threshold zero, which makes `recoveryConfigured` report false.
 // Fabricating a root instead would claim a protection nobody holds a key for,
 // so guardians are added deliberately later rather than invented here.
+// Installing the recovery module at creation costs nothing and is inert until
+// guardians exist: `approved()` returns false whenever the threshold is zero, so
+// with no guardians nothing can ever be approved through it. Leaving it out
+// instead means that adding guardians later takes two separate three-day
+// changes — the module, then the guardians — for no benefit.
 function buildAccountConfig({
   entryPoint, validator, policyHook, rpId, origin, publicKey,
-  guardianRoot = ZERO_BYTES32, guardianThreshold = 0
+  guardianRoot = ZERO_BYTES32, guardianThreshold = 0, recoveryModule = null
 }) {
   return {
     entryPoint,
@@ -50,6 +55,7 @@ function buildAccountConfig({
     configHash: keccak256(stringToHex("passkey-wallet-web.config")),
     modules: [
       { moduleTypeId: 4n, module: policyHook, initData: "0x" },
+      ...(recoveryModule ? [{ moduleTypeId: 5n, module: recoveryModule, initData: "0x" }] : []),
       {
         moduleTypeId: 1n,
         module: validator,
@@ -77,10 +83,10 @@ function saltFor(publicKey) {
 // saved account must be re-derived with the values it was created under — not
 // with whatever the current default happens to be. Callers persist these with
 // the account handle and pass them back on reconnect.
-function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold }) {
+function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule }) {
   const config = buildAccountConfig({
     entryPoint: deployment.entryPoint, validator: deployment.validator, policyHook: deployment.policyHook,
-    rpId, origin, publicKey, guardianRoot, guardianThreshold
+    rpId, origin, publicKey, guardianRoot, guardianThreshold, recoveryModule
   });
   const salt = saltFor(publicKey);
   const account = deriveAccountAddress({
@@ -98,15 +104,24 @@ function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicK
 // (no private key — the credential stays in the platform authenticator).
 export async function registerPasskeyAccount({ credentials, rpId, origin, userName, chainId, deployment }) {
   const { credentialId, publicKeyX, publicKeyY } = await credentials.create({ rpId, userName });
-  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey: { x: publicKeyX, y: publicKeyY } });
+  return deriveWallet({
+    deployment, rpId, origin, chainId, credentialId,
+    publicKey: { x: publicKeyX, y: publicKeyY },
+    // New accounts get recovery wired in from the start when the deployment
+    // names a module; existing ones keep whatever they were created with.
+    recoveryModule: deployment.recoveryModule ?? null
+  });
 }
 
 // Reconnect on a later visit from the persisted handle — re-derives the same
 // account address deterministically, with no new registration prompt.
 export function reconnectPasskeyAccount({
-  deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold
+  deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule
 }) {
-  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold });
+  return deriveWallet({
+    deployment, rpId, origin, chainId, credentialId, publicKey,
+    guardianRoot, guardianThreshold, recoveryModule
+  });
 }
 
 // An engine-free @loom/passkey signer bound to this wallet's credential. Pass

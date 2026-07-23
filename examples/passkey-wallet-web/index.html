@@ -660,6 +660,8 @@
         credentialId: handle.credentialId, publicKey: handle.publicKey,
         // Persist what the address was derived from, never a current default.
         guardianRoot: handle.config?.guardianRoot, guardianThreshold: handle.config?.guardianThreshold,
+        // Modules feed address derivation too, so record which one was used.
+        recoveryModule: handle.config?.modules?.find(m => String(m.moduleTypeId) === "5")?.module ?? null,
         label: `Account ${list.length + 1}`, createdAt: Date.now()
       });
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
@@ -998,8 +1000,8 @@
     if (!runtime) return;
     const saved = activeHandle();
     if (!saved || !deployment) return show("load a deployment and register first");
-    const { credentialId, publicKey, guardianRoot, guardianThreshold } = saved;
-    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey, guardianRoot, guardianThreshold });
+    const { credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule } = saved;
+    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule: recoveryModule ?? null });
     renderWallet();
     show({ reconnected: wallet.account, note: "same account re-derived from the stored public key — no new passkey prompt" });
   };
@@ -1233,7 +1235,8 @@
         address = walletModule?.reconnectPasskeyAccount({
           deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment?.chainId,
           credentialId: entry.credentialId, publicKey: entry.publicKey,
-          guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold
+          guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold,
+          recoveryModule: entry.recoveryModule ?? null
         })?.account ?? "—";
       } catch {}
       const row = document.createElement("div");
@@ -1295,7 +1298,8 @@
       const candidate = runtime.reconnectPasskeyAccount({
         deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
         credentialId: entry.credentialId, publicKey: entry.publicKey,
-        guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold
+        guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold,
+        recoveryModule: entry.recoveryModule ?? null
       });
       $("onboardStatus").className = "pill warn";
       $("onboardStatus").textContent = "verifying…";
@@ -2354,10 +2358,10 @@
     const saved = activeHandle();
     if (!saved || !deployment || !walletModule || wallet) return;
     try {
-      const { credentialId, publicKey, guardianRoot, guardianThreshold } = saved;
+      const { credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule } = saved;
       wallet = walletModule.reconnectPasskeyAccount({
         deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
-        credentialId, publicKey, guardianRoot, guardianThreshold
+        credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule: recoveryModule ?? null
       });
       renderWallet();
       renderCustomer();
