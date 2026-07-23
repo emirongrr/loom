@@ -314,23 +314,35 @@
        prompt is the only thing they interact with; funding, gas, and publication
        happen behind the sponsor backend. -->
   <div id="viewCustomer">
-    <div class="card">
-      <h2>Open an account <span id="onboardStatus" class="pill warn">ready</span></h2>
+    <!-- Locked state: nothing operational is reachable until an account is
+         connected. Creating one never replaces another — accounts accumulate on
+         the device and you pick which is active. -->
+    <div class="card" id="onboardSection">
+      <h2>Your wallet <span id="onboardStatus" class="pill warn">ready</span></h2>
       <p class="hint" style="margin-top:0">
-        One tap. A passkey is created on this device, the account address is derived from
-        it, and the institution pays to publish it on chain. You never hold ETH, approve a
-        transaction, or see a key.
+        A passkey is created on this device and the account address is derived from
+        it. The institution pays to publish it on chain, so you never hold ETH,
+        approve a transaction, or see a key.
       </p>
-      <div class="row"><span class="k">Your account</span><span class="v muted" id="cAccount">—</span></div>
-      <div class="row"><span class="k">On chain</span><span class="v muted" id="cChain">—</span></div>
+      <div id="accountList"></div>
       <div class="actions">
-        <button id="oneTap" class="primary" disabled>Create my account</button>
-        <button id="signIn" hidden>Sign in</button>
-        <button id="switchAccount" hidden>Use a different account</button>
+        <button id="oneTap" class="primary" disabled>Create a wallet</button>
       </div>
-      <div class="row"><span class="k">Sponsor backend</span><span class="v"><input id="sponsorUrl" value="http://localhost:8787/deploy" style="width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></span></div>
+      <div class="row"><span class="k">Sponsor backend</span><span class="v"><input id="sponsorUrl" class="field" value="http://localhost:8787/deploy"></span></div>
       <pre id="onboardOut">waiting for a deployment</pre>
     </div>
+
+    <!-- Connected state. Everything below acts on the active account. -->
+    <div id="opsSection" hidden>
+      <div class="card">
+        <h2>Account <span id="cChainPill" class="pill warn">checking</span></h2>
+        <div class="row"><span class="k">Address</span><span class="v" id="cAccount">—</span></div>
+        <div class="row"><span class="k">On chain</span><span class="v muted" id="cChain">—</span></div>
+        <div class="actions">
+          <button id="switchAccount">Switch account</button>
+          <button id="lockWallet" class="ghost">Lock</button>
+        </div>
+      </div>
 
     <!-- The account acting on its own behalf: it pays from its EntryPoint
          deposit, so no ETH has to move to a key first. -->
@@ -395,6 +407,7 @@
       </p>
       <pre id="batchOut">add a transfer to begin</pre>
     </div>
+    </div><!-- /opsSection -->
 
   </div>
 </div>
@@ -415,8 +428,48 @@
   const RP_ID = location.hostname;
   const ORIGIN = location.origin;
   const DEPLOYMENT_KEY = "loom.passkey-wallet.deployment";
-  const WALLET_KEY = "loom.passkey-wallet.handle";
+  const WALLET_KEY = "loom.passkey-wallet.handle";     // legacy single handle, migrated below
+  const ACCOUNTS_KEY = "loom.passkey-wallet.accounts"; // [{credentialId, publicKey, label, createdAt}]
+  const ACTIVE_KEY = "loom.passkey-wallet.active";     // credentialId of the connected account
   const VIEW_KEY = "loom.passkey-wallet.view";
+
+  // A device can hold several accounts. Creating one must never overwrite
+  // another, so accounts live in a list and "active" only points at the one
+  // currently connected. The old single-handle key is migrated in once.
+  function loadAccounts() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]"); } catch { list = []; }
+    const legacy = localStorage.getItem(WALLET_KEY);
+    if (legacy) {
+      try {
+        const h = JSON.parse(legacy);
+        if (h.credentialId && !list.some(a => a.credentialId === h.credentialId)) {
+          list.push({ credentialId: h.credentialId, publicKey: h.publicKey, label: `Account ${list.length + 1}`, createdAt: Date.now() });
+        }
+      } catch {}
+      if (wallet) forgetAccount(wallet.credentialId);
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+    }
+    return list;
+  }
+  function rememberAccount(handle) {
+    const list = loadAccounts();
+    if (!list.some(a => a.credentialId === handle.credentialId)) {
+      list.push({ credentialId: handle.credentialId, publicKey: handle.publicKey, label: `Account ${list.length + 1}`, createdAt: Date.now() });
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+    }
+    localStorage.setItem(ACTIVE_KEY, handle.credentialId);
+  }
+  function forgetAccount(credentialId) {
+    const list = loadAccounts().filter(a => a.credentialId !== credentialId);
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+    if (localStorage.getItem(ACTIVE_KEY) === credentialId) localStorage.removeItem(ACTIVE_KEY);
+  }
+  const activeHandle = () => loadAccounts().find(a => a.credentialId === localStorage.getItem(ACTIVE_KEY)) ?? null;
+  // "Connected" means an account is active and re-derived into `wallet`; the
+  // operational UI only shows in that state. Locking clears the active pointer
+  // without deleting the account.
+  function lockWallet() { localStorage.removeItem(ACTIVE_KEY); wallet = null; }
 
   // Well-known chain ids, so the page can name the network instead of leaving
   // the operator to decode a number.
@@ -471,7 +524,18 @@
         : n < 0.00001 ? "<0.00001"
         : n.toLocaleString(undefined, { maximumFractionDigits: 5 });
     }
-    if (state.deposit !== undefined) $("heroDeposit").textContent = `gas deposit ${state.deposit} ETH`;
+    // Prepaid gas held for this account at the EntryPoint. It is the account's
+    // own ETH and pays for its operations; it only means anything once the
+    // account exists, so it stays hidden until then.
+    if (state.deposit !== undefined) {
+      const n = Number(state.deposit);
+      const meaningful = state.deployed !== false && n > 0;
+      $("heroDeposit").hidden = !meaningful;
+      if (meaningful) {
+        $("heroDeposit").textContent =
+          `${n.toLocaleString(undefined, { maximumFractionDigits: 5 })} ETH prepaid for gas · covers this account's operations`;
+      }
+    }
   }
   $("heroCopy").onclick = () => {
     if (wallet) navigator.clipboard?.writeText(wallet.account);
@@ -556,7 +620,7 @@
     if (deployment) showOnboard(`ready on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`);
     renderCustomer();
     $("register").disabled = !deployment;
-    $("reconnect").disabled = !deployment || !localStorage.getItem(WALLET_KEY);
+    $("reconnect").disabled = !deployment || !activeHandle();
     renderWallet();
   }
 
@@ -564,12 +628,12 @@
     const status = $("walletStatus");
     if (!wallet) {
       status.className = "pill warn";
-      status.textContent = localStorage.getItem(WALLET_KEY) ? "saved — reconnect" : "no passkey";
+      status.textContent = activeHandle() ? "saved — reconnect" : "no passkey";
       $("wAccount").textContent = "—";
       $("wCredential").textContent = "—";
       $("sign").disabled = true;
       $("deploy").disabled = true;
-      $("forget").disabled = !localStorage.getItem(WALLET_KEY);
+      $("forget").disabled = !activeHandle();
       return;
     }
     status.className = "pill good";
@@ -710,7 +774,7 @@
         chainId: deployment.chainId, deployment
       });
       // Persist only public data — the credential never leaves the authenticator.
-      localStorage.setItem(WALLET_KEY, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
+      rememberAccount(wallet);
       renderWallet();
       show({ registered: wallet.account, network: CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`, chainId: deployment.chainId, note: "counterfactual — fund it or send the first operation to deploy" });
     } catch (error) {
@@ -721,9 +785,9 @@
   $("reconnect").onclick = () => {
     const runtime = walletRuntime();
     if (!runtime) return;
-    const saved = localStorage.getItem(WALLET_KEY);
+    const saved = activeHandle();
     if (!saved || !deployment) return show("load a deployment and register first");
-    const { credentialId, publicKey } = JSON.parse(saved);
+    const { credentialId, publicKey } = saved;
     wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey });
     renderWallet();
     show({ reconnected: wallet.account, note: "same account re-derived from the stored public key — no new passkey prompt" });
@@ -792,8 +856,10 @@
           credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user",
           chainId: deployment.chainId, deployment
         });
-        localStorage.setItem(WALLET_KEY, JSON.stringify({ credentialId: wallet.credentialId, publicKey: wallet.publicKey }));
+        // Added alongside whatever this device already holds, never in place of it.
+        rememberAccount(wallet);
         renderWallet();
+        renderCustomer();
       }
 
       const existing = wallet.account;
@@ -833,7 +899,7 @@
   };
 
   $("forget").onclick = () => {
-    localStorage.removeItem(WALLET_KEY);
+    if (wallet) forgetAccount(wallet.credentialId);
     wallet = null;
     renderWallet();
     show("local wallet handle cleared (the passkey itself stays in your authenticator)");
@@ -919,33 +985,62 @@
     }
   };
 
-  // The customer view has two states: a first visit offers to create an account,
-  // a return visit offers to sign in to the one this device already holds.
+  // Two states, and only one is operational: locked (choose or create an
+  // account) and connected (act on the active account). Nothing that spends or
+  // signs is reachable while locked.
   function renderCustomer() {
-    const saved = localStorage.getItem(WALLET_KEY);
-    $("oneTap").hidden = Boolean(saved);
-    $("signIn").hidden = !saved;
-    $("switchAccount").hidden = !saved;
-    $("signIn").disabled = !deployment;
+    const connected = Boolean(wallet);
+    $("onboardSection").hidden = connected;
+    $("opsSection").hidden = !connected;
     $("oneTap").disabled = !deployment;
-    if (wallet) {
+
+    if (connected) {
       $("cAccount").textContent = wallet.account;
       $("cAccount").className = "v";
-    } else if (saved && deployment) {
-      // Re-derive from the stored public key so the address is on screen before
-      // any prompt: signing in should confirm an account, not reveal it.
-      try {
-        const { credentialId, publicKey } = JSON.parse(saved);
-        const preview = walletModule?.reconnectPasskeyAccount({
-          deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
-        });
-        $("cAccount").textContent = preview?.account ?? "—";
-        $("cAccount").className = preview ? "v" : "v muted";
-      } catch {
-        $("cAccount").textContent = "—";
-      }
+    } else {
+      renderAccountList();
     }
     renderHero();
+  }
+
+  // Every account this device holds, each re-derived for display so its address
+  // is visible before any prompt: signing in confirms an account, it does not
+  // reveal it.
+  function renderAccountList() {
+    const host = $("accountList");
+    const accounts = loadAccounts();
+    host.innerHTML = "";
+    if (accounts.length === 0) {
+      $("onboardOut").textContent = deployment
+        ? "no wallet on this device yet — create one to begin"
+        : "waiting for a deployment";
+      return;
+    }
+    for (const entry of accounts) {
+      let address = "—";
+      try {
+        address = walletModule?.reconnectPasskeyAccount({
+          deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment?.chainId,
+          credentialId: entry.credentialId, publicKey: entry.publicKey
+        })?.account ?? "—";
+      } catch {}
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<span class="k">${entry.label}</span>
+        <span class="v" style="display:flex;gap:.5rem;align-items:center;justify-content:flex-end">
+          <span>${shorten(address)}</span>
+          <button class="sm use">Sign in</button>
+          <button class="sm ghost drop" title="Remove from this device">Remove</button>
+        </span>`;
+      row.querySelector(".use").disabled = !deployment;
+      row.querySelector(".use").onclick = () => connectAccount(entry);
+      row.querySelector(".drop").onclick = () => {
+        forgetAccount(entry.credentialId);
+        renderCustomer();
+        $("onboardOut").textContent = `${entry.label} removed from this device. The passkey itself stays in your authenticator and the account still exists on chain.`;
+      };
+      host.append(row);
+    }
   }
 
   // Ask the sponsor backend whether the account exists on chain. The page holds
@@ -968,43 +1063,53 @@
     }
   }
 
-  $("signIn").onclick = async () => {
+  // Connect one of the device's accounts. Re-deriving needs no prompt, so the
+  // biometric gesture here is a proof of possession: it demonstrates the
+  // credential is on this device right now. It authorizes nothing by itself —
+  // every operation is authorized individually, on chain.
+  async function connectAccount(entry) {
     const runtime = walletRuntime();
     if (!runtime) return;
     if (!deployment) return showOnboard("no deployment configured");
-    const saved = localStorage.getItem(WALLET_KEY);
-    if (!saved) return showOnboard("no account on this device");
-    $("signIn").disabled = true;
     try {
-      const { credentialId, publicKey } = JSON.parse(saved);
-      wallet = runtime.reconnectPasskeyAccount({
-        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
+      const candidate = runtime.reconnectPasskeyAccount({
+        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
+        credentialId: entry.credentialId, publicKey: entry.publicKey
       });
       $("onboardStatus").className = "pill warn";
       $("onboardStatus").textContent = "verifying…";
-      showOnboard(`account ${wallet.account}\ntouch the sensor to prove this passkey is yours…`);
-      // An assertion over a fresh challenge: proof that the credential is
-      // present on this device right now. It authorizes nothing by itself —
-      // every operation is authorized individually, on chain.
-      await runtime.walletSigner({ credentials, wallet }).sign(`0x${crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "")}`);
+      showOnboard(`${entry.label} · ${candidate.account}\ntouch the sensor to prove this passkey is yours…`);
+      await runtime.walletSigner({ credentials, wallet: candidate })
+        .sign(`0x${crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "")}`);
+      wallet = candidate;
+      localStorage.setItem(ACTIVE_KEY, entry.credentialId);
       renderWallet();
       renderCustomer();
       const status = await refreshChainStatus(wallet.account);
       await refreshSend();
+      await scanAssets();
       $("onboardStatus").className = "pill good";
-      $("onboardStatus").textContent = "signed in";
+      $("onboardStatus").textContent = "connected";
       showOnboard({
         account: wallet.account,
-        onChain: status ? (status.deployed ? "deployed" : "not deployed yet") : "unknown",
-        note: "the passkey stayed in your authenticator — this proved possession, nothing more"
+        onChain: status ? (status.deployed ? "deployed" : "not deployed yet") : "unknown"
       });
     } catch (error) {
+      wallet = null;
+      renderCustomer();
       $("onboardStatus").className = "pill bad";
       $("onboardStatus").textContent = "sign-in failed";
       showOnboard(`sign-in failed: ${error.message}`);
-    } finally {
-      $("signIn").disabled = false;
     }
+  }
+
+  $("lockWallet").onclick = () => {
+    lockWallet();
+    renderWallet();
+    renderCustomer();
+    $("onboardStatus").className = "pill warn";
+    $("onboardStatus").textContent = "locked";
+    showOnboard("locked — the accounts stay on this device, sign in to use one");
   };
 
   // Whatever asset the Send card currently names, with its own decimals.
@@ -1424,28 +1529,27 @@
     }
   };
 
+  // Switching only disconnects: every account stays on the device, which is the
+  // difference between choosing another wallet and losing this one.
   $("switchAccount").onclick = () => {
-    localStorage.removeItem(WALLET_KEY);
-    wallet = null;
-    $("cAccount").textContent = "—";
-    $("cAccount").className = "v muted";
+    lockWallet();
     $("cChain").textContent = "—";
     $("cChain").className = "v muted";
     $("onboardStatus").className = "pill warn";
     $("onboardStatus").textContent = "ready";
     renderWallet();
     renderCustomer();
-    showOnboard("this device forgot its account handle. The passkey itself is still in your authenticator, and the account still exists — creating a new one derives a different address.");
+    showOnboard("pick an account to sign into, or create another — nothing was removed");
   };
 
   // Re-deriving an account needs no authenticator prompt — only signing does.
-  // So restore the session silently on load and save the biometric gesture for
-  // the moment it actually authorizes something.
+  // So restore the active account silently on load and save the biometric
+  // gesture for the moment it actually authorizes something.
   function restoreWallet() {
-    const saved = localStorage.getItem(WALLET_KEY);
+    const saved = activeHandle();
     if (!saved || !deployment || !walletModule || wallet) return;
     try {
-      const { credentialId, publicKey } = JSON.parse(saved);
+      const { credentialId, publicKey } = saved;
       wallet = walletModule.reconnectPasskeyAccount({
         deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey
       });
