@@ -197,30 +197,40 @@
        given the owner's exported record and act from it with their own key. -->
   <div id="viewGuardian" hidden>
     <div class="card">
-      <h2>Accounts you guard <span id="guardianViewStatus" class="pill warn">none loaded</span></h2>
-      <p class="hint" style="margin-top:0">
-        Nothing on chain says who guards an account, so a wallet cannot discover
-        this for you. Paste the record the account holder gave you — it names the
-        account, everyone who guards it, and the salt needed to prove membership.
-      </p>
-      <textarea id="guardianRecord" spellcheck="false" placeholder='{ "account": "0x…", "guardians": ["0x…"], "salt": "0x…", "verifier": "0x…", "chainId": 11155111 }'></textarea>
-      <div class="row"><span class="k">Your wallet</span><span class="v">
-        <input id="guardianSelf" class="field" placeholder="0x… the address you were added as" spellcheck="false"></span></div>
-      <div class="actions">
-        <button id="loadGuardianRecord" class="primary">Load record</button>
-      </div>
-      <div id="guardianDuty" hidden>
-        <div class="row"><span class="k">Account</span><span class="v" id="dutyAccount">—</span></div>
-        <div class="row"><span class="k">Its state</span><span class="v muted" id="dutyState">—</span></div>
-        <div class="row"><span class="k">Your role</span><span class="v muted" id="dutyRole">—</span></div>
-        <p class="hint">
-          Freezing takes any one guardian and stops spending for two days.
-          Recovering the account needs the agreed number to approve — any of
-          them, in any order. Freeze first, recover after.
+      <h2>Help a friend <span id="guardianViewStatus" class="pill warn">step 1 of 2</span></h2>
+
+      <div id="guardianStep1">
+        <p class="hint" style="margin-top:0">
+          A friend made you a guardian of their account, and their wallet gave
+          them a small <strong>invite</strong> to send you — a short file, usually
+          by message or email. Open that invite here. It is the only way your
+          wallet can tell you are a guardian, because Loom never records guardians
+          on chain.
         </p>
         <div class="actions">
-          <button id="prepareFreezeBtn" class="primary">Prepare emergency freeze</button>
-          <button id="startCollecting">Collect approvals for recovery</button>
+          <button id="pickGuardianFile" class="primary">Open the invite</button>
+          <button id="pasteGuardianToggle" class="ghost">Paste it instead</button>
+        </div>
+        <input id="guardianFile" type="file" accept="application/json,.json" hidden>
+        <textarea id="guardianRecord" spellcheck="false" hidden
+          placeholder='paste the invite here — it starts with { "account": "0x…" }'></textarea>
+      </div>
+
+      <div id="guardianDuty" hidden>
+        <div class="row"><span class="k">Account you protect</span><span class="v" id="dutyAccount">—</span></div>
+        <div class="row"><span class="k">Its state</span><span class="v" id="dutyState">—</span></div>
+        <div class="row"><span class="k">Which one are you?</span><span class="v">
+          <select id="guardianSelf" class="field"></select></span></div>
+        <div class="row"><span class="k">What you can do</span><span class="v muted" id="dutyRole">—</span></div>
+        <p class="hint">
+          If the account looks compromised, freeze it on your own — spending stops
+          for two days, buying time. To actually restore access, enough guardians
+          approve together. Freeze first if in doubt; recover after.
+        </p>
+        <div class="actions">
+          <button id="prepareFreezeBtn" class="primary" disabled>Freeze it now</button>
+          <button id="startCollecting" disabled>Start a recovery</button>
+          <button id="guardianReset" class="ghost">Open a different invite</button>
         </div>
 
         <div id="freezeSubmit" hidden>
@@ -254,7 +264,7 @@
           <pre id="approvalOut">paste each signature as it arrives</pre>
         </div>
       </div>
-      <pre id="guardianViewOut">paste a record to begin</pre>
+      <pre id="guardianViewOut">open the invite your friend sent you</pre>
     </div>
   </div>
 
@@ -506,18 +516,16 @@
       <button id="checkGuardians" class="primary">Check &amp; save guardians</button>
     </div>
     <div id="guardianBackup" hidden>
-      <div class="row"><span class="k">Saved set</span><span class="v" id="guardianSaved">—</span></div>
+      <div class="row"><span class="k">Your guardians</span><span class="v" id="guardianSaved">—</span></div>
       <p class="hint">
-        The chain stores only the root, never who your guardians are, which keeps
-        them private. Your guardians know who they are and can act without you,
-        so this is a convenience rather than the mechanism — with a single
-        guardian nothing here is needed at all. It matters once there are
-        several: a proof is built from <em>every</em> member's address, so if one
-        of them can no longer be identified, the others cannot prove membership
-        either, even when enough of them are willing.
+        Because who guards your account is never written on chain, your guardians
+        can only step in if they hold a small invite from you. Save it and send a
+        copy to each guardian — by message, email, however you reach them. Without
+        it they cannot prove they are a guardian, even when they are willing to
+        help. Keep a copy for yourself too.
       </p>
       <div class="actions">
-        <button id="exportGuardians">Export guardian list</button>
+        <button id="exportGuardians">Save the guardian invite</button>
         <button id="scheduleGuardians" class="primary">Schedule guardian change</button>
       </div>
       <div class="row" id="pendingRow" hidden><span class="k">Pending change</span>
@@ -1549,41 +1557,97 @@
 
   let duty = null;
 
-  $("loadGuardianRecord").onclick = async () => {
+  // The loaded guardian file, before a guardian identity is chosen from it.
+  let guardianRecord = null;
+  const guardianAddressOf = g => (typeof g === "string" ? g : g.address);
+
+  $("pickGuardianFile").onclick = () => $("guardianFile").click();
+  $("pasteGuardianToggle").onclick = () => {
+    const ta = $("guardianRecord");
+    ta.hidden = !ta.hidden;
+    if (!ta.hidden) ta.focus();
+  };
+  $("guardianFile").onchange = async event => {
+    const file = event.target.files?.[0];
+    if (file) loadGuardianRecordText(await file.text());
+  };
+  $("guardianRecord").oninput = () => {
+    const text = $("guardianRecord").value.trim();
+    if (text.startsWith("{")) loadGuardianRecordText(text);
+  };
+  $("guardianReset").onclick = () => {
+    guardianRecord = null; duty = null;
+    $("guardianStep1").hidden = false;
+    $("guardianDuty").hidden = true;
+    $("guardianRecord").value = "";
+    $("guardianViewStatus").className = "pill warn";
+    $("guardianViewStatus").textContent = "step 1 of 2";
+    $("guardianViewOut").textContent = "open the invite your friend sent you";
+  };
+
+  // Read the file, then let the guardian say which of the listed wallets is
+  // theirs — picking from a list is clearer than typing an address, and it is
+  // exactly the set the account will accept.
+  function loadGuardianRecordText(text) {
+    try {
+      guardianRecord = JSON.parse(text);
+      const guardians = guardianRecord.guardians ?? [];
+      if (!Array.isArray(guardians) || guardians.length === 0) throw new Error("this file lists no guardians");
+      const select = $("guardianSelf");
+      select.innerHTML = `<option value="">choose your wallet…</option>` +
+        guardians.map((g, i) => {
+          const a = guardianAddressOf(g);
+          return `<option value="${a}">${shorten(a)}${(typeof g === "object" && g.kind === "contract") ? " (contract wallet)" : ""}</option>`;
+        }).join("");
+      $("guardianViewStatus").textContent = "step 2 of 2";
+      $("guardianStep1").hidden = true;
+      $("guardianDuty").hidden = false;
+      $("dutyAccount").textContent = shorten(guardianRecord.account);
+      $("dutyState").textContent = "select which wallet is yours to continue";
+      $("dutyState").className = "v muted";
+      $("dutyRole").textContent = `${guardians.length} guardian(s) · any ${guardianRecord.threshold ?? 1} can recover it together, or any one can freeze it`;
+      $("freezeSubmit").hidden = true;
+      $("approvalPanel").hidden = true;
+    } catch (error) {
+      $("guardianViewStatus").className = "pill bad";
+      $("guardianViewStatus").textContent = "not an invite";
+      $("guardianViewOut").textContent = `this does not look like a guardian invite: ${error.message}`;
+    }
+  }
+
+  // Once the guardian picks themselves, prove it against the chain: rebuild the
+  // set, confirm the record still matches the account's root, and confirm this
+  // wallet is really in it.
+  $("guardianSelf").onchange = async () => {
     const runtime = walletRuntime();
-    if (!runtime) return;
+    if (!runtime || !guardianRecord) return;
+    const self = $("guardianSelf").value;
+    if (!self) { $("prepareFreezeBtn").disabled = true; $("startCollecting").disabled = true; return; }
     $("guardianViewStatus").className = "pill warn";
     $("guardianViewStatus").textContent = "checking";
-    $("guardianDuty").hidden = true;
     try {
-      const record = JSON.parse($("guardianRecord").value);
-      const self = $("guardianSelf").value.trim();
       duty = await runtime.prepareFreeze({
-        rpcUrl: $("publicRpc").value.trim(), record, guardianAddress: self
+        rpcUrl: $("publicRpc").value.trim(), record: guardianRecord, guardianAddress: self
       });
+      duty.threshold = guardianRecord.threshold ?? 1;
       $("guardianViewStatus").className = "pill good";
-      $("guardianViewStatus").textContent = "you are a guardian";
-      $("guardianDuty").hidden = false;
-      $("dutyAccount").textContent = duty.account;
+      $("guardianViewStatus").textContent = "confirmed";
       $("dutyState").textContent = duty.alreadyFrozen
-        ? `already frozen until unix ${duty.frozenUntil}`
+        ? "already frozen — recovery can proceed"
         : "operating normally";
       $("dutyState").className = "v";
-      duty.threshold = record.threshold ?? 1;
+      $("prepareFreezeBtn").disabled = false;
+      $("startCollecting").disabled = false;
+      $("freezeSubmit").hidden = true;
       $("approvalPanel").hidden = true;
-      $("dutyRole").textContent = `you can freeze this account on your own · ${record.guardians.length} guardian(s), any ${record.threshold} of them can recover it`;
-      $("dutyRole").className = "v";
-      $("guardianViewOut").textContent = JSON.stringify({
-        account: duty.account,
-        verifiedAgainstChain: "the record matches the account's current guardian root",
-        yourLeaf: duty.leaf,
-        proofLength: duty.proof.length
-      }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      $("guardianViewOut").textContent = "you are confirmed as a guardian of this account — freeze it or start a recovery above";
     } catch (error) {
       duty = null;
+      $("prepareFreezeBtn").disabled = true;
+      $("startCollecting").disabled = true;
       $("guardianViewStatus").className = "pill bad";
       $("guardianViewStatus").textContent = "cannot act";
-      $("guardianViewOut").textContent = `${error.message}`;
+      $("guardianViewOut").textContent = error.message;
     }
   };
 
@@ -1726,10 +1790,14 @@
     const blob = new Blob([JSON.stringify(guardianSet, null, 2)], { type: "application/json" });
     const link = Object.assign(document.createElement("a"), {
       href: URL.createObjectURL(blob),
-      download: `loom-guardians-${(guardianSet.account ?? "account").slice(0, 10)}.json`
+      download: `guardian-invite-${(guardianSet.account ?? "account").slice(0, 10)}.json`
     });
     link.click();
     URL.revokeObjectURL(link.href);
+    $("guardianOut").textContent =
+      `Saved guardian-invite-${(guardianSet.account ?? "account").slice(0, 10)}.json.\n\n`
+      + `Send a copy to each of the ${guardianSet.guardians.length} guardian(s) so they can open it in the Guardian tab. `
+      + `Keep a copy yourself — it is the only way to rebuild the proof recovery needs.`;
   };
 
   function addGuardianRow(value = "") {
