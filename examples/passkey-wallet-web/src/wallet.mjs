@@ -124,6 +124,21 @@ export function reconnectPasskeyAccount({
   });
 }
 
+// Reconnect an account whose address is NOT a function of this credential —
+// a recovered account. Its address was fixed by the original owner's creation
+// config; recovery only swapped in this passkey and its validator. So the
+// address and validator are given explicitly rather than derived, and the
+// signer binds to them.
+export function reconnectRecoveredAccount({ account, validator, rpId, origin, chainId, credentialId, publicKey, entryPoint }) {
+  return {
+    account, credentialId, publicKey, rpId, origin, chainId, validator,
+    recovered: true,
+    // The signer only needs the entryPoint for the canonical hash; the rest of
+    // the config does not enter signing.
+    config: { entryPoint }
+  };
+}
+
 // An engine-free @loom/passkey signer bound to this wallet's credential. Pass
 // it a canonical user-operation hash (from the SDK client) and it drives the
 // authenticator and returns the account-ready signature.

@@ -233,6 +233,19 @@
           <button id="guardianReset" class="ghost">Open a different invite</button>
         </div>
 
+        <div id="recoverySign" hidden>
+          <p class="hint" style="margin-top:0">
+            This is a recovery request: your friend lost their key and wants to
+            restore the account to a new one. If you recognise this request, sign
+            the digest below with your wallet and send the signature back to them.
+          </p>
+          <div class="row"><span class="k">Sign this digest</span><span class="v" id="recSignDigest">—</span></div>
+          <div class="row"><span class="k">Your signature</span><span class="v">
+            <input id="recSignInput" class="field" placeholder="0x… signature over the digest" spellcheck="false"></span></div>
+          <div class="row" id="recSignBackRow" hidden><span class="k">Send this back</span>
+            <span class="v" id="recSignBack">—</span></div>
+        </div>
+
         <div id="freezeSubmit" hidden>
           <div class="row"><span class="k">Sign this digest</span><span class="v" id="freezeDigest">—</span></div>
           <div class="row"><span class="k">With your wallet</span><span class="v" id="freezeSigner">—</span></div>
@@ -721,6 +734,25 @@
     if (localStorage.getItem(ACTIVE_KEY) === credentialId) localStorage.removeItem(ACTIVE_KEY);
   }
   const activeHandle = () => loadAccounts().find(a => a.credentialId === localStorage.getItem(ACTIVE_KEY)) ?? null;
+  // Reconnect any saved entry, deriving the address for a normal account or
+  // taking it as given for a recovered one (whose address does not come from its
+  // credential).
+  function reconnectEntry(entry) {
+    if (!walletModule || !deployment) return null;
+    if (entry.recovered) {
+      return walletModule.reconnectRecoveredAccount({
+        account: entry.account, validator: entry.validator, entryPoint: deployment.entryPoint,
+        rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
+        credentialId: entry.credentialId, publicKey: entry.publicKey
+      });
+    }
+    return walletModule.reconnectPasskeyAccount({
+      deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
+      credentialId: entry.credentialId, publicKey: entry.publicKey,
+      guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold,
+      recoveryModule: entry.recoveryModule ?? null
+    });
+  }
   // "Connected" means an account is active and re-derived into `wallet`; the
   // operational UI only shows in that state. Locking clears the active pointer
   // without deleting the account.
@@ -1242,20 +1274,30 @@
       const response = await fetch(`${recoverBase()}/execute-scheduled`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: call.to, data: call.data }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "completion failed");
-      // The account is recovered on chain and now answers to the new passkey.
-      // Its address comes from the original creation config, not the new key, so
-      // this wallet — which derives addresses from the passkey — cannot re-derive
-      // it. The recovery is real; reconnecting a recovered account in this UI is
-      // a follow-up, so the address and new credential are reported to keep.
+      // The account is recovered on chain and now answers to the new passkey. Its
+      // address is fixed by the original creation config, not this key, so it is
+      // saved as a recovered account — one with an explicit address and validator
+      // rather than a derived one — and connected.
+      const list = loadAccounts();
+      const stored = {
+        recovered: true,
+        account: recovery.request.account,
+        validator: recovery.newValidator,
+        credentialId: recovery.newPasskey.credentialId,
+        publicKey: { x: recovery.newPasskey.x, y: recovery.newPasskey.y },
+        label: `Recovered ${recovery.request.account.slice(0, 8)}`, createdAt: Date.now()
+      };
+      if (!list.some(a => a.credentialId === stored.credentialId)) {
+        list.push(stored);
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+      }
+      localStorage.setItem(ACTIVE_KEY, stored.credentialId);
       $("recoverStatus").className = "pill good";
       $("recoverStatus").textContent = "recovered";
       $("recoverOut").textContent = JSON.stringify({
         ...result,
-        recovered: "your account is back — it now answers to the new passkey",
-        account: recovery.request.account,
-        newValidator: recovery.newValidator,
-        newCredential: recovery.newPasskey.credentialId,
-        note: "keep the account address and this credential; re-connecting a recovered account in this demo wallet is a follow-up"
+        recovered: "your account is back and now answers to the new passkey — reload to open it",
+        account: recovery.request.account
       }, null, 2);
     } catch (error) {
       $("recoverOut").textContent = `could not complete: ${error.message}`;
@@ -1309,12 +1351,7 @@
     for (const entry of accounts) {
       let address = "—";
       try {
-        address = walletModule?.reconnectPasskeyAccount({
-          deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment?.chainId,
-          credentialId: entry.credentialId, publicKey: entry.publicKey,
-          guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold,
-          recoveryModule: entry.recoveryModule ?? null
-        })?.account ?? "—";
+        address = reconnectEntry(entry)?.account ?? "—";
       } catch {}
       const row = document.createElement("div");
       row.className = "row";
@@ -1372,12 +1409,7 @@
     if (!runtime) return;
     if (!deployment) return showOnboard("no deployment configured");
     try {
-      const candidate = runtime.reconnectPasskeyAccount({
-        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
-        credentialId: entry.credentialId, publicKey: entry.publicKey,
-        guardianRoot: entry.guardianRoot, guardianThreshold: entry.guardianThreshold,
-        recoveryModule: entry.recoveryModule ?? null
-      });
+      const candidate = reconnectEntry(entry);
       $("onboardStatus").className = "pill warn";
       $("onboardStatus").textContent = "verifying…";
       showOnboard(`${entry.label} · ${candidate.account}\ntouch the sensor to prove this passkey is yours…`);
@@ -1823,6 +1855,7 @@
 
   // The loaded guardian file, before a guardian identity is chosen from it.
   let guardianRecord = null;
+  let recoveryDigest = null;
   const guardianAddressOf = g => (typeof g === "string" ? g : g.address);
 
   $("pickGuardianFile").onclick = () => $("guardianFile").click();
@@ -1840,7 +1873,9 @@
     if (text.startsWith("{")) loadGuardianRecordText(text);
   };
   $("guardianReset").onclick = () => {
-    guardianRecord = null; duty = null;
+    guardianRecord = null; duty = null; recoveryDigest = null;
+    $("recoverySign").hidden = true;
+    $("prepareFreezeBtn").hidden = false; $("startCollecting").hidden = false;
     $("guardianStep1").hidden = false;
     $("guardianDuty").hidden = true;
     $("guardianRecord").value = "";
@@ -1890,21 +1925,38 @@
     $("guardianViewStatus").className = "pill warn";
     $("guardianViewStatus").textContent = "checking";
     try {
+      // prepareFreeze also proves membership — the record matches the account's
+      // on-chain root and this wallet is in it — which is exactly the check a
+      // recovery request needs too.
       duty = await runtime.prepareFreeze({
         rpcUrl: $("publicRpc").value.trim(), record: guardianRecord, guardianAddress: self
       });
       duty.threshold = guardianRecord.threshold ?? 1;
       $("guardianViewStatus").className = "pill good";
       $("guardianViewStatus").textContent = "confirmed";
-      $("dutyState").textContent = duty.alreadyFrozen
-        ? "already frozen — recovery can proceed"
-        : "operating normally";
+      $("dutyState").textContent = duty.alreadyFrozen ? "already frozen — recovery can proceed" : "operating normally";
       $("dutyState").className = "v";
-      $("prepareFreezeBtn").disabled = false;
-      $("startCollecting").disabled = false;
       $("freezeSubmit").hidden = true;
       $("approvalPanel").hidden = true;
-      $("guardianViewOut").textContent = "you are confirmed as a guardian of this account — freeze it or start a recovery above";
+
+      // A recovery request carries the digest to sign. Show the signing panel
+      // instead of the freeze/collect actions: the guardian's whole job is to
+      // sign that digest and hand the signature back.
+      const isRecovery = Boolean(guardianRecord.recovery?.digest);
+      $("recoverySign").hidden = !isRecovery;
+      $("prepareFreezeBtn").hidden = isRecovery;
+      $("startCollecting").hidden = isRecovery;
+      $("prepareFreezeBtn").disabled = isRecovery;
+      $("startCollecting").disabled = isRecovery;
+      if (isRecovery) {
+        recoveryDigest = guardianRecord.recovery.digest;
+        $("recSignDigest").textContent = short(recoveryDigest);
+        $("recSignInput").value = "";
+        $("recSignBackRow").hidden = true;
+        $("guardianViewOut").textContent = "confirmed — sign the recovery digest with your wallet and send the signature back";
+      } else {
+        $("guardianViewOut").textContent = "you are confirmed as a guardian of this account — freeze it or start a recovery above";
+      }
     } catch (error) {
       duty = null;
       $("prepareFreezeBtn").disabled = true;
@@ -1912,6 +1964,27 @@
       $("guardianViewStatus").className = "pill bad";
       $("guardianViewStatus").textContent = "cannot act";
       $("guardianViewOut").textContent = error.message;
+    }
+  };
+
+  // The guardian signs the recovery digest with their own wallet and pastes it;
+  // it is verified against them before being offered to send back, so a wrong
+  // signature is caught here rather than by the recoverer's failed proposal.
+  $("recSignInput").oninput = async () => {
+    const runtime = walletModule;
+    if (!runtime || !recoveryDigest || !duty) return;
+    const signature = $("recSignInput").value.trim();
+    if (signature.length < 4) { $("recSignBackRow").hidden = true; return; }
+    const result = await runtime.verifyGuardianSignature({ digest: recoveryDigest, signature, expectedAddress: duty.guardian });
+    if (result.valid) {
+      $("recSignBackRow").hidden = false;
+      $("recSignBack").textContent = signature;
+      $("guardianViewOut").textContent = "signature verified — send the value in \"Send this back\" to the person recovering the account";
+    } else {
+      $("recSignBackRow").hidden = true;
+      $("guardianViewOut").textContent = result.recovered
+        ? `that signature is from ${result.recovered}, not your guardian wallet`
+        : `not a valid signature: ${result.error ?? "unknown"}`;
     }
   };
 
@@ -2570,11 +2643,7 @@
     const saved = activeHandle();
     if (!saved || !deployment || !walletModule || wallet) return;
     try {
-      const { credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule } = saved;
-      wallet = walletModule.reconnectPasskeyAccount({
-        deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId,
-        credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule: recoveryModule ?? null
-      });
+      wallet = reconnectEntry(saved);
       renderWallet();
       renderCustomer();
       refreshSend().then(scanAssets);
