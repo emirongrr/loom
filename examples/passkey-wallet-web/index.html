@@ -343,9 +343,67 @@
       <div id="accountList"></div>
       <div class="actions">
         <button id="oneTap" class="primary" disabled>Create new wallet</button>
+        <button id="startRecovery">Lost access? Recover an account</button>
       </div>
       <div class="row"><span class="k">Sponsor backend</span><span class="v"><input id="sponsorUrl" class="field" value="http://localhost:8787/deploy"></span></div>
       <pre id="onboardOut">waiting for a deployment</pre>
+    </div>
+
+    <!-- Recovering an account you lost the key to. You still hold the guardian
+         invite (your backup); this makes a new passkey, has your guardians
+         approve it, and after the delay the same account answers to it. -->
+    <div class="card" id="recoverSection" hidden>
+      <h2>Recover your account <span id="recoverStatus" class="pill warn">step 1</span></h2>
+
+      <div id="recoverStep1">
+        <p class="hint" style="margin-top:0">
+          Lost the passkey to an account? If you kept the guardian invite, you can
+          bring it back. Open that invite, make a new passkey, and your guardians
+          approve the switch — the account address stays the same.
+        </p>
+        <div class="actions">
+          <button id="pickRecoverInvite" class="primary">Open your guardian invite</button>
+        </div>
+        <input id="recoverInviteFile" type="file" accept="application/json,.json" hidden>
+      </div>
+
+      <div id="recoverStep2" hidden>
+        <div class="row"><span class="k">Account</span><span class="v" id="recoverAccount">—</span></div>
+        <div class="row"><span class="k">Guardians</span><span class="v muted" id="recoverGuardians">—</span></div>
+        <div class="row"><span class="k">New passkey</span><span class="v muted" id="recoverNewKey">not created yet</span></div>
+        <p class="hint">
+          Make a new passkey on this device. It becomes the account's new key once
+          enough guardians approve. This does not touch the old one.
+        </p>
+        <div class="actions">
+          <button id="makeRecoverKey" class="primary">Create the new passkey</button>
+        </div>
+      </div>
+
+      <div id="recoverStep3" hidden>
+        <div class="row"><span class="k">Guardians must sign</span><span class="v" id="recoverDigest">—</span></div>
+        <div class="row"><span class="k">Progress</span><span class="v muted" id="recoverProgress">—</span></div>
+        <p class="hint">
+          Send this recovery request to your guardians. Each opens it in the
+          Guardian tab, signs on their own, and sends the signature back. When
+          enough have signed, propose the recovery.
+        </p>
+        <div id="recoverApprovalRows"></div>
+        <div class="actions">
+          <button id="exportRecoverRequest">Save the request to send</button>
+          <button id="submitRecovery" class="primary" disabled>Propose recovery</button>
+        </div>
+      </div>
+
+      <div id="recoverStep4" hidden>
+        <div class="row"><span class="k">Pending recovery</span><span class="v" id="recoverPending">—</span></div>
+        <div class="actions" id="recoverCompleteRow" hidden>
+          <button id="completeRecovery" class="primary">Complete recovery</button>
+        </div>
+      </div>
+
+      <div class="actions"><button id="recoverReset" class="ghost">Cancel</button></div>
+      <pre id="recoverOut">open your guardian invite to begin</pre>
     </div>
 
     <!-- Connected state. Everything below acts on the active account. -->
@@ -996,6 +1054,212 @@
       showOnboard(`could not open the account: ${error.message}`);
     } finally {
       $("oneTap").disabled = false;
+    }
+  };
+
+  // --- recovering an account (the new owner's side) -------------------------
+
+  let recovery = null;              // { invite, newPasskey, newValidator, request }
+  let recoveryApprovals = {};       // guardian address -> signature
+  const recoverBase = () => $("sponsorUrl").value.trim().replace(/\/deploy$/, "");
+  const recoveryManagerAddr = () => deployment?.recoveryModule ?? "0x245d394e4ce2f63679cd776d0af408921452caf0";
+
+  function showRecoverStep(n) {
+    for (const s of [1, 2, 3, 4]) $(`recoverStep${s}`).hidden = s !== n;
+    $("recoverStatus").textContent = `step ${n}`;
+  }
+
+  $("startRecovery").onclick = () => {
+    $("onboardSection").hidden = true;
+    $("recoverSection").hidden = false;
+    recovery = null; recoveryApprovals = {};
+    showRecoverStep(1);
+    $("recoverOut").textContent = "open your guardian invite to begin";
+  };
+  $("recoverReset").onclick = () => {
+    $("recoverSection").hidden = true;
+    $("onboardSection").hidden = false;
+    recovery = null;
+  };
+
+  $("pickRecoverInvite").onclick = () => $("recoverInviteFile").click();
+  $("recoverInviteFile").onchange = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const invite = JSON.parse(await file.text());
+      if (!invite.account || !Array.isArray(invite.guardians)) throw new Error("this is not a guardian invite");
+      recovery = { invite };
+      $("recoverAccount").textContent = shorten(invite.account);
+      $("recoverGuardians").textContent = `${invite.guardians.length} guardian(s), ${invite.threshold ?? 1} needed`;
+      $("recoverGuardians").className = "v";
+      showRecoverStep(2);
+      $("recoverOut").textContent = "make a new passkey — it becomes the account's key once guardians approve";
+    } catch (error) {
+      $("recoverOut").textContent = `could not read the invite: ${error.message}`;
+    }
+  };
+
+  $("makeRecoverKey").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !recovery) return;
+    $("makeRecoverKey").disabled = true;
+    try {
+      $("recoverOut").textContent = "touch the sensor to create your new passkey…";
+      const created = await credentials.create({ rpId: RP_ID, userName: "loom-recovered" });
+      recovery.newPasskey = { x: created.publicKeyX, y: created.publicKeyY, credentialId: created.credentialId };
+      $("recoverNewKey").textContent = short(created.credentialId);
+      $("recoverNewKey").className = "v";
+
+      $("recoverOut").textContent = "deploying a fresh validator for the new key…";
+      const dep = await fetch(`${recoverBase()}/deploy-validator`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const depResult = await dep.json();
+      if (!dep.ok) throw new Error(depResult.error ?? "validator deployment failed");
+      recovery.newValidator = depResult.validator;
+
+      $("recoverOut").textContent = "computing the recovery request…";
+      recovery.request = await runtime.prepareRecoveryRequest({
+        rpcUrl: $("publicRpc").value.trim(), recoveryManager: recoveryManagerAddr(),
+        deployment, invite: recovery.invite, newPasskey: recovery.newPasskey,
+        newValidator: recovery.newValidator, rpId: RP_ID, origin: ORIGIN
+      });
+      // Save the new passkey handle so the recovered account can be used after.
+      recovery.newHandle = {
+        credentialId: recovery.newPasskey.credentialId,
+        publicKey: { x: recovery.newPasskey.x, y: recovery.newPasskey.y },
+        guardianRoot: recovery.request.newGuardianRoot, guardianThreshold: recovery.request.newGuardianThreshold,
+        recoveryModule: deployment.recoveryModule ?? null, label: "Recovered account", createdAt: Date.now()
+      };
+      recoveryApprovals = {};
+      renderRecoverApprovals();
+      showRecoverStep(3);
+      $("recoverDigest").textContent = short(recovery.request.digest);
+      $("recoverOut").textContent = "send this request to your guardians, collect their signatures, then propose";
+    } catch (error) {
+      $("recoverOut").textContent = `could not prepare recovery: ${error.message}`;
+    } finally {
+      $("makeRecoverKey").disabled = false;
+    }
+  };
+
+  function renderRecoverApprovals() {
+    const host = $("recoverApprovalRows");
+    host.innerHTML = "";
+    const guardians = recovery.invite.guardians.map(g => (typeof g === "string" ? g : g.address));
+    for (const address of guardians) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.flexWrap = "wrap";
+      row.innerHTML = `<span class="k">${shorten(address)}</span>
+        <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
+          <input class="rsig field" placeholder="paste this guardian's signature" spellcheck="false">
+          <button class="sm rcheck">Check</button>
+        </span><div class="hint rnote" hidden style="width:100%;text-align:right"></div>`;
+      const note = row.querySelector(".rnote");
+      row.querySelector(".rcheck").onclick = async () => {
+        const runtime = walletRuntime();
+        if (!runtime) return;
+        const signature = row.querySelector(".rsig").value.trim();
+        const result = await runtime.verifyGuardianSignature({ digest: recovery.request.digest, signature, expectedAddress: address });
+        note.hidden = false;
+        if (result.valid) {
+          recoveryApprovals[getAddr(address)] = signature;
+          note.textContent = "verified"; note.style.color = "var(--good)";
+        } else {
+          delete recoveryApprovals[getAddr(address)];
+          note.textContent = result.recovered ? `from ${shorten(result.recovered)}, not this guardian` : "invalid signature";
+          note.style.color = "var(--bad)";
+        }
+        updateRecoverProgress();
+      };
+      host.append(row);
+    }
+    updateRecoverProgress();
+  }
+  const getAddr = a => a; // addresses are compared as given (checksum-consistent from the invite)
+
+  async function updateRecoverProgress() {
+    const runtime = walletModule;
+    if (!runtime || !recovery?.request) return;
+    const assembled = await runtime.assembleRecoveryApprovals({
+      rpcUrl: $("publicRpc").value.trim(), request: recovery.request, signatures: recoveryApprovals
+    });
+    recovery.assembled = assembled;
+    $("recoverProgress").textContent = assembled.ready
+      ? `${assembled.have} signed — enough to propose`
+      : `${assembled.have} of needed ${assembled.need} signed`;
+    $("recoverProgress").className = assembled.ready ? "v" : "v muted";
+    $("submitRecovery").disabled = !assembled.ready;
+  }
+
+  $("exportRecoverRequest").onclick = () => {
+    if (!recovery?.request) return;
+    // The guardians need the invite (to prove membership) and the digest (to
+    // sign). Bundle both so a guardian opens one file.
+    const bundle = { ...recovery.invite, recovery: { digest: recovery.request.digest, newValidator: recovery.newValidator, account: recovery.request.account } };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `recovery-request-${recovery.request.account.slice(0, 10)}.json` });
+    link.click(); URL.revokeObjectURL(link.href);
+    $("recoverOut").textContent = "Saved the recovery request. Send it to your guardians — each signs the digest in the Guardian tab.";
+  };
+
+  $("submitRecovery").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !recovery?.assembled?.ready) return;
+    $("submitRecovery").disabled = true;
+    try {
+      const call = runtime.recoveryProposeCall({ recoveryManager: recoveryManagerAddr(), request: recovery.request, approvals: recovery.assembled.approvals });
+      $("recoverOut").textContent = "submitting the recovery proposal…";
+      const response = await fetch(`${recoverBase()}/execute-scheduled`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: call.to, data: call.data }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "proposal failed");
+      showRecoverStep(4);
+      await refreshRecoverPending();
+      $("recoverOut").textContent = JSON.stringify({ ...result, proposed: "the recovery is on the clock; complete it after the delay" }, null, 2);
+    } catch (error) {
+      $("recoverOut").textContent = `could not propose: ${error.message}`;
+      $("submitRecovery").disabled = false;
+    }
+  };
+
+  async function refreshRecoverPending() {
+    const runtime = walletModule;
+    if (!runtime || !recovery) return;
+    const p = await runtime.readPendingRecovery({ rpcUrl: $("publicRpc").value.trim(), recoveryManager: recoveryManagerAddr(), account: recovery.request.account });
+    $("recoverCompleteRow").hidden = !p.pending || !p.ready;
+    $("recoverPending").textContent = !p.pending ? "none"
+      : p.ready ? "ready — complete it to restore your account"
+      : `${Math.ceil(p.secondsRemaining / 3600)} more hour(s) before it can be completed`;
+  }
+
+  $("completeRecovery").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !recovery) return;
+    $("completeRecovery").disabled = true;
+    try {
+      const call = runtime.recoveryExecuteCall({ recoveryManager: recoveryManagerAddr(), request: recovery.request });
+      $("recoverOut").textContent = "completing the recovery…";
+      const response = await fetch(`${recoverBase()}/execute-scheduled`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: call.to, data: call.data }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "completion failed");
+      // The account is recovered on chain and now answers to the new passkey.
+      // Its address comes from the original creation config, not the new key, so
+      // this wallet — which derives addresses from the passkey — cannot re-derive
+      // it. The recovery is real; reconnecting a recovered account in this UI is
+      // a follow-up, so the address and new credential are reported to keep.
+      $("recoverStatus").className = "pill good";
+      $("recoverStatus").textContent = "recovered";
+      $("recoverOut").textContent = JSON.stringify({
+        ...result,
+        recovered: "your account is back — it now answers to the new passkey",
+        account: recovery.request.account,
+        newValidator: recovery.newValidator,
+        newCredential: recovery.newPasskey.credentialId,
+        note: "keep the account address and this credential; re-connecting a recovered account in this demo wallet is a follow-up"
+      }, null, 2);
+    } catch (error) {
+      $("recoverOut").textContent = `could not complete: ${error.message}`;
+      $("completeRecovery").disabled = false;
     }
   };
 
