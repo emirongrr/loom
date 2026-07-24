@@ -354,6 +354,20 @@
         approve a transaction, or see a key.
       </p>
       <div id="accountList"></div>
+
+      <details id="createGuardians" style="margin:.5rem 0">
+        <summary style="cursor:pointer;color:var(--muted);font-size:.88rem">Set guardians now (optional, recommended)</summary>
+        <p class="hint" style="margin-top:.5rem">
+          Adding guardians here commits them the moment the account is created —
+          no waiting period, and your account has real recovery from the start.
+          Each must be a wallet someone holds the key to, or a contract wallet.
+        </p>
+        <div id="createGuardianRows"></div>
+        <div class="row"><span class="k">How many must agree</span><span class="v">
+          <input id="createThreshold" class="num" type="number" min="1" value="1" style="max-width:5rem"></span></div>
+        <div class="actions"><button id="addCreateGuardian" class="sm">Add guardian</button></div>
+      </details>
+
       <div class="actions">
         <button id="oneTap" class="primary" disabled>Create new wallet</button>
         <button id="startRecovery">Lost access? Recover an account</button>
@@ -1041,15 +1055,37 @@
     const step = (text, cls = "warn") => { status.className = `pill ${cls}`; status.textContent = text; };
     $("oneTap").disabled = true;
     try {
+      // Guardians entered above are committed into the account's initial config,
+      // so it has real recovery from creation with no waiting period.
+      let creationGuardians = null;
+      try {
+        creationGuardians = await creationGuardianSet();
+      } catch (error) {
+        step("fix guardians", "bad");
+        return showOnboard(error.message);
+      }
+
       if (!wallet) {
         step("creating passkey…");
         showOnboard("touch the sensor to create your passkey…");
         wallet = await runtime.registerPasskeyAccount({
           credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user",
-          chainId: deployment.chainId, deployment
+          chainId: deployment.chainId, deployment,
+          guardianRoot: creationGuardians?.set.root, guardianThreshold: creationGuardians?.threshold
         });
-        // Added alongside whatever this device already holds, never in place of it.
         rememberAccount(wallet);
+        // Save and offer the guardian invite so the owner can send it to each
+        // guardian — the account is guarded on chain the moment it is published.
+        if (creationGuardians) {
+          const invite = {
+            account: wallet.account, chainId: deployment.chainId,
+            guardians: creationGuardians.valid, threshold: creationGuardians.threshold,
+            salt: creationGuardians.set.salt, guardianRoot: creationGuardians.set.root,
+            savedAt: new Date().toISOString()
+          };
+          localStorage.setItem(`loom.passkey-wallet.guardians.${wallet.account.toLowerCase()}`, JSON.stringify(invite));
+          wallet.pendingInvite = invite;
+        }
         renderWallet();
         renderCustomer();
       }
@@ -1077,10 +1113,17 @@
       step("account is live", "good");
       renderCustomer();
       await refreshChainStatus(result.account);
+      // If guardians were committed, hand the owner the invite to distribute.
+      if (wallet.pendingInvite) {
+        const blob = new Blob([JSON.stringify(wallet.pendingInvite, null, 2)], { type: "application/json" });
+        const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `guardian-invite-${wallet.account.slice(0, 10)}.json` });
+        link.click(); URL.revokeObjectURL(link.href);
+      }
       showOnboard(result.alreadyDeployed
         ? { account: result.account, note: "this account was already on chain" }
-        : { account: result.account, publishedIn: result.opTx, codeSize: `${result.codeSize} B`, gasUsed: result.gasUsed,
-            note: "the account exists on chain — the user paid nothing and approved no transaction" });
+        : { account: result.account, publishedIn: result.opTx, gasUsed: result.gasUsed,
+            guardians: wallet.pendingInvite ? `${wallet.pendingInvite.guardians.length} guardian(s) committed — invite downloaded, send it to each` : "none set",
+            note: "the account exists on chain" });
     } catch (error) {
       step("failed", "bad");
       showOnboard(`could not open the account: ${error.message}`);
@@ -1099,6 +1142,48 @@
   function showRecoverStep(n) {
     for (const s of [1, 2, 3, 4]) $(`recoverStep${s}`).hidden = s !== n;
     $("recoverStatus").textContent = `step ${n}`;
+  }
+
+  // Optional guardians to commit at account creation. Rows here mirror the
+  // guardian editor, but the set is baked into the account's initial config
+  // instead of scheduled as a change.
+  function addCreateGuardianRow(value = "") {
+    const row = document.createElement("div");
+    row.className = "row"; row.style.flexWrap = "wrap";
+    row.innerHTML = `<span class="k">Guardian</span>
+      <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
+        <input class="cgaddr field" placeholder="0x…" spellcheck="false" value="${value}">
+        <button class="sm ghost rm" title="Remove">Remove</button>
+      </span><div class="hint cgnote" hidden style="width:100%;text-align:right"></div>`;
+    row.querySelector(".rm").onclick = () => row.remove();
+    $("createGuardianRows").append(row);
+  }
+  $("addCreateGuardian").onclick = () => addCreateGuardianRow();
+
+  // Validate and build a guardian set from the creation rows, or null if none
+  // were entered. Rejections are reported per row.
+  async function creationGuardianSet() {
+    const rows = [...$("createGuardianRows").children];
+    const addresses = rows.map(r => r.querySelector(".cgaddr").value).filter(v => v.trim() !== "");
+    if (addresses.length === 0) return null;
+    const runtime = walletRuntime();
+    const { results, valid, ok } = await runtime.validateGuardians({
+      rpcUrl: $("publicRpc").value.trim(), addresses, verifiers: guardianVerifiers()
+    });
+    rows.forEach((row, i) => {
+      const note = row.querySelector(".cgnote");
+      const r = results[i];
+      const msg = r?.errors[0] ?? r?.warnings[0] ?? "";
+      note.hidden = msg === ""; note.textContent = msg;
+      note.style.color = r?.errors.length ? "var(--bad)" : "var(--warn)";
+    });
+    if (!ok) throw new Error(`fix the guardian(s) marked in red, or remove them`);
+    const threshold = Number($("createThreshold").value);
+    if (!Number.isInteger(threshold) || threshold < 1 || threshold > valid.length) {
+      throw new Error(`how many must agree must be between 1 and ${valid.length}`);
+    }
+    const set = await runtime.buildGuardianSet({ rpcUrl: $("publicRpc").value.trim(), guardians: valid });
+    return { valid, threshold, set };
   }
 
   $("startRecovery").onclick = () => {

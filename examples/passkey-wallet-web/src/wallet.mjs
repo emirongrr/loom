@@ -102,11 +102,16 @@ function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicK
 // Register a new passkey and derive its counterfactual Loom account. The
 // returned handle is everything a wallet persists locally to reconnect later
 // (no private key — the credential stays in the platform authenticator).
-export async function registerPasskeyAccount({ credentials, rpId, origin, userName, chainId, deployment }) {
+export async function registerPasskeyAccount({
+  credentials, rpId, origin, userName, chainId, deployment, guardianRoot, guardianThreshold
+}) {
   const { credentialId, publicKeyX, publicKeyY } = await credentials.create({ rpId, userName });
   return deriveWallet({
     deployment, rpId, origin, chainId, credentialId,
     publicKey: { x: publicKeyX, y: publicKeyY },
+    // Guardians can be committed at creation, which is not a "change" and so
+    // carries no delay — the account has real recovery from its first block.
+    guardianRoot, guardianThreshold,
     // New accounts get recovery wired in from the start when the deployment
     // names a module; existing ones keep whatever they were created with.
     recoveryModule: deployment.recoveryModule ?? null
