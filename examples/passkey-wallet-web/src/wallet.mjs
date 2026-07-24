@@ -496,6 +496,147 @@ export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardi
   };
 }
 
+// --- recovery: restoring a lost account to a new key ----------------------
+//
+// The account address never changes. Recovery swaps the validator that controls
+// it: the new owner makes a fresh passkey, the guardians approve that specific
+// change, and after the delay the account answers to the new key. The digest
+// everyone signs commits to the new key, so a signature approves this recovery
+// and nothing else.
+
+const RECOVERY_ABI = [
+  { type: "function", name: "proposalDigest", stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "bytes32" }, { type: "address" }, { type: "bytes32" },
+      { type: "bytes32" }, { type: "uint8" }, { type: "uint64" }, { type: "uint64" }], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "recoveryNonces", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "pendingRecoveries", stateMutability: "view", inputs: [{ type: "address" }],
+    outputs: [{ type: "bytes32" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" },
+      { type: "uint8" }, { type: "uint48" }, { type: "uint48" }, { type: "uint64" }, { type: "uint64" }] },
+  { type: "function", name: "proposeRecovery", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address[]" }, { type: "address" }, { type: "bytes32" },
+      { type: "bytes32" }, { type: "uint8" },
+      { type: "tuple[]", components: [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes" }, { type: "bytes32[]" }] }],
+    outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "executeRecovery", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address[]" }, { type: "bytes" }], outputs: [] }
+];
+const ACCOUNT_RECOVERY_VIEW_ABI = [
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "guardianRoot", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "validatorCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "validatorAt", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] }
+];
+
+// The account's current validators, which recovery replaces. Recovery must name
+// the complete current set.
+async function readValidators(client, account) {
+  const count = await client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "validatorCount" });
+  const validators = [];
+  for (let i = 0n; i < count; i += 1n) {
+    validators.push(await client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "validatorAt", args: [i] }));
+  }
+  return validators;
+}
+
+// Assemble everything a recovery needs from the new owner's side: the new
+// validator's init data, a fresh guardian root (the contract refuses to keep the
+// old one), and the one digest each guardian will sign. Returned as a request
+// the new owner sends to the guardians alongside their invite.
+export async function prepareRecoveryRequest({
+  rpcUrl, recoveryManager, deployment, invite, newPasskey, newValidator, rpId, origin, keepGuardians = true
+}) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const account = getAddress(invite.account);
+  const guardians = (invite.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: invite.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+
+  // Recovery rotates the guardian salt, so the new root differs from the current
+  // one — which the contract requires — while keeping the same guardians.
+  const newSalt = keepGuardians
+    ? `0x${[...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, "0")).join("")}`
+    : invite.salt;
+  const rebuiltNew = await buildGuardianSet({ rpcUrl, guardians, salt: newSalt });
+
+  // Bound to the same rpId/origin the new passkey was created under, exactly as
+  // account creation binds a validator — sha256 for the rpId, keccak for origin.
+  const newValidatorInit = encodeFunctionData({
+    abi: P256ValidatorAbi, functionName: "initialize",
+    args: [newPasskey.x, newPasskey.y, sha256(stringToHex(rpId)), keccak256(stringToHex(origin)), deployment.policyHook]
+  });
+
+  const oldValidators = await readValidators(client, account);
+  const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
+  const initDataHash = keccak256(newValidatorInit);
+  const [configVersion, recoveryNonce] = await Promise.all([
+    client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "configVersion" }),
+    client.readContract({ address: recoveryManager, abi: RECOVERY_ABI, functionName: "recoveryNonces", args: [account] })
+  ]);
+
+  const threshold = invite.threshold ?? 1;
+  const digest = await client.readContract({
+    address: recoveryManager, abi: RECOVERY_ABI, functionName: "proposalDigest",
+    args: [account, oldValidatorsHash, newValidator, initDataHash, rebuiltNew.root, threshold, configVersion, recoveryNonce]
+  });
+
+  return {
+    account, chainId: invite.chainId,
+    // Everything the guardians need to verify what they are approving.
+    newValidator, newValidatorInit, initDataHash,
+    newGuardianRoot: rebuiltNew.root, newGuardianThreshold: threshold, newSalt,
+    oldValidators, oldValidatorsHash, configVersion: Number(configVersion), recoveryNonce: Number(recoveryNonce),
+    // The full guardian set, so approvals can be assembled and proofs rebuilt.
+    invite, threshold,
+    digest
+  };
+}
+
+// Assemble threshold-many guardian approvals over the recovery digest, in the
+// order the account requires.
+export async function assembleRecoveryApprovals({ rpcUrl, request, signatures }) {
+  const guardians = (request.invite.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: request.invite.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+  const set = await buildGuardianSet({ rpcUrl, guardians, salt: request.invite.salt });
+  return assembleGuardianApprovals({ set, signatures, threshold: request.threshold });
+}
+
+// The two calls a recovery moves through: propose (with the approvals) and,
+// after the delay, execute. Both go to the RecoveryManager as plain calls —
+// they carry their own authority (the guardian signatures), so anyone can send
+// them.
+export function recoveryProposeCall({ recoveryManager, request, approvals }) {
+  return {
+    to: recoveryManager, value: 0n,
+    data: encodeFunctionData({
+      abi: RECOVERY_ABI, functionName: "proposeRecovery",
+      args: [request.account, request.oldValidators, request.newValidator, request.initDataHash,
+        request.newGuardianRoot, request.newGuardianThreshold, approvals]
+    })
+  };
+}
+export function recoveryExecuteCall({ recoveryManager, request }) {
+  return {
+    to: recoveryManager, value: 0n,
+    data: encodeFunctionData({
+      abi: RECOVERY_ABI, functionName: "executeRecovery",
+      args: [request.account, request.oldValidators, request.newValidatorInit]
+    })
+  };
+}
+
+// Is a recovery pending for this account, and when is it due?
+export async function readPendingRecovery({ rpcUrl, recoveryManager, account }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const p = await client.readContract({ address: recoveryManager, abi: RECOVERY_ABI, functionName: "pendingRecoveries", args: [account] });
+  const readyAt = Number(p[5]);
+  if (readyAt === 0) return { pending: false };
+  const latest = await client.getBlock();
+  const now = Number(latest.timestamp);
+  return {
+    pending: true, newValidator: p[1], readyAt, expiresAt: Number(p[6]),
+    ready: now >= readyAt, secondsRemaining: Math.max(0, readyAt - now)
+  };
+}
+
 // --- account self-administration ------------------------------------------
 //
 // Each of these is `onlySelf` on the account, so it runs as a normal operation
