@@ -271,14 +271,19 @@ export function sponsorCalls({ deployment, packed, beneficiary, depositWei }) {
 // that could never work. What none of it proves is that anyone holds the key —
 // only a signature from that address does, which is why a possession challenge
 // is a separate, later step rather than something inferred here.
-export async function validateGuardians({ rpcUrl, account, addresses }) {
+// A guardian can be an ordinary wallet (an EOA that signs with a key) or a smart
+// contract wallet — a Loom account, a Safe — that signs through ERC-1271. Those
+// take different verifiers, so which one applies is decided per guardian by
+// whether the address carries code, not assumed. A contract is no longer
+// rejected; it is routed to the ERC-1271 verifier instead.
+export async function validateGuardians({ rpcUrl, account, addresses, verifiers }) {
   const client = createPublicClient({ transport: http(rpcUrl) });
   const seen = new Map();
   const results = [];
 
   for (const raw of addresses) {
     const input = String(raw ?? "").trim();
-    const entry = { input, address: null, errors: [], warnings: [] };
+    const entry = { input, address: null, verifier: null, kind: null, errors: [], warnings: [] };
     results.push(entry);
     if (input === "") { entry.errors.push("empty"); continue; }
 
@@ -286,17 +291,11 @@ export async function validateGuardians({ rpcUrl, account, addresses }) {
       entry.errors.push("not an Ethereum address — expected 0x followed by 40 hex characters");
       continue;
     }
-    // A mixed-case address carries its own EIP-55 checksum. If it fails, a
-    // character was mistyped, and accepting it would hand recovery authority to
-    // an address nobody controls.
     const hasMixedCase = /[a-f]/.test(input.slice(2)) && /[A-F]/.test(input.slice(2));
     let address;
     try {
       address = getAddress(input);
-      if (hasMixedCase && address !== input) {
-        entry.errors.push("checksum does not match — this address has a typo");
-        continue;
-      }
+      if (hasMixedCase && address !== input) { entry.errors.push("checksum does not match — this address has a typo"); continue; }
     } catch {
       entry.errors.push("checksum does not match — this address has a typo");
       continue;
@@ -312,22 +311,30 @@ export async function validateGuardians({ rpcUrl, account, addresses }) {
     if (duplicate !== undefined) { entry.errors.push(`already listed as guardian ${duplicate + 1}`); continue; }
     seen.set(address.toLowerCase(), results.length - 1);
 
-    // An ECDSA guardian approves by signing, and a signature recovers to the
-    // signer's address. A contract has no private key, so a contract address
-    // can never produce one: it would be a guardian that can never act.
     try {
       const code = await client.getCode({ address });
-      if (code && code !== "0x") {
-        entry.errors.push("this is a contract, not a wallet — it holds no key and could never sign an approval");
-        continue;
-      }
-      const [nonce, balance] = await Promise.all([
-        client.getTransactionCount({ address }),
-        client.getBalance({ address })
-      ]);
-      entry.nonce = nonce;
-      if (nonce === 0 && balance === 0n) {
-        entry.warnings.push("this address has never been used on this chain — make sure someone holds its key");
+      const isContract = Boolean(code && code !== "0x");
+      if (isContract) {
+        // A contract wallet signs through ERC-1271. It can only be a guardian if
+        // that verifier is available.
+        if (!verifiers?.erc1271) {
+          entry.errors.push("this is a contract wallet, but no ERC-1271 guardian verifier is configured for this deployment");
+          continue;
+        }
+        entry.kind = "contract";
+        entry.verifier = verifiers.erc1271;
+        entry.warnings.push("smart-contract wallet — it must be able to sign with ERC-1271 (isValidSignature) to approve");
+      } else {
+        if (!verifiers?.ecdsa) { entry.errors.push("no ECDSA guardian verifier is configured for this deployment"); continue; }
+        entry.kind = "wallet";
+        entry.verifier = verifiers.ecdsa;
+        const [nonce, balance] = await Promise.all([
+          client.getTransactionCount({ address }),
+          client.getBalance({ address })
+        ]);
+        if (nonce === 0 && balance === 0n) {
+          entry.warnings.push("this address has never been used on this chain — make sure someone holds its key");
+        }
       }
     } catch (error) {
       entry.warnings.push(`could not be checked on chain (${error.message})`);
@@ -335,38 +342,48 @@ export async function validateGuardians({ rpcUrl, account, addresses }) {
   }
 
   const valid = results.filter(r => r.errors.length === 0);
-  return { results, valid: valid.map(r => r.address), ok: valid.length === results.length && results.length > 0 };
+  return {
+    results,
+    // Each valid guardian carries the verifier it will use, so a set can mix
+    // wallets and contract wallets.
+    valid: valid.map(r => ({ address: r.address, verifier: r.verifier, kind: r.kind })),
+    ok: valid.length === results.length && results.length > 0
+  };
 }
 
-// Build the guardian merkle root the account commits to. The leaf encoding
-// mirrors the contract exactly — keccak256(abi.encode(verifier, verifier
-// .codehash, keyCommitment, salt)) — and an ECDSA guardian's commitment is the
-// hash of its address, which is what the verifier recovers a signature to.
-export async function buildGuardianSet({ rpcUrl, verifier, addresses, salt }) {
+// Build the guardian merkle root the account commits to. Each leaf is
+// keccak256(abi.encode(verifier, verifier.codehash, keyCommitment, salt)) with
+// that guardian's own verifier, so a set may mix ECDSA and ERC-1271 guardians —
+// the commitment is the hash of the guardian's address either way.
+export async function buildGuardianSet({ rpcUrl, guardians, salt }) {
   const client = createPublicClient({ transport: http(rpcUrl) });
-  const code = await client.getCode({ address: verifier });
-  if (!code || code === "0x") throw new Error(`no guardian verifier deployed at ${verifier}`);
-  const verifierCodeHash = keccak256(code);
-  // The salt is what stops the root from being searchable. A guardian's
-  // commitment is the hash of their address, so with a predictable salt anyone
-  // could hash candidate addresses, rebuild the leaf and test it against the
-  // root until they found who guards this account. A random salt per set makes
-  // that impossible — which is also why it has to be kept: the same guardians
-  // with a different salt produce a different root.
+  const codeHashes = new Map();
+  const codeHashFor = async verifier => {
+    const key = verifier.toLowerCase();
+    if (!codeHashes.has(key)) {
+      const code = await client.getCode({ address: verifier });
+      if (!code || code === "0x") throw new Error(`no guardian verifier deployed at ${verifier}`);
+      codeHashes.set(key, keccak256(code));
+    }
+    return codeHashes.get(key);
+  };
   const leafSalt = salt ?? `0x${[...crypto.getRandomValues(new Uint8Array(32))]
     .map(b => b.toString(16).padStart(2, "0")).join("")}`;
 
-  const leaves = addresses.map(address => {
+  const leaves = [];
+  for (const guardian of guardians) {
+    const address = guardian.address ?? guardian;
+    const verifier = guardian.verifier;
+    const verifierCodeHash = await codeHashFor(verifier);
     const keyCommitment = keccak256(encodeAbiParameters([{ type: "address" }], [address]));
-    return {
-      address,
-      keyCommitment,
+    leaves.push({
+      address, verifier, keyCommitment,
       leaf: keccak256(encodeAbiParameters(
         [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
         [verifier, verifierCodeHash, keyCommitment, leafSalt]
       ))
-    };
-  });
+    });
+  }
   // The contract requires strictly increasing leaves across approvals, so the
   // set is sorted here and the tree is built over that order.
   leaves.sort((a, b) => (BigInt(a.leaf) < BigInt(b.leaf) ? -1 : 1));
@@ -384,7 +401,7 @@ export async function buildGuardianSet({ rpcUrl, verifier, addresses, salt }) {
     layers.push(next);
     layer = next;
   }
-  return { root: layer[0], salt: leafSalt, verifier, verifierCodeHash, leaves, layers };
+  return { root: layer[0], salt: leafSalt, leaves, layers };
 }
 
 // Changing who guards an account is deliberately slow: `setGuardianConfig` can
@@ -571,13 +588,15 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
   const client = createPublicClient({ transport: http(rpcUrl) });
   const account = getAddress(record.account);
   const guardian = getAddress(guardianAddress);
-  if (!record.guardians?.some(a => getAddress(a) === guardian)) {
+  // Normalize both record shapes: newer records carry a verifier per guardian,
+  // older ones list addresses under a single verifier.
+  const guardians = (record.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: record.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+  if (!guardians.some(g => g.address === guardian)) {
     throw new Error("this address is not one of the guardians in that record");
   }
 
-  const set = await buildGuardianSet({
-    rpcUrl, verifier: record.verifier, addresses: record.guardians, salt: record.salt
-  });
+  const set = await buildGuardianSet({ rpcUrl, guardians, salt: record.salt });
   const onChainRoot = await client.readContract({ address: account, abi: FREEZE_ABI, functionName: "guardianRoot" });
   if (set.root.toLowerCase() !== onChainRoot.toLowerCase()) {
     throw new Error("this record does not match the account's current guardians — ask for an up-to-date copy");
@@ -603,7 +622,7 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
 
   return {
     account, guardian, leaf: mine.leaf, keyCommitment: mine.keyCommitment,
-    salt: set.salt, verifier: set.verifier, proof, configVersion, freezeNonce,
+    salt: set.salt, verifier: mine.verifier, proof, configVersion, freezeNonce,
     // The full set, so a caller can show every guardian and collect approvals
     // from any of them rather than assuming a single signer.
     set,
@@ -619,7 +638,7 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
       target: account, value: 0n,
       data: encodeFunctionData({
         abi: FREEZE_ABI, functionName: "freeze",
-        args: [set.verifier, mine.keyCommitment, set.salt, proof, signature]
+        args: [mine.verifier, mine.keyCommitment, set.salt, proof, signature]
       })
     })
   };
@@ -657,7 +676,7 @@ export function assembleGuardianApprovals({ set, signatures, threshold }) {
   }
   // Already ordered: buildGuardianSet sorts its leaves ascending.
   const approvals = collected.slice(0, threshold).map(entry => ({
-    verifier: set.verifier,
+    verifier: entry.leaf.verifier,
     keyCommitment: entry.leaf.keyCommitment,
     salt: set.salt,
     signature: entry.signature,

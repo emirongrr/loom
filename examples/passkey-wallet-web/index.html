@@ -496,9 +496,11 @@
       recovery only — freezing takes a single guardian, because waiting to
       gather several is the wrong behaviour in an emergency.
     </p>
-    <div class="row"><span class="k">Verifier</span><span class="v">
-      <input id="guardianVerifier" class="field" spellcheck="false"
-        value="0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b"></span></div>
+    <p class="hint" style="margin-top:0">
+      A guardian can be an ordinary wallet or a smart-contract wallet — a Loom
+      account, a Safe. Which is which is detected automatically: an address with
+      code signs through ERC-1271, an ordinary wallet signs with its key.
+    </p>
     <div class="actions">
       <button id="addGuardian">Add guardian</button>
       <button id="checkGuardians" class="primary">Check &amp; save guardians</button>
@@ -1321,8 +1323,9 @@
     try {
       const rebuilt = await runtime.buildGuardianSet({
         rpcUrl: $("publicRpc").value.trim(),
-        verifier: guardianSet.verifier,
-        addresses: guardianSet.guardians,
+        // Older saved sets list addresses under a single verifier; normalize.
+        guardians: guardianSet.guardians.map(g =>
+          typeof g === "string" ? { address: g, verifier: guardianSet.verifier } : g),
         salt: guardianSet.salt
       });
       return {
@@ -1742,6 +1745,13 @@
     row.querySelector(".rm").onclick = () => row.remove();
     $("guardianRows").append(row);
   }
+  // Both verifier addresses for this deployment, so validation can route an EOA
+  // to the ECDSA verifier and a contract wallet to the ERC-1271 one.
+  const guardianVerifiers = () => deployment?.guardianVerifiers ?? {
+    ecdsa: "0x7f3fecc48c9737473a56aba46fb81ff558dc3e4b",
+    erc1271: "0x81a12a6946e05e8d203bc9f3b5dd252846251245"
+  };
+
   $("addGuardian").onclick = () => addGuardianRow();
   addGuardianRow();
 
@@ -1757,7 +1767,8 @@
       const { results, valid, ok } = await runtime.validateGuardians({
         rpcUrl: $("publicRpc").value.trim(),
         account: wallet?.account,
-        addresses
+        addresses,
+        verifiers: guardianVerifiers()
       });
       // Report per address, so a mistake points at the row that caused it.
       results.forEach((result, index) => {
@@ -1794,8 +1805,7 @@
       if (threshold > 32) throw new Error("the account allows at most 32 guardians to be required");
       const set = await runtime.buildGuardianSet({
         rpcUrl: $("publicRpc").value.trim(),
-        verifier: $("guardianVerifier").value.trim(),
-        addresses: valid
+        guardians: valid
       });
       // The chain stores only the root. Guardian identities are never written
       // anywhere on chain, which keeps them private but makes this record the
@@ -1804,9 +1814,10 @@
       const record = {
         account: wallet?.account ?? null,
         chainId: deployment?.chainId ?? null,
+        // Each guardian carries the verifier it signs through, so a set can mix
+        // ordinary wallets and smart-contract wallets.
         guardians: valid,
         threshold,
-        verifier: set.verifier,
         salt: set.salt,
         guardianRoot: set.root,
         savedAt: new Date().toISOString()
