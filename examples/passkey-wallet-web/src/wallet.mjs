@@ -479,6 +479,54 @@ export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardi
   };
 }
 
+// --- account self-administration ------------------------------------------
+//
+// Each of these is `onlySelf` on the account, so it runs as a normal operation
+// signed by the passkey — the same path as a transfer. They are gathered here as
+// plain calls the send path already knows how to carry.
+
+const SELF_ADMIN_ABI = [
+  { type: "function", name: "unfreeze", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "revokeTokenAllowance", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address" }], outputs: [] }
+];
+const ERC20_ALLOWANCE_ABI = [
+  { type: "function", name: "allowance", stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }
+];
+
+// Lift a freeze once its window has passed. The contract refuses while the
+// window is still open, so this only does anything after it expires.
+export function unfreezeCall({ account }) {
+  return { target: account, value: 0n, data: encodeFunctionData({ abi: SELF_ADMIN_ABI, functionName: "unfreeze" }) };
+}
+
+// Set a token allowance the account granted to a spender back to zero. A stale
+// approval is standing permission to move funds, so revoking it is a security
+// action a wallet should make easy.
+export function revokeAllowanceCall({ account, token, spender }) {
+  if (!isAddress(token) || !isAddress(spender)) throw new Error("token and spender must be addresses");
+  return {
+    target: account, value: 0n,
+    data: encodeFunctionData({ abi: SELF_ADMIN_ABI, functionName: "revokeTokenAllowance", args: [token, spender] })
+  };
+}
+
+// What the account currently allows a spender to move, so a revocation is only
+// offered when there is actually something to revoke.
+export async function readAllowance({ rpcUrl, account, token, spender }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const [amount, decimals, symbol] = await Promise.all([
+    client.readContract({ address: token, abi: ERC20_ALLOWANCE_ABI, functionName: "allowance", args: [account, spender] }),
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?")
+  ]);
+  return {
+    amount, decimals, symbol,
+    formatted: amount > 2n ** 255n ? "unlimited" : formatUnits(amount, decimals)
+  };
+}
+
 // --- the guardian's side --------------------------------------------------
 //
 // A guardian cannot discover on chain that they are one: the account publishes

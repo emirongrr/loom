@@ -481,8 +481,31 @@
     <div class="row"><span class="k">If the passkey is lost</span><span class="v muted" id="recoveryOutcome">—</span></div>
     <div class="actions">
       <button id="openGuardianEditor" class="primary">Manage guardians</button>
+      <button id="unfreezeBtn" hidden>Lift the freeze</button>
       <button id="refreshRecovery" class="ghost">Refresh</button>
     </div>
+    <pre id="recoveryActionOut" hidden></pre>
+  </div>
+
+  <!-- A token allowance is standing permission to move funds, so letting it be
+       set back to zero is a security control the wallet should surface. -->
+  <div class="card">
+    <h2>Token approvals <span id="allowanceStatus" class="pill warn">idle</span></h2>
+    <p class="hint" style="margin-top:0">
+      Check what a contract is allowed to move from this account, and set it back
+      to zero. An old approval from a dapp you no longer use is a risk worth
+      closing.
+    </p>
+    <div class="row"><span class="k">Token</span><span class="v">
+      <input id="allowanceToken" class="field" placeholder="0x… token" spellcheck="false"></span></div>
+    <div class="row"><span class="k">Spender</span><span class="v">
+      <input id="allowanceSpender" class="field" placeholder="0x… the contract you approved" spellcheck="false"></span></div>
+    <div class="row"><span class="k">Currently allowed</span><span class="v muted" id="allowanceAmount">—</span></div>
+    <div class="actions">
+      <button id="checkAllowance">Check allowance</button>
+      <button id="revokeAllowance" class="primary" disabled>Revoke approval</button>
+    </div>
+    <pre id="allowanceOut">enter a token and the contract you approved</pre>
   </div>
 
   <!-- Emergency stop. A guardian can halt an account without the owner, which
@@ -1488,6 +1511,77 @@
   };
   $("refreshRecovery").onclick = () => refreshRecovery();
 
+  // Unfreeze only appears once the window has expired; the account refuses it
+  // while a freeze is still active, so offering it early would only mislead.
+  $("unfreezeBtn").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet) return;
+    $("unfreezeBtn").disabled = true;
+    $("recoveryActionOut").hidden = false;
+    $("recoveryActionOut").textContent = "touch the sensor to lift the freeze…";
+    try {
+      const result = await sendAccountCall(runtime.unfreezeCall({ account: wallet.account }), "unfreeze");
+      $("recoveryActionOut").textContent = JSON.stringify({ ...result, note: "the account can spend again" },
+        (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      await refreshRecovery();
+      await refreshSend();
+    } catch (error) {
+      $("recoveryActionOut").textContent = `could not lift the freeze: ${error.message}`;
+    } finally {
+      $("unfreezeBtn").disabled = false;
+    }
+  };
+
+  // --- token approvals ------------------------------------------------------
+
+  $("checkAllowance").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet) return;
+    const token = $("allowanceToken").value.trim();
+    const spender = $("allowanceSpender").value.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(token) || !/^0x[0-9a-fA-F]{40}$/.test(spender)) {
+      $("allowanceOut").textContent = "enter a token address and the spender address";
+      return;
+    }
+    $("allowanceStatus").className = "pill warn";
+    $("allowanceStatus").textContent = "checking";
+    try {
+      const a = await runtime.readAllowance({ rpcUrl: $("publicRpc").value.trim(), account: wallet.account, token, spender });
+      const has = a.amount > 0n;
+      $("allowanceAmount").textContent = `${a.formatted} ${a.symbol}`;
+      $("allowanceAmount").className = "v";
+      $("allowanceStatus").className = has ? "pill bad" : "pill good";
+      $("allowanceStatus").textContent = has ? "approval active" : "nothing approved";
+      $("revokeAllowance").disabled = !has;
+      $("allowanceOut").textContent = has
+        ? `${spender} can move ${a.formatted} ${a.symbol} from this account`
+        : "this spender has no allowance to revoke";
+    } catch (error) {
+      $("allowanceStatus").className = "pill bad";
+      $("allowanceStatus").textContent = "failed";
+      $("allowanceOut").textContent = `could not read the allowance: ${error.message}`;
+    }
+  };
+
+  $("revokeAllowance").onclick = async () => {
+    const runtime = walletRuntime();
+    if (!runtime || !wallet) return;
+    $("revokeAllowance").disabled = true;
+    try {
+      const call = runtime.revokeAllowanceCall({
+        account: wallet.account, token: $("allowanceToken").value.trim(), spender: $("allowanceSpender").value.trim()
+      });
+      $("allowanceOut").textContent = "touch the sensor to revoke the approval…";
+      const result = await sendAccountCall(call, "revoke");
+      $("allowanceOut").textContent = JSON.stringify({ ...result, revoked: "the spender can no longer move this token" },
+        (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      $("checkAllowance").click();
+    } catch (error) {
+      $("allowanceOut").textContent = `could not revoke: ${error.message}`;
+      $("revokeAllowance").disabled = false;
+    }
+  };
+
   // A root is a hash, so a non-zero one only means the account claims guardians
   // — it cannot say who they are. The one thing that turns that claim into a
   // check is a saved list: rebuild the root from it and see whether the chain
@@ -1525,10 +1619,16 @@
       const none = s.config.guardianRoot === `0x${"00".repeat(32)}`;
       const frozen = s.freeze?.active;
 
+      $("unfreezeBtn").hidden = !frozen;
       if (frozen) {
         $("recoveryStatePill").className = "pill bad";
         $("recoveryStatePill").textContent = "frozen";
-        $("recoveryState").textContent = "a guardian has frozen this account";
+        const until = Number(s.freeze.frozenUntil);
+        const overSecs = Math.floor(Date.now() / 1000) - until;
+        $("recoveryState").textContent = overSecs >= 0
+          ? "a guardian froze this account; the window has passed and you can lift it"
+          : `a guardian has frozen this account until unix ${until}`;
+        $("unfreezeBtn").disabled = overSecs < 0;
       } else if (placeholder) {
         $("recoveryStatePill").className = "pill bad";
         $("recoveryStatePill").textContent = "not protected";
