@@ -223,6 +223,22 @@
           <button id="startCollecting">Collect approvals for recovery</button>
         </div>
 
+        <div id="freezeSubmit" hidden>
+          <div class="row"><span class="k">Sign this digest</span><span class="v" id="freezeDigest">—</span></div>
+          <div class="row"><span class="k">With your wallet</span><span class="v" id="freezeSigner">—</span></div>
+          <div class="row"><span class="k">Your signature</span><span class="v">
+            <input id="freezeSignature" class="field" placeholder="0x… signature over the digest" spellcheck="false"></span></div>
+          <p class="hint">
+            Sign the digest above with the wallet you were added as — any wallet
+            that can sign a hash. Paste the signature and submit; the account
+            checks it and freezes. Whoever sends the transaction is irrelevant,
+            so the relay can carry it and you pay nothing.
+          </p>
+          <div class="actions">
+            <button id="submitFreeze" class="primary" disabled>Freeze the account</button>
+          </div>
+        </div>
+
         <div id="approvalPanel" hidden>
           <div class="row"><span class="k">Everyone must sign</span><span class="v" id="approvalDigest">—</span></div>
           <div class="row"><span class="k">Progress</span><span class="v muted" id="approvalProgress">—</span></div>
@@ -276,43 +292,6 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Wallet <span id="walletStatus" class="pill warn">no passkey</span></h2>
-    <div class="row"><span class="k">Account</span><span class="v" id="wAccount">—</span></div>
-    <div class="row"><span class="k">Deployed</span><span class="v" id="wDeployed">counterfactual — not deployed until the first operation</span></div>
-    <div class="row"><span class="k">Credential</span><span class="v" id="wCredential">—</span></div>
-    <div class="actions">
-      <button id="register" class="primary" disabled>Register passkey</button>
-      <button id="reconnect" disabled>Reconnect</button>
-      <button id="sign" disabled>Sign a test hash</button>
-      <button id="deploy" disabled>Sign deployment operation</button>
-      <button id="forget" disabled>Forget</button>
-    </div>
-    <pre id="out">ready</pre>
-  </div>
-
-  <!-- Publishing the creation operation, driven from the page. The key stays in
-       the sponsor backend; this only decides who pays and asks it to send. -->
-  <div class="card">
-    <h2>Publish <span id="pubStatus" class="pill warn">no operation</span></h2>
-    <div class="row"><span class="k">Account</span><span class="v muted" id="pAccount">—</span></div>
-    <div class="row"><span class="k">On chain</span><span class="v muted" id="pChain">—</span></div>
-    <div class="row"><span class="k">Max cost</span><span class="v muted" id="pCost">—</span></div>
-    <div class="row"><span class="k">Funded by</span><span class="v">
-      <label><input type="radio" name="fundMode" value="sponsor" checked> sponsor pays</label>
-      <label style="margin-left:1rem"><input type="radio" name="fundMode" value="self-funded"> account pays its own</label>
-    </span></div>
-    <p class="hint" id="pHint">
-      Sign a deployment operation above, then publish it. The sponsor backend holds
-      the key and sends the transaction; creation cannot go through a public bundler
-      because the factory fail-closes to the EntryPoint's SenderCreator.
-    </p>
-    <div class="actions">
-      <button id="refreshChain">Refresh chain state</button>
-      <button id="publish" class="primary" disabled>Publish operation</button>
-    </div>
-    <pre id="pubOut">sign a deployment operation first</pre>
-  </div>
   <!-- Arbitrary calls. An NFT mint, a Uniswap swap and a token approval are the
        same thing to the account: a target, a value and calldata. Several of them
        in one operation execute atomically under a single signature, which is the
@@ -335,31 +314,6 @@
     </div>
     <pre id="callOut">describe the calls, then simulate before signing</pre>
   </div>
-  <!-- The account's own account of itself: guardian protection, freeze window,
-       pending migration, config version — all read from the chain, no signature.
-       This is the surface the write flows (freeze, recovery, guardian change,
-       migration) act on; each of those is time-locked and needs a real guardian
-       set, so this panel is where their effects would show up. -->
-  <div class="card">
-    <h2>Safety state <span id="safetyStatus" class="pill warn">unknown</span></h2>
-    <div class="row"><span class="k">Protection</span><span class="v muted" id="sfProtection">—</span></div>
-    <div class="row"><span class="k">Guardians</span><span class="v muted" id="sfGuardians">—</span></div>
-    <div class="row"><span class="k">Recovery</span><span class="v muted" id="sfRecovery">—</span></div>
-    <div class="row"><span class="k">Freeze</span><span class="v muted" id="sfFreeze">—</span></div>
-    <div class="row"><span class="k">Migration</span><span class="v muted" id="sfMigration">—</span></div>
-    <div class="row"><span class="k">Config version</span><span class="v muted" id="sfConfig">—</span></div>
-    <p class="hint">
-      Freeze (2-day window, any guardian), recovery, and guardian changes (3-day
-      delay) are time-locked writes that need a real guardian set. This account
-      was created with a placeholder guardian root, so those flows are exercised
-      on devnet where the delays can be advanced — this panel is read-only.
-    </p>
-    <div class="actions">
-      <button id="refreshSafety">Read safety state</button>
-    </div>
-    <pre id="safetyOut">read the account's on-chain safety state</pre>
-  </div>
-
   </div><!-- /viewDeveloper -->
 
   <!-- What a customer of the institution actually sees: one button. The passkey
@@ -671,7 +625,9 @@
           });
         }
       } catch {}
-      if (wallet) forgetAccount(wallet.credentialId);
+      // The legacy single-handle key has now been folded into the list; drop it
+      // so the migration runs once.
+      localStorage.removeItem(WALLET_KEY);
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
     }
     return list;
@@ -708,7 +664,7 @@
   const ZERO = "0x0000000000000000000000000000000000000000";
 
   const $ = id => document.getElementById(id);
-  const show = value => ($("out").textContent = typeof value === "string" ? value : JSON.stringify(value, (k, v) => (typeof v === "bigint" ? String(v) : v), 2));
+  const show = () => {};  // developer Wallet card removed; kept as a no-op for old call sites
 
   // Theme toggle: default follows the OS, a click stamps an explicit choice on
   // the root so the theme-aware variables switch deterministically.
@@ -796,7 +752,6 @@
   // The resolved half of an incomplete document, shown but never used to derive.
   let partial = null;
   // The last passkey-signed creation operation, held so it can be published.
-  let signedOperation = null;
   let wallet = null;
 
   // --- deployment binding --------------------------------------------------
@@ -855,32 +810,9 @@
     field("dProxyCode", view?.proxyCreationCode ? `${view.proxyCreationCode.length - 2} hex chars` : undefined);
     if (deployment) showOnboard(`ready on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`);
     renderCustomer();
-    $("register").disabled = !deployment;
-    $("reconnect").disabled = !deployment || !activeHandle();
-    renderWallet();
   }
 
-  function renderWallet() {
-    const status = $("walletStatus");
-    if (!wallet) {
-      status.className = "pill warn";
-      status.textContent = activeHandle() ? "saved — reconnect" : "no passkey";
-      $("wAccount").textContent = "—";
-      $("wCredential").textContent = "—";
-      $("sign").disabled = true;
-      $("deploy").disabled = true;
-      $("forget").disabled = !activeHandle();
-      return;
-    }
-    status.className = "pill good";
-    status.textContent = "ready";
-    $("wAccount").textContent = wallet.account;
-    $("wCredential").textContent = short(wallet.credentialId);
-    $("wDeployed").textContent = `counterfactual on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`} — not deployed until the first operation`;
-    $("sign").disabled = false;
-    $("deploy").disabled = false;
-    $("forget").disabled = false;
-  }
+  function renderWallet() {}  // the developer Wallet card was removed
 
   function applyDeployment(raw, { persist = true } = {}) {
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -999,82 +931,6 @@
     return null;
   }
 
-  $("register").onclick = async () => {
-    const runtime = walletRuntime();
-    if (!runtime) return;
-    if (!deployment) return show("load a deployment first");
-    try {
-      show("waiting for the authenticator…");
-      wallet = await runtime.registerPasskeyAccount({
-        credentials, rpId: RP_ID, origin: ORIGIN, userName: "loom-user",
-        chainId: deployment.chainId, deployment
-      });
-      // Persist only public data — the credential never leaves the authenticator.
-      rememberAccount(wallet);
-      renderWallet();
-      show({ registered: wallet.account, network: CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`, chainId: deployment.chainId, note: "counterfactual — fund it or send the first operation to deploy" });
-    } catch (error) {
-      show(`registration failed: ${error.message}`);
-    }
-  };
-
-  $("reconnect").onclick = () => {
-    const runtime = walletRuntime();
-    if (!runtime) return;
-    const saved = activeHandle();
-    if (!saved || !deployment) return show("load a deployment and register first");
-    const { credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule } = saved;
-    wallet = runtime.reconnectPasskeyAccount({ deployment, rpId: RP_ID, origin: ORIGIN, chainId: deployment.chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule: recoveryModule ?? null });
-    renderWallet();
-    show({ reconnected: wallet.account, note: "same account re-derived from the stored public key — no new passkey prompt" });
-  };
-
-  $("sign").onclick = async () => {
-    const runtime = walletRuntime();
-    if (!runtime) return;
-    if (!wallet) return show("register or reconnect first");
-    try {
-      show("waiting for the authenticator…");
-      // In a real flow this hash is the canonical EntryPoint hash of a prepared
-      // user operation (see the SDK client in src/wallet.mjs).
-      const hash = `0x${"ab".repeat(32)}`;
-      const signature = await runtime.walletSigner({ credentials, wallet }).sign(hash);
-      show({ signedHash: hash, signature, note: "(validator, WebAuthnSignature) envelope the account validates" });
-    } catch (error) {
-      show(`signing failed: ${error.message}`);
-    }
-  };
-
-  // Produce the signed creation operation. The page never submits it: it has no
-  // funded key and should not have one. A sponsor publishes it through
-  // EntryPoint.handleOps and pays the gas, which is how an institution can open
-  // accounts for users who hold no ETH.
-  $("deploy").onclick = async () => {
-    const runtime = walletRuntime();
-    if (!runtime) return;
-    if (!wallet || !deployment) return show("register or reconnect first");
-    try {
-      show("waiting for the authenticator…");
-      const { userOpHash, packed } = await runtime.prepareDeployOperation({
-        credentials, wallet, deployment,
-        // A no-op self-call: the point is to bring the account into existence.
-        calls: [{ target: wallet.account, value: 0n, data: "0x" }]
-      });
-      const json = JSON.stringify(packed, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
-      // Hand it to the Publish card so the rest of the flow stays on the page.
-      signedOperation = JSON.parse(json);
-      renderPublish();
-      await refreshPublishChain();
-      show({ userOpHash, sender: packed.sender, note: "signed — publish it from the Publish card below, or download it", packed: signedOperation });
-      // Offer it as a file so it can be moved to whoever publishes it.
-      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-      const link = Object.assign(document.createElement("a"), { href: url, download: "deploy-userop.json", textContent: "download deploy-userop.json" });
-      $("out").after(link);
-    } catch (error) {
-      show(`could not prepare the deployment operation: ${error.message}`);
-    }
-  };
-
   // The institution's onboarding path, start to finish. Everything the developer
   // buttons below do separately happens here in one gesture.
   $("oneTap").onclick = async () => {
@@ -1119,7 +975,6 @@
       if (!response.ok) throw new Error(result.error ?? `sponsor returned ${response.status}`);
 
       step("account is live", "good");
-      $("wDeployed").textContent = `deployed on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`;
       renderCustomer();
       await refreshChainStatus(result.account);
       showOnboard(result.alreadyDeployed
@@ -1134,13 +989,6 @@
     }
   };
 
-  $("forget").onclick = () => {
-    if (wallet) forgetAccount(wallet.credentialId);
-    wallet = null;
-    renderWallet();
-    show("local wallet handle cleared (the passkey itself stays in your authenticator)");
-  };
-
   // --- publishing ----------------------------------------------------------
 
   // accountGasLimits packs verificationGasLimit || callGasLimit; gasFees packs
@@ -1152,74 +1000,6 @@
   const formatEth = wei => `${(Number(wei) / 1e18).toFixed(6)} ETH`;
   const sponsorBase = () => $("sponsorUrl").value.trim().replace(/\/deploy$/, "");
   const fundMode = () => document.querySelector('input[name="fundMode"]:checked').value;
-
-  function renderPublish() {
-    const status = $("pubStatus");
-    if (!signedOperation) {
-      status.className = "pill warn";
-      status.textContent = "no operation";
-      $("publish").disabled = true;
-      return;
-    }
-    status.className = "pill good";
-    status.textContent = "operation signed";
-    $("pAccount").textContent = signedOperation.sender;
-    $("pAccount").className = "v";
-    $("pCost").textContent = formatEth(maxCost(signedOperation));
-    $("pCost").className = "v";
-    $("publish").disabled = false;
-  }
-
-  async function refreshPublishChain() {
-    const address = signedOperation?.sender ?? wallet?.account;
-    if (!address) return void ($("pChain").textContent = "—");
-    $("pChain").textContent = "checking…";
-    try {
-      const response = await fetch(`${sponsorBase()}/account?address=${address}`);
-      if (!response.ok) throw new Error(`status ${response.status}`);
-      const s = await response.json();
-      $("pChain").textContent = s.deployed
-        ? `deployed (${s.codeSize} B, balance ${s.balance} ETH)`
-        : `not deployed — balance ${s.balance} ETH`;
-      $("pChain").className = "v";
-      return s;
-    } catch (error) {
-      $("pChain").textContent = `unreachable (${error.message})`;
-      $("pChain").className = "v muted";
-      return null;
-    }
-  }
-
-  $("refreshChain").onclick = () => refreshPublishChain();
-
-  $("publish").onclick = async () => {
-    if (!signedOperation) return;
-    const mode = fundMode();
-    $("publish").disabled = true;
-    $("pubStatus").className = "pill warn";
-    $("pubStatus").textContent = "publishing…";
-    $("pubOut").textContent = `sending handleOps (${mode})…`;
-    try {
-      const response = await fetch(`${sponsorBase()}/deploy?mode=${mode}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(signedOperation, (_, v) => (typeof v === "bigint" ? v.toString() : v))
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? `sponsor returned ${response.status}`);
-      $("pubStatus").className = "pill good";
-      $("pubStatus").textContent = result.alreadyDeployed ? "already on chain" : "published";
-      $("pubOut").textContent = JSON.stringify(result, null, 2);
-      $("wDeployed").textContent = `deployed on ${CHAINS[deployment.chainId] ?? `chain ${deployment.chainId}`}`;
-      await refreshPublishChain();
-    } catch (error) {
-      $("pubStatus").className = "pill bad";
-      $("pubStatus").textContent = "failed";
-      $("pubOut").textContent = `publish failed: ${error.message}`;
-    } finally {
-      $("publish").disabled = false;
-    }
-  };
 
   // Two states, and only one is operational: locked (choose or create an
   // account) and connected (act on the active account). Nothing that spends or
@@ -1366,57 +1146,6 @@
   let discovered = [];
 
   // --- safety state --------------------------------------------------------
-
-  async function refreshSafety() {
-    const runtime = walletModule;
-    if (!runtime || !wallet || !deployment) return;
-    $("safetyStatus").className = "pill warn";
-    $("safetyStatus").textContent = "reading…";
-    try {
-      const s = await runtime.readSafety({
-        wallet, deployment, rpcUrl: $("publicRpc").value.trim()
-      });
-      const frozen = s.freeze?.active;
-      $("safetyStatus").className = frozen ? "pill bad" : "pill good";
-      $("safetyStatus").textContent = frozen ? "frozen" : s.status;
-      $("sfProtection").textContent = s.status;
-      $("sfProtection").className = "v";
-      // A non-zero root only proves the account *claims* guardians. It cannot
-      // prove anyone holds a key that verifies against it, and this example's
-      // early accounts committed to a root that hashes a plain string, so the
-      // account reports itself protected while nothing can be proven. Say so.
-      const placeholder = s.config.guardianRoot.toLowerCase() === LEGACY_GUARDIAN_ROOT.toLowerCase();
-      $("sfGuardians").textContent = placeholder
-        ? `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)} — placeholder, no guardian stands behind it`
-        : `threshold ${s.config.guardianThreshold} · root ${short(s.config.guardianRoot)}`;
-      $("sfGuardians").className = placeholder ? "v muted" : "v";
-      $("sfRecovery").textContent = placeholder
-        ? "NOT usable — the root commits to no guardian, so nobody can freeze or recover this account"
-        : s.recoveryConfigured ? "configured" : "not configured — losing the passkey loses the account";
-      $("sfRecovery").className = "v";
-      if (placeholder) {
-        $("safetyStatus").className = "pill bad";
-        $("safetyStatus").textContent = "unprotected";
-      }
-      $("sfFreeze").textContent = frozen
-        ? `active until unix ${s.freeze.frozenUntil}`
-        : "not frozen";
-      $("sfFreeze").className = frozen ? "v" : "v muted";
-      $("sfMigration").textContent = s.pending?.migration?.active
-        ? `pending → ${short(s.pending.migration.destination)}`
-        : "none pending";
-      $("sfMigration").className = s.pending?.migration?.active ? "v" : "v muted";
-      $("sfConfig").textContent = s.config.configVersion;
-      $("sfConfig").className = "v";
-      $("safetyOut").textContent = JSON.stringify(s, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
-    } catch (error) {
-      $("safetyStatus").className = "pill bad";
-      $("safetyStatus").textContent = "failed";
-      $("safetyOut").textContent = `could not read safety state: ${error.message}`;
-    }
-  }
-
-  $("refreshSafety").onclick = () => refreshSafety();
 
   // --- guardians ------------------------------------------------------------
 
@@ -1928,25 +1657,65 @@
     }
   }
 
-  $("prepareFreezeBtn").onclick = async () => {
+  $("prepareFreezeBtn").onclick = () => {
     if (!duty) return;
-    // The account is frozen by a signature, not by whoever sends the
-    // transaction — so the digest is what matters, and it is produced here for
-    // the guardian's own wallet to sign. This page never holds their key.
+    // Freezing is authorised by the guardian's signature over the digest, not by
+    // whoever sends the transaction — so the page produces the digest for the
+    // guardian's own wallet to sign and never touches their key.
+    $("approvalPanel").hidden = true;
+    $("freezeSubmit").hidden = false;
+    $("freezeDigest").textContent = short(duty.digest);
+    $("freezeSigner").textContent = shorten(duty.guardian);
     $("guardianViewOut").textContent = JSON.stringify({
       signThisDigest: duty.digest,
       withWallet: duty.guardian,
-      then: "submit freeze(verifier, keyCommitment, salt, proof, signature) to the account",
-      call: {
-        to: duty.account,
-        verifier: duty.verifier,
-        keyCommitment: duty.keyCommitment,
-        salt: duty.salt,
-        proof: duty.proof
-      },
-      note: "the digest commits to this account, this guardian and this config version, so it cannot be replayed elsewhere or after the account's configuration changes",
-      whoCanSubmit: "anyone — the authority is in the signature, not the sender"
-    }, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+      note: "the digest commits to this account, this guardian and this config version, so it cannot be replayed elsewhere or after the account's configuration changes"
+    }, null, 2);
+  };
+
+  $("freezeSignature").oninput = async () => {
+    const runtime = walletModule;
+    if (!runtime || !duty) return;
+    const signature = $("freezeSignature").value.trim();
+    if (signature.length < 4) { $("submitFreeze").disabled = true; return; }
+    // Check the signature before it can be submitted: recover the signer and
+    // match it to this guardian, so a wrong one is caught here, not by a
+    // reverted transaction.
+    const result = await runtime.verifyGuardianSignature({
+      digest: duty.digest, signature, expectedAddress: duty.guardian
+    });
+    $("submitFreeze").disabled = !result.valid;
+    $("guardianViewOut").textContent = result.valid
+      ? "signature verified — ready to freeze"
+      : result.recovered
+        ? `that signature is from ${result.recovered}, not ${duty.guardian}`
+        : `not a valid signature: ${result.error ?? "unknown"}`;
+  };
+
+  $("submitFreeze").onclick = async () => {
+    const runtime = walletModule;
+    if (!runtime || !duty) return;
+    $("submitFreeze").disabled = true;
+    try {
+      const call = duty.freezeCall($("freezeSignature").value.trim());
+      // freeze() is permissionless — the authority is the signature inside it —
+      // so the relay submits it as a plain transaction and the guardian pays
+      // nothing.
+      $("guardianViewOut").textContent = "submitting the freeze…";
+      const base = $("sponsorUrl").value.trim().replace(/\/deploy$/, "");
+      const response = await fetch(`${base}/execute-scheduled`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: call.target, data: call.data })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? `freeze failed (${response.status})`);
+      $("guardianViewStatus").className = "pill bad";
+      $("guardianViewStatus").textContent = "frozen";
+      $("guardianViewOut").textContent = JSON.stringify({ ...result, frozen: "the account is frozen for two days; spending is blocked" }, null, 2);
+    } catch (error) {
+      $("guardianViewOut").textContent = `could not freeze: ${error.message}`;
+      $("submitFreeze").disabled = false;
+    }
   };
 
   $("exportGuardians").onclick = () => {
