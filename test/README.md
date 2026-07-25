@@ -144,13 +144,19 @@ single and mixed bundles, time-period resets, and over-limit execution failures
 while checking full token conservation, spend rollback, independent progress,
 authority isolation, and deposit/beneficiary conservation.
 
+`MultiAccountMigrationInvariant.t.sol` composes two migration sources with two
+distinct destination accounts. It drives independent scheduling, cancellation,
+successful execution, reverting batches, and cross-account committed-call
+substitution while checking exact rejection data, full-system rollback,
+destination/config/call binding, authority isolation, and token conservation.
+
 The programs model two pre-deployed ECDSA accounts, deterministic local signing,
 and local adversarial paymasters. They do not claim coverage of counterfactual
 deployment, production paymaster middleware, P-256/WebAuthn, granular or
 paymaster-bound multi-account sessions, multi-guardian recovery trees, recovery
-initializer payloads, scheduled vault withdrawals, or arbitrary account
-population; those remain separate integration, invariant, and evidence
-boundaries.
+initializer payloads, scheduled vault withdrawals, guardian migration
+cancellation, or arbitrary account population; those remain separate
+integration, invariant, and evidence boundaries.
 
 ## Required Checks
 
