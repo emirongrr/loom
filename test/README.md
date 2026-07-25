@@ -132,11 +132,24 @@ validator/guardian replacement. Cross-account proposal and cancellation
 approvals must return their exact custom errors while preserving both complete
 pending and live-authority snapshots.
 
+`MultiAccountSessionInvariant.t.sol` gives two accounts the same exact-call
+permission ID and nonce key while binding each to a distinct signer and target.
+It drives EntryPoint session use, mixed bundles, immediate revocation, timelocked
+re-grant, exact cross-account signer/call rejection, full validation rollback,
+and deposit/beneficiary conservation.
+
+`MultiAccountVaultInvariant.t.sol` gives two accounts independent daily budgets
+for the same token through one production vault hook. It drives real EntryPoint
+single and mixed bundles, time-period resets, and over-limit execution failures
+while checking full token conservation, spend rollback, independent progress,
+authority isolation, and deposit/beneficiary conservation.
+
 The programs model two pre-deployed ECDSA accounts, deterministic local signing,
 and local adversarial paymasters. They do not claim coverage of counterfactual
-deployment, production paymaster middleware, P-256/WebAuthn, session validators,
-multi-guardian recovery trees, recovery initializer payloads, or arbitrary
-account population; those remain separate integration, invariant, and evidence
+deployment, production paymaster middleware, P-256/WebAuthn, granular or
+paymaster-bound multi-account sessions, multi-guardian recovery trees, recovery
+initializer payloads, scheduled vault withdrawals, or arbitrary account
+population; those remain separate integration, invariant, and evidence
 boundaries.
 
 ## Required Checks

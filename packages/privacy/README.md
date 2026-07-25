@@ -145,10 +145,17 @@ stronger long-term signature assumptions.
   be explicit, bounded, and never mandatory.
 - A wallet should make many accounts easy: per-dapp identities, private
   top-up paths, and separate scan scopes should be normal SDK concepts.
-- Current Kohaku dependency resolution has unresolved npm audit findings in
-  transitive packages. This package is an integration seed, not a production
-  SDK release, until those findings are fixed upstream, safely overridden, or
-  isolated with evidence.
+- Current Kohaku dependency resolution includes
+  `GHSA-mh99-v99m-4gvg` through the CLI-only
+  `ejs -> jake -> filelist -> minimatch -> brace-expansion` path. The first
+  patched `brace-expansion` release changes the CommonJS API expected by the
+  locked `minimatch` major, so a direct override is not compatible. The
+  repository accepts only this exact locked graph until 2026-08-08; any package,
+  advisory, severity, or path drift fails the dependency gate. The runtime
+  isolation test proves wallet proof imports and attacker-controlled EJS
+  rendering do not load the CLI-only path. This package remains an integration
+  seed, not a production SDK release, until a compatible upstream release
+  removes the exception.
 
 Dependency evidence is checked with:
 
