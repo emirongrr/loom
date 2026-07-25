@@ -760,7 +760,14 @@ export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
   const set = await buildGuardianSet({ rpcUrl, guardians, salt: record.salt });
   const onChainRoot = await client.readContract({ address: account, abi: FREEZE_ABI, functionName: "guardianRoot" });
   if (set.root.toLowerCase() !== onChainRoot.toLowerCase()) {
-    throw new Error("this record does not match the account's current guardians — ask for an up-to-date copy");
+    // Distinguish the two very different reasons the roots can differ: the
+    // account never committed real guardians, versus a genuinely stale invite.
+    const zero = onChainRoot === `0x${"00".repeat(32)}`;
+    const placeholder = onChainRoot.toLowerCase() === "0x552a103562656ed9d47147186c73ed6cca633a0bf8bfee32bfab3ad0f1b09336";
+    if (zero || placeholder) {
+      throw new Error("this account has no real guardians on chain — it was created with a stand-in, so it cannot be frozen or recovered. Create an account with guardians set to use this.");
+    }
+    throw new Error("this invite does not match the account's current guardians — ask the owner for an up-to-date copy");
   }
 
   const mine = set.leaves.find(l => getAddress(l.address) === guardian);
