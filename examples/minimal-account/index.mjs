@@ -75,7 +75,12 @@ const key = { x: pad(jwk.x), y: pad(jwk.y) };
 console.log("1. passkey generated");
 
 // --- 2. Derive the account address locally; the chain must agree.
-const rpIdHash = keccak256(stringToHex(RP_ID));
+// A real WebAuthn authenticator puts sha256(rpId) in the first 32 bytes of
+// authenticatorData, and the validator compares those bytes against the
+// rpIdHash registered here — so registration must use sha256. originHash is
+// different: the contract keccak-hashes the origin bytes it receives, so the
+// registered value stays keccak256.
+const rpIdHash = `0x${crypto.createHash("sha256").update(RP_ID).digest("hex")}`;
 const originHash = keccak256(stringToHex(ORIGIN));
 const config = {
   entryPoint,

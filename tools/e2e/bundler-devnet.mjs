@@ -68,7 +68,11 @@ try {
   const jwk = publicKey.export({ format: "jwk" });
   const pad = value => `0x${Buffer.from(value, "base64url").toString("hex").padStart(64, "0")}`;
   const key = { x: pad(jwk.x), y: pad(jwk.y) };
-  const rpIdHash = keccak256(stringToHex(RP_ID));
+  // Real WebAuthn authenticators put sha256(rpId) in authenticatorData[0:32],
+  // and WebAuthnP256.verify compares those bytes against the registered
+  // rpIdHash — so registration must use sha256, not keccak256. (originHash
+  // stays keccak256: the contract keccak-hashes the origin bytes itself.)
+  const rpIdHash = `0x${crypto.createHash("sha256").update(RP_ID).digest("hex")}`;
   const config = {
     entryPoint,
     guardianRoot: keccak256(stringToHex("bundler-devnet.guardians")),
