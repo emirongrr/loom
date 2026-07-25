@@ -21,21 +21,41 @@ import { deriveAccountAddress, encodeCreateAccountCall, getUserOpHash, packUserO
 import { createWebAuthnSigner } from "@loom/passkey";
 import { computeUserOperationHash, createBundlerTransport, createLoomClient, createRpcStateTransport } from "@loom/sdk";
 import {
-  createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, http,
-  keccak256, parseUnits, sha256, stringToHex
+  concatHex, createPublicClient, encodeAbiParameters, encodeFunctionData, formatUnits, getAddress,
+  http, isAddress, keccak256, parseUnits, recoverAddress, sha256, stringToHex
 } from "viem";
 
-// Build the account configuration a registered passkey controls. Onboarding is
-// passkey-only (no guardians yet); a wallet adds recovery afterwards and must
-// show that state — see @loom/sdk's account safety snapshot.
-function buildAccountConfig({ entryPoint, validator, policyHook, rpId, origin, publicKey }) {
+// Accounts created before guardians were modelled honestly committed to this
+// root. It is the hash of a string, not a merkle root over real guardian
+// leaves, so nothing can ever be proven against it: the account reports itself
+// guardian-protected while no one can freeze or recover it. It survives only so
+// those accounts keep deriving to the same address.
+export const LEGACY_PLACEHOLDER_GUARDIAN_ROOT = keccak256(stringToHex("passkey-wallet-web.guardians"));
+const ZERO_BYTES32 = `0x${"00".repeat(32)}`;
+
+// Build the account configuration a registered passkey controls.
+//
+// Onboarding is passkey-only, and the contract has a state for exactly that:
+// root zero with threshold zero, which makes `recoveryConfigured` report false.
+// Fabricating a root instead would claim a protection nobody holds a key for,
+// so guardians are added deliberately later rather than invented here.
+// Installing the recovery module at creation costs nothing and is inert until
+// guardians exist: `approved()` returns false whenever the threshold is zero, so
+// with no guardians nothing can ever be approved through it. Leaving it out
+// instead means that adding guardians later takes two separate three-day
+// changes — the module, then the guardians — for no benefit.
+function buildAccountConfig({
+  entryPoint, validator, policyHook, rpId, origin, publicKey,
+  guardianRoot = ZERO_BYTES32, guardianThreshold = 0, recoveryModule = null
+}) {
   return {
     entryPoint,
-    guardianRoot: keccak256(stringToHex("passkey-wallet-web.guardians")),
-    guardianThreshold: 1,
+    guardianRoot,
+    guardianThreshold,
     configHash: keccak256(stringToHex("passkey-wallet-web.config")),
     modules: [
       { moduleTypeId: 4n, module: policyHook, initData: "0x" },
+      ...(recoveryModule ? [{ moduleTypeId: 5n, module: recoveryModule, initData: "0x" }] : []),
       {
         moduleTypeId: 1n,
         module: validator,
@@ -59,8 +79,15 @@ function saltFor(publicKey) {
   return keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [publicKey.x, publicKey.y]));
 }
 
-function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey }) {
-  const config = buildAccountConfig({ entryPoint: deployment.entryPoint, validator: deployment.validator, policyHook: deployment.policyHook, rpId, origin, publicKey });
+// The guardian configuration is part of what the address is derived from, so a
+// saved account must be re-derived with the values it was created under — not
+// with whatever the current default happens to be. Callers persist these with
+// the account handle and pass them back on reconnect.
+function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule }) {
+  const config = buildAccountConfig({
+    entryPoint: deployment.entryPoint, validator: deployment.validator, policyHook: deployment.policyHook,
+    rpId, origin, publicKey, guardianRoot, guardianThreshold, recoveryModule
+  });
   const salt = saltFor(publicKey);
   const account = deriveAccountAddress({
     factory: deployment.factory,
@@ -75,15 +102,46 @@ function deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicK
 // Register a new passkey and derive its counterfactual Loom account. The
 // returned handle is everything a wallet persists locally to reconnect later
 // (no private key — the credential stays in the platform authenticator).
-export async function registerPasskeyAccount({ credentials, rpId, origin, userName, chainId, deployment }) {
+export async function registerPasskeyAccount({
+  credentials, rpId, origin, userName, chainId, deployment, guardianRoot, guardianThreshold
+}) {
   const { credentialId, publicKeyX, publicKeyY } = await credentials.create({ rpId, userName });
-  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey: { x: publicKeyX, y: publicKeyY } });
+  return deriveWallet({
+    deployment, rpId, origin, chainId, credentialId,
+    publicKey: { x: publicKeyX, y: publicKeyY },
+    // Guardians can be committed at creation, which is not a "change" and so
+    // carries no delay — the account has real recovery from its first block.
+    guardianRoot, guardianThreshold,
+    // New accounts get recovery wired in from the start when the deployment
+    // names a module; existing ones keep whatever they were created with.
+    recoveryModule: deployment.recoveryModule ?? null
+  });
 }
 
 // Reconnect on a later visit from the persisted handle — re-derives the same
 // account address deterministically, with no new registration prompt.
-export function reconnectPasskeyAccount({ deployment, rpId, origin, chainId, credentialId, publicKey }) {
-  return deriveWallet({ deployment, rpId, origin, chainId, credentialId, publicKey });
+export function reconnectPasskeyAccount({
+  deployment, rpId, origin, chainId, credentialId, publicKey, guardianRoot, guardianThreshold, recoveryModule
+}) {
+  return deriveWallet({
+    deployment, rpId, origin, chainId, credentialId, publicKey,
+    guardianRoot, guardianThreshold, recoveryModule
+  });
+}
+
+// Reconnect an account whose address is NOT a function of this credential —
+// a recovered account. Its address was fixed by the original owner's creation
+// config; recovery only swapped in this passkey and its validator. So the
+// address and validator are given explicitly rather than derived, and the
+// signer binds to them.
+export function reconnectRecoveredAccount({ account, validator, rpId, origin, chainId, credentialId, publicKey, entryPoint }) {
+  return {
+    account, credentialId, publicKey, rpId, origin, chainId, validator,
+    recovered: true,
+    // The signer only needs the entryPoint for the canonical hash; the rest of
+    // the config does not enter signing.
+    config: { entryPoint }
+  };
 }
 
 // An engine-free @loom/passkey signer bound to this wallet's credential. Pass
@@ -222,6 +280,577 @@ export function sponsorCalls({ deployment, packed, beneficiary, depositWei }) {
       data: encodeFunctionData({ abi: EntryPointAbi, functionName: "handleOps", args: [[packed], beneficiary] })
     }
   ];
+}
+
+// --- guardians ------------------------------------------------------------
+
+// Validate the addresses someone proposes as guardians.
+//
+// What can actually be proven here is worth being precise about. Format and
+// checksum catch typing mistakes; the on-chain code check catches an address
+// that could never work. What none of it proves is that anyone holds the key —
+// only a signature from that address does, which is why a possession challenge
+// is a separate, later step rather than something inferred here.
+// A guardian can be an ordinary wallet (an EOA that signs with a key) or a smart
+// contract wallet — a Loom account, a Safe — that signs through ERC-1271. Those
+// take different verifiers, so which one applies is decided per guardian by
+// whether the address carries code, not assumed. A contract is no longer
+// rejected; it is routed to the ERC-1271 verifier instead.
+export async function validateGuardians({ rpcUrl, account, addresses, verifiers }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const seen = new Map();
+  const results = [];
+
+  for (const raw of addresses) {
+    const input = String(raw ?? "").trim();
+    const entry = { input, address: null, verifier: null, kind: null, errors: [], warnings: [] };
+    results.push(entry);
+    if (input === "") { entry.errors.push("empty"); continue; }
+
+    if (!isAddress(input, { strict: false })) {
+      entry.errors.push("not an Ethereum address — expected 0x followed by 40 hex characters");
+      continue;
+    }
+    const hasMixedCase = /[a-f]/.test(input.slice(2)) && /[A-F]/.test(input.slice(2));
+    let address;
+    try {
+      address = getAddress(input);
+      if (hasMixedCase && address !== input) { entry.errors.push("checksum does not match — this address has a typo"); continue; }
+    } catch {
+      entry.errors.push("checksum does not match — this address has a typo");
+      continue;
+    }
+    entry.address = address;
+
+    if (/^0x0{40}$/i.test(address)) { entry.errors.push("the zero address cannot be a guardian"); continue; }
+    if (account && address.toLowerCase() === account.toLowerCase()) {
+      entry.errors.push("an account cannot guard itself — recovery would depend on the key being recovered");
+      continue;
+    }
+    const duplicate = seen.get(address.toLowerCase());
+    if (duplicate !== undefined) { entry.errors.push(`already listed as guardian ${duplicate + 1}`); continue; }
+    seen.set(address.toLowerCase(), results.length - 1);
+
+    try {
+      const code = await client.getCode({ address });
+      const isContract = Boolean(code && code !== "0x");
+      if (isContract) {
+        // A contract wallet signs through ERC-1271. It can only be a guardian if
+        // that verifier is available.
+        if (!verifiers?.erc1271) {
+          entry.errors.push("this is a contract wallet, but no ERC-1271 guardian verifier is configured for this deployment");
+          continue;
+        }
+        entry.kind = "contract";
+        entry.verifier = verifiers.erc1271;
+        entry.warnings.push("smart-contract wallet — it must be able to sign with ERC-1271 (isValidSignature) to approve");
+      } else {
+        if (!verifiers?.ecdsa) { entry.errors.push("no ECDSA guardian verifier is configured for this deployment"); continue; }
+        entry.kind = "wallet";
+        entry.verifier = verifiers.ecdsa;
+        const [nonce, balance] = await Promise.all([
+          client.getTransactionCount({ address }),
+          client.getBalance({ address })
+        ]);
+        if (nonce === 0 && balance === 0n) {
+          entry.warnings.push("this address has never been used on this chain — make sure someone holds its key");
+        }
+      }
+    } catch (error) {
+      entry.warnings.push(`could not be checked on chain (${error.message})`);
+    }
+  }
+
+  const valid = results.filter(r => r.errors.length === 0);
+  return {
+    results,
+    // Each valid guardian carries the verifier it will use, so a set can mix
+    // wallets and contract wallets.
+    valid: valid.map(r => ({ address: r.address, verifier: r.verifier, kind: r.kind })),
+    ok: valid.length === results.length && results.length > 0
+  };
+}
+
+// Build the guardian merkle root the account commits to. Each leaf is
+// keccak256(abi.encode(verifier, verifier.codehash, keyCommitment, salt)) with
+// that guardian's own verifier, so a set may mix ECDSA and ERC-1271 guardians —
+// the commitment is the hash of the guardian's address either way.
+export async function buildGuardianSet({ rpcUrl, guardians, salt }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const codeHashes = new Map();
+  const codeHashFor = async verifier => {
+    const key = verifier.toLowerCase();
+    if (!codeHashes.has(key)) {
+      const code = await client.getCode({ address: verifier });
+      if (!code || code === "0x") throw new Error(`no guardian verifier deployed at ${verifier}`);
+      codeHashes.set(key, keccak256(code));
+    }
+    return codeHashes.get(key);
+  };
+  const leafSalt = salt ?? `0x${[...crypto.getRandomValues(new Uint8Array(32))]
+    .map(b => b.toString(16).padStart(2, "0")).join("")}`;
+
+  const leaves = [];
+  for (const guardian of guardians) {
+    const address = guardian.address ?? guardian;
+    const verifier = guardian.verifier;
+    const verifierCodeHash = await codeHashFor(verifier);
+    const keyCommitment = keccak256(encodeAbiParameters([{ type: "address" }], [address]));
+    leaves.push({
+      address, verifier, keyCommitment,
+      leaf: keccak256(encodeAbiParameters(
+        [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
+        [verifier, verifierCodeHash, keyCommitment, leafSalt]
+      ))
+    });
+  }
+  // The contract requires strictly increasing leaves across approvals, so the
+  // set is sorted here and the tree is built over that order.
+  leaves.sort((a, b) => (BigInt(a.leaf) < BigInt(b.leaf) ? -1 : 1));
+
+  let layer = leaves.map(l => l.leaf);
+  const layers = [layer];
+  while (layer.length > 1) {
+    const next = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      const left = layer[i];
+      const right = layer[i + 1] ?? left;
+      const [a, b] = BigInt(left) <= BigInt(right) ? [left, right] : [right, left];
+      next.push(keccak256(`0x${a.slice(2)}${b.slice(2)}`));
+    }
+    layers.push(next);
+    layer = next;
+  }
+  return { root: layer[0], salt: leafSalt, leaves, layers };
+}
+
+// Changing who guards an account is deliberately slow: `setGuardianConfig` can
+// only run from a scheduled self-call, and scheduling one that targets the
+// account itself carries a three-day minimum. A stolen passkey therefore cannot
+// quietly swap the guardians out and then drain the account — the real owner has
+// three days to see it and cancel.
+export const GUARDIAN_CHANGE_DELAY_SECONDS = 3 * 24 * 60 * 60;
+
+const ACCOUNT_ADMIN_ABI = [
+  { type: "function", name: "setGuardianConfig", stateMutability: "nonpayable",
+    inputs: [{ type: "bytes32" }, { type: "uint8" }], outputs: [] },
+  { type: "function", name: "scheduleCall", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "uint48" }],
+    outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "executeScheduled", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "uint256" }, { type: "bytes" }], outputs: [] },
+  { type: "function", name: "cancelScheduled", stateMutability: "nonpayable",
+    inputs: [{ type: "bytes32" }], outputs: [] },
+  { type: "function", name: "scheduledOperations", stateMutability: "view",
+    inputs: [{ type: "bytes32" }], outputs: [{ type: "uint48" }] },
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] }
+];
+
+// The three calls a guardian change moves through, plus the identity the chain
+// files it under. The operation id includes configVersion, so any other config
+// change in the meantime invalidates a pending one rather than letting it apply
+// against a state it was not reviewed against.
+export function guardianChangeCalls({ account, guardianRoot, guardianThreshold, delaySeconds = GUARDIAN_CHANGE_DELAY_SECONDS }) {
+  const inner = encodeFunctionData({
+    abi: ACCOUNT_ADMIN_ABI, functionName: "setGuardianConfig",
+    args: [guardianRoot, guardianThreshold]
+  });
+  return {
+    inner,
+    schedule: {
+      target: account, value: 0n,
+      data: encodeFunctionData({
+        abi: ACCOUNT_ADMIN_ABI, functionName: "scheduleCall",
+        args: [account, 0n, inner, delaySeconds]
+      })
+    },
+    // Completing a scheduled change is NOT a user operation. `executeScheduled`
+    // holds the account's execution lock, and routing it through the account's
+    // own `execute` would take that lock twice and revert with Reentrancy —
+    // whatever the clock says. It also needs no authority: the account checks
+    // that the operation was scheduled and is due, so anyone may send it as a
+    // plain transaction.
+    applyDirect: {
+      to: account, value: 0n,
+      data: encodeFunctionData({
+        abi: ACCOUNT_ADMIN_ABI, functionName: "executeScheduled",
+        args: [account, 0n, inner]
+      })
+    },
+    // Cancelling is what the delay is for. It is `onlySelf`, so it takes the
+    // passkey — the owner can call off a change they did not ask for, while
+    // whoever scheduled it cannot quietly reinstate it without waiting again.
+    cancel: operationId => ({
+      target: account, value: 0n,
+      data: encodeFunctionData({ abi: ACCOUNT_ADMIN_ABI, functionName: "cancelScheduled", args: [operationId] })
+    })
+  };
+}
+
+// Is such a change already pending, and when does it become applicable?
+export async function readGuardianChange({ rpcUrl, account, guardianRoot, guardianThreshold }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const { inner } = guardianChangeCalls({ account, guardianRoot, guardianThreshold });
+  const configVersion = await client.readContract({
+    address: account, abi: ACCOUNT_ADMIN_ABI, functionName: "configVersion"
+  });
+  const operationId = keccak256(encodeAbiParameters(
+    [{ type: "address" }, { type: "uint256" }, { type: "bytes" }, { type: "uint64" }],
+    [account, 0n, inner, configVersion]
+  ));
+  const readyAt = await client.readContract({
+    address: account, abi: ACCOUNT_ADMIN_ABI, functionName: "scheduledOperations", args: [operationId]
+  });
+  // Readiness is decided by the chain's clock, not the device's. The contract
+  // compares against block.timestamp, so a device running fast would otherwise
+  // offer to complete a change that reverts with OperationNotReady.
+  const latest = await client.getBlock();
+  const now = Number(latest.timestamp);
+  return {
+    operationId,
+    configVersion,
+    scheduled: readyAt !== 0,
+    readyAt: Number(readyAt),
+    ready: readyAt !== 0 && now >= Number(readyAt),
+    secondsRemaining: readyAt === 0 ? null : Math.max(0, Number(readyAt) - now)
+  };
+}
+
+// --- recovery: restoring a lost account to a new key ----------------------
+//
+// The account address never changes. Recovery swaps the validator that controls
+// it: the new owner makes a fresh passkey, the guardians approve that specific
+// change, and after the delay the account answers to the new key. The digest
+// everyone signs commits to the new key, so a signature approves this recovery
+// and nothing else.
+
+const RECOVERY_ABI = [
+  { type: "function", name: "proposalDigest", stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "bytes32" }, { type: "address" }, { type: "bytes32" },
+      { type: "bytes32" }, { type: "uint8" }, { type: "uint64" }, { type: "uint64" }], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "recoveryNonces", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "pendingRecoveries", stateMutability: "view", inputs: [{ type: "address" }],
+    outputs: [{ type: "bytes32" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" },
+      { type: "uint8" }, { type: "uint48" }, { type: "uint48" }, { type: "uint64" }, { type: "uint64" }] },
+  { type: "function", name: "proposeRecovery", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address[]" }, { type: "address" }, { type: "bytes32" },
+      { type: "bytes32" }, { type: "uint8" },
+      { type: "tuple[]", components: [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes" }, { type: "bytes32[]" }] }],
+    outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "executeRecovery", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address[]" }, { type: "bytes" }], outputs: [] }
+];
+const ACCOUNT_RECOVERY_VIEW_ABI = [
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "guardianRoot", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "validatorCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "validatorAt", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] }
+];
+
+// The account's current validators, which recovery replaces. Recovery must name
+// the complete current set.
+async function readValidators(client, account) {
+  const count = await client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "validatorCount" });
+  const validators = [];
+  for (let i = 0n; i < count; i += 1n) {
+    validators.push(await client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "validatorAt", args: [i] }));
+  }
+  return validators;
+}
+
+// Assemble everything a recovery needs from the new owner's side: the new
+// validator's init data, a fresh guardian root (the contract refuses to keep the
+// old one), and the one digest each guardian will sign. Returned as a request
+// the new owner sends to the guardians alongside their invite.
+export async function prepareRecoveryRequest({
+  rpcUrl, recoveryManager, deployment, invite, newPasskey, newValidator, rpId, origin, keepGuardians = true
+}) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const account = getAddress(invite.account);
+  const guardians = (invite.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: invite.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+
+  // Recovery rotates the guardian salt, so the new root differs from the current
+  // one — which the contract requires — while keeping the same guardians.
+  const newSalt = keepGuardians
+    ? `0x${[...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, "0")).join("")}`
+    : invite.salt;
+  const rebuiltNew = await buildGuardianSet({ rpcUrl, guardians, salt: newSalt });
+
+  // Bound to the same rpId/origin the new passkey was created under, exactly as
+  // account creation binds a validator — sha256 for the rpId, keccak for origin.
+  const newValidatorInit = encodeFunctionData({
+    abi: P256ValidatorAbi, functionName: "initialize",
+    args: [newPasskey.x, newPasskey.y, sha256(stringToHex(rpId)), keccak256(stringToHex(origin)), deployment.policyHook]
+  });
+
+  const oldValidators = await readValidators(client, account);
+  const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
+  const initDataHash = keccak256(newValidatorInit);
+  const [configVersion, recoveryNonce] = await Promise.all([
+    client.readContract({ address: account, abi: ACCOUNT_RECOVERY_VIEW_ABI, functionName: "configVersion" }),
+    client.readContract({ address: recoveryManager, abi: RECOVERY_ABI, functionName: "recoveryNonces", args: [account] })
+  ]);
+
+  const threshold = invite.threshold ?? 1;
+  const digest = await client.readContract({
+    address: recoveryManager, abi: RECOVERY_ABI, functionName: "proposalDigest",
+    args: [account, oldValidatorsHash, newValidator, initDataHash, rebuiltNew.root, threshold, configVersion, recoveryNonce]
+  });
+
+  return {
+    account, chainId: invite.chainId,
+    // Everything the guardians need to verify what they are approving.
+    newValidator, newValidatorInit, initDataHash,
+    newGuardianRoot: rebuiltNew.root, newGuardianThreshold: threshold, newSalt,
+    oldValidators, oldValidatorsHash, configVersion: Number(configVersion), recoveryNonce: Number(recoveryNonce),
+    // The full guardian set, so approvals can be assembled and proofs rebuilt.
+    invite, threshold,
+    digest
+  };
+}
+
+// Assemble threshold-many guardian approvals over the recovery digest, in the
+// order the account requires.
+export async function assembleRecoveryApprovals({ rpcUrl, request, signatures }) {
+  const guardians = (request.invite.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: request.invite.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+  const set = await buildGuardianSet({ rpcUrl, guardians, salt: request.invite.salt });
+  return assembleGuardianApprovals({ set, signatures, threshold: request.threshold });
+}
+
+// The two calls a recovery moves through: propose (with the approvals) and,
+// after the delay, execute. Both go to the RecoveryManager as plain calls —
+// they carry their own authority (the guardian signatures), so anyone can send
+// them.
+export function recoveryProposeCall({ recoveryManager, request, approvals }) {
+  return {
+    to: recoveryManager, value: 0n,
+    data: encodeFunctionData({
+      abi: RECOVERY_ABI, functionName: "proposeRecovery",
+      args: [request.account, request.oldValidators, request.newValidator, request.initDataHash,
+        request.newGuardianRoot, request.newGuardianThreshold, approvals]
+    })
+  };
+}
+export function recoveryExecuteCall({ recoveryManager, request }) {
+  return {
+    to: recoveryManager, value: 0n,
+    data: encodeFunctionData({
+      abi: RECOVERY_ABI, functionName: "executeRecovery",
+      args: [request.account, request.oldValidators, request.newValidatorInit]
+    })
+  };
+}
+
+// Is a recovery pending for this account, and when is it due?
+export async function readPendingRecovery({ rpcUrl, recoveryManager, account }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const p = await client.readContract({ address: recoveryManager, abi: RECOVERY_ABI, functionName: "pendingRecoveries", args: [account] });
+  const readyAt = Number(p[5]);
+  if (readyAt === 0) return { pending: false };
+  const latest = await client.getBlock();
+  const now = Number(latest.timestamp);
+  return {
+    pending: true, newValidator: p[1], readyAt, expiresAt: Number(p[6]),
+    ready: now >= readyAt, secondsRemaining: Math.max(0, readyAt - now)
+  };
+}
+
+// --- account self-administration ------------------------------------------
+//
+// Each of these is `onlySelf` on the account, so it runs as a normal operation
+// signed by the passkey — the same path as a transfer. They are gathered here as
+// plain calls the send path already knows how to carry.
+
+const SELF_ADMIN_ABI = [
+  { type: "function", name: "unfreeze", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "revokeTokenAllowance", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "address" }], outputs: [] }
+];
+const ERC20_ALLOWANCE_ABI = [
+  { type: "function", name: "allowance", stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }
+];
+
+// Lift a freeze once its window has passed. The contract refuses while the
+// window is still open, so this only does anything after it expires.
+export function unfreezeCall({ account }) {
+  return { target: account, value: 0n, data: encodeFunctionData({ abi: SELF_ADMIN_ABI, functionName: "unfreeze" }) };
+}
+
+// Set a token allowance the account granted to a spender back to zero. A stale
+// approval is standing permission to move funds, so revoking it is a security
+// action a wallet should make easy.
+export function revokeAllowanceCall({ account, token, spender }) {
+  if (!isAddress(token) || !isAddress(spender)) throw new Error("token and spender must be addresses");
+  return {
+    target: account, value: 0n,
+    data: encodeFunctionData({ abi: SELF_ADMIN_ABI, functionName: "revokeTokenAllowance", args: [token, spender] })
+  };
+}
+
+// What the account currently allows a spender to move, so a revocation is only
+// offered when there is actually something to revoke.
+export async function readAllowance({ rpcUrl, account, token, spender }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const [amount, decimals, symbol] = await Promise.all([
+    client.readContract({ address: token, abi: ERC20_ALLOWANCE_ABI, functionName: "allowance", args: [account, spender] }),
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
+    client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?")
+  ]);
+  return {
+    amount, decimals, symbol,
+    formatted: amount > 2n ** 255n ? "unlimited" : formatUnits(amount, decimals)
+  };
+}
+
+// --- the guardian's side --------------------------------------------------
+//
+// A guardian cannot discover on chain that they are one: the account publishes
+// only a root, so nothing links an address to an account it guards. They learn
+// it out of band, from the record the owner exported — which is why that file
+// is the mechanism rather than a backup. Everything below runs from that record
+// plus the guardian's own key; none of it needs the account holder.
+
+const FREEZE_TYPEHASH = keccak256(stringToHex("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)"));
+const EIP712_DOMAIN_TYPEHASH = keccak256(stringToHex("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"));
+const LOOM_NAME_HASH = keccak256(stringToHex("LoomAccount"));
+const LOOM_VERSION_HASH = keccak256(stringToHex("1"));
+
+const FREEZE_ABI = [
+  { type: "function", name: "freeze", stateMutability: "nonpayable",
+    inputs: [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32[]" }, { type: "bytes" }],
+    outputs: [] },
+  { type: "function", name: "guardianRoot", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "configVersion", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
+  { type: "function", name: "freezeNonces", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "frozenUntil", stateMutability: "view", inputs: [], outputs: [{ type: "uint48" }] }
+];
+
+// The sibling hashes that carry one guardian's leaf up to the root.
+function proofForLeaf(layers, leaf) {
+  let index = layers[0].indexOf(leaf);
+  if (index === -1) throw new Error("that guardian is not in this set");
+  const proof = [];
+  for (let level = 0; level < layers.length - 1; level += 1) {
+    const layer = layers[level];
+    const sibling = index % 2 === 0 ? index + 1 : index - 1;
+    if (sibling < layer.length) proof.push(layer[sibling]);
+    index = Math.floor(index / 2);
+  }
+  return proof;
+}
+
+// Everything a guardian needs to freeze an account, prepared from the exported
+// record: their membership proof, the exact digest their wallet must sign, and
+// the call to submit once it is signed.
+export async function prepareFreeze({ rpcUrl, record, guardianAddress }) {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const account = getAddress(record.account);
+  const guardian = getAddress(guardianAddress);
+  // Normalize both record shapes: newer records carry a verifier per guardian,
+  // older ones list addresses under a single verifier.
+  const guardians = (record.guardians ?? []).map(g =>
+    typeof g === "string" ? { address: getAddress(g), verifier: record.verifier } : { address: getAddress(g.address), verifier: g.verifier });
+  if (!guardians.some(g => g.address === guardian)) {
+    throw new Error("this address is not one of the guardians in that record");
+  }
+
+  const set = await buildGuardianSet({ rpcUrl, guardians, salt: record.salt });
+  const onChainRoot = await client.readContract({ address: account, abi: FREEZE_ABI, functionName: "guardianRoot" });
+  if (set.root.toLowerCase() !== onChainRoot.toLowerCase()) {
+    // Distinguish the two very different reasons the roots can differ: the
+    // account never committed real guardians, versus a genuinely stale invite.
+    const zero = onChainRoot === `0x${"00".repeat(32)}`;
+    const placeholder = onChainRoot.toLowerCase() === "0x552a103562656ed9d47147186c73ed6cca633a0bf8bfee32bfab3ad0f1b09336";
+    if (zero || placeholder) {
+      throw new Error("this account has no real guardians on chain — it was created with a stand-in, so it cannot be frozen or recovered. Create an account with guardians set to use this.");
+    }
+    throw new Error("this invite does not match the account's current guardians — ask the owner for an up-to-date copy");
+  }
+
+  const mine = set.leaves.find(l => getAddress(l.address) === guardian);
+  const proof = proofForLeaf(set.layers, mine.leaf);
+  const [configVersion, freezeNonce, frozenUntil] = await Promise.all([
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "configVersion" }),
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "freezeNonces", args: [mine.leaf] }),
+    client.readContract({ address: account, abi: FREEZE_ABI, functionName: "frozenUntil" })
+  ]);
+
+  const domainSeparator = keccak256(encodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "address" }],
+    [EIP712_DOMAIN_TYPEHASH, LOOM_NAME_HASH, LOOM_VERSION_HASH, BigInt(record.chainId), account]
+  ));
+  const structHash = keccak256(encodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "uint64" }],
+    [FREEZE_TYPEHASH, mine.leaf, freezeNonce, configVersion]
+  ));
+  const digest = keccak256(concatHex(["0x1901", domainSeparator, structHash]));
+
+  return {
+    account, guardian, leaf: mine.leaf, keyCommitment: mine.keyCommitment,
+    salt: set.salt, verifier: mine.verifier, proof, configVersion, freezeNonce,
+    // The full set, so a caller can show every guardian and collect approvals
+    // from any of them rather than assuming a single signer.
+    set,
+    alreadyFrozen: Number(frozenUntil) * 1000 > Date.now(),
+    frozenUntil: Number(frozenUntil),
+    // What the guardian's wallet signs. It commits to this account, this
+    // guardian and this config version, so it cannot be replayed elsewhere or
+    // after the account's configuration changes.
+    digest,
+    // Once signed, this is the call that freezes the account. Anyone can carry
+    // it — the authority is in the signature, not the sender.
+    freezeCall: signature => ({
+      target: account, value: 0n,
+      data: encodeFunctionData({
+        abi: FREEZE_ABI, functionName: "freeze",
+        args: [mine.verifier, mine.keyCommitment, set.salt, proof, signature]
+      })
+    })
+  };
+}
+
+// Check a guardian's signature before it is ever submitted. Recovering the
+// signer locally is what turns "someone pasted something" into "this specific
+// guardian approved this exact digest" — a wrong or forged signature is caught
+// here rather than by a reverted transaction someone paid for.
+export async function verifyGuardianSignature({ digest, signature, expectedAddress }) {
+  try {
+    const recovered = await recoverAddress({ hash: digest, signature });
+    return {
+      valid: getAddress(recovered) === getAddress(expectedAddress),
+      recovered: getAddress(recovered)
+    };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+// Assemble collected approvals into the array the account verifies.
+//
+// The contract accepts any `threshold` distinct guardians — which ones is
+// irrelevant — but requires them ordered by strictly increasing leaf. That is an
+// encoding rule, not a decision anyone should have to make, so the order is
+// imposed here and the caller collects signatures in whatever order they arrive.
+export function assembleGuardianApprovals({ set, signatures, threshold }) {
+  const collected = set.leaves
+    .map(leaf => ({ leaf, signature: signatures[getAddress(leaf.address)] }))
+    .filter(entry => typeof entry.signature === "string" && entry.signature.length > 2);
+
+  if (collected.length < threshold) {
+    return { ready: false, have: collected.length, need: threshold, approvals: [] };
+  }
+  // Already ordered: buildGuardianSet sorts its leaves ascending.
+  const approvals = collected.slice(0, threshold).map(entry => ({
+    verifier: entry.leaf.verifier,
+    keyCommitment: entry.leaf.keyCommitment,
+    salt: set.salt,
+    signature: entry.signature,
+    proof: proofForLeaf(set.layers, entry.leaf.leaf)
+  }));
+  return { ready: true, have: collected.length, need: threshold, approvals };
 }
 
 // Read the account's live safety posture straight from the chain: whether it is

@@ -16,10 +16,10 @@
 //     --rpc-url <url> [--port 8787] [--deposit 0.02]
 
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createPublicClient, createWalletClient, decodeErrorResult, formatEther, http, parseEther } from "viem";
+import { createPublicClient, createWalletClient, decodeErrorResult, encodeAbiParameters, formatEther, http, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 import { EntryPointAbi } from "@loom/core";
@@ -184,6 +184,68 @@ const server = createServer((req, res) => {
         res.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ error: error.message }));
       }
     })();
+  }
+
+  // Deploy a fresh validator instance for a recovery. The new owner's key needs
+  // a validator the account does not already have installed, so recovery cannot
+  // reuse the current one. This publishes a new P256Validator from the repo's
+  // compiled artifact, with the same fallback verifier as the deployed one.
+  if (req.method === "POST" && req.url.startsWith("/deploy-validator")) {
+    return void (async () => {
+      try {
+        const existing = flag("validator") ?? "0xd86b5531361f6382342f59700ff1b309919eaf0a";
+        const fallback = await publicClient.readContract({
+          address: existing, abi: [{ type: "function", name: "fallbackVerifier", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }],
+          functionName: "fallbackVerifier"
+        }).catch(() => "0x0000000000000000000000000000000000000100");
+        const artifact = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "out", "P256Validator.sol", "P256Validator.json"), "utf8"));
+        const initCode = artifact.bytecode.object + encodeAbiParameters([{ type: "address" }], [fallback]).slice(2);
+        const hash = await wallet.sendTransaction({ data: initCode });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (!receipt.contractAddress) throw new Error("no contract address in receipt");
+        console.log(`==> deployed a fresh validator ${receipt.contractAddress}`);
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ validator: receipt.contractAddress, tx: hash }));
+      } catch (error) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: error.message }));
+      }
+    })();
+  }
+
+  // Complete a change the account already scheduled.
+  //
+  // This is a plain transaction rather than a user operation: executeScheduled
+  // takes the account's execution lock, so routing it through the account's own
+  // execute would revert with Reentrancy. It carries no authority of its own —
+  // the account verifies the operation was scheduled and is due — so relaying it
+  // cannot cause anything the owner did not already schedule and wait out.
+  if (req.method === "POST" && req.url.startsWith("/execute-scheduled")) {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk;
+      if (body.length > 20_000) req.destroy();
+    });
+    return void req.on("end", () => {
+      serialize(async () => {
+        try {
+          const { to, data } = JSON.parse(body);
+          if (!/^0x[0-9a-fA-F]{40}$/.test(to ?? "")) throw new Error("account address required");
+          if (!/^0x([0-9a-fA-F]{2})*$/.test(data ?? "")) throw new Error("calldata required");
+          console.log(`==> execute-scheduled for ${to}`);
+          // Refuse before spending: the account rejects an operation that is not
+          // scheduled or not yet due, and that is not worth a transaction fee.
+          await publicClient.call({ account: sponsor.address, to, data });
+          const hash = await wallet.sendTransaction({ to, data });
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          const result = { tx: hash, status: receipt.status, gasUsed: receipt.gasUsed.toString() };
+          console.log(`    ${JSON.stringify(result)}`);
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+        } catch (error) {
+          const detail = revertDetail(error);
+          console.log(`    refused: ${detail}`);
+          res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: detail }));
+        }
+      });
+    });
   }
 
   // Relay an operation for an account that already exists. No deposit and no

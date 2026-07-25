@@ -105,6 +105,7 @@
     "e2e:bundler-devnet": "npm run sdk:build && npm run passkey:build && npm --prefix packages/cli ci && npm --prefix monitoring ci && node tools/e2e/bundler-devnet.mjs",
     "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
     "e2e:guardian-devnet": "npm run core:build && node tools/e2e/devnet-guardian-lifecycle.mjs",
+    "e2e:social-recovery": "npm run core:build && node tools/e2e/devnet-social-recovery.mjs",
     "deployment:gas": "node tools/deployment/deployment-gas-report.mjs",
     "passkey:build": "npm run core:build && tsc -p packages/passkey/tsconfig.json",
     "passkey:test": "npm run passkey:build && npm --prefix packages/passkey test"
