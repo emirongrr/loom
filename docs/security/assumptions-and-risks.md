@@ -185,10 +185,13 @@ Security claims are valid only under the assumptions listed here and in
     rehearsals, dependency review, updated audit scope, and tests proving the
     ECDSA-compatible signature path and post-quantum signature path are both
     required where the account profile claims hybrid security.
-16. Kohaku SDK dependency graph currently passes npm audit only with pinned
-    local overrides for vulnerable transitive packages. Production SDK release
-    must revalidate those overrides against upstream Kohaku releases and keep
-    isolation tests for untrusted wallet input and network-facing runtime
+16. Kohaku SDK dependency review includes pinned local overrides and one
+    time-bounded exception for `GHSA-mh99-v99m-4gvg`. The exception validates
+    the exact locked dependency graph and expires on 2026-08-08. Its isolation
+    test fails if wallet runtime proof imports or attacker-controlled EJS
+    rendering load the vulnerable CLI-only path. Production SDK release must
+    remove the exception through a compatible upstream release and revalidate
+    all overrides against untrusted wallet input and network-facing runtime
     paths.
 17. Immutable proxy deployment is implemented but unaudited. Production release
     requires independent review of proxy initialization, storage layout,

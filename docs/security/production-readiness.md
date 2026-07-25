@@ -181,7 +181,9 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
   severity or better. Any override used to keep audit clean must have a
   compatibility check, upstream-release review, exploitability analysis, and
   isolation test proving vulnerable behavior is unreachable from untrusted
-  wallet input.
+  wallet input. Time-bounded exceptions must additionally pin the complete
+  advisory graph, fail closed on metadata or lockfile drift, and expire in CI;
+  `tools/quality/dependency-audit-policy.json` records the active evidence.
 - Funded public bug bounty and private vulnerability reporting process. This
   is intentionally deferred until after audit and public-testnet hardening,
   but remains mandatory before production funds are accepted.
