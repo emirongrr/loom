@@ -1981,11 +1981,14 @@
       const guardians = guardianRecord.guardians ?? [];
       if (!Array.isArray(guardians) || guardians.length === 0) throw new Error("this file lists no guardians");
       const select = $("guardianSelf");
-      select.innerHTML = `<option value="">choose your wallet…</option>` +
-        guardians.map((g, i) => {
-          const a = guardianAddressOf(g);
-          return `<option value="${a}">${shorten(a)}${(typeof g === "object" && g.kind === "contract") ? " (contract wallet)" : ""}</option>`;
-        }).join("");
+      // The invite is an untrusted file, so build options through the DOM —
+      // `new Option(text, value)` assigns plain text, never parsed as HTML.
+      select.replaceChildren(new Option("choose your wallet…", ""));
+      for (const g of guardians) {
+        const a = guardianAddressOf(g);
+        const label = `${shorten(a)}${(typeof g === "object" && g.kind === "contract") ? " (contract wallet)" : ""}`;
+        select.add(new Option(label, a));
+      }
       $("guardianViewStatus").textContent = "step 2 of 2";
       $("guardianStep1").hidden = true;
       $("guardianDuty").hidden = false;
@@ -2343,19 +2346,18 @@
 
   const inputStyle = "width:100%;font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)";
 
-  function assetOptionsHtml() {
-    const options = ['<option value="">ETH</option>'];
-    for (const entry of discovered) {
-      options.push(`<option value="${entry.token}">${entry.symbol}</option>`);
-    }
-    return options.join("");
+  // Token symbols come from block-explorer discovery, so they are untrusted.
+  // Build options through the DOM — `new Option` sets plain text, never HTML.
+  function fillAssetOptions(select) {
+    select.replaceChildren(new Option("ETH", ""));
+    for (const entry of discovered) select.add(new Option(entry.symbol, entry.token));
   }
 
   // Keep every row's asset list current without discarding what the user typed.
   function renderBatchAssets() {
     for (const select of $("batchRows").querySelectorAll("select")) {
       const chosen = select.value;
-      select.innerHTML = assetOptionsHtml();
+      fillAssetOptions(select);
       select.value = [...select.options].some(o => o.value === chosen) ? chosen : "";
     }
   }
@@ -2365,11 +2367,12 @@
     row.className = "row";
     row.innerHTML = `
       <span class="v" style="display:flex;gap:.4rem;width:100%;align-items:center">
-        <select style="font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)">${assetOptionsHtml()}</select>
+        <select style="font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"></select>
         <input class="to" placeholder="to 0x…" spellcheck="false" style="${inputStyle}">
         <input class="amt" placeholder="amount" spellcheck="false" style="${inputStyle};max-width:8rem">
         <button class="rm" style="padding:.2rem .55rem">✕</button>
       </span>`;
+    fillAssetOptions(row.querySelector("select"));
     row.querySelector(".rm").onclick = () => {
       row.remove();
       updateBatchStatus();
