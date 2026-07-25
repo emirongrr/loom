@@ -23,6 +23,9 @@ does not make a deployment production-ready.
 - Stateful two-account recovery isolation across distinct guardian identities,
   repeated complete validator/guardian replacement, cancellation, exact
   cross-account approval rejection, and full pending-state rollback.
+- Stateful two-account exact-call session isolation across shared permission IDs
+  and nonce keys, distinct signers and targets, mixed EntryPoint bundles,
+  revocation/re-grant cycles, exact replay rejection, and full bundle rollback.
 - 2,048-run fuzz tests and 256-run/depth-50 stateful invariants on every pull
   request (`FOUNDRY_PROFILE=ci`). Nightly verification raises this to
   20,000-run fuzz and 2,000-run/depth-100 stateful invariants
