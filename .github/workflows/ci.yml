@@ -93,6 +93,10 @@ jobs:
         run: |
           set -o pipefail
           npm run e2e:guardian-devnet 2>&1 | tee artifacts/devnet/guardian-devnet.log
+      - name: Social recovery devnet
+        run: |
+          set -o pipefail
+          npm run e2e:social-recovery 2>&1 | tee artifacts/devnet/social-recovery.log
       - name: Upload devnet evidence
         if: always()
         uses: actions/upload-artifact@v7
