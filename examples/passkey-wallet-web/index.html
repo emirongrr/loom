@@ -1759,17 +1759,20 @@
         $("recoveryStatePill").textContent = "nobody set";
         $("recoveryState").textContent = "no one can recover this account yet";
       } else {
-        // Non-zero only means the account claims guardians. If a saved list
-        // rebuilds to the same root, that claim is checked rather than assumed.
+        // A real, non-zero root means the account HAS guardians committed on
+        // chain — that protection is a fact regardless of this device. A saved
+        // list only lets us name who they are; its absence never unsets them.
         const check = await verifySavedGuardians(s.config.guardianRoot);
         const confirmed = check.known && check.matches;
-        $("recoveryStatePill").className = confirmed ? "pill good" : "pill warn";
-        $("recoveryStatePill").textContent = confirmed ? "protected" : "unverified";
+        const staleCopy = check.known && !check.matches;
+        // Guardians are set unless the saved copy contradicts the chain.
+        $("recoveryStatePill").className = staleCopy ? "pill warn" : "pill good";
+        $("recoveryStatePill").textContent = staleCopy ? "check copy" : "protected";
         $("recoveryState").textContent = confirmed
           ? `${s.config.guardianThreshold} of your ${check.count} guardian${check.count === 1 ? "" : "s"} must agree to recover it`
-          : check.known
-            ? "the guardians saved on this device do not match what the account committed to — the saved list is out of date"
-            : `the account commits to ${s.config.guardianThreshold} of some guardian set, but this device has no copy of it to check against`;
+          : staleCopy
+            ? "guardians are set on chain, but the list saved on this device rebuilds to a different root — your saved copy is out of date"
+            : `guardians are set on chain (${s.config.guardianThreshold} must agree), but this device holds no copy naming them — load your guardian invite to see who they are`;
       }
       $("recoveryState").className = "v";
       $("recoveryOutcome").textContent = (placeholder || none)
