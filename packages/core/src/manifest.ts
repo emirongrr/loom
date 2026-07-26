@@ -1,4 +1,4 @@
-import Ajv from "ajv";
+import Ajv, { type ValidateFunction } from "ajv";
 import { keccak256, toBytes } from "viem";
 import { LoomError } from "./errors.js";
 import type { Address, Hex } from "./hex.js";
@@ -112,7 +112,16 @@ export const DEPLOYMENT_MANIFEST_SCHEMA_V1 = {
 } as const;
 
 const ajv = new Ajv({ allErrors: true });
-const validate = ajv.compile(DEPLOYMENT_MANIFEST_SCHEMA_V1);
+
+// Compile lazily on first use, not at module load. ajv builds its validator
+// with `new Function`, which a strict `script-src` CSP without `unsafe-eval`
+// forbids; deferring it keeps merely importing @loom/core free of runtime code
+// generation, so a browser wallet can enforce that CSP unless it actually
+// verifies a manifest. The compiled validator is memoized after the first call.
+let compiledValidate: ValidateFunction | undefined;
+function manifestValidator(): ValidateFunction {
+  return (compiledValidate ??= ajv.compile(DEPLOYMENT_MANIFEST_SCHEMA_V1));
+}
 
 /**
  * Validate an untrusted value against the canonical schema and return it typed.
@@ -120,6 +129,7 @@ const validate = ajv.compile(DEPLOYMENT_MANIFEST_SCHEMA_V1);
  * `MANIFEST_INVALID` describing the first failures.
  */
 export function parseDeploymentManifest(input: unknown): LoomDeploymentManifest {
+  const validate = manifestValidator();
   if (!validate(input)) {
     const detail = (validate.errors ?? [])
       .map(error => `${error.instancePath || "/"} ${error.message ?? ""}`.trim())

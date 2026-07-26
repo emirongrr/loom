@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./recovery": {
+      "types": "./dist/recovery.d.ts",
+      "default": "./dist/recovery.js"
     }
   },
   "sideEffects": false,
@@ -19,7 +23,8 @@
   },
   "dependencies": {
     "@loom/core": "file:../core",
-    "js-sha3": "0.8.0"
+    "js-sha3": "0.8.0",
+    "viem": "2.55.1"
   },
   "files": [
     "dist"

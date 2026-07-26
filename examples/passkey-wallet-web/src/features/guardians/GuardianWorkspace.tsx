@@ -1,0 +1,53 @@
+import { useEffect, useState } from "react";
+import type { GuardianInviteV1 } from "@loom/sdk/recovery";
+import { parseGuardianInvite } from "@loom/sdk/recovery";
+import { receiveGuardianInvite } from "../../transports/invitations";
+import { shorten } from "../../components/AccountHeader";
+import { useAppServices } from "../../app/AppServices";
+import type { GuardianVaultIssue, GuardianVaultRecord } from "../../storage/guardianVault";
+
+export function GuardianWorkspace() {
+  const services = useAppServices();
+  const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
+  const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
+  const [link, setLink] = useState("");
+  const [message, setMessage] = useState("");
+  const refresh = () => services.guardianVault.inspect()
+    .then(snapshot => { setRecords(snapshot.records); setIssues(snapshot.issues); })
+    .catch(error => setMessage(error instanceof Error ? error.message : "Guardian vault unavailable"));
+  useEffect(() => { void refresh(); }, []);
+  const accept = async () => {
+    try {
+      const invite = link.trim().startsWith("{")
+        ? parseGuardianInvite(link)
+        : await receiveGuardianInvite(link, services.invitations.link, Math.floor(services.now() / 1000));
+      await services.guardianVault.put({ capability: invite, acceptedAt: services.now(), status: "unverified" });
+      setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Capability could not be accepted"); }
+  };
+  return <div className="page-stack"><header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>
+    <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
+    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Encrypted link or QR payload</h2></div><span className="pill">Private</span></div>
+      <label className="field"><span>Invitation</span><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" /></label>
+      <button className="primary" onClick={accept} disabled={!link.trim()}>Review invitation</button>
+      <details><summary>Advanced / portable file fallback</summary><p>Paste a versioned JSON capability exported from an independent wallet. It contains only your proof, never the full guardian set.</p></details>
+      {message && <p className="toast" role="status">{message}</p>}
+    </section>
+    {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
+      <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
+      {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {
+        try { await services.guardianVault.remove(issue.key); await refresh(); setMessage("Unreadable local record removed."); }
+        catch (error) { setMessage(error instanceof Error ? error.message : "Unreadable record could not be removed"); }
+      }}>Remove local record</button></div>)}
+    </section>}
+    {records.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts</h2><p>Open an encrypted invitation or scan its QR code. Generating an invite alone never marks it delivered or accepted.</p></section> : records.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onMessage={setMessage} />)}
+  </div>;
+}
+
+function GuardianAccount({ record, onMessage }: { record: GuardianVaultRecord; onMessage(value: string): void }) {
+  const invite: GuardianInviteV1 = record.capability;
+  return <article className="section-card guardian-account"><div className="section-heading"><div><p className="eyebrow">{invite.accountAlias}</p><h2>{shorten(invite.account)}</h2></div><span className={`pill ${record.status === "stale" ? "failed" : "included"}`}>{record.status}</span></div>
+    <div className="permission-grid"><div><span>Chain</span><strong>{invite.chainId}</strong></div><div><span>Guardian type</span><strong>{invite.guardian.kind === "p256" ? "Dedicated passkey" : invite.guardian.kind.toUpperCase()}</strong></div><div><span>Root match</span><strong>Verify before action</strong></div><div><span>Last checked</span><strong>{record.lastVerifiedAt ? new Date(record.lastVerifiedAt).toLocaleString() : "Not yet"}</strong></div></div>
+    <div className="guardian-actions"><button className="danger-button" disabled={record.status !== "active"} onClick={() => onMessage("Freeze preparation will re-check the live root, configuration version, nonce, and verifier code before authentication.")}>Emergency freeze</button><button className="secondary" disabled={record.status !== "active"} onClick={() => onMessage("No pending recovery was found in the last verified state.")}>Check recovery</button></div>
+  </article>;
+}
