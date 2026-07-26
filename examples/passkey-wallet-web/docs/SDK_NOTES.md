@@ -19,14 +19,23 @@ Fixed by compiling the validator lazily on first use. A regression test
 further and shipping precompiled ("standalone") ajv validators so no runtime code
 generation is needed anywhere.
 
-## 2. No first-class balance / native-asset read helper
+## 2. No first-class balance / asset read helpers
 
 The SDK exposes state transports (`createRpcStateTransport`) and
-`readAccountSafetyState`, but no helper for a plain ETH balance or ERC-20 read.
-This example uses `viem` directly (`readAccountBalance` in
-`src/features/wallet/accountClient.ts`). A small `readNativeBalance` /
-`readErc20Balance` on the SDK client would remove that direct `viem` dependency
-from consumers.
+`readAccountSafetyState`, but no helper for a plain ETH balance, an ERC-20
+balance, or token/NFT discovery. This example uses `viem` plus the configured
+explorer's index directly (`src/features/wallet/assets.ts`). A small
+`readNativeBalance` / `readErc20Balance` on the SDK client would remove that
+direct `viem` dependency from consumers.
+
+## 2b. No transfer-call builders
+
+Moving a fungible token or a collectible means hand-encoding
+`transfer(address,uint256)` and `safeTransferFrom(...)` in the consumer
+(`src/features/wallet/transfers.ts`). Since the account's execution surface
+already takes `{target, value, data}` calls, small audited encoders for the
+common ERC-20/721/1155 transfers would keep every wallet from rewriting them —
+and from getting the ERC-1155 argument order subtly wrong.
 
 ## 3. No default/public transport presets
 

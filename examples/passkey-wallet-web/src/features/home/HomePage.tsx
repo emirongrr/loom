@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AccountHeader, type BalanceView } from "../../components/AccountHeader";
 import { SecurityStatus } from "../../components/SecurityStatus";
 import { SendDialog } from "../send/SendDialog";
 import { useNetwork } from "../../config/NetworkContext";
-import { readAccountBalance } from "../wallet/accountClient";
+import { useNotifications } from "../../notifications/NotificationsContext";
+import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
+import type { SendableAsset } from "../wallet/transfers";
 import type { AccountHandle, NavigationArea } from "../../types";
+
+const EMPTY_ASSETS: AccountAssets = {
+  native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
+  tokens: [], nfts: [], deployed: false, discoveryUnavailable: false
+};
 
 export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   readonly account: AccountHandle;
@@ -14,47 +21,98 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   readonly onLock: () => void;
 }) {
   const { config } = useNetwork();
-  const [message, setMessage] = useState("");
+  const notifications = useNotifications();
+  const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
-  const [sending, setSending] = useState(false);
+  const [deployed, setDeployed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [send, setSend] = useState<{ open: boolean; preselect?: SendableAsset }>({ open: false });
   const guardianThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
 
-  useEffect(() => {
-    let active = true;
-    setBalance({ status: "loading" });
-    readAccountBalance(config, account.account)
-      .then(result => { if (active) setBalance({ status: "loaded", eth: result.eth, deployed: result.deployed }); })
-      .catch(() => { if (active) setBalance({ status: "error" }); });
-    return () => { active = false; };
-  }, [config, account.account]);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setBalance({ status: "loading" });
+    setRefreshing(true);
+    try {
+      const [next] = await Promise.all([
+        readAccountAssets(config, account.account),
+        loadWalletDeployment().then(setDeployment).catch(() => setDeployment(null))
+      ]);
+      setDeployed(next.deployed);
+      setAssets(next);
+      setBalance({ status: "loaded", eth: next.native.formatted, deployed: next.deployed });
+    } catch {
+      setBalance({ status: "error" });
+    } finally { setRefreshing(false); }
+  }, [config, account.account]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    let active = true;
-    loadWalletDeployment().then(result => { if (active) setDeployment(result); }).catch(() => { if (active) setDeployment(null); });
-    return () => { active = false; };
-  }, []);
+  useEffect(() => { void load(); }, [load]);
 
-  const copyAddress = async () => {
-    try { await navigator.clipboard.writeText(account.account); setMessage("Receive address copied."); }
-    catch { setMessage("Copy was unavailable. Select the address and copy it manually."); }
+  const refresh = async () => {
+    await load(true);
+    notifications.notify({ status: "info", title: "Balances refreshed", detail: `Read from ${hostOf(config.rpcUrl)}` });
   };
+
+  const openSend = (preselect?: SendableAsset) => setSend({ open: true, ...(preselect ? { preselect } : {}) });
 
   return <div className="page-stack">
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
+
     <div className="quick-actions">
-      <button onClick={copyAddress}><span aria-hidden="true">↓</span><span>Receive</span></button>
-      <button onClick={() => setSending(true)}><span aria-hidden="true">↗</span><span>Send</span></button>
-      <button onClick={() => onNavigate("security")}><span aria-hidden="true">◆</span><span>Security</span></button>
+      <button onClick={() => void copyAddress(account.account, notifications)}><span aria-hidden="true">↓</span><span>Receive</span></button>
+      <button onClick={() => openSend()}><span aria-hidden="true">↗</span><span>Send</span></button>
+      <button onClick={() => void refresh()} disabled={refreshing}><span aria-hidden="true" className={refreshing ? "spin" : ""}>⟳</span><span>{refreshing ? "Refreshing" : "Refresh"}</span></button>
       <button onClick={() => onNavigate("activity")}><span aria-hidden="true">⋯</span><span>Activity</span></button>
     </div>
-    {message && <p className="toast" role="status">{message}</p>}
-    <SecurityStatus guardians={guardianThreshold > 0 ? guardianThreshold : 0} threshold={guardianThreshold} frozen={false} pendingRecovery={false} />
+
+    {guardianThreshold === 0 && <SecurityStatus guardians={0} threshold={0} frozen={false} pendingRecovery={false} />}
+
     <section className="section-card">
-      <div className="section-heading"><div><p className="eyebrow">Account</p><h2>{account.label}</h2></div><span className="pill included">{account.kind}</span></div>
-      <div className="permission-grid"><div><span>Address</span><strong className="breakable">{account.account}</strong></div><div><span>Chain</span><strong>{account.chainId}</strong></div><div><span>Passkey RP ID</span><strong>{account.rpId}</strong></div><div><span>Recovery</span><strong>{guardianThreshold > 0 ? `${guardianThreshold}-approval threshold` : "Not configured"}</strong></div></div>
+      <div className="section-heading"><div><p className="eyebrow">Assets</p><h2>Tokens</h2></div><button className="icon-button" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh balances"><span className={refreshing ? "spin" : ""}>⟳</span></button></div>
+      <div className="asset-list">
+        <AssetRow token={assets.native} onSend={() => openSend({ type: "token", token: assets.native })} />
+        {assets.tokens.map(token => <AssetRow key={token.address} token={token} onSend={() => openSend({ type: "token", token })} />)}
+      </div>
+      {balance.status === "loading" && assets.tokens.length === 0 && <p className="form-note">Loading balances from {hostOf(config.rpcUrl)}…</p>}
+      {assets.discoveryUnavailable && <p className="form-note">Token discovery is unavailable from the configured explorer; only the native balance is shown. Change the explorer in Developer settings.</p>}
     </section>
+
+    <section className="section-card">
+      <div className="section-heading"><div><p className="eyebrow">Collectibles</p><h2>NFTs</h2></div></div>
+      {assets.nfts.length === 0
+        ? <p className="form-note">No ERC-721 or ERC-1155 collectibles were found for this account.</p>
+        : <div className="nft-grid">{assets.nfts.map(nft => <NftCard key={`${nft.contract}:${nft.tokenId}`} nft={nft} onSend={() => openSend({ type: "nft", nft })} />)}</div>}
+    </section>
+
     {guardianThreshold === 0 && <section className="section-card pending-card"><div><p className="eyebrow">Action required</p><h2>Recovery is not configured</h2><p>This account is stored locally, but losing the matching passkey can still mean losing access.</p></div><button className="secondary" onClick={() => onNavigate("security")}>Open Security</button></section>}
-    {sending && <SendDialog account={account} deployment={deployment} deployed={balance.status === "loaded" ? balance.deployed === true : false} onClose={() => setSending(false)} />}
+
+    {send.open && <SendDialog account={account} deployment={deployment} deployed={deployed} assets={assets} {...(send.preselect ? { preselect: send.preselect } : {})} onClose={() => setSend({ open: false })} onSent={() => void load(true)} />}
   </div>;
 }
+
+function AssetRow({ token, onSend }: { token: TokenAsset; onSend(): void }) {
+  return <div className="asset-row">
+    {token.icon
+      ? <img className="asset-icon" src={token.icon} alt="" loading="lazy" />
+      : <span className={`asset-icon ${token.kind === "native" ? "eth" : ""}`} aria-hidden="true">{token.symbol.slice(0, 3).toUpperCase()}</span>}
+    <div><strong>{token.name}</strong><span>{token.symbol}</span></div>
+    <div className="asset-amount"><strong>{token.formatted}</strong><button className="text-button" onClick={onSend}>Send</button></div>
+  </div>;
+}
+
+function NftCard({ nft, onSend }: { nft: NftAsset; onSend(): void }) {
+  return <article className="nft-card">
+    <div className="nft-media">{nft.image
+      ? <img src={nft.image} alt={nft.name} loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} />
+      : <span aria-hidden="true">◈</span>}</div>
+    <div className="nft-meta"><strong>{nft.name}</strong><span>{nft.collection}</span></div>
+    <button className="secondary" onClick={onSend}>Send</button>
+  </article>;
+}
+
+async function copyAddress(address: string, notifications: ReturnType<typeof useNotifications>) {
+  try { await navigator.clipboard.writeText(address); notifications.notify({ status: "success", title: "Address copied", detail: "Share it to receive funds." }); }
+  catch { notifications.notify({ status: "error", title: "Copy unavailable", detail: "Select the address and copy it manually." }); }
+}
+
+function hostOf(url: string): string { return url.replace(/^https?:\/\//, "").split("/")[0] ?? url; }

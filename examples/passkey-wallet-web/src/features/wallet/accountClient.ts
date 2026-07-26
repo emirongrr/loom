@@ -7,29 +7,10 @@ import {
   readAccountSafetyState,
   type AccountSafetyState
 } from "@loom/sdk";
-import { createPublicClient, formatEther, http, isAddress } from "viem";
 import type { NetworkConfig } from "../../config/network";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
 import { signWithBrowserPasskey } from "./webauthn";
-
-export interface AccountBalance {
-  readonly wei: bigint;
-  readonly eth: string;
-  readonly deployed: boolean;
-}
-
-// A read-only view of on-chain account state, over the user's chosen RPC. No
-// signature and no authority — just the truth the chain exposes about the
-// address, so the wallet never invents a balance or deployment status.
-export async function readAccountBalance(config: NetworkConfig, account: Address): Promise<AccountBalance> {
-  const client = createPublicClient({ transport: http(config.rpcUrl) });
-  const [wei, code] = await Promise.all([
-    client.getBalance({ address: account }),
-    client.getCode({ address: account })
-  ]);
-  return { wei, eth: formatEther(wei), deployed: Boolean(code && code !== "0x") };
-}
 
 export async function readAccountSafety(
   config: NetworkConfig,
@@ -50,18 +31,24 @@ export interface SendResult {
   readonly transactionHash?: Hex;
 }
 
-// Submit a single ETH transfer through a public ERC-4337 bundler. The passkey
-// signs the canonical operation hash; the bundler carries it and cannot alter a
-// single field, so the account is bound to no particular submitter.
-export async function sendEthTransfer(input: {
+export interface AccountCall {
+  readonly target: Address;
+  readonly value: bigint;
+  readonly data: Hex;
+}
+
+// Submit account calls through a public ERC-4337 bundler. The passkey signs the
+// canonical operation hash; the bundler carries it and cannot alter a single
+// field, so the account is bound to no particular submitter. Used for ETH,
+// ERC-20, and NFT transfers alike — only the encoded call differs.
+export async function submitAccountCalls(input: {
   config: NetworkConfig;
   account: AccountHandle;
   deployment: WalletDeployment;
-  to: Address;
-  valueWei: bigint;
+  calls: readonly AccountCall[];
 }): Promise<SendResult> {
-  const { config, account, deployment, to, valueWei } = input;
-  if (!isAddress(to)) throw new Error("The recipient address is not a valid Ethereum address.");
+  const { config, account, deployment, calls } = input;
+  if (calls.length === 0) throw new Error("There is nothing to submit.");
   const validator = account.kind === "recovered" ? account.validator : deployment.validator;
 
   // The SDK passkey signer computes the canonical operation hash, carries it to
@@ -87,7 +74,7 @@ export async function sendEthTransfer(input: {
 
   // Fees and gas are left to the bundler's own estimation; it is the only party
   // that knows the price it will accept, and overstating them overpays the relayer.
-  const result = await client.sendTransaction({ calls: [{ target: to, value: valueWei, data: "0x" }] });
+  const result = await client.sendTransaction({ calls: calls.map(call => ({ target: call.target, value: call.value, data: call.data })) });
   const transactionHash = receiptTransactionHash(result.receipt);
   return transactionHash ? { userOpHash: result.userOpHash, transactionHash } : { userOpHash: result.userOpHash };
 }

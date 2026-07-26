@@ -10,7 +10,10 @@ export default defineConfig({
       // connect-src allows any HTTPS origin because the RPC, bundler, and
       // explorer are user-configurable in Developer settings; localhost is kept
       // for a locally-run sponsor relay. Every other directive stays strict.
-      "Content-Security-Policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: http://localhost:* ws://localhost:*; font-src 'self'; manifest-src 'self'"
+      // img-src allows HTTPS so NFT artwork from the configured explorer/IPFS
+      // gateway can render; connect-src allows any HTTPS origin because the RPC,
+      // bundler, and explorer are user-configurable. Every other directive stays strict.
+      "Content-Security-Policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: http://localhost:* ws://localhost:*; font-src 'self'; manifest-src 'self'"
     }
   }
 });
