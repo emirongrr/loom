@@ -89,6 +89,40 @@ test("a failing explorer degrades to the native balance instead of throwing", as
   assert.equal(assets.deployed, true);
 });
 
+// Regression: both lookups shared one Promise.all, so a rate-limited collectible
+// endpoint discarded the token balances the indexer had already returned.
+test("a failing collectible lookup does not hide token balances", async () => {
+  const fetchMock: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/token-balances")) {
+      return Response.json([{ token: { address_hash: TOKEN, decimals: "6", symbol: "PYUSD", type: "ERC-20" }, value: "75000000" }]);
+    }
+    if (url.includes("/nft")) return new Response("rate limited", { status: 429 });
+    return rpcResponse(init);
+  };
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+
+  assert.equal(assets.tokens.length, 1, "tokens must survive a collectible failure");
+  assert.equal(assets.tokens[0]?.symbol, "PYUSD");
+  assert.equal(assets.tokens[0]?.formatted, "75");
+  assert.equal(assets.discoveryUnavailable, false);
+  assert.equal(assets.nftDiscoveryUnavailable, true);
+});
+
+test("a failing token lookup does not hide collectibles", async () => {
+  const fetchMock: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/token-balances")) return new Response("rate limited", { status: 429 });
+    if (url.includes("/nft")) return Response.json({ items: [{ id: "7", token: { address_hash: COLLECTION, name: "Loom Test", type: "ERC-721" } }] });
+    return rpcResponse(init);
+  };
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+
+  assert.equal(assets.nfts.length, 1);
+  assert.equal(assets.discoveryUnavailable, true);
+  assert.equal(assets.nftDiscoveryUnavailable, false);
+});
+
 test("recipient parsing rejects anything that is not an address", () => {
   assert.throws(() => normalizeRecipient("0x1234"), /valid recipient/u);
   assert.throws(() => normalizeRecipient(""), /valid recipient/u);

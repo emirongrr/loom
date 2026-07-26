@@ -29,8 +29,10 @@ export interface AccountAssets {
   readonly nfts: readonly NftAsset[];
   /** Whether the account has code on chain, read from the RPC. */
   readonly deployed: boolean;
-  /** True when the explorer could not be reached; the native balance is still real. */
+  /** True when token discovery failed; the native balance is still real. */
   readonly discoveryUnavailable: boolean;
+  /** True when collectible discovery failed independently of token discovery. */
+  readonly nftDiscoveryUnavailable: boolean;
 }
 
 export interface AccountBalance {
@@ -58,12 +60,20 @@ export async function readAccountBalance(config: NetworkConfig, account: Address
 export async function readAccountAssets(config: NetworkConfig, account: Address): Promise<AccountAssets> {
   const balance = await readAccountBalance(config, account);
   const native = nativeAsset(balance.wei, balance.eth);
-  try {
-    const [tokens, nfts] = await Promise.all([readErc20Tokens(config, account), readNfts(config, account)]);
-    return { native, tokens, nfts, deployed: balance.deployed, discoveryUnavailable: false };
-  } catch {
-    return { native, tokens: [], nfts: [], deployed: balance.deployed, discoveryUnavailable: true };
-  }
+  // Token and collectible discovery are settled independently: a rate-limited or
+  // failing collectible lookup must never hide tokens the indexer did return.
+  const [tokens, nfts] = await Promise.allSettled([
+    readErc20Tokens(config, account),
+    readNfts(config, account)
+  ]);
+  return {
+    native,
+    tokens: tokens.status === "fulfilled" ? tokens.value : [],
+    nfts: nfts.status === "fulfilled" ? nfts.value : [],
+    deployed: balance.deployed,
+    discoveryUnavailable: tokens.status === "rejected",
+    nftDiscoveryUnavailable: nfts.status === "rejected"
+  };
 }
 
 function nativeAsset(wei: bigint, eth: string): TokenAsset {

@@ -11,7 +11,7 @@ import type { AccountHandle, NavigationArea } from "../../types";
 
 const EMPTY_ASSETS: AccountAssets = {
   native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
-  tokens: [], nfts: [], deployed: false, discoveryUnavailable: false
+  tokens: [], nfts: [], deployed: false, discoveryUnavailable: false, nftDiscoveryUnavailable: false
 };
 
 export function HomePage({ account, onNavigate, onSwitch, onLock }: {
@@ -79,9 +79,11 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
 
     <section className="section-card">
       <div className="section-heading"><div><p className="eyebrow">Collectibles</p><h2>NFTs</h2></div></div>
-      {assets.nfts.length === 0
-        ? <p className="form-note">No ERC-721 or ERC-1155 collectibles were found for this account.</p>
-        : <div className="nft-grid">{assets.nfts.map(nft => <NftCard key={`${nft.contract}:${nft.tokenId}`} nft={nft} onSend={() => openSend({ type: "nft", nft })} />)}</div>}
+      {assets.nftDiscoveryUnavailable
+        ? <p className="form-note">Collectible discovery is unavailable from the configured explorer right now. Token balances above are unaffected.</p>
+        : assets.nfts.length === 0
+          ? <p className="form-note">No ERC-721 or ERC-1155 collectibles were found for this account.</p>
+          : <div className="nft-grid">{assets.nfts.map(nft => <NftCard key={`${nft.contract}:${nft.tokenId}`} nft={nft} onSend={() => openSend({ type: "nft", nft })} />)}</div>}
     </section>
 
     {guardianThreshold === 0 && <section className="section-card pending-card"><div><p className="eyebrow">Action required</p><h2>Recovery is not configured</h2><p>This account is stored locally, but losing the matching passkey can still mean losing access.</p></div><button className="secondary" onClick={() => onNavigate("security")}>Open Security</button></section>}

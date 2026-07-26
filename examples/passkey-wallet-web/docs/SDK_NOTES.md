@@ -45,6 +45,17 @@ optional, opt-in preset (e.g. `publicSepolia()`) would keep the walkaway
 guarantee while removing copy-pasted endpoint literals. This example keeps the
 defaults local in `src/config/network.ts`.
 
+## 3b. No history/indexer abstraction
+
+Account history comes from the configured explorer's index
+(`src/features/wallet/activity.ts`), parsed in the consumer. The SDK has no
+notion of an indexer adapter, so every wallet re-implements pagination, status
+and finality interpretation, and the merge of native transactions with token
+transfer logs. A thin `LoomHistoryTransport` interface (with the explorer as one
+implementation) would let wallets swap in a self-hosted indexer or a
+light-client-backed source without changing UI code, and keep "an indexer is not
+a trust anchor" a structural property rather than a comment.
+
 ## 4. Account deployment still needs a direct submitter
 
 `sendTransaction` through a public bundler works for an already-deployed account.

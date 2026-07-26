@@ -101,10 +101,21 @@ export interface WalletDomainError {
   readonly detail?: unknown;
 }
 
+export type ActivityKind = "native" | "token" | "nft" | "call" | "deployment";
+export type ActivityDirection = "sent" | "received" | "self";
+export type ActivityStatus = "pending" | "included" | "finalized" | "failed";
+
 export interface ActivityItem {
+  /** The transaction hash; one entry per transaction. */
   readonly id: string;
+  readonly kind: ActivityKind;
+  readonly direction: ActivityDirection;
+  readonly status: ActivityStatus;
   readonly title: string;
+  /** Human-readable value, e.g. "0.25 ETH" or "USDC #7". Absent for bare calls. */
+  readonly amount?: string;
   readonly detail: string;
-  readonly status: "pending" | "included" | "finalized" | "failed" | "replaced" | "reorged";
+  /** Milliseconds since the epoch. */
   readonly timestamp: number;
+  readonly hash: Hex;
 }

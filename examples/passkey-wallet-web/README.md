@@ -2,7 +2,7 @@
 
 A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, readable transaction review, scoped app sessions, private guardian capabilities, emergency freeze, and threshold recovery without requiring a Loom-hosted service.
 
-This is pre-audit reference software, not a recommendation to hold production funds. Balances and ETH transfers are live by default over public Sepolia and Pimlico endpoints, both overridable in Developer settings; activity history and recovery progress remain illustrative until an operator supplies the corresponding adapters.
+This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings; recovery progress remains illustrative until an operator supplies the corresponding adapters.
 
 ## What this example proves
 
@@ -230,7 +230,7 @@ Relays transport already-authorized operations. They can censor, delay, observe 
 
 ## Security limitations and browser compatibility
 
-Balances and ETH sends are read and submitted over the configured RPC and bundler (public endpoints by default); activity history and recovery progress controls are still illustrative reference behavior, not chain evidence. The default public endpoints are rate-limited and best-effort — a production integrator points them at owned infrastructure, wires `createGuardianRecoveryClient` to independent state and submit transports, replaces the memory mailbox, performs real WebAuthn ceremonies, and provides authenticated relay operations. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, a malicious RPC, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
+Balances and transfers are read and submitted over the configured RPC and bundler, and holdings and history come from the configured block explorer's index (public endpoints by default). An explorer index is not a trust anchor: it can omit or mislabel history, so it is presented as history only and never as account authority or as the source of a balance. Recovery progress controls remain illustrative reference behavior, not chain evidence. The default public endpoints are rate-limited and best-effort — a production integrator points them at owned infrastructure, wires `createGuardianRecoveryClient` to independent state and submit transports, replaces the memory mailbox, performs real WebAuthn ceremonies, and provides authenticated relay operations. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, a malicious RPC, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
 
 Current Chromium, Safari, and Firefox can run the shell, but authenticator support differs by OS/browser. Test discoverable credentials, UV behavior, synced-passkey policy, PRF availability, and WebAuthn cancellation on every supported combination.
 
