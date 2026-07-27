@@ -44,7 +44,7 @@ export function SecurityPage({ account, onGuardian }: { readonly account: Accoun
     <GuardianManager
       account={account}
       deployment={deployment}
-      onChain={chain ? { root: chain.config.guardianRoot, threshold: chain.config.guardianThreshold } : null}
+      onChain={chain ? { root: chain.config.guardianRoot, threshold: chain.config.guardianThreshold, recoveryConfigured: chain.recoveryConfigured } : null}
       onChanged={refresh}
     />
 

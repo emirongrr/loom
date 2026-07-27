@@ -3,6 +3,9 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    // Lets modules that Node runs directly under `--experimental-strip-types`
+    // (the unit tests) import their dependencies with explicit extensions.
+    "allowImportingTsExtensions": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src"]

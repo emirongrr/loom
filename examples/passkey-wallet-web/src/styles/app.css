@@ -59,6 +59,9 @@ h1, h2, h3, p { margin-top: 0; }h2 { margin-bottom: 8px; letter-spacing: -.025em
 .pending-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }.pending-head h3 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
 .countdown { display: grid; gap: 3px; margin: 14px 0; }.countdown strong { font-size: 26px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }.countdown span { color: var(--muted); font-size: 13px; }
 .pending-change .guardian-actions { margin-top: 14px; align-items: center; }
+.restore-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.6fr) auto; align-items: center; gap: 9px; padding: 7px 0; }
+.restore-row input { height: 42px; border: 1px solid var(--line); border-radius: 11px; padding: 0 12px; color: var(--ink); background: var(--surface); }
+@media (max-width: 760px) { .restore-row { grid-template-columns: 1fr auto; }.restore-row input:nth-child(2) { grid-column: 1 / -1; } }
 /* activity timeline */
 .timeline-side { display: grid; justify-items: end; gap: 5px; }.timeline-side strong { font-variant-numeric: tabular-nums; font-size: 14px; }.amount-in { color: var(--success); }.amount-out { color: var(--ink); }.amount-failed { color: var(--danger); text-decoration: line-through; }
 .timeline-dot.pending { background: var(--warning); }.timeline-dot.failed { background: var(--danger); }.pill.pending { color: var(--warning); }
