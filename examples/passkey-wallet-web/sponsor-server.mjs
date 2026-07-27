@@ -39,7 +39,8 @@ const port = Number(flag("port") ?? process.env.SPONSOR_PORT ?? 8787);
 const deposit = parseEther(flag("deposit") ?? process.env.SPONSOR_DEPOSIT_ETH ?? "0.02");
 const entryPoint = flag("entry-point") ?? "0x433709009B8330FDa32311DF1C2AFA402eD8D009";
 const key = process.env.SEPOLIA_SPONSOR_PRIVATE_KEY;
-const allowedOrigin = process.env.SPONSOR_ALLOWED_ORIGIN ?? "http://localhost:5173";
+// Must match the origin the wallet page is served from (dev.mjs defaults to 5174).
+const allowedOrigin = process.env.SPONSOR_ALLOWED_ORIGIN ?? "http://localhost:5174";
 
 if (!rpcUrl) throw new Error("--rpc-url or SEPOLIA_RPC_URL is required");
 if (!key) throw new Error("SEPOLIA_SPONSOR_PRIVATE_KEY is required (never pass the key in argv)");
