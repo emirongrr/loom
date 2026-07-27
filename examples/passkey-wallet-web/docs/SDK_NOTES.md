@@ -59,6 +59,46 @@ hash and re-sorted rather than appended). A thin `LoomHistoryTransport` interfac
 indexer or a light-client-backed source without changing UI code, and keep "an
 indexer is not a trust anchor" a structural property rather than a comment.
 
+## 3c. The RPC state transport has no block-timestamp reader
+
+`createGuardianRecoveryClient` accepts a `GuardianRecoveryStateTransport` with an
+optional `getBlockTimestamp`, and uses it to decide whether a scheduled guardian
+change or a pending recovery is still delaying or is ready. `createRpcStateTransport`
+does not implement it, so the SDK's own transport leaves every delay in the
+"unknown" state and a wallet must either guess from local clock time or wrap the
+transport itself, as `src/features/security/guardianClient.ts` does. The RPC
+transport should implement `getBlockTimestamp` (it already speaks JSON-RPC).
+
+## 3d. Deployment manifests pin verifier addresses but not their code hashes
+
+Guardian descriptors require a `verifierCodeHash`, and the SDK re-checks it against
+the chain before use — but `public/sepolia.deployment.json` publishes only verifier
+addresses. The wallet therefore reads the hash from the same chain it will later
+verify against, which detects a verifier whose code changes between setup and use,
+yet cannot detect a wrong verifier at setup time. Deployment manifests should pin
+the expected runtime code hash alongside each verifier address.
+
+## 3e. Guardian set membership has no persistence helper
+
+Only the root and threshold are on chain, so a wallet that wants to add or remove
+one guardian must keep the full descriptor set (with salts) itself to rebuild the
+tree — see `src/storage/guardianRoster.ts`. Keeping identities off chain is the
+design, but every wallet now re-implements the same encrypted roster, salt
+rotation, and "this record belongs to another account" validation. An SDK-side
+serialisation format for a guardian set (opaque, encrypted by the caller) would
+make rosters portable between wallets, which matters because losing the roster
+means losing the ability to edit the set.
+
+## 3f. A guardian may hold no funded submitter
+
+`submitFreeze` needs a submit transport. Freezing is permissionless, so anyone can
+carry the call, but a guardian acting from a browser typically holds no funded key
+for the account they protect — and for an ECDSA or ERC-1271 guardian there is no
+in-page signer either. This example therefore prepares and verifies the freeze
+against live state and then hands over the exact calldata for independent
+submission. A documented "prepare here, submit anywhere" path (or a relay adapter
+interface) would make this a first-class flow rather than a copy-paste step.
+
 ## 4. Account deployment still needs a direct submitter
 
 `sendTransaction` through a public bundler works for an already-deployed account.

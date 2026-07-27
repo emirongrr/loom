@@ -19,6 +19,10 @@ export interface WalletDeployment {
   readonly validator: Address;
   readonly policyHook: Address;
   readonly proxyCreationCode: Hex;
+  /** Present only when the deployment publishes guardian recovery. */
+  readonly recoveryModule?: Address;
+  /** Guardian verifier addresses this deployment provides, by guardian kind. */
+  readonly guardianVerifiers?: { readonly ecdsa?: Address; readonly erc1271?: Address; readonly p256?: Address };
 }
 
 export interface RegisteredPasskey {
@@ -326,6 +330,12 @@ function validateDeployment(value: unknown): WalletDeployment {
     if (!/^0x[0-9a-fA-F]{40}$/.test(String(record[field]))) throw new Error(`deployment ${field} is invalid`);
   }
   if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("deployment proxy creation code is invalid");
+  // Recovery is optional in a deployment, but a malformed entry must fail rather
+  // than be silently dropped: it would present an account as unprotectable.
+  if (record.recoveryModule !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(String(record.recoveryModule))) {
+    throw new Error("deployment recovery module is invalid");
+  }
+  const verifiers = parseGuardianVerifiers(record.guardianVerifiers);
   return Object.freeze({
     chainId: Number(record.chainId),
     entryPoint: record.entryPoint as Address,
@@ -333,8 +343,24 @@ function validateDeployment(value: unknown): WalletDeployment {
     implementation: record.implementation as Address,
     validator: record.validator as Address,
     policyHook: record.policyHook as Address,
-    proxyCreationCode: record.proxyCreationCode as Hex
+    proxyCreationCode: record.proxyCreationCode as Hex,
+    ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address }),
+    ...(verifiers ? { guardianVerifiers: verifiers } : {})
   });
+}
+
+function parseGuardianVerifiers(value: unknown): WalletDeployment["guardianVerifiers"] | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("deployment guardian verifiers are invalid");
+  const record = value as Record<string, unknown>;
+  const verifiers: Record<string, Address> = {};
+  for (const kind of ["ecdsa", "erc1271", "p256"] as const) {
+    const candidate = record[kind];
+    if (candidate === undefined || candidate === null) continue;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(String(candidate))) throw new Error(`deployment ${kind} guardian verifier is invalid`);
+    verifiers[kind] = candidate as Address;
+  }
+  return Object.keys(verifiers).length > 0 ? Object.freeze(verifiers) : null;
 }
 
 function hex(value: Uint8Array): Hex {

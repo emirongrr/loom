@@ -4,6 +4,8 @@ import { parseGuardianInvite } from "@loom/sdk/recovery";
 import { receiveGuardianInvite } from "../../transports/invitations";
 import { shorten } from "../../components/AccountHeader";
 import { useAppServices } from "../../app/AppServices";
+import { FreezeDialog } from "./FreezeDialog";
+import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { GuardianVaultIssue, GuardianVaultRecord } from "../../storage/guardianVault";
 
 export function GuardianWorkspace() {
@@ -12,10 +14,17 @@ export function GuardianWorkspace() {
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
   const [link, setLink] = useState("");
   const [message, setMessage] = useState("");
+  const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
+  const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
   const refresh = () => services.guardianVault.inspect()
     .then(snapshot => { setRecords(snapshot.records); setIssues(snapshot.issues); })
     .catch(error => setMessage(error instanceof Error ? error.message : "Guardian vault unavailable"));
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let active = true;
+    loadWalletDeployment().then(result => { if (active) setDeployment(result); }).catch(() => { if (active) setDeployment(null); });
+    return () => { active = false; };
+  }, []);
   const accept = async () => {
     try {
       const invite = link.trim().startsWith("{")
@@ -40,14 +49,16 @@ export function GuardianWorkspace() {
         catch (error) { setMessage(error instanceof Error ? error.message : "Unreadable record could not be removed"); }
       }}>Remove local record</button></div>)}
     </section>}
-    {records.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts</h2><p>Open an encrypted invitation or scan its QR code. Generating an invite alone never marks it delivered or accepted.</p></section> : records.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onMessage={setMessage} />)}
+    {records.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts</h2><p>Open an encrypted invitation or scan its QR code. Generating an invite alone never marks it delivered or accepted.</p></section> : records.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onFreeze={() => setFreezing(record.capability)} />)}
+    {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} onClose={() => setFreezing(null)} />}
   </div>;
 }
 
-function GuardianAccount({ record, onMessage }: { record: GuardianVaultRecord; onMessage(value: string): void }) {
+function GuardianAccount({ record, onFreeze }: { record: GuardianVaultRecord; onFreeze(): void }) {
   const invite: GuardianInviteV1 = record.capability;
   return <article className="section-card guardian-account"><div className="section-heading"><div><p className="eyebrow">{invite.accountAlias}</p><h2>{shorten(invite.account)}</h2></div><span className={`pill ${record.status === "stale" ? "failed" : "included"}`}>{record.status}</span></div>
-    <div className="permission-grid"><div><span>Chain</span><strong>{invite.chainId}</strong></div><div><span>Guardian type</span><strong>{invite.guardian.kind === "p256" ? "Dedicated passkey" : invite.guardian.kind.toUpperCase()}</strong></div><div><span>Root match</span><strong>Verify before action</strong></div><div><span>Last checked</span><strong>{record.lastVerifiedAt ? new Date(record.lastVerifiedAt).toLocaleString() : "Not yet"}</strong></div></div>
-    <div className="guardian-actions"><button className="danger-button" disabled={record.status !== "active"} onClick={() => onMessage("Freeze preparation will re-check the live root, configuration version, nonce, and verifier code before authentication.")}>Emergency freeze</button><button className="secondary" disabled={record.status !== "active"} onClick={() => onMessage("No pending recovery was found in the last verified state.")}>Check recovery</button></div>
+    <div className="permission-grid"><div><span>Chain</span><strong>{invite.chainId}</strong></div><div><span>Guardian type</span><strong>{invite.guardian.kind === "p256" ? "Dedicated passkey" : invite.guardian.kind.toUpperCase()}</strong></div><div><span>Threshold</span><strong>{invite.threshold} of {invite.guardianCount}</strong></div><div><span>Accepted</span><strong>{new Date(record.acceptedAt).toLocaleDateString()}</strong></div></div>
+    <p className="form-note">Freezing pauses this account's ordinary execution for the contract's emergency window. It moves no funds, approves no recovery, and gives you no spending power.</p>
+    <div className="guardian-actions"><button className="danger-button" onClick={onFreeze}>Emergency freeze…</button></div>
   </article>;
 }
