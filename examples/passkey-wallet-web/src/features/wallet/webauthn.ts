@@ -1,10 +1,29 @@
 import type { Hex } from "@loom/core";
-import type { PasskeyAssertion, PasskeyChallenge } from "@loom/sdk";
 
-// Drive the platform authenticator over a canonical user-operation challenge and
-// return the raw WebAuthn assertion the account validator expects. The private
-// credential never leaves the authenticator; only the assertion is returned.
-export async function signWithBrowserPasskey(challenge: PasskeyChallenge): Promise<PasskeyAssertion> {
+// Typed structurally rather than against one package's challenge type: the SDK's
+// account client and @loom/passkey's raw-hash signer describe the same ceremony
+// with different surrounding fields, and this only ever needs the hash to sign
+// and the credential to sign it with.
+
+export interface PasskeySignRequest {
+  /** The canonical operation hash the authenticator signs over. */
+  readonly userOperationHash: Hex;
+  readonly rpId?: string;
+  readonly credentialId?: string;
+}
+
+export interface BrowserPasskeyAssertion {
+  readonly authenticatorData: Hex;
+  readonly clientDataJSON: Hex;
+  readonly signature: Hex;
+}
+
+/**
+ * Drive the platform authenticator over a canonical operation hash and return
+ * the raw WebAuthn assertion the account's validator expects. The private
+ * credential never leaves the authenticator; only the assertion is returned.
+ */
+export async function signWithBrowserPasskey(challenge: PasskeySignRequest): Promise<BrowserPasskeyAssertion> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
   if (!challenge.credentialId) throw new Error("A credential id is required to sign.");
   const credential = await navigator.credentials.get({

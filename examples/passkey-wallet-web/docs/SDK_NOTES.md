@@ -99,11 +99,27 @@ against live state and then hands over the exact calldata for independent
 submission. A documented "prepare here, submit anywhere" path (or a relay adapter
 interface) would make this a first-class flow rather than a copy-paste step.
 
-## 4. Account deployment still needs a direct submitter
+## 4. Account deployment still needs a direct submitter (now wired, still awkward)
 
 `sendTransaction` through a public bundler works for an already-deployed account.
 A counterfactual account's first operation carries `initCode`, and this factory
 fail-closes to the EntryPoint's `senderCreator`, so a third-party bundler cannot
-validate it. The example reads deployment status and guides the user to fund the
-address; a documented SDK path for "deploy-then-send in one funded submission"
-would make first-use flows smoother.
+validate it: creation must reach `EntryPoint.handleOps` directly, from a submitter
+holding gas.
+
+The example now builds and passkey-signs that operation in the browser
+(`src/features/wallet/activate.ts`) and hands it to the configured relay. Two
+rough edges remain in the SDK:
+
+- **The creation configuration has to be reconstructed by the caller.** The
+  account address is a commitment to a configuration the wallet must rebuild from
+  its own stored inputs, with no SDK helper and no way to read it back from the
+  chain before deployment. This example rebuilds it and refuses to proceed unless
+  it re-derives the account's own address, which every wallet will otherwise get
+  subtly wrong. `prepareDeployAccount` exists on the client but takes an already
+  built `initCode`, so it does not close this gap.
+- **No first-class "signed creation operation" output.** The flow drops out of the
+  client abstraction into `packUserOperation` + `getUserOpHash` to produce
+  something a submitter can accept, and the submitter's wire format is this
+  example's own. An SDK-defined envelope for "prepare here, submit anywhere" would
+  make creation portable across relays.

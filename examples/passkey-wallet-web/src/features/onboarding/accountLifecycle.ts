@@ -155,6 +155,70 @@ export function deriveCreatedAccountHandle(input: {
   });
 }
 
+export interface AccountCreationConfig {
+  readonly entryPoint: Address;
+  readonly guardianRoot: Hex;
+  readonly guardianThreshold: number;
+  readonly configHash: Hex;
+  readonly modules: readonly { readonly moduleTypeId: bigint; readonly module: Address; readonly initData: Hex }[];
+}
+
+/**
+ * Rebuild the exact configuration this account's address was derived from.
+ *
+ * The handle stores the inputs rather than the configuration itself, and two
+ * generations of handle used different configuration hashes, so each candidate
+ * is checked by re-deriving the address. Only a configuration that reproduces
+ * the account's own address is returned — deploying anything else would create a
+ * different account at a different address, under the user's name.
+ */
+export function resolveCreationConfig(
+  handle: AccountHandle,
+  deployment: WalletDeployment
+): AccountCreationConfig | null {
+  if (handle.kind !== "derived") return null;
+  const rpIdHash = sha256(stringToHex(handle.rpId));
+  const originHash = keccak256(stringToHex(handle.origin));
+  const candidates: Hex[] = [
+    keccak256(encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "address" }],
+      [handle.publicKey.x, handle.publicKey.y, deployment.validator, deployment.policyHook]
+    )),
+    LEGACY_CONFIG_HASH
+  ];
+
+  for (const configHash of candidates) {
+    const config: AccountCreationConfig = {
+      entryPoint: deployment.entryPoint,
+      guardianRoot: handle.creation.guardianRoot,
+      guardianThreshold: handle.creation.guardianThreshold,
+      configHash,
+      modules: [
+        { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
+        ...(handle.creation.recoveryModule ? [{ moduleTypeId: 5n, module: handle.creation.recoveryModule, initData: "0x" as Hex }] : []),
+        {
+          moduleTypeId: 1n,
+          module: deployment.validator,
+          initData: encodeFunctionData({
+            abi: P256ValidatorAbi,
+            functionName: "initialize",
+            args: [handle.publicKey.x, handle.publicKey.y, rpIdHash, originHash, deployment.policyHook]
+          })
+        }
+      ]
+    };
+    const derived = deriveAccountAddress({
+      factory: deployment.factory,
+      implementation: deployment.implementation,
+      proxyCreationCode: deployment.proxyCreationCode,
+      salt: handle.salt,
+      config
+    });
+    if (derived.toLowerCase() === handle.account.toLowerCase()) return Object.freeze(config);
+  }
+  return null;
+}
+
 export async function migrateLegacyAccountHandle(
   storage: Storage = window.localStorage,
   binding: { readonly rpId: string; readonly origin: string } = { rpId: window.location.hostname, origin: window.location.origin },

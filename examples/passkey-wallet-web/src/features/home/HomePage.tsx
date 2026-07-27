@@ -5,6 +5,8 @@ import { SendDialog } from "../send/SendDialog";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
+import { prepareActivation, submitActivation } from "../wallet/activate";
+import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { SendableAsset } from "../wallet/transfers";
 import type { AccountHandle, NavigationArea } from "../../types";
@@ -28,7 +30,36 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   const [deployed, setDeployed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [send, setSend] = useState<{ open: boolean; preselect?: SendableAsset }>({ open: false });
+  const [activating, setActivating] = useState(false);
   const guardianThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
+
+  const activate = async () => {
+    if (!deployment) return;
+    setActivating(true);
+    const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
+    try {
+      const preparation = await prepareActivation({ account, deployment, balanceWei: assets.native.balance });
+      notifications.update(toast, {
+        status: "pending",
+        title: "Publishing account",
+        detail: preparation.selfFunded ? "The account pays for its own creation." : "A submitter is funding this creation."
+      });
+      const result = await submitActivation({ config, preparation });
+      notifications.update(toast, {
+        status: "success",
+        title: result.alreadyDeployed ? "Account already exists" : "Account created",
+        detail: "It can now send transactions through any bundler.",
+        ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
+      });
+      await load(true);
+    } catch (issue) {
+      notifications.update(toast, {
+        status: "error",
+        title: "Account could not be created",
+        detail: issue instanceof Error ? issue.message : "The creation operation failed."
+      });
+    } finally { setActivating(false); }
+  };
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setBalance({ status: "loading" });
@@ -64,6 +95,25 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
       <button onClick={() => void refresh()} disabled={refreshing}><span aria-hidden="true" className={refreshing ? "spin" : ""}>⟳</span><span>{refreshing ? "Refreshing" : "Refresh"}</span></button>
       <button onClick={() => onNavigate("activity")}><span aria-hidden="true">⋯</span><span>Activity</span></button>
     </div>
+
+    {balance.status === "loaded" && !deployed && account.kind === "derived" && <section className="section-card pending-card">
+      <div>
+        <p className="eyebrow">Not created yet</p>
+        <h2>Activate this account</h2>
+        <p>
+          The address is reserved for your passkey, but the account does not exist on chain until its first operation
+          creates it — funding alone does not. This factory accepts that operation only from the EntryPoint, so a public
+          bundler cannot carry it and a submitter publishes it instead. Your passkey signs it; the submitter cannot
+          change it or gain any authority over the account.
+        </p>
+        {config.relayUrl.trim() === "" && <p className="form-note">
+          No submitter is configured. Add a sponsor relay in Developer settings, or publish the signed operation from any funded wallet.
+        </p>}
+      </div>
+      <button className="primary" disabled={activating || !deployment || config.relayUrl.trim() === ""} onClick={() => void activate()}>
+        {activating ? "Confirm on your device…" : "Activate account"}
+      </button>
+    </section>}
 
     {guardianThreshold === 0 && <SecurityStatus guardians={0} threshold={0} frozen={false} pendingRecovery={false} />}
 
