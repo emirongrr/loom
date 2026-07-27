@@ -15,6 +15,7 @@ import {
   type GuardianStatus, type OnChainGuardians
 } from "./guardianStatus";
 import { deriveGuardianSaltMaster, withDerivedSalts } from "./guardianSalts";
+import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
@@ -73,6 +74,26 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     const timer = setInterval(() => setTick(value => value + 1), 30_000);
     return () => clearInterval(timer);
   }, [status?.found, status?.ready]);
+
+  // A change scheduled from another device — or before this device kept a record
+  // — exists only on chain. Discover it there so it is never silently invisible.
+  const [onChainOperations, setOnChainOperations] = useState<readonly ScheduledOperation[]>([]);
+  const [chainNow, setChainNow] = useState(0n);
+
+  useEffect(() => {
+    let active = true;
+    readScheduledOperations({ config, account: account.account })
+      .then(result => {
+        if (!active) return;
+        setOnChainOperations(result.operations);
+        setChainNow(result.chainTimestamp);
+      })
+      .catch(() => { if (active) setOnChainOperations([]); });
+    return () => { active = false; };
+  }, [config, account.account, reloads]);
+
+  // Anything the local record already explains is not reported a second time.
+  const unexplained = onChainOperations.filter(operation => operation.operationId !== status?.prepared.operationId);
 
   // The account's own state decides whether it is protected, never the local
   // list: a device that lost its roster must still be told the truth.
@@ -319,6 +340,27 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       onRefresh={() => setReloads(count => count + 1)}
       tick={tick}
     />}
+
+    {unexplained.length > 0 && <div className="pending-change">
+      <div className="pending-head">
+        <div>
+          <p className="eyebrow">Scheduled on chain</p>
+          <h3>{unexplained.length === 1 ? "A change is waiting" : `${unexplained.length} changes are waiting`}</h3>
+        </div>
+        <span className={`pill ${unexplained.some(operation => operation.ready) ? "included" : "pending"}`}>
+          {unexplained.some(operation => operation.ready) ? "Ready" : "Waiting"}
+        </span>
+      </div>
+      {unexplained.map(operation => <div className="countdown" key={operation.operationId}>
+        <strong>{operation.ready ? "Ready to apply" : formatCountdown(operation.readyAt, chainNow)}</strong>
+        <span>Becomes executable {formatReadyAt(operation.readyAt)}</span>
+      </div>)}
+      <p className="form-note">
+        The account holds this scheduled operation, but this device does not know what it changes: an operation is stored
+        under a hash of its contents, so the contents cannot be read back from the chain. Open this account on the device
+        that scheduled it to apply or cancel it, or schedule the change again from here once it has lapsed.
+      </p>
+    </div>}
 
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
       status={protection}
