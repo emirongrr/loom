@@ -54,6 +54,11 @@ h1, h2, h3, p { margin-top: 0; }h2 { margin-bottom: 8px; letter-spacing: -.025em
 .guardian-row { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line); }.guardian-row:last-child { border-bottom: 0; }.guardian-row p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
 .add-guardian { margin: 0 0 14px; }.add-guardian-body { display: grid; gap: 4px; margin-top: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-soft); }.add-guardian-body .field { margin: 8px 0; }.add-guardian-body .field input, .add-guardian-body .field select { background: var(--surface); }
 .threshold-row { margin-top: 4px; }
+.pending-change { margin: 4px 0 6px; padding: 18px; border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line)); border-radius: 16px; background: color-mix(in srgb, var(--warning) 7%, var(--surface)); }
+.pending-change.ready { border-color: color-mix(in srgb, var(--success) 45%, var(--line)); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
+.pending-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }.pending-head h3 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+.countdown { display: grid; gap: 3px; margin: 14px 0; }.countdown strong { font-size: 26px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }.countdown span { color: var(--muted); font-size: 13px; }
+.pending-change .guardian-actions { margin-top: 14px; align-items: center; }
 /* activity timeline */
 .timeline-side { display: grid; justify-items: end; gap: 5px; }.timeline-side strong { font-variant-numeric: tabular-nums; font-size: 14px; }.amount-in { color: var(--success); }.amount-out { color: var(--ink); }.amount-failed { color: var(--danger); text-decoration: line-through; }
 .timeline-dot.pending { background: var(--warning); }.timeline-dot.failed { background: var(--danger); }.pill.pending { color: var(--warning); }

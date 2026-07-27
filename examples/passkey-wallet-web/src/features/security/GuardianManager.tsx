@@ -6,14 +6,16 @@ import { submitAccountCalls } from "../wallet/accountClient";
 import { transactionUrl } from "../../config/network";
 import { createAccountGuardianClient, readVerifierCodeHash } from "./guardianClient";
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, describeGuardian, formatDelay,
-  MIN_DELAY_SECONDS, planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
+  assertAddable, buildGuardianDescriptor, clampThreshold, describeGuardian, formatCountdown, formatDelay,
+  formatReadyAt, MIN_DELAY_SECONDS, planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
 } from "./guardianPlan";
+import { cancelPendingGuardianChange, executePendingGuardianChange, readPendingGuardianChange, type PendingChangeStatus } from "./pendingChange";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
+import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
 
-type Stage = "list" | "review" | "scheduled";
+type Stage = "list" | "review";
 
 export function GuardianManager({ account, deployment, onChain, onChanged }: {
   account: AccountHandle;
@@ -31,6 +33,12 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   const [stage, setStage] = useState<Stage>("list");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState<RosterPending | null>(null);
+  const [status, setStatus] = useState<PendingChangeStatus | null>(null);
+  const [statusError, setStatusError] = useState("");
+  const [reloads, setReloads] = useState(0);
+  // Advances the countdown between chain reads, from the chain's own timestamp.
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -38,10 +46,28 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       if (!active) return;
       setCommitted(stored.entries);
       setDraft(stored.entries);
+      setPending(stored.pending);
       setThreshold(clampThreshold(onChain?.threshold ?? suggestedThreshold(stored.entries.length), Math.max(1, stored.entries.length)));
     });
     return () => { active = false; };
-  }, [roster, account.id, onChain?.threshold]);
+  }, [roster, account.id, onChain?.threshold, reloads]);
+
+  // Ask the account when the scheduled change becomes executable.
+  useEffect(() => {
+    if (!pending || !deployment?.recoveryModule) { setStatus(null); return; }
+    let active = true;
+    setStatusError("");
+    readPendingGuardianChange({ config, account, deployment, pending })
+      .then(result => { if (active) setStatus(result); })
+      .catch(issue => { if (active) setStatusError(issue instanceof Error ? issue.message : "The scheduled change could not be read."); });
+    return () => { active = false; };
+  }, [config, account, deployment, pending, reloads]);
+
+  useEffect(() => {
+    if (!status?.found || status.ready) return;
+    const timer = setInterval(() => setTick(value => value + 1), 30_000);
+    return () => clearInterval(timer);
+  }, [status?.found, status?.ready]);
 
   const verifiers = deployment?.guardianVerifiers;
   const plan = useMemo(() => {
@@ -92,19 +118,75 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         config, account, deployment,
         calls: [{ target: prepared.scheduleCall.target as Address, value: 0n, data: prepared.scheduleCall.data as Hex }]
       });
-      await roster.write(account.id, salted, Date.now());
+      // Stored as pending, not committed: until the delay elapses and the change
+      // executes, the guardian set that can actually recover this account is
+      // still the old one.
+      await roster.write(account.id, {
+        entries: committed,
+        version: Date.now(),
+        pending: { entries: salted, threshold, scheduledAt: Date.now() }
+      });
       notifications.update(toast, {
         status: "success", title: "Guardian change scheduled",
         detail: `Executable after ${formatDelay(MIN_DELAY_SECONDS)}. You can cancel until then.`,
         ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
       });
-      setStage("scheduled");
+      setStage("list");
+      setReloads(count => count + 1);
       onChanged();
     } catch (issue) {
       const message = issue instanceof Error ? issue.message : "The change could not be scheduled.";
       notifications.update(toast, { status: "error", title: "Scheduling failed", detail: message });
       setError(message);
     } finally { setBusy(false); }
+  };
+
+  const execute = async () => {
+    if (!deployment || !status?.prepared || !pending) return;
+    setBusy(true); setError("");
+    const toast = notifications.notify({ status: "pending", title: "Applying guardian change" });
+    try {
+      const result = await executePendingGuardianChange({ config, account, deployment, prepared: status.prepared });
+      // Only now is the new set the one that can recover the account.
+      await roster.write(account.id, { entries: pending.entries, version: Date.now(), pending: null });
+      notifications.update(toast, {
+        status: "success", title: "Guardians updated",
+        detail: `${pending.threshold} of ${pending.entries.length} approvals can now recover this account.`,
+        ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
+      });
+      setReloads(count => count + 1);
+      onChanged();
+    } catch (issue) {
+      const message = issue instanceof Error ? issue.message : "The change could not be applied.";
+      notifications.update(toast, { status: "error", title: "Could not apply", detail: message });
+      setError(message);
+    } finally { setBusy(false); }
+  };
+
+  const cancel = async () => {
+    if (!deployment || !status?.prepared) return;
+    setBusy(true); setError("");
+    const toast = notifications.notify({ status: "pending", title: "Cancelling guardian change" });
+    try {
+      const result = await cancelPendingGuardianChange({ config, account, deployment, prepared: status.prepared });
+      await roster.write(account.id, { entries: committed, version: Date.now(), pending: null });
+      notifications.update(toast, {
+        status: "success", title: "Guardian change cancelled", detail: "Your existing guardians are unchanged.",
+        ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
+      });
+      setReloads(count => count + 1);
+      onChanged();
+    } catch (issue) {
+      const message = issue instanceof Error ? issue.message : "The change could not be cancelled.";
+      notifications.update(toast, { status: "error", title: "Could not cancel", detail: message });
+      setError(message);
+    } finally { setBusy(false); }
+  };
+
+  /** Discard a local pending record the chain no longer holds. */
+  const forgetPending = async () => {
+    await roster.write(account.id, { entries: committed, version: Date.now(), pending: null });
+    setReloads(count => count + 1);
   };
 
   const dirty = plan !== null && (plan.added.length > 0 || plan.removed.length > 0 || threshold !== (onChain?.threshold ?? 0));
@@ -116,12 +198,24 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     </div>
 
     <ol className="stepper" aria-label="Guardian setup steps">
-      <li className={stage === "list" ? "active" : "done"}><span>1</span>Choose guardians</li>
-      <li className={stage === "review" ? "active" : stage === "scheduled" ? "done" : ""}><span>2</span>Review</li>
-      <li className={stage === "scheduled" ? "active" : ""}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
+      <li className={pending ? "done" : stage === "list" ? "active" : "done"}><span>1</span>Choose guardians</li>
+      <li className={pending ? "done" : stage === "review" ? "active" : ""}><span>2</span>Review</li>
+      <li className={pending ? "active" : ""}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
     </ol>
 
-    {stage === "list" && <>
+    {pending && <PendingChange
+      pending={pending}
+      status={status}
+      statusError={statusError}
+      busy={busy}
+      onExecute={() => void execute()}
+      onCancel={() => void cancel()}
+      onForget={() => void forgetPending()}
+      onRefresh={() => setReloads(count => count + 1)}
+      tick={tick}
+    />}
+
+    {!pending && stage === "list" && <>
       {draft.length === 0
         ? <p className="form-note">No guardians yet. Add people or wallets that can help you recover this account — they never gain spending power.</p>
         : <div className="guardian-list">{draft.map(entry => <div className="guardian-row" key={entry.id}>
@@ -148,7 +242,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </div>
     </>}
 
-    {stage === "review" && plan && <>
+    {!pending && stage === "review" && plan && <>
       <div className="review-summary">
         {plan.added.map(entry => <div key={entry.id}><span className="amount-in">Add</span><strong className="breakable">{entry.label} · {describeGuardian(entry.descriptor)}</strong></div>)}
         {plan.removed.map(entry => <div key={entry.id}><span className="amount-failed">Remove</span><strong className="breakable">{entry.label} · {describeGuardian(entry.descriptor)}</strong></div>)}
@@ -163,12 +257,63 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </div>
     </>}
 
-    {stage === "scheduled" && <>
-      <p className="callout success">The change is scheduled. It becomes executable after {formatDelay(MIN_DELAY_SECONDS)}, and you can cancel it before then. Recovery keeps working under the current set until it executes.</p>
-      <p className="form-note">Deliver each guardian their invitation from the guardian workspace once the change executes.</p>
-      <button className="secondary" onClick={() => { setStage("list"); onChanged(); }}>Back to guardians</button>
-    </>}
   </section>;
+}
+
+function PendingChange({ pending, status, statusError, busy, onExecute, onCancel, onForget, onRefresh, tick }: {
+  pending: RosterPending;
+  status: PendingChangeStatus | null;
+  statusError: string;
+  busy: boolean;
+  onExecute(): void;
+  onCancel(): void;
+  onForget(): void;
+  onRefresh(): void;
+  tick: number;
+}) {
+  // The countdown advances from the chain's timestamp, not the device clock, so
+  // a wrong local clock cannot make a change look ready before it is.
+  const estimatedNow = status ? status.chainTimestamp + BigInt(tick * 30) : 0n;
+  const ready = status?.ready === true || (status !== null && status.readyAt > 0n && estimatedNow >= status.readyAt);
+
+  return <div className={`pending-change ${ready ? "ready" : ""}`}>
+    <div className="pending-head">
+      <div>
+        <p className="eyebrow">Scheduled change</p>
+        <h3>{pending.threshold} of {pending.entries.length} guardians</h3>
+      </div>
+      <span className={`pill ${ready ? "included" : "pending"}`}>{status === null ? "Checking" : status.found ? (ready ? "Ready" : "Waiting") : "Not found"}</span>
+    </div>
+
+    {status === null && !statusError && <p className="form-note">Reading the scheduled change from the account…</p>}
+
+    {statusError && <p className="callout warning">The scheduled change could not be read: {statusError}</p>}
+
+    {status?.found && <>
+      <div className="countdown">
+        <strong>{ready ? "Ready to apply" : formatCountdown(status.readyAt, estimatedNow)}</strong>
+        <span>Takes effect {formatReadyAt(status.readyAt)}</span>
+      </div>
+      {!ready && <p className="form-note">Your current guardians stay in force until this is applied. You can cancel it at any point before then.</p>}
+      {ready && <p className="callout success">The delay has elapsed. Apply the change to make these guardians the ones that can recover this account.</p>}
+      <div className="guardian-actions">
+        {ready && <button className="primary" disabled={busy} onClick={onExecute}>{busy ? "Confirm on your device…" : "Apply change"}</button>}
+        <button className="danger-button" disabled={busy} onClick={onCancel}>Cancel change</button>
+        <button className="text-button" disabled={busy} onClick={onRefresh}>Refresh</button>
+      </div>
+    </>}
+
+    {status !== null && !status.found && <>
+      <p className="callout warning">
+        The account holds no such scheduled change. It was either already applied, cancelled, or invalidated by a later
+        configuration change — a new configuration version retires any operation scheduled against the previous one.
+      </p>
+      <div className="guardian-actions">
+        <button className="secondary" disabled={busy} onClick={onForget}>Discard this record</button>
+        <button className="text-button" disabled={busy} onClick={onRefresh}>Check again</button>
+      </div>
+    </>}
+  </div>;
 }
 
 function AddGuardianForm({ busy, onAdd, hasErc1271 }: {

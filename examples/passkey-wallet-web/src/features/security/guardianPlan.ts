@@ -155,3 +155,28 @@ export function formatDelay(seconds: number): string {
   const days = Math.round(seconds / 86_400);
   return days === 1 ? "1 day" : `${days} days`;
 }
+
+/**
+ * Time left until a scheduled change may be executed, measured against the
+ * chain's clock rather than the device's. Rounds down so the wallet never claims
+ * a change is closer to ready than it is.
+ */
+export function formatCountdown(readyAt: bigint, chainNow: bigint): string {
+  const remaining = readyAt - chainNow;
+  if (remaining <= 0n) return "Ready now";
+  const seconds = Number(remaining);
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  if (minutes > 0) return `${minutes}m left`;
+  return "less than a minute left";
+}
+
+/** The absolute moment a change becomes executable, in the reader's locale. */
+export function formatReadyAt(readyAt: bigint): string {
+  const milliseconds = readyAt * 1_000n;
+  if (milliseconds <= 0n || milliseconds > BigInt(Number.MAX_SAFE_INTEGER)) return "the on-chain ready time";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(Number(milliseconds)));
+}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, guardianAuthority,
+  assertAddable, buildGuardianDescriptor, clampThreshold, formatCountdown, guardianAuthority,
   planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
 } from "../src/features/security/guardianPlan.ts";
 import { parseRosterRecord } from "../src/storage/guardianRosterRecord.ts";
@@ -137,6 +137,56 @@ test("a malformed stored roster entry is refused", () => {
     { version: 2, accountId: "a", setVersion: 1, entries: [] }
   ];
   for (const value of cases) assert.throws(() => parseRosterRecord(value, "a"));
+});
+
+// The countdown is measured against the chain's clock. Rounding down keeps the
+// wallet from ever claiming a change is closer to ready than it is.
+test("the countdown reports the time left and never rounds up", () => {
+  const day = 86_400n;
+  assert.equal(formatCountdown(day * 3n, 0n), "3d 0h left");
+  assert.equal(formatCountdown(day * 2n + 3_600n * 5n, 0n), "2d 5h left");
+  assert.equal(formatCountdown(3_600n * 4n + 1_800n, 0n), "4h 30m left");
+  assert.equal(formatCountdown(119n, 0n), "1m left");
+  assert.equal(formatCountdown(59n, 0n), "less than a minute left");
+});
+
+test("a change whose delay has elapsed reads as ready", () => {
+  assert.equal(formatCountdown(100n, 100n), "Ready now");
+  assert.equal(formatCountdown(100n, 500n), "Ready now");
+});
+
+// A pending change must never be adopted with a threshold its own guardian list
+// cannot satisfy, or the account would show a quorum that can never be reached.
+test("a pending change with an impossible threshold is refused", () => {
+  const roster = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], saltsFrom(8));
+  const base = { version: 1, accountId: "a", setVersion: 1, entries: [] };
+  const cases = [
+    { ...base, pending: { entries: roster, threshold: 3, scheduledAt: 1 } },
+    { ...base, pending: { entries: roster, threshold: 0, scheduledAt: 1 } },
+    { ...base, pending: { entries: [], threshold: 1, scheduledAt: 1 } },
+    { ...base, pending: { entries: roster, threshold: 1, scheduledAt: 0 } },
+    { ...base, pending: { entries: roster, threshold: 1 } }
+  ];
+  for (const value of cases) assert.throws(() => parseRosterRecord(JSON.parse(JSON.stringify(value)), "a"));
+});
+
+test("a pending change round-trips separately from the committed set", () => {
+  const committed = withFreshSalts([entry("Alice", ALICE)], saltsFrom(7));
+  const proposed = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], saltsFrom(12));
+  const record = {
+    version: 1, accountId: "chain:acct", setVersion: 2, entries: committed,
+    pending: { entries: proposed, threshold: 2, scheduledAt: 1_700_000_000_000 }
+  };
+  const parsed = parseRosterRecord(JSON.parse(JSON.stringify(record)), "chain:acct");
+
+  assert.equal(parsed.entries.length, 1, "the committed set stays the old one while a change is pending");
+  assert.equal(parsed.pending?.entries.length, 2);
+  assert.equal(parsed.pending?.threshold, 2);
+});
+
+test("a roster with no pending change reports none", () => {
+  const parsed = parseRosterRecord({ version: 1, accountId: "a", setVersion: 1, entries: [] }, "a");
+  assert.equal(parsed.pending, undefined);
 });
 
 test("a valid stored roster round-trips", () => {

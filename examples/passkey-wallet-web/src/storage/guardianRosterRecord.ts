@@ -6,11 +6,23 @@ import type { RosterEntry } from "../features/security/guardianPlan";
 // decrypted from local storage, and a record from another account or with a
 // malformed descriptor must never be adopted into an account's guardian set.
 
+/** A scheduled change that has not executed yet. Kept separate from `entries`:
+ * until the timelock elapses and the change executes, the committed set is
+ * still the old one, and presenting the new set as live would misstate who can
+ * actually recover the account. */
+export interface RosterPending {
+  readonly entries: readonly RosterEntry[];
+  readonly threshold: number;
+  /** When the change was scheduled locally, in milliseconds. */
+  readonly scheduledAt: number;
+}
+
 export interface RosterRecord {
   readonly version: 1;
   readonly accountId: string;
   readonly setVersion: number;
   readonly entries: readonly RosterEntry[];
+  readonly pending?: RosterPending;
 }
 
 export function parseRosterRecord(value: unknown, accountId: string): RosterRecord {
@@ -20,12 +32,32 @@ export function parseRosterRecord(value: unknown, accountId: string): RosterReco
   if (record.accountId !== accountId) throw new Error("guardian roster record belongs to another account");
   if (!Number.isInteger(record.setVersion) || Number(record.setVersion) < 0) throw new Error("guardian roster version is invalid");
   if (!Array.isArray(record.entries) || record.entries.length > 32) throw new Error("guardian roster is invalid");
+  const pending = parsePending(record.pending);
   return Object.freeze({
     version: 1,
     accountId,
     setVersion: Number(record.setVersion),
-    entries: Object.freeze(record.entries.map(parseRosterEntry))
+    entries: Object.freeze(record.entries.map(parseRosterEntry)),
+    ...(pending ? { pending } : {})
   });
+}
+
+function parsePending(value: unknown): RosterPending | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("pending guardian change is invalid");
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.entries) || record.entries.length === 0 || record.entries.length > 32) {
+    throw new Error("pending guardian change is invalid");
+  }
+  const entries = Object.freeze(record.entries.map(parseRosterEntry));
+  const threshold = record.threshold;
+  if (!Number.isInteger(threshold) || Number(threshold) < 1 || Number(threshold) > entries.length) {
+    throw new Error("pending guardian threshold is invalid");
+  }
+  if (typeof record.scheduledAt !== "number" || !Number.isFinite(record.scheduledAt) || record.scheduledAt <= 0) {
+    throw new Error("pending guardian schedule time is invalid");
+  }
+  return Object.freeze({ entries, threshold: Number(threshold), scheduledAt: Number(record.scheduledAt) });
 }
 
 function parseRosterEntry(value: unknown): RosterEntry {
