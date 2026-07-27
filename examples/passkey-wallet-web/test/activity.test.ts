@@ -120,18 +120,69 @@ test("a collectible transfer is labelled with its token id", async () => {
   assert.equal(item?.amount, "LOOM #7");
 });
 
-test("history is ordered newest first and bounded by the requested limit", async () => {
+test("history is ordered newest first", async () => {
   const transactions = Array.from({ length: 5 }, (_, index) => ({
     hash: hash(String(index)), timestamp: `2026-07-2${index + 1}T00:00:00.000000Z`,
     status: "ok", result: "success", value: "1",
     from: { hash: ACCOUNT }, to: { hash: OTHER }, block_number: index + 1, confirmations: 5
   }));
-  const activity = await withFetch(indexer({ transactions, transfers: [] }), () => readAccountActivity(CONFIG, ACCOUNT, { limit: 3 }));
+  const activity = await withFetch(indexer({ transactions, transfers: [] }), () => readAccountActivity(CONFIG, ACCOUNT));
 
-  assert.equal(activity.items.length, 3);
+  assert.equal(activity.items.length, 5);
   const stamps = activity.items.map(item => item.timestamp);
   assert.deepEqual(stamps, [...stamps].sort((a, b) => b - a));
   assert.equal(activity.items[0]?.timestamp, Date.parse("2026-07-25T00:00:00.000000Z"));
+});
+
+test("a first page exposes a cursor and the next page continues from it", async () => {
+  const requested: string[] = [];
+  const fetchMock: typeof fetch = async input => {
+    const url = new URL(String(input));
+    requested.push(`${url.pathname}${url.search}`);
+    const page = url.searchParams.get("block_number");
+    if (url.pathname.endsWith("/token-transfers")) return Response.json({ items: [], next_page_params: null });
+    return page === null
+      ? Response.json({
+          items: [{ hash: hash("1"), timestamp: "2026-07-26T00:00:00.000000Z", status: "ok", result: "success", value: "1", from: { hash: ACCOUNT }, to: { hash: OTHER }, block_number: 20, confirmations: 5 }],
+          next_page_params: { block_number: 19, index: 7, items_count: 50 }
+        })
+      : Response.json({
+          items: [{ hash: hash("2"), timestamp: "2026-07-25T00:00:00.000000Z", status: "ok", result: "success", value: "1", from: { hash: ACCOUNT }, to: { hash: OTHER }, block_number: 19, confirmations: 5 }],
+          next_page_params: null
+        });
+  };
+
+  const first = await withFetch(fetchMock, () => readAccountActivity(CONFIG, ACCOUNT));
+  assert.equal(first.items.length, 1);
+  assert.ok(first.cursor, "a further page must be offered");
+  assert.deepEqual(first.cursor?.transactions, { block_number: "19", index: "7", items_count: "50" });
+  assert.equal(first.cursor?.transfers, null, "an exhausted source must be marked exhausted");
+
+  const second = await withFetch(fetchMock, () => readAccountActivity(CONFIG, ACCOUNT, { cursor: first.cursor }));
+  assert.equal(second.items[0]?.id, hash("2"));
+  assert.equal(second.cursor, null, "the last page must not offer another");
+
+  // The exhausted token-transfer source must not be requested again.
+  const transferCalls = requested.filter(url => url.includes("/token-transfers"));
+  assert.equal(transferCalls.length, 1);
+  assert.ok(requested.some(url => url.includes("block_number=19")), "the cursor must reach the indexer");
+});
+
+// The cursor is opaque but untrusted and lands in a query string.
+test("a malformed continuation token ends pagination instead of being forwarded", async () => {
+  const cases: unknown[] = [
+    { nested: { deep: 1 } },
+    { list: [1, 2, 3] },
+    { huge: "x".repeat(300) },
+    Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`k${index}`, index])),
+    "not-an-object",
+    []
+  ];
+  for (const next_page_params of cases) {
+    const fetchMock: typeof fetch = async () => Response.json({ items: [], next_page_params });
+    const activity = await withFetch(fetchMock, () => readAccountActivity(CONFIG, ACCOUNT));
+    assert.equal(activity.cursor, null, `must refuse cursor ${JSON.stringify(next_page_params)}`);
+  }
 });
 
 test("malformed rows are skipped instead of breaking the history", async () => {
@@ -161,8 +212,8 @@ test("an unreachable indexer reports unavailable rather than an empty history", 
 function indexer(data: { transactions: unknown[]; transfers: unknown[] }): typeof fetch {
   return async input => {
     const url = String(input);
-    if (url.includes("/token-transfers")) return Response.json({ items: data.transfers });
-    if (url.includes("/transactions")) return Response.json({ items: data.transactions });
+    if (url.includes("/token-transfers")) return Response.json({ items: data.transfers, next_page_params: null });
+    if (url.includes("/transactions")) return Response.json({ items: data.transactions, next_page_params: null });
     return new Response("not found", { status: 404 });
   };
 }

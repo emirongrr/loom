@@ -6,10 +6,24 @@ import type { ActivityItem, ActivityKind, ActivityStatus } from "../../types";
 // How many confirmations before an inclusion is presented as settled. The
 // explorer reports confirmations; the wallet does not invent finality.
 const FINALITY_CONFIRMATIONS = 64;
-const PAGE_SIZE = 25;
+// Bounds on the opaque page cursor the indexer hands back. It is untrusted input
+// that ends up in a query string, so its shape is constrained rather than trusted.
+const MAX_CURSOR_KEYS = 16;
+const MAX_CURSOR_KEY_LENGTH = 64;
+const MAX_CURSOR_VALUE_LENGTH = 256;
+
+/** Opaque per-source continuation tokens. A null source is exhausted. */
+export interface ActivityCursor {
+  readonly transactions: PageParams | null;
+  readonly transfers: PageParams | null;
+}
+
+type PageParams = Readonly<Record<string, string>>;
 
 export interface AccountActivity {
   readonly items: readonly ActivityItem[];
+  /** Cursor for the next page, or null when both sources are exhausted. */
+  readonly cursor: ActivityCursor | null;
   /** True when the indexer could not be reached; history is unknown, not empty. */
   readonly unavailable: boolean;
 }
@@ -22,43 +36,85 @@ export interface AccountActivity {
 // This is an indexer, not a trust anchor: it can omit or mislabel history, so it
 // is presented as history and never as account authority or balance truth. A
 // failure degrades to "unavailable" rather than an empty history.
+// Passing the previous cursor continues where that page stopped. The full merged
+// page is returned rather than a trimmed slice: trimming would drop entries the
+// advancing cursor can never return, silently losing history.
 export async function readAccountActivity(
   config: NetworkConfig,
   account: Address,
-  options: { limit?: number } = {}
+  options: { cursor?: ActivityCursor | null } = {}
 ): Promise<AccountActivity> {
-  const limit = options.limit ?? PAGE_SIZE;
   const base = `${config.explorerUrl.replace(/\/$/, "")}/api/v2/addresses/${account}`;
+  const cursor = options.cursor;
+  // On a continuation, an exhausted source is not requested again.
+  const first = cursor === undefined || cursor === null;
   try {
     const [transactions, transfers] = await Promise.all([
-      readJsonItems(`${base}/transactions`),
-      readJsonItems(`${base}/token-transfers`)
+      first || cursor.transactions ? readPage(`${base}/transactions`, first ? null : cursor.transactions) : emptyPage(),
+      first || cursor.transfers ? readPage(`${base}/token-transfers`, first ? null : cursor.transfers) : emptyPage()
     ]);
+
     const items = new Map<string, ActivityItem>();
     // Transactions first, then let the richer token-transfer detail win.
-    for (const row of transactions) {
+    for (const row of transactions.items) {
       const item = parseTransaction(row, account);
       if (item) items.set(item.id, item);
     }
-    for (const row of transfers) {
+    for (const row of transfers.items) {
       const item = parseTokenTransfer(row, account);
       if (item) items.set(item.id, item);
     }
+
+    const next: ActivityCursor = { transactions: transactions.next, transfers: transfers.next };
     return {
-      items: Object.freeze([...items.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, limit)),
+      items: Object.freeze([...items.values()].sort((a, b) => b.timestamp - a.timestamp)),
+      cursor: next.transactions || next.transfers ? Object.freeze(next) : null,
       unavailable: false
     };
   } catch {
-    return { items: Object.freeze([]), unavailable: true };
+    return { items: Object.freeze([]), cursor: null, unavailable: true };
   }
 }
 
-async function readJsonItems(url: string): Promise<readonly Record<string, unknown>[]> {
-  const response = await fetch(url, { headers: { accept: "application/json" } });
+interface IndexerPage {
+  readonly items: readonly Record<string, unknown>[];
+  readonly next: PageParams | null;
+}
+
+function emptyPage(): IndexerPage {
+  return { items: [], next: null };
+}
+
+async function readPage(url: string, params: PageParams | null): Promise<IndexerPage> {
+  const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+  const response = await fetch(`${url}${query}`, { headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`activity lookup returned ${response.status}`);
   const body: unknown = await response.json();
   const items = (body as { items?: unknown }).items;
-  return Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
+  return {
+    items: Array.isArray(items) ? (items as Record<string, unknown>[]) : [],
+    next: parseCursor((body as { next_page_params?: unknown }).next_page_params)
+  };
+}
+
+// The continuation token is opaque but still untrusted, and it is appended to a
+// query string. Only bounded scalar entries are carried forward; anything else
+// (nested objects, oversized blobs, absurd key counts) ends pagination instead of
+// being forwarded to the indexer.
+function parseCursor(value: unknown): PageParams | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0 || entries.length > MAX_CURSOR_KEYS) return null;
+  const params: Record<string, string> = {};
+  for (const [key, entry] of entries) {
+    if (key.length === 0 || key.length > MAX_CURSOR_KEY_LENGTH) return null;
+    if (entry === null || entry === undefined) continue;
+    if (typeof entry !== "string" && typeof entry !== "number" && typeof entry !== "boolean") return null;
+    const text = String(entry);
+    if (text.length > MAX_CURSOR_VALUE_LENGTH) return null;
+    params[key] = text;
+  }
+  return Object.keys(params).length > 0 ? Object.freeze(params) : null;
 }
 
 function parseTransaction(row: Record<string, unknown>, account: Address): ActivityItem | null {

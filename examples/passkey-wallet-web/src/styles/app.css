@@ -48,6 +48,8 @@ h1, h2, h3, p { margin-top: 0; }h2 { margin-bottom: 8px; letter-spacing: -.025em
 .timeline-side { display: grid; justify-items: end; gap: 5px; }.timeline-side strong { font-variant-numeric: tabular-nums; font-size: 14px; }.amount-in { color: var(--success); }.amount-out { color: var(--ink); }.amount-failed { color: var(--danger); text-decoration: line-through; }
 .timeline-dot.pending { background: var(--warning); }.timeline-dot.failed { background: var(--danger); }.pill.pending { color: var(--warning); }
 .timeline-item strong { font-size: 14.5px; }
+.load-more { display: grid; place-items: center; padding-top: 18px; border-top: 1px solid var(--line); }.load-more button { min-width: 220px; }.load-more .form-note { margin: 0; }
+.count-badge { display: inline-block; margin-left: 9px; padding: 2px 9px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 12px; font-weight: 700; vertical-align: middle; }
 @media (max-width: 760px) { .timeline-item { grid-template-columns: 1fr; }.timeline-side { justify-items: start; grid-auto-flow: column; align-items: center; gap: 10px; } }
 /* assets + collectibles */
 .asset-list { display: grid; }.asset-amount { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }.asset-amount strong { font-variant-numeric: tabular-nums; }img.asset-icon { object-fit: cover; background: var(--surface-soft); }

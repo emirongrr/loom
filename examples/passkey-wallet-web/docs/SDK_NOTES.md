@@ -49,12 +49,15 @@ defaults local in `src/config/network.ts`.
 
 Account history comes from the configured explorer's index
 (`src/features/wallet/activity.ts`), parsed in the consumer. The SDK has no
-notion of an indexer adapter, so every wallet re-implements pagination, status
-and finality interpretation, and the merge of native transactions with token
-transfer logs. A thin `LoomHistoryTransport` interface (with the explorer as one
-implementation) would let wallets swap in a self-hosted indexer or a
-light-client-backed source without changing UI code, and keep "an indexer is not
-a trust anchor" a structural property rather than a comment.
+notion of an indexer adapter, so every wallet re-implements the same work: status
+and finality interpretation, merging native transactions with token transfer
+logs, and cursor pagination across two independently paginated sources whose
+pages interleave by time (so a later page can contain entries newer than an
+earlier page's tail, and the merged list must be de-duplicated by transaction
+hash and re-sorted rather than appended). A thin `LoomHistoryTransport` interface
+(with the explorer as one implementation) would let wallets swap in a self-hosted
+indexer or a light-client-backed source without changing UI code, and keep "an
+indexer is not a trust anchor" a structural property rather than a comment.
 
 ## 4. Account deployment still needs a direct submitter
 
