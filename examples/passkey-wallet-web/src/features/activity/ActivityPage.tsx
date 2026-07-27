@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNetwork } from "../../config/NetworkContext";
 import { transactionUrl } from "../../config/network";
 import { readAccountActivity, type ActivityCursor } from "../wallet/activity";
+import { nextEmptyPageCount, shouldAutoLoad, shouldPauseAutoLoad } from "./autoLoad";
 import type { AccountHandle, ActivityItem } from "../../types";
 
 export function ActivityPage({ account }: { readonly account: AccountHandle }) {
@@ -10,17 +11,26 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
   const [cursor, setCursor] = useState<ActivityCursor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "loading-more">("loading");
   const [unavailable, setUnavailable] = useState(false);
+  const [autoPaused, setAutoPaused] = useState(false);
   // Guards against a stale response from a previous account/endpoint landing late.
   const generation = useRef(0);
+  const emptyPages = useRef(0);
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  // Mirrors `cursor` so the observer callback can read it without re-subscribing.
+  const cursorRef = useRef<ActivityCursor | null>(null);
 
   const loadFirstPage = useCallback(async () => {
     const current = ++generation.current;
     setPhase("loading");
     setItems([]);
     setCursor(null);
+    cursorRef.current = null;
+    setAutoPaused(false);
+    emptyPages.current = 0;
     const result = await readAccountActivity(config, account.account);
     if (generation.current !== current) return;
     setItems(result.items);
+    cursorRef.current = result.cursor;
     setCursor(result.cursor);
     setUnavailable(result.unavailable);
     setPhase("ready");
@@ -28,24 +38,50 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
 
   useEffect(() => { void loadFirstPage(); }, [loadFirstPage]);
 
-  const loadMore = async () => {
-    if (!cursor) return;
+  const loadMore = useCallback(async () => {
     const current = generation.current;
+    const active = cursorRef.current;
+    if (!active) return;
+
     setPhase("loading-more");
-    const result = await readAccountActivity(config, account.account, { cursor });
+    const result = await readAccountActivity(config, account.account, { cursor: active });
     if (generation.current !== current) return;
+
     // Merge by transaction hash so an entry seen on an earlier page is never
-    // duplicated, and keep the whole list ordered as later pages arrive.
+    // duplicated, and keep the whole list ordered as later pages arrive: the two
+    // sources advance independently, so a later page can hold newer entries.
+    let added = 0;
     setItems(previous => {
       const merged = new Map(previous.map(item => [item.id, item]));
-      for (const item of result.items) if (!merged.has(item.id)) merged.set(item.id, item);
+      for (const item of result.items) if (!merged.has(item.id)) { merged.set(item.id, item); added += 1; }
       return [...merged.values()].sort((a, b) => b.timestamp - a.timestamp);
     });
+
+    emptyPages.current = nextEmptyPageCount(emptyPages.current, added);
+    if (shouldPauseAutoLoad(emptyPages.current)) setAutoPaused(true);
+    cursorRef.current = result.cursor;
     setCursor(result.cursor);
     setPhase("ready");
-  };
+  }, [config, account.account]);
 
-  const busy = phase !== "ready";
+  // Auto-load as the end of the list comes into view. Kept in a ref so the
+  // observer callback always sees current state without being re-created.
+  const state = useRef({ phase, cursor, autoPaused, loadMore });
+  state.current = { phase, cursor, autoPaused, loadMore };
+
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => {
+      const intersecting = entries.some(entry => entry.isIntersecting);
+      if (shouldAutoLoad(state.current, intersecting)) void state.current.loadMore();
+    }, { rootMargin: "400px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [items.length]);
+
+  const canObserve = typeof IntersectionObserver !== "undefined";
+  const showManual = Boolean(cursor) && (autoPaused || !canObserve);
 
   return <div className="page-stack">
     <header className="page-title"><p className="eyebrow">Account history</p><h1>Activity</h1><p>Transfers and account operations for {account.label}, indexed by {hostOf(config.explorerUrl)}.</p></header>
@@ -53,7 +89,7 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
     <section className="section-card">
       <div className="section-heading">
         <div><p className="eyebrow">Latest first</p><h2>Transactions{items.length > 0 && <span className="count-badge">{items.length}</span>}</h2></div>
-        <button className="icon-button" onClick={() => void loadFirstPage()} disabled={busy} aria-label="Refresh activity"><span className={phase === "loading" ? "spin" : ""}>⟳</span></button>
+        <button className="icon-button" onClick={() => void loadFirstPage()} disabled={phase !== "ready"} aria-label="Refresh activity"><span className={phase === "loading" ? "spin" : ""}>⟳</span></button>
       </div>
 
       {phase === "loading" && <p className="form-note">Reading account history…</p>}
@@ -83,10 +119,12 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
             </div>
           </article>)}
         </div>
-        <div className="load-more">
-          {cursor
-            ? <button className="secondary" onClick={() => void loadMore()} disabled={busy}>{phase === "loading-more" ? "Loading…" : "Load older transactions"}</button>
-            : <p className="form-note">End of indexed history.</p>}
+
+        {/* Watched by the observer; also the live region for the paging state. */}
+        <div ref={sentinel} className="load-more" aria-live="polite">
+          {phase === "loading-more" && <p className="form-note"><span className="spin" aria-hidden="true">⟳</span> Loading older transactions…</p>}
+          {phase === "ready" && showManual && <button className="secondary" onClick={() => { setAutoPaused(false); emptyPages.current = 0; void loadMore(); }}>Load older transactions</button>}
+          {phase === "ready" && !cursor && <p className="form-note">End of indexed history.</p>}
         </div>
       </>}
     </section>
