@@ -21,6 +21,10 @@ export const GENERATED_ABIS = Object.freeze([
   Object.freeze({ contract: "LoomAccount", exportName: "LoomAccountAbi", file: "loom-account.ts" }),
   Object.freeze({ contract: "LoomAccountFactory", exportName: "LoomAccountFactoryAbi", file: "loom-account-factory.ts" }),
   Object.freeze({ contract: "P256Validator", exportName: "P256ValidatorAbi", file: "p256-validator.ts" }),
+  Object.freeze({ contract: "RecoveryManager", exportName: "RecoveryManagerAbi", file: "recovery-manager.ts" }),
+  Object.freeze({ contract: "ECDSAGuardianVerifier", exportName: "ECDSAGuardianVerifierAbi", file: "ecdsa-guardian-verifier.ts" }),
+  Object.freeze({ contract: "P256GuardianVerifier", exportName: "P256GuardianVerifierAbi", file: "p256-guardian-verifier.ts" }),
+  Object.freeze({ contract: "ERC1271GuardianVerifier", exportName: "ERC1271GuardianVerifierAbi", file: "erc1271-guardian-verifier.ts" }),
   Object.freeze({ contract: "EntryPoint", exportName: "EntryPointAbi", file: "entry-point.ts" })
 ]);
 

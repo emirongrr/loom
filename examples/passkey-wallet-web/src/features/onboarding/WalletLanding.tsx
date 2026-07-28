@@ -1,0 +1,71 @@
+import { useState } from "react";
+import type { AccountHandle } from "../../types";
+import { shorten } from "../../components/AccountHeader";
+
+export function WalletLanding({ accounts, busy, message, onCreate, onImport, onOpen, onClearMessage }: {
+  readonly accounts: readonly AccountHandle[];
+  readonly busy: boolean;
+  readonly message: string;
+  readonly onCreate: (label: string) => Promise<void>;
+  readonly onImport: (text: string) => Promise<void>;
+  readonly onOpen: (account: AccountHandle) => Promise<void>;
+  readonly onClearMessage: () => void;
+}) {
+  const [mode, setMode] = useState<"welcome" | "create" | "recover">("welcome");
+  const [label, setLabel] = useState("");
+  const [backup, setBackup] = useState("");
+  return <main className="wallet-landing">
+    <section className="landing-panel" aria-labelledby="landing-title">
+      <div className="landing-brand"><span className="brand-mark">L</span><strong>Loom</strong></div>
+      <p className="eyebrow">Local passkey wallet</p>
+      <h1 id="landing-title">{mode === "create" ? "Create a wallet" : mode === "recover" ? "Recover a wallet" : "Your wallets stay on this device"}</h1>
+      {mode === "welcome" && <>
+        <p>Create a new passkey wallet or restore a public wallet handle you exported earlier. Private passkey material never enters browser storage.</p>
+        <div className="landing-choices">
+          <button className="choice-card" onClick={() => { onClearMessage(); setMode("create"); }}><span aria-hidden="true">＋</span><strong>Create wallet</strong><small>Create a real passkey and derive its Loom account.</small></button>
+          <button className="choice-card" onClick={() => { onClearMessage(); setMode("recover"); }}><span aria-hidden="true">↺</span><strong>Recover wallet</strong><small>Restore a saved public handle; guardian recovery remains a separate on-chain flow.</small></button>
+        </div>
+      </>}
+      {mode === "create" && <form onSubmit={event => { event.preventDefault(); void onCreate(label); }}>
+        <label className="field"><span>Wallet name</span><input autoFocus value={label} maxLength={80} onChange={event => setLabel(event.target.value)} placeholder="My wallet" /></label>
+        <p className="form-note">Your authenticator will ask you to create a passkey. The derived account starts without guardian recovery until you configure guardians.</p>
+        <div className="landing-actions"><button type="button" className="secondary" onClick={() => { onClearMessage(); setMode("welcome"); }}>Back</button><button className="primary" disabled={busy || !label.trim()}>{busy ? "Creating passkey…" : "Create with passkey"}</button></div>
+      </form>}
+      {mode === "recover" && <form onSubmit={event => { event.preventDefault(); void onImport(backup); }}>
+        <label className="field"><span>Public wallet handle</span><textarea autoFocus value={backup} onChange={event => setBackup(event.target.value)} placeholder='Paste the exported version 1 JSON handle' rows={8} /></label>
+        <p className="form-note">This restores public connection metadata only. The matching passkey must still be available; importing a handle does not bypass guardian approval or perform on-chain recovery.</p>
+        <div className="landing-actions"><button type="button" className="secondary" onClick={() => { onClearMessage(); setMode("welcome"); }}>Back</button><button className="primary" disabled={busy || !backup.trim()}>{busy ? "Validating…" : "Restore handle"}</button></div>
+      </form>}
+      {message && <p className="toast" role="status">{message}</p>}
+    </section>
+    <section className="saved-wallets" aria-labelledby="saved-wallets-title">
+      <div className="section-heading"><div><p className="eyebrow">Persistent local registry</p><h2 id="saved-wallets-title">Saved wallets</h2></div><span className="pill">{accounts.length}</span></div>
+      {accounts.length === 0 ? <div className="empty-state compact"><h3>No wallets saved yet</h3><p>Created and restored handles will remain listed here. This screen never deletes or silently evicts them.</p></div> : <div className="wallet-list">{accounts.map(account => <button key={account.id} className="wallet-list-item" disabled={busy} onClick={() => void onOpen(account)}>
+        <span className="identicon" aria-hidden="true" /><span><strong>{account.label}</strong><small>{shorten(account.account)} · Chain {account.chainId}</small></span><span className="pill included">Open</span>
+      </button>)}</div>}
+    </section>
+  </main>;
+}
+
+export function WalletLock({ account, busy, message, onUnlock, onSwitch }: {
+  readonly account: AccountHandle;
+  readonly busy: boolean;
+  readonly message: string;
+  readonly onUnlock: () => Promise<void>;
+  readonly onSwitch: () => void;
+}) {
+  return <main className="wallet-landing lock-layout">
+    <section className="landing-panel" aria-labelledby="locked-wallet-title">
+      <div className="landing-brand"><span className="brand-mark">L</span><strong>Loom</strong></div>
+      <p className="eyebrow">Account locked</p>
+      <h1 id="locked-wallet-title">{account.label}</h1>
+      <p>{shorten(account.account)} · Chain {account.chainId}</p>
+      <p className="form-note">Use the wallet's matching passkey to continue. Public metadata remains saved while locked.</p>
+      <div className="landing-actions">
+        <button type="button" className="secondary" disabled={busy} onClick={onSwitch}>Switch account</button>
+        <button type="button" className="primary" disabled={busy} onClick={() => void onUnlock()}>{busy ? "Checking passkey…" : "Unlock with passkey"}</button>
+      </div>
+      {message && <p className="toast" role="status">{message}</p>}
+    </section>
+  </main>;
+}
