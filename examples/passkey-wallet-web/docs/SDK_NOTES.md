@@ -99,27 +99,36 @@ against live state and then hands over the exact calldata for independent
 submission. A documented "prepare here, submit anywhere" path (or a relay adapter
 interface) would make this a first-class flow rather than a copy-paste step.
 
-## 4. Account deployment still needs a direct submitter (now wired, still awkward)
+## 4. Account creation needs no privileged submitter (correcting the repo's own note)
 
-`sendTransaction` through a public bundler works for an already-deployed account.
-A counterfactual account's first operation carries `initCode`, and this factory
-fail-closes to the EntryPoint's `senderCreator`, so a third-party bundler cannot
-validate it: creation must reach `EntryPoint.handleOps` directly, from a submitter
-holding gas.
+`sponsor-server.mjs` and the previous `src/wallet.mjs` both stated that "the
+factory fail-closes to `entryPoint.senderCreator()`, so no third-party bundler can
+validate initCode", and that creation therefore has to go straight to
+`EntryPoint.handleOps` from a funded submitter. That reasoning does not hold.
 
-The example now builds and passkey-signs that operation in the browser
-(`src/features/wallet/activate.ts`) and hands it to the configured relay. Two
-rough edges remain in the SDK:
+`LoomAccountFactory.createAccount` requires `msg.sender ==
+entryPoint.senderCreator()`, which is exactly the path the EntryPoint itself uses
+for factory calls — it blocks *direct* calls to the factory, not bundler-mediated
+creation. And `LoomAccount.validateUserOp` forwards `missingAccountFunds` from the
+account's own balance, so a counterfactual address that has been funded pays for
+its own creation.
 
-- **The creation configuration has to be reconstructed by the caller.** The
-  account address is a commitment to a configuration the wallet must rebuild from
-  its own stored inputs, with no SDK helper and no way to read it back from the
-  chain before deployment. This example rebuilds it and refuses to proceed unless
-  it re-derives the account's own address, which every wallet will otherwise get
-  subtly wrong. `prepareDeployAccount` exists on the client but takes an already
-  built `initCode`, so it does not close this gap.
-- **No first-class "signed creation operation" output.** The flow drops out of the
-  client abstraction into `packUserOperation` + `getUserOpHash` to produce
-  something a submitter can accept, and the submitter's wire format is this
-  example's own. An SDK-defined envelope for "prepare here, submit anywhere" would
-  make creation portable across relays.
+Verified against the public Pimlico bundler on Sepolia: it lists this EntryPoint
+among its supported ones, and `eth_estimateUserOperationGas` on a creation
+operation for an unfunded counterfactual account fails with `AA21 didn't pay
+prefund` — that is, it simulated the factory call and the account's deployment
+successfully and stopped only at the prefund. A funded account therefore creates
+itself through an ordinary bundler, which is what
+`src/features/wallet/activate.ts` now does.
+
+A sponsor relay remains useful for onboarding an account that holds nothing, which
+is what the enterprise example demonstrates. It is not a requirement for creation.
+
+The remaining SDK gap is smaller but real: **the creation configuration has to be
+reconstructed by the caller.** An account address is a commitment to a
+configuration the wallet must rebuild from its own stored inputs, with no SDK
+helper and nothing on chain to compare against before deployment. This example
+rebuilds it and refuses to proceed unless it re-derives the account's own address —
+otherwise a subtly wrong configuration would create a different account under the
+user's name. `prepareDeployAccount` takes an already-built `initCode`, so it does
+not close this.

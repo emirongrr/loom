@@ -1,150 +1,91 @@
 import type { Address, Hex } from "@loom/core";
-import { encodeCreateAccountCall, getUserOpHash, packUserOperation } from "@loom/core";
-import { createWebAuthnSigner } from "@loom/passkey";
-import { createLoomClient } from "@loom/sdk";
-import { resolveCreationConfig, type WalletDeployment } from "../onboarding/accountLifecycle";
-import { signWithBrowserPasskey } from "./webauthn";
+import { encodeCreateAccountCall } from "@loom/core";
+import { createBundlerTransport, createLoomClient, createPasskeySigner, createRpcStateTransport } from "@loom/sdk";
+import { resolveCreationConfig, type WalletDeployment } from "../onboarding/accountLifecycle.ts";
+import { signWithBrowserPasskey } from "./webauthn.ts";
 import type { NetworkConfig } from "../../config/network";
 import type { AccountHandle } from "../../types";
+import type { SendResult } from "./accountClient";
 
-// Creating a counterfactual account is the one operation a public bundler cannot
-// carry. The factory fail-closes to the EntryPoint's `senderCreator`, so the
-// creation operation has to reach `EntryPoint.handleOps` directly, which needs a
-// submitter holding gas. The browser has none, so the signed operation is handed
-// to a submitter instead.
+// A counterfactual account is created by its first operation, which carries the
+// factory call. The account pays for that itself: `validateUserOp` forwards the
+// EntryPoint's `missingAccountFunds` out of the account's own balance, and the
+// address already holds whatever was sent to it before it existed.
 //
-// That submitter gains nothing: the operation is signed by the user's passkey and
-// any edit invalidates the signature. It pays for publication, it does not
-// acquire authority over the account it publishes.
+// This goes through an ordinary public bundler. The factory only refuses callers
+// other than the EntryPoint's `SenderCreator`, which is precisely the path the
+// EntryPoint uses for factory calls, so nothing about creation requires a
+// privileged submitter — verified against the public bundler, which simulates the
+// creation and stops only at the prefund when the account holds nothing.
+//
+// A sponsor relay is therefore optional, and only for an account that cannot pay
+// for its own creation.
 
-export interface ActivationPreparation {
-  readonly userOpHash: Hex;
-  readonly packed: Readonly<Record<string, string>>;
-  /** True when the account can cover its own creation from its balance. */
-  readonly selfFunded: boolean;
+export interface ActivationPlan {
+  readonly factory: Address;
+  readonly factoryData: Hex;
 }
-
-export interface ActivationResult {
-  readonly account: Address;
-  readonly transactionHash?: Hex;
-  readonly alreadyDeployed: boolean;
-}
-
-const CREATION_GAS = Object.freeze({
-  callGasLimit: 500_000n,
-  // Creation plus one P-256 verification; the passkey signer's own buffer covers
-  // the WebAuthn tail a dummy signature never reaches.
-  verificationGasLimit: 2_000_000n,
-  preVerificationGas: 150_000n,
-  maxFeePerGas: 3_000_000_000n,
-  maxPriorityFeePerGas: 1_000_000_000n
-});
 
 /**
- * Build and passkey-sign the operation that brings the account into existence.
- * The configuration is rebuilt from the handle and rejected unless it re-derives
- * the account's own address, so this can never create a different account.
+ * The creation call for this account, rebuilt from its handle.
+ *
+ * An account address is a commitment to the configuration it was derived from,
+ * so the rebuilt configuration is rejected unless it re-derives this account's
+ * own address. Creating an account under any other configuration would silently
+ * create a different account in the user's name.
  */
-export async function prepareActivation(input: {
-  account: AccountHandle;
-  deployment: WalletDeployment;
-  balanceWei: bigint;
-}): Promise<ActivationPreparation> {
-  const { account, deployment } = input;
+export function planActivation(account: AccountHandle, deployment: WalletDeployment): ActivationPlan {
   if (account.kind !== "derived") throw new Error("A recovered account already exists on chain.");
-
   const config = resolveCreationConfig(account, deployment);
   if (!config) {
     throw new Error("This account's creation configuration could not be reproduced from the saved handle, so it cannot be created safely.");
   }
+  return Object.freeze({
+    factory: deployment.factory,
+    factoryData: encodeCreateAccountCall(account.salt, config)
+  });
+}
 
-  const signer = createWebAuthnSigner({
-    validator: deployment.validator,
-    origin: account.origin,
-    rpId: account.rpId,
+/**
+ * Create the account through a public bundler, paid from its own balance. The
+ * passkey signs the operation; the bundler carries it and can alter nothing.
+ */
+export async function activateAccount(input: {
+  config: NetworkConfig;
+  account: AccountHandle;
+  deployment: WalletDeployment;
+}): Promise<SendResult> {
+  const { config, account, deployment } = input;
+  const plan = planActivation(account, deployment);
+
+  const signer = createPasskeySigner({
     credentialId: account.credentialId,
+    rpId: account.rpId,
+    origin: account.origin,
+    validator: deployment.validator,
+    entryPoint: deployment.entryPoint,
     signChallenge: signWithBrowserPasskey
   });
 
   const client = createLoomClient({
     chainId: account.chainId,
     account: account.account,
-    signer: {
-      dummySignature: signer.dummySignature,
-      verificationGasBuffer: signer.verificationGasBuffer,
-      async signUserOperation() { throw new Error("the creation hash is signed directly"); }
-    }
+    transport: createBundlerTransport({ endpoint: config.bundlerUrl, entryPoint: deployment.entryPoint }),
+    stateTransport: createRpcStateTransport({ endpoint: config.rpcUrl }),
+    signer
   });
 
-  const prepared = client.prepareUserOperation(client.prepareCalls({ calls: [] }), {
-    // A counterfactual account has never acted, so its EntryPoint nonce is zero.
-    nonce: 0n,
-    factory: deployment.factory,
-    factoryData: encodeCreateAccountCall(account.salt, config),
-    ...CREATION_GAS
-  });
-
-  const operation = (prepared as { userOperation?: unknown }).userOperation ?? prepared;
-  const fields = operation as unknown as Record<string, unknown>;
-  const unsigned = packUserOperation({ ...fields, signature: "0x" } as never);
-  const userOpHash = getUserOpHash(unsigned, deployment.entryPoint, BigInt(account.chainId));
-  const signature = await signer.sign(userOpHash);
-  const packed = packUserOperation({ ...fields, signature } as never);
-
-  const maxCost = (CREATION_GAS.preVerificationGas + CREATION_GAS.verificationGasLimit + CREATION_GAS.callGasLimit)
-    * CREATION_GAS.maxFeePerGas;
-
-  return Object.freeze({
-    userOpHash,
-    packed: serialize(packed as unknown as Record<string, unknown>),
-    selfFunded: input.balanceWei >= maxCost
-  });
+  // No calls: this operation exists to bring the account into being. The nonce is
+  // zero because the account has never acted, and gas comes from the bundler's
+  // own estimation of the creation it is about to simulate.
+  const result = await client.sendTransaction({ calls: [] }, { nonce: 0n, factory: plan.factory, factoryData: plan.factoryData });
+  const transactionHash = receiptTransactionHash(result.receipt);
+  return transactionHash ? { userOpHash: result.userOpHash, transactionHash } : { userOpHash: result.userOpHash };
 }
 
-/**
- * Hand the signed operation to a submitter. The relay publishes it and, when the
- * account cannot cover its own creation, funds the attempt; either way it cannot
- * alter the operation it carries.
- */
-export async function submitActivation(input: {
-  config: NetworkConfig;
-  preparation: ActivationPreparation;
-}): Promise<ActivationResult> {
-  const relay = input.config.relayUrl.trim();
-  if (!relay) {
-    throw new Error("No submitter is configured. Add a sponsor relay in Developer settings, or publish the signed operation from any funded wallet.");
-  }
-  const url = `${relay.replace(/\/$/, "")}/deploy${input.preparation.selfFunded ? "?mode=self-funded" : ""}`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input.preparation.packed)
-    });
-  } catch (cause) {
-    throw new Error(`The submitter at ${relay} could not be reached.`, { cause });
-  }
-
-  const body: unknown = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = (body as { error?: unknown }).error;
-    throw new Error(typeof detail === "string" ? detail : `The submitter refused the operation (${response.status}).`);
-  }
-
-  const record = body as { account?: unknown; opTx?: unknown; alreadyDeployed?: unknown };
-  return Object.freeze({
-    account: String(record.account ?? "") as Address,
-    ...(typeof record.opTx === "string" && /^0x[0-9a-fA-F]{64}$/.test(record.opTx) ? { transactionHash: record.opTx as Hex } : {}),
-    alreadyDeployed: record.alreadyDeployed === true
-  });
-}
-
-/** JSON carries no bigints; the submitter parses these back. */
-function serialize(operation: Record<string, unknown>): Readonly<Record<string, string>> {
-  const output: Record<string, string> = {};
-  for (const [key, value] of Object.entries(operation)) {
-    output[key] = typeof value === "bigint" ? value.toString() : String(value);
-  }
-  return Object.freeze(output);
+function receiptTransactionHash(receipt: unknown): Hex | undefined {
+  if (!receipt || typeof receipt !== "object") return undefined;
+  const value = receipt as { receipt?: { transactionHash?: unknown }; transactionHash?: unknown };
+  const hash = value.receipt?.transactionHash ?? value.transactionHash;
+  return typeof hash === "string" && /^0x[0-9a-fA-F]{64}$/.test(hash) ? (hash as Hex) : undefined;
 }

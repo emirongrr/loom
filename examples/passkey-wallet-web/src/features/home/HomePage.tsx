@@ -5,7 +5,7 @@ import { SendDialog } from "../send/SendDialog";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
-import { prepareActivation, submitActivation } from "../wallet/activate";
+import { activateAccount } from "../wallet/activate";
 import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { SendableAsset } from "../wallet/transfers";
@@ -38,17 +38,11 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     setActivating(true);
     const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
     try {
-      const preparation = await prepareActivation({ account, deployment, balanceWei: assets.native.balance });
-      notifications.update(toast, {
-        status: "pending",
-        title: "Publishing account",
-        detail: preparation.selfFunded ? "The account pays for its own creation." : "A submitter is funding this creation."
-      });
-      const result = await submitActivation({ config, preparation });
+      const result = await activateAccount({ config, account, deployment });
       notifications.update(toast, {
         status: "success",
-        title: result.alreadyDeployed ? "Account already exists" : "Account created",
-        detail: "It can now send transactions through any bundler.",
+        title: "Account created",
+        detail: "It paid for its own creation and can now transact.",
         ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
       });
       await load(true);
@@ -101,16 +95,15 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
         <p className="eyebrow">Not created yet</p>
         <h2>Activate this account</h2>
         <p>
-          The address is reserved for your passkey, but the account does not exist on chain until its first operation
-          creates it — funding alone does not. This factory accepts that operation only from the EntryPoint, so a public
-          bundler cannot carry it and a submitter publishes it instead. Your passkey signs it; the submitter cannot
-          change it or gain any authority over the account.
+          The address is reserved for your passkey, but the account exists on chain only once its first operation
+          creates it — funding alone does not. That operation pays for itself out of this balance and goes through the
+          same public bundler as any other, which carries it without being able to change it.
         </p>
-        {config.relayUrl.trim() === "" && <p className="form-note">
-          No submitter is configured. Add a sponsor relay in Developer settings, or publish the signed operation from any funded wallet.
+        {assets.native.balance === 0n && <p className="form-note">
+          This address holds no ETH. Send it a small amount first: the account funds its own creation.
         </p>}
       </div>
-      <button className="primary" disabled={activating || !deployment || config.relayUrl.trim() === ""} onClick={() => void activate()}>
+      <button className="primary" disabled={activating || !deployment || assets.native.balance === 0n} onClick={() => void activate()}>
         {activating ? "Confirm on your device…" : "Activate account"}
       </button>
     </section>}

@@ -72,10 +72,8 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       <div className="section-heading"><div><p className="eyebrow">On {hostOf(config.rpcUrl)}</p><h2>Send</h2></div></div>
 
       {!deployed && <p className="callout warning">
-        This account does not exist on chain yet, and funding it does not create it — the account is created by its first
-        operation, which carries the creation code. This factory only accepts that operation from the EntryPoint itself,
-        so a public bundler cannot carry it: it needs a direct submitter, such as the sponsor relay in Developer settings
-        or any funded wallet. Until then this account cannot send.
+        This account does not exist on chain yet, and funding it alone does not create it — it is created by its first
+        operation. Use "Activate account" on the home screen first; it pays for itself from this balance.
       </p>}
 
       <label className="field"><span>Asset</span>

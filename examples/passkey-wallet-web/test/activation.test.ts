@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { deriveAccountAddress } from "@loom/core/account";
 import { deriveCreatedAccountHandle, resolveCreationConfig } from "../src/features/onboarding/accountLifecycle.ts";
+import { planActivation } from "../src/features/wallet/activate.ts";
 
 // The real Sepolia deployment this example ships with.
 const DEPLOYMENT = {
@@ -80,6 +81,30 @@ test("a recovered account handle is refused", () => {
     rpId: "localhost", origin: "http://localhost:5174", validator: DEPLOYMENT.validator
   };
   assert.equal(resolveCreationConfig(recovered as never, DEPLOYMENT as never), null);
+});
+
+// The creation call is what the bundler carries; it must target this deployment's
+// factory and refuse to be built at all when the configuration cannot be proved.
+test("the activation plan carries the deployment's factory and its creation call", () => {
+  const plan = planActivation(handle(), DEPLOYMENT as never);
+  assert.equal(plan.factory, DEPLOYMENT.factory);
+  assert.match(plan.factoryData, /^0x[0-9a-f]+$/i);
+  assert.ok(plan.factoryData.length > 200, "the call carries the account's full configuration");
+});
+
+test("activation refuses a handle whose address does not match its configuration", () => {
+  const tampered = { ...handle(), account: "0x0000000000000000000000000000000000000001" };
+  assert.throws(() => planActivation(tampered as never, DEPLOYMENT as never), /could not be reproduced/);
+});
+
+test("activation refuses an account that already exists", () => {
+  const recovered = {
+    version: 1, kind: "recovered", id: "x", label: "r",
+    account: handle().account, chainId: 11155111,
+    credentialId: PASSKEY.credentialId, publicKey: PASSKEY.publicKey,
+    rpId: "localhost", origin: "http://localhost:5174", validator: DEPLOYMENT.validator
+  };
+  assert.throws(() => planActivation(recovered as never, DEPLOYMENT as never), /already exists/);
 });
 
 test("an account carrying a recovery module includes it in its configuration", () => {
