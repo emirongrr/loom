@@ -4,9 +4,7 @@ import test from "node:test";
 import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { createGuardianInvite, createGuardianSet, validateGuardianInvite } from "@loom/sdk/recovery";
 import { decodeGuardianVaultEntries } from "../src/storage/guardianVault.ts";
-import { createEncryptedLinkTransport, createFileInvitationTransport, createMemoryInvitationTransport, receiveGuardianInvite } from "../src/transports/invitations.ts";
-import { createEncryptedRecoveryRoom, createMemoryMailbox } from "../src/transports/recoveryRoom.ts";
-import { createRpcSimulationAdapter } from "../src/transports/simulation.ts";
+import { createEncryptedLinkTransport, receiveGuardianInvite } from "../src/transports/invitations.ts";
 
 test("encrypted invitation links keep capability material in the fragment", async () => {
   const transport = createEncryptedLinkTransport<{ secret: string }>({ origin: "https://wallet.example" });
@@ -17,18 +15,6 @@ test("encrypted invitation links keep capability material in the fragment", asyn
   assert.equal(delivered.value.includes("guardian-only"), false);
   assert.deepEqual(await transport.receive(delivered.value), { secret: "guardian-only" });
   await assert.rejects(transport.receive(delivered.value.replace("wallet.example", "attacker.example")), /origin/u);
-});
-
-test("file transport bounds input and memory transport is one-time", async () => {
-  const files = createFileInvitationTransport<{ id: number }>();
-  const file = await files.deliver({ id: 7 });
-  assert.deepEqual(await files.receive(file.value), { id: 7 });
-  await assert.rejects(files.receive("x".repeat(32_769)), /exceeds/u);
-
-  const memory = createMemoryInvitationTransport<{ id: number }>();
-  const message = await memory.deliver({ id: 9 });
-  assert.deepEqual(await memory.receive(message.value), { id: 9 });
-  await assert.rejects(memory.receive(message.value), /not found/u);
 });
 
 test("decrypted invitation links are validated before acceptance", async () => {
@@ -100,39 +86,4 @@ test("guardian vault isolates corrupt records and retains expired records as sta
     ["corrupt-record", "corrupt"],
     ["malformed-record", "corrupt"]
   ]);
-});
-
-test("RPC simulation sends one encoded account operation instead of independent calls", async () => {
-  const requests: unknown[][] = [];
-  const encoded = "0xdeadbeef" as const;
-  const adapter = createRpcSimulationAdapter({
-    async request(_method, params) { requests.push([...params]); return "0x"; },
-    executionCaller: "0x4444444444444444444444444444444444444444",
-    blockTag: "0x123",
-    encodeAccountCall({ calls }) { assert.equal(calls.length, 2); return encoded; }
-  });
-  const account = "0x1111111111111111111111111111111111111111" as const;
-  const result = await adapter.simulate({ account, calls: [
-    { target: "0x2222222222222222222222222222222222222222", value: 0n, data: "0x" },
-    { target: "0x3333333333333333333333333333333333333333", value: 1n, data: "0x12" }
-  ] });
-  assert.equal(result.status, "verified");
-  assert.equal(requests.length, 1);
-  assert.deepEqual(requests[0], [{ from: "0x4444444444444444444444444444444444444444", to: account, data: encoded }, "0x123"]);
-});
-
-test("recovery room stores only ciphertext and consumes messages once", async () => {
-  const stored: Uint8Array[] = [];
-  const backing = createMemoryMailbox();
-  const room = createEncryptedRecoveryRoom<{ approval: string }>({
-    async put(id, ciphertext, expiresAt) {
-      stored.push(ciphertext.slice());
-      await backing.put(id, ciphertext, expiresAt);
-    },
-    take: backing.take
-  });
-  const published = await room.publish({ approval: "signed-root" }, Math.floor(Date.now() / 1000) + 60);
-  assert.equal(new TextDecoder().decode(stored[0]).includes("signed-root"), false);
-  assert.deepEqual(await room.collect(published.roomId, published.key), { approval: "signed-root" });
-  assert.equal(await room.collect(published.roomId, published.key), null);
 });

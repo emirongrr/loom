@@ -29,7 +29,7 @@ export function GuardianWorkspace() {
     try {
       const invite = link.trim().startsWith("{")
         ? parseGuardianInvite(link)
-        : await receiveGuardianInvite(link, services.invitations.link, Math.floor(services.now() / 1000));
+        : await receiveGuardianInvite(link, services.invitationLinks, Math.floor(services.now() / 1000));
       await services.guardianVault.put({ capability: invite, acceptedAt: services.now(), status: "unverified" });
       setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Capability could not be accepted"); }

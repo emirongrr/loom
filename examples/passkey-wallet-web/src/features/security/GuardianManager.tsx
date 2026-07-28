@@ -16,6 +16,9 @@ import {
 } from "./guardianStatus";
 import { deriveGuardianSaltMaster, withDerivedSalts } from "./guardianSalts";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
+import { AddGuardianForm } from "./AddGuardianForm";
+import { PendingChangeCard } from "./PendingChangeCard";
+import { RestoreRoster } from "./RestoreRoster";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
@@ -329,7 +332,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       <li className={pending ? "active" : ""}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
     </ol>
 
-    {pending && <PendingChange
+    {pending && <PendingChangeCard
       pending={pending}
       status={status}
       statusError={statusError}
@@ -419,178 +422,4 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     </>}
 
   </section>;
-}
-
-function RestoreRoster({ status, busy, error, onRestore, onReenter, onDismissError }: {
-  status: Extract<GuardianStatus, { kind: "list-missing" | "list-mismatch" }>;
-  busy: boolean;
-  error: string;
-  onRestore(text: string): void;
-  onReenter(addresses: readonly { label: string; value: string }[]): void;
-  onDismissError(): void;
-}) {
-  const [rows, setRows] = useState<{ label: string; value: string }[]>([{ label: "", value: "" }]);
-  const [text, setText] = useState("");
-  const missing = status.kind === "list-missing";
-  const filled = rows.filter(row => row.value.trim() !== "");
-
-  const update = (index: number, patch: Partial<{ label: string; value: string }>) => {
-    onDismissError();
-    setRows(current => current.map((row, position) => position === index ? { ...row, ...patch } : row));
-  };
-
-  const readFile = async (file: File | undefined) => {
-    if (!file) return;
-    onDismissError();
-    onRestore(await file.text());
-  };
-
-  return <div className="pending-change">
-    <div className="pending-head">
-      <div>
-        <p className="eyebrow">Protected on chain</p>
-        <h3>{status.threshold} approvals can recover this account</h3>
-      </div>
-      <span className="pill pending">List missing</span>
-    </div>
-
-    <p className="form-note">
-      {missing
-        ? "The account publishes a guardian root, so guardians are configured — but this device does not hold the list of who they are."
-        : "The list on this device does not rebuild the account's guardian root, so it is out of date or belongs to a different set."}
-      {" "}Guardian identities are never published: only a root and a threshold are on chain. Recovery still works — this only affects editing the set from here.
-    </p>
-
-    <p className="callout">
-      Enter the guardians again and this wallet will check them against the account itself. Each guardian is committed
-      with a private value derived from your passkey, so the list is rebuilt only if your passkey is present and the
-      addresses are exactly right — a wrong or guessed list cannot reproduce the account's root.
-    </p>
-
-    <div className="guardian-list">
-      {rows.map((row, index) => <div className="restore-row" key={index}>
-        <input value={row.label} maxLength={80} disabled={busy} placeholder={`Name (optional)`}
-          onChange={event => update(index, { label: event.target.value })} />
-        <input value={row.value} disabled={busy} placeholder="0x…" spellCheck={false} autoComplete="off"
-          onChange={event => update(index, { value: event.target.value })} />
-        <button className="text-button" disabled={busy || rows.length === 1}
-          onClick={() => { onDismissError(); setRows(current => current.filter((_, position) => position !== index)); }}>Remove</button>
-      </div>)}
-    </div>
-
-    <div className="guardian-actions">
-      <button className="secondary" disabled={busy} onClick={() => setRows(current => [...current, { label: "", value: "" }])}>Add another</button>
-      <button className="primary" disabled={busy || filled.length === 0} onClick={() => onReenter(filled)}>
-        {busy ? "Checking against the account…" : "Verify with passkey"}
-      </button>
-    </div>
-
-    {error && <p className="callout warning">{error}</p>}
-
-    <details>
-      <summary>Restore from an exported backup instead</summary>
-      <p className="form-note">
-        Use this if the account's guardians were set up on an authenticator that cannot re-derive their private values.
-      </p>
-      <label className="field"><span>Backup file</span>
-        <input type="file" accept="application/json,.json" disabled={busy} onChange={event => void readFile(event.target.files?.[0])} />
-      </label>
-      <label className="field"><span>Or paste its contents</span>
-        <textarea value={text} rows={4} spellCheck={false} disabled={busy}
-          onChange={event => { setText(event.target.value); onDismissError(); }}
-          placeholder='{"format":"loom.guardian-roster",…}' />
-      </label>
-      <button className="secondary" disabled={busy || text.trim() === ""} onClick={() => onRestore(text)}>Restore and verify</button>
-    </details>
-
-    <p className="form-note">
-      Still no match? Your guardians continue to protect the account. To manage them from this device again, schedule a
-      new guardian set — that replaces the root with one this device knows.
-    </p>
-  </div>;
-}
-
-function PendingChange({ pending, status, statusError, busy, onExecute, onCancel, onForget, onRefresh, tick }: {
-  pending: RosterPending;
-  status: PendingChangeStatus | null;
-  statusError: string;
-  busy: boolean;
-  onExecute(): void;
-  onCancel(): void;
-  onForget(): void;
-  onRefresh(): void;
-  tick: number;
-}) {
-  // The countdown advances from the chain's timestamp, not the device clock, so
-  // a wrong local clock cannot make a change look ready before it is.
-  const estimatedNow = status ? status.chainTimestamp + BigInt(tick * 30) : 0n;
-  const ready = status?.ready === true || (status !== null && status.readyAt > 0n && estimatedNow >= status.readyAt);
-
-  return <div className={`pending-change ${ready ? "ready" : ""}`}>
-    <div className="pending-head">
-      <div>
-        <p className="eyebrow">Scheduled change</p>
-        <h3>{pending.threshold} of {pending.entries.length} guardians</h3>
-      </div>
-      <span className={`pill ${ready ? "included" : "pending"}`}>{status === null ? "Checking" : status.found ? (ready ? "Ready" : "Waiting") : "Not found"}</span>
-    </div>
-
-    {status === null && !statusError && <p className="form-note">Reading the scheduled change from the account…</p>}
-
-    {statusError && <p className="callout warning">The scheduled change could not be read: {statusError}</p>}
-
-    {status?.found && <>
-      <div className="countdown">
-        <strong>{ready ? "Ready to apply" : formatCountdown(status.readyAt, estimatedNow)}</strong>
-        <span>Takes effect {formatReadyAt(status.readyAt)}</span>
-      </div>
-      {!ready && <p className="form-note">Your current guardians stay in force until this is applied. You can cancel it at any point before then.</p>}
-      {ready && <p className="callout success">The delay has elapsed. Apply the change to make these guardians the ones that can recover this account.</p>}
-      <div className="guardian-actions">
-        {ready && <button className="primary" disabled={busy} onClick={onExecute}>{busy ? "Confirm on your device…" : "Apply change"}</button>}
-        <button className="danger-button" disabled={busy} onClick={onCancel}>Cancel change</button>
-        <button className="text-button" disabled={busy} onClick={onRefresh}>Refresh</button>
-      </div>
-    </>}
-
-    {status !== null && !status.found && <>
-      <p className="callout warning">
-        The account holds no such scheduled change. It was either already applied, cancelled, or invalidated by a later
-        configuration change — a new configuration version retires any operation scheduled against the previous one.
-      </p>
-      <div className="guardian-actions">
-        <button className="secondary" disabled={busy} onClick={onForget}>Discard this record</button>
-        <button className="text-button" disabled={busy} onClick={onRefresh}>Check again</button>
-      </div>
-    </>}
-  </div>;
-}
-
-function AddGuardianForm({ busy, onAdd, hasErc1271 }: {
-  busy: boolean;
-  onAdd(kind: "ecdsa" | "erc1271", label: string, value: string): void;
-  hasErc1271: boolean;
-}) {
-  const [kind, setKind] = useState<"ecdsa" | "erc1271">("ecdsa");
-  const [label, setLabel] = useState("");
-  const [value, setValue] = useState("");
-  const submit = () => { onAdd(kind, label, value); setLabel(""); setValue(""); };
-  return <details className="add-guardian">
-    <summary>Add a guardian</summary>
-    <div className="add-guardian-body">
-      <label className="field"><span>Guardian type</span>
-        <select value={kind} onChange={event => setKind(event.target.value as "ecdsa" | "erc1271")}>
-          <option value="ecdsa">A person's wallet address</option>
-          {hasErc1271 && <option value="erc1271">A smart contract account</option>}
-        </select>
-      </label>
-      <label className="field"><span>Name (only you see this)</span>
-        <input value={label} maxLength={80} onChange={event => setLabel(event.target.value)} placeholder="Alex" />
-      </label>
-      <label className="field"><span>Address</span>
-        <input value={value} onChange={event => setValue(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" />
-      </label>
-      <button className="secondary" disabled={busy || value.trim() === ""} onClick={submit}>{busy ? "Checking verifier…" : "Add to list"}</button>
-    </div>
-  </details>;
 }

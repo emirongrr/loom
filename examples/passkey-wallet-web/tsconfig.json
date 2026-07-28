@@ -6,6 +6,10 @@
     // Lets modules that Node runs directly under `--experimental-strip-types`
     // (the unit tests) import their dependencies with explicit extensions.
     "allowImportingTsExtensions": true,
+    // Dead imports, bindings, and parameters fail the build rather than
+    // accumulating unnoticed.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src"]

@@ -2,19 +2,19 @@ import { createContext, useContext, useMemo, type PropsWithChildren } from "reac
 import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { createBrowserAccountStore, type AccountStore } from "../storage/accountStore";
 import { createBrowserGuardianVault, type GuardianVault } from "../storage/guardianVault";
-import { createEncryptedLinkTransport, createFileInvitationTransport, createMemoryInvitationTransport, createQrInvitationTransport, type InvitationTransport } from "../transports/invitations";
-import { createMemoryMailbox, createEncryptedRecoveryRoom, type RecoveryRoom } from "../transports/recoveryRoom";
+import { createEncryptedLinkTransport, type InvitationTransport } from "../transports/invitations";
 
+/**
+ * The replaceable I/O the wallet depends on, injected in one place so a test — or
+ * an integrator — can substitute any of it without touching a component.
+ */
 export interface AppServices {
   readonly accounts: AccountStore;
+  /** Capabilities held for accounts this device protects as a guardian. */
   readonly guardianVault: GuardianVault;
-  readonly invitations: {
-    readonly file: InvitationTransport<GuardianInviteV1>;
-    readonly link: InvitationTransport<GuardianInviteV1>;
-    readonly qr: InvitationTransport<GuardianInviteV1>;
-    readonly memory: InvitationTransport<GuardianInviteV1>;
-  };
-  readonly recoveryRoom: RecoveryRoom<unknown>;
+  /** Delivery for guardian invitations; the link keeps ciphertext in the fragment. */
+  readonly invitationLinks: InvitationTransport<GuardianInviteV1>;
+  /** Injectable clock, so expiry handling is testable. */
   readonly now: () => number;
 }
 
@@ -32,17 +32,10 @@ export function useAppServices(): AppServices {
 }
 
 function createDefaultServices(): AppServices {
-  const link = createEncryptedLinkTransport<GuardianInviteV1>({ origin: window.location.origin });
   return Object.freeze({
     accounts: createBrowserAccountStore(),
     guardianVault: createBrowserGuardianVault(),
-    invitations: {
-      file: createFileInvitationTransport<GuardianInviteV1>(),
-      link,
-      qr: createQrInvitationTransport(link),
-      memory: createMemoryInvitationTransport<GuardianInviteV1>()
-    },
-    recoveryRoom: createEncryptedRecoveryRoom(createMemoryMailbox()),
+    invitationLinks: createEncryptedLinkTransport<GuardianInviteV1>({ origin: window.location.origin }),
     now: () => Date.now()
   });
 }

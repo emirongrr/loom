@@ -67,11 +67,6 @@ export async function deriveGuardianSaltMaster(
   return hexFromBytes(new Uint8Array(first).slice(0, 32));
 }
 
-/** Whether this browser advertises the PRF extension at all. */
-export function supportsPrf(): boolean {
-  return typeof window !== "undefined" && Boolean(window.PublicKeyCredential);
-}
-
 /**
  * The salt for one guardian, derived from the master secret and the guardian's
  * own authority. Keying on the authority rather than a position means the salts

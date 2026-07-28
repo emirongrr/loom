@@ -1,15 +1,15 @@
 # Loom passkey wallet
 
-A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, readable transaction review, scoped app sessions, private guardian capabilities, emergency freeze, and threshold recovery without requiring a Loom-hosted service.
+A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, live balances and transfers, private guardian capabilities, guardian set management under the account's own timelock, and guardian-initiated emergency freeze — without requiring a Loom-hosted service.
 
-This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings. Guardian setup and emergency freeze run against live chain state through `@loom/sdk/recovery`; the recovery-progress screen remains illustrative until an operator supplies the corresponding adapters.
+This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings. Guardian setup and emergency freeze run against live chain state through `@loom/sdk/recovery`. Executing a guardian recovery is not part of this example: it needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) records as a separate contract change.
 
 ## What this example proves
 
 - Applications import guardian trees, proofs, digests, approval ordering, calldata, and scheduled-operation IDs from `@loom/sdk/recovery`; they do not reimplement them.
 - A Loom account publishes only a guardian root and threshold while relationships are dormant.
 - Dedicated P-256 guardian passkeys avoid exposing a guardian's primary Ethereum address.
-- RPC, bundler, relay, invitation delivery, encrypted mailbox, simulation, and storage are replaceable adapters.
+- RPC, bundler, explorer index, invitation delivery, and storage are replaceable adapters.
 - Signing, paying, submitting, and permissionless execution are distinct roles.
 - Recovery preserves the account address, replaces old validator authority, and rotates the guardian root.
 
@@ -17,12 +17,12 @@ This is pre-audit reference software, not a recommendation to hold production fu
 
 ```mermaid
 flowchart LR
-  UI["React features and typed reducers"] --> Services["Stable application services"]
+  UI["React feature components"] --> Services["Stable application services"]
   Services --> SDK["@loom/sdk and @loom/sdk/recovery"]
   SDK --> Passkey["@loom/passkey"]
   SDK --> Core["@loom/core and generated ABIs"]
   Services --> Store["AccountStore / encrypted GuardianVault"]
-  Services --> Transport["RPC / submit / invitation / mailbox adapters"]
+  Services --> Transport["RPC / bundler / explorer / invitation adapters"]
   SDK --> Chain["Immutable Loom account and recovery contracts"]
 ```
 
@@ -32,7 +32,7 @@ flowchart LR
 | `@loom/passkey` | WebAuthn challenge/signature encoding and P-256 signer boundary |
 | `@loom/sdk` | accounts, UserOperations, sessions, deployment normalization |
 | `@loom/sdk/recovery` | guardian sets, individualized invites, digests, approvals, reviews, recovery client |
-| Example | product state, review screens, local stores, replaceable I/O adapters |
+| Example | product state, screens, local stores, replaceable I/O adapters |
 
 The evidence-backed boundary audit is in [docs/BOUNDARY_AUDIT.md](docs/BOUNDARY_AUDIT.md). Validator provisioning and guardian privacy decisions are recorded in [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) and [ADR-0014](../../docs/decisions/0014-guardian-capabilities-and-execution-privacy.md).
 
@@ -78,9 +78,9 @@ sequenceDiagram
   E-->>W: Same account address deployed
 ```
 
-## Sending, batching, and sessions
+## Sending and sessions
 
-Home exposes Receive, Send, and Batch. Every authority-bearing action enters the shared transaction review surface, which states account, network, destination/effects, approvals or session permissions, gas payer, route, delay/cancellation, simulation status, and warnings. Encoding alone is never labelled a successful simulation.
+Home exposes Receive, Send, and Refresh, and activates an account that does not exist on chain yet. Send moves ETH, ERC-20 tokens, and ERC-721/1155 collectibles; each transfer is encoded from the chosen asset and signed by the passkey, and the recipient and amount are validated before signing. Nothing is described as simulated or confirmed on the strength of encoding alone.
 
 Apps lists connected applications and bounded permissions: allowed targets/selectors, assets and spending limits, expiry, usage count, and immediate revocation. Application sessions never receive owner authority.
 
@@ -103,15 +103,15 @@ sequenceDiagram
   participant G as Guardian wallet
   O->>W: Add guardian
   W->>W: Build individualized capability
-  W->>T: Authenticated ciphertext or portable file
-  T-->>G: Link fragment / QR / file
+  W->>T: Authenticated ciphertext
+  T-->>G: Encrypted link fragment
   G->>G: Validate chain, root, proof, expiry and code hash
   G->>G: Create/select credential and sign acceptance
   G-->>O: Acceptance bound to draft and expiry
   W->>W: Count only verified acceptance
 ```
 
-Generating an invitation is not delivery, and delivery is not acceptance. The UI models Draft, Invite created, Invite delivered, Accepted, Ready to activate, Activation pending, Active, Stale, Removal pending, and Removed. Account creation should commit a root only once threshold-many intended guardians have proven possession.
+Generating an invitation is not delivery, and delivery is not acceptance: the guardian workspace counts a capability only once it has been accepted on the guardian's own device. A root should be committed only once threshold-many intended guardians have proven possession.
 
 ```mermaid
 sequenceDiagram
@@ -149,13 +149,15 @@ sequenceDiagram
   A-->>W: Receipt and updated frozen state
 ```
 
-## Recovery room
+## Recovery room (design, not implemented here)
 
-Recovery requests bind the same account, chain, current root/config version, replacement credential/validator, expiry, and replay-resistant nonce. A live integration may derive a 64-bit grouped comparison code from that exact proposal digest and compare it over a separate trusted channel. The illustrative screen deliberately shows the code as unavailable because it has no live proposal digest; it never authenticates a fixed demo value. Raw digests/signatures exist only as an offline developer fallback.
+This section records the intended shape of a guardian recovery flow. **This example does not implement it**: executing a recovery needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) defers to a separate contract change. What the example does implement is guardian set management and guardian-initiated freeze, both against live chain state.
+
+Recovery requests bind the same account, chain, current root/config version, replacement credential/validator, expiry, and replay-resistant nonce. An implementation may derive a 64-bit grouped comparison code from that exact proposal digest and compare it over a separate trusted channel — derived from the live digest, never from a fixed value.
 
 `createGuardianRecoveryClient` also fails closed unless the replacement is present in `trustedRecoveryValidators`, its deployed runtime bytecode matches the manifest code hash, its P256 initializer has the exact supported shape, and its policy hook is explicitly allowed. Treat this profile as signed deployment metadata, not user-supplied recovery input.
 
-The example recovery-room adapter encrypts approval payloads before an opaque mailbox sees them. The decryption key travels separately; an HTTP implementation should place it in the URL fragment, never a query parameter. The mailbox learns ciphertext size, timing, capability identifier/IP metadata, and expiry; it holds no signing authority and cannot alter ciphertext undetectably. It must enforce size, expiry, one-time retrieval, origin policy, and rate limits.
+An approval transport should encrypt payloads before an opaque mailbox sees them, with the decryption key travelling separately — in a URL fragment, never a query parameter. Such a mailbox learns ciphertext size, timing, capability identifier/IP metadata, and expiry; it holds no signing authority and cannot alter ciphertext undetectably. It must enforce size, expiry, one-time retrieval, origin policy, and rate limits. The example ships the encrypted invitation link on this principle; the approval mailbox is not built.
 
 ```mermaid
 sequenceDiagram
@@ -238,12 +240,14 @@ Current Chromium, Safari, and Firefox can run the shell, but authenticator suppo
 
 ```text
 src/app/              navigation and stable services
-src/components/       reusable account, posture, and transaction review UI
-src/features/         Home, Activity, Apps, Security, guardian and recovery flows
-src/storage/          replaceable account store and encrypted GuardianVault
-src/transports/       invitations, encrypted recovery room, simulation
+src/components/       reusable account header and security posture UI
+src/config/           network endpoints, defaulted to public RPC and bundler
+src/features/         Home, Activity, Apps, Security, send, guardian and wallet flows
+src/notifications/    transaction and action notifications
+src/storage/          account store, encrypted GuardianVault and guardian roster
+src/transports/       encrypted invitation links
 src/styles/           tokens, responsive layout, accessibility and themes
-test/                 reducer and encrypted-transport unit tests
+test/                 guardian, activity, asset, transport and activation unit tests
 sponsor-server.mjs    optional development-only funded submitter
 docs/                 boundary audit and migration notes
 ```

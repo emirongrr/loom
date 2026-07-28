@@ -2,10 +2,10 @@ import type { Address, Hex } from "@loom/core";
 import { createGuardianSet, type GuardianDescriptor, type GuardianSet } from "@loom/sdk/recovery";
 import { getAddress, isAddress } from "viem";
 
-/** The contract's own bounds on the recovery delay, in seconds. */
+/** The contract's minimum delay for a scheduled guardian change, in seconds. */
 export const MIN_DELAY_SECONDS = 259_200;
-export const MAX_DELAY_SECONDS = 7_776_000;
-export const MAX_GUARDIANS = 32;
+/** The contract's own ceiling on a guardian set. */
+const MAX_GUARDIANS = 32;
 
 /** A guardian as the owner manages it locally: the descriptor plus a name only
  * this device sees. The chain stores neither — it holds a root and a threshold. */
@@ -23,13 +23,6 @@ export interface GuardianChangePlan {
   readonly kept: readonly RosterEntry[];
   /** True when the resulting root and threshold match what is already on chain. */
   readonly unchanged: boolean;
-}
-
-export interface GuardianKindOption {
-  readonly kind: "ecdsa" | "erc1271";
-  readonly label: string;
-  readonly hint: string;
-  readonly verifier: Address;
 }
 
 /**
