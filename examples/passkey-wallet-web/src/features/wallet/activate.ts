@@ -24,7 +24,11 @@ import type { SendResult } from "./accountClient";
 export interface ActivationPlan {
   readonly factory: Address;
   readonly factoryData: Hex;
+  readonly salt: Hex;
+  readonly recoveryStatus: "guardian-protected" | "unprotected";
 }
+
+const ZERO_ROOT = `0x${"00".repeat(32)}`;
 
 /**
  * The creation call for this account, rebuilt from its handle.
@@ -42,7 +46,11 @@ export function planActivation(account: AccountHandle, deployment: WalletDeploym
   }
   return Object.freeze({
     factory: deployment.factory,
-    factoryData: encodeCreateAccountCall(account.salt, config)
+    factoryData: encodeCreateAccountCall(account.salt, config),
+    salt: account.salt,
+    // Stated honestly for the review text: a new account starts with no guardian
+    // root, so losing the passkey before guardians are added loses the account.
+    recoveryStatus: config.guardianRoot === ZERO_ROOT ? "unprotected" : "guardian-protected"
   });
 }
 
@@ -67,20 +75,46 @@ export async function activateAccount(input: {
     signChallenge: signWithBrowserPasskey
   });
 
+  const transport = createBundlerTransport({ endpoint: config.bundlerUrl, entryPoint: deployment.entryPoint });
   const client = createLoomClient({
     chainId: account.chainId,
     account: account.account,
-    transport: createBundlerTransport({ endpoint: config.bundlerUrl, entryPoint: deployment.entryPoint }),
+    transport,
     stateTransport: createRpcStateTransport({ endpoint: config.rpcUrl }),
     signer
   });
 
-  // No calls: this operation exists to bring the account into being. The nonce is
-  // zero because the account has never acted, and gas comes from the bundler's
-  // own estimation of the creation it is about to simulate.
-  const result = await client.sendTransaction({ calls: [] }, { nonce: 0n, factory: plan.factory, factoryData: plan.factoryData });
-  const transactionHash = receiptTransactionHash(result.receipt);
-  return transactionHash ? { userOpHash: result.userOpHash, transactionHash } : { userOpHash: result.userOpHash };
+  // This operation carries no calls — it exists to bring the account into being —
+  // so it is built from the deployment intent rather than from a call list.
+  //
+  // `callData` is pinned empty on purpose: the envelope builder falls back to the
+  // intent's `initCode` for call data when none is given, which would make the
+  // account execute its own creation call as its first action.
+  const prepared = client.prepareDeployAccount({
+    factory: plan.factory,
+    salt: plan.salt,
+    initCode: plan.factoryData,
+    recoveryStatus: plan.recoveryStatus
+  });
+  const filled = await client.fillUserOperation(prepared, {
+    // A counterfactual account has never acted, so its EntryPoint nonce is zero.
+    nonce: 0n,
+    callData: "0x",
+    factory: plan.factory,
+    factoryData: plan.factoryData
+  });
+
+  const signature = await signer.signUserOperation(filled);
+  const signed = { ...filled, userOperation: { ...filled.userOperation, signature } };
+
+  const sent = await transport.sendUserOperation(signed);
+  // The operation is accepted at this point; waiting only resolves its receipt, so
+  // a transport without receipt support still reports a successful submission.
+  const receipt = transport.waitForUserOperationReceipt
+    ? await transport.waitForUserOperationReceipt({ userOpHash: sent.userOpHash })
+    : undefined;
+  const transactionHash = receiptTransactionHash(receipt);
+  return transactionHash ? { userOpHash: sent.userOpHash, transactionHash } : { userOpHash: sent.userOpHash };
 }
 
 function receiptTransactionHash(receipt: unknown): Hex | undefined {

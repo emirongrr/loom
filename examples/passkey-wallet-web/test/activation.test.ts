@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { deriveAccountAddress } from "@loom/core/account";
+import { createLoomClient, createPasskeySigner } from "@loom/sdk";
 import { deriveCreatedAccountHandle, resolveCreationConfig } from "../src/features/onboarding/accountLifecycle.ts";
 import { planActivation } from "../src/features/wallet/activate.ts";
 
@@ -105,6 +106,37 @@ test("activation refuses an account that already exists", () => {
     rpId: "localhost", origin: "http://localhost:5174", validator: DEPLOYMENT.validator
   };
   assert.throws(() => planActivation(recovered as never, DEPLOYMENT as never), /already exists/);
+});
+
+// The envelope builder falls back to the deployment intent's initCode when no
+// call data is given, which would make the account execute its own creation call
+// as its first action. Activation pins empty call data; this guards that pin.
+test("the creation operation carries no call data of its own", () => {
+  const account = handle();
+  const plan = planActivation(account, DEPLOYMENT as never);
+  const signer = createPasskeySigner({
+    credentialId: account.credentialId, rpId: account.rpId, origin: account.origin,
+    validator: DEPLOYMENT.validator, entryPoint: DEPLOYMENT.entryPoint,
+    async signChallenge() { throw new Error("preparation must not sign"); }
+  });
+  const client = createLoomClient({ chainId: account.chainId, account: account.account, signer });
+  const prepared = client.prepareDeployAccount({
+    factory: plan.factory, salt: plan.salt, initCode: plan.factoryData, recoveryStatus: plan.recoveryStatus
+  });
+
+  const unpinned = client.prepareUserOperation(prepared, { nonce: 0n, factory: plan.factory, factoryData: plan.factoryData });
+  assert.equal(unpinned.userOperation.callData, plan.factoryData, "the fallback this pin exists to defeat");
+
+  const pinned = client.prepareUserOperation(prepared, { nonce: 0n, callData: "0x", factory: plan.factory, factoryData: plan.factoryData });
+  assert.equal(pinned.userOperation.callData, "0x");
+  assert.equal(pinned.userOperation.factoryData, plan.factoryData);
+  assert.equal(pinned.userOperation.nonce, 0n, "a counterfactual account has never acted");
+});
+
+// A new account has no guardians yet, and the operation's review must say so
+// rather than implying recovery is already in place.
+test("a new account's creation is described as unprotected", () => {
+  assert.equal(planActivation(handle(), DEPLOYMENT as never).recoveryStatus, "unprotected");
 });
 
 test("an account carrying a recovery module includes it in its configuration", () => {

@@ -124,7 +124,23 @@ itself through an ordinary bundler, which is what
 A sponsor relay remains useful for onboarding an account that holds nothing, which
 is what the enterprise example demonstrates. It is not a requirement for creation.
 
-The remaining SDK gap is smaller but real: **the creation configuration has to be
+Two SDK edges made this harder than it should be:
+
+- **`sendTransaction` cannot express a call-less operation.** `prepareCalls`
+  rejects an empty array ("calls must be a non-empty array"), but account creation
+  is exactly an operation with no calls. The flow has to compose
+  `prepareDeployAccount` → `fillUserOperation` → sign → `transport.sendUserOperation`
+  by hand, re-implementing what `sendTransaction` already does, because that
+  convenience path is closed to deployment.
+- **The envelope builder turns `initCode` into call data.**
+  `prepareUserOperationEnvelope` resolves call data as
+  `input.callData ?? intent.callData ?? intent.initCode ?? encodeCalls(...)`, so a
+  deployment intent silently yields `callData === initCode` — the account would
+  execute its own creation call as its first action. Callers must pin
+  `callData: "0x"`; nothing warns them. Deployment intents should not fall through
+  to `initCode` for call data.
+
+The remaining gap is smaller but real: **the creation configuration has to be
 reconstructed by the caller.** An account address is a commitment to a
 configuration the wallet must rebuild from its own stored inputs, with no SDK
 helper and nothing on chain to compare against before deployment. This example
