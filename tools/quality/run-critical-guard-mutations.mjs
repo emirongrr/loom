@@ -58,6 +58,15 @@ const mutants = [
     testName: "testConfigChangeInvalidatesAndExpiryBlocksRecovery",
   },
   {
+    id: "policy-hook-mixed-value-spend",
+    category: "policy-accounting",
+    source: "src/hooks/PolicyHook.sol",
+    search: "if (ERC20CallLib.isMixedValueTokenCall(item.callData, item.value)) return type(uint256).max;",
+    replacement: "if (false) return type(uint256).max;",
+    testPath: "test/integration/MixedValueSpendPolicy.t.sol",
+    testName: "testMixedSpendIsNotLowRiskAndCannotDirectExecute",
+  },
+  {
     id: "vault-withdrawal-delay",
     category: "time",
     source: "src/hooks/VaultHook.sol",
