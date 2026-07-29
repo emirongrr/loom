@@ -45,6 +45,47 @@ rule initializedAccountCannotBeReinitialized(
     assert configVersion() == configVersionBefore, "failed initialize must preserve version";
 }
 
+/*
+ * The uninitialized-takeover rule.
+ *
+ * Deliberately carries no `configVersion() != 0` precondition: the takeover was
+ * reachable exactly when `configVersion() == 0`, which is the state of an
+ * EIP-7702 delegated EOA whose Loom storage is still empty. A rule that assumes
+ * an already-initialized account cannot observe that state at all, which is why
+ * `initializedAccountCannotBeReinitialized` above did not catch it.
+ *
+ * `nativeCodesize[currentContract] > 0` is an assumption about the environment,
+ * not an exclusion of the bug state. Every live account has code: a deployed
+ * proxy has its own, and an EIP-7702 delegated EOA carries the 23-byte
+ * `0xef0100 || template` delegation indicator. The only account with no code is
+ * a proxy still executing its own constructor, which is the single legitimate
+ * caller `initialize` exists for and which no external party can occupy.
+ */
+rule uninitializedAccountRejectsProxyInitializer(
+    address entryPoint,
+    bytes32 newGuardianRoot,
+    uint8 newGuardianThreshold,
+    bytes32 newConfigHash,
+    LoomAccount.ModuleInit[] modules
+) {
+    env e;
+    require nativeCodesize[currentContract] > 0;
+    uint256 validatorsBefore = validatorCount();
+    bytes32 configHashBefore = configHash();
+    bytes32 guardianRootBefore = guardianRoot();
+    uint8 guardianThresholdBefore = guardianThreshold();
+    uint64 configVersionBefore = configVersion();
+
+    initialize@withrevert(e, entryPoint, newGuardianRoot, newGuardianThreshold, newConfigHash, modules);
+
+    assert lastReverted, "a live account must reject the proxy bootstrap initializer at any config version";
+    assert validatorCount() == validatorsBefore, "failed initialize must preserve validator count";
+    assert configHash() == configHashBefore, "failed initialize must preserve config hash";
+    assert guardianRoot() == guardianRootBefore, "failed initialize must preserve guardian root";
+    assert guardianThreshold() == guardianThresholdBefore, "failed initialize must preserve threshold";
+    assert configVersion() == configVersionBefore, "failed initialize must preserve version";
+}
+
 rule delegatedInitializerRequiresAccountSelf(
     address entryPoint,
     bytes32 newGuardianRoot,

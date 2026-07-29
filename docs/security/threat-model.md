@@ -31,7 +31,10 @@
   and hooks without it.
 - External callers initializing an EIP-7702 delegated EOA before the user. The
   delegated initializer requires a self-call from the EOA and cannot run on
-  constructor-initialized accounts.
+  constructor-initialized accounts, and the proxy bootstrap initializer is
+  restricted to the proxy-construction context, so it cannot reach a delegated
+  EOA either. Both initializers are covered by negative properties that assert
+  the exact rejection and that no configuration was installed.
 - A wallet client, frontend, or bundler disappearing after a user has scheduled
   a delayed exit; any publisher can execute the exact committed migration once
   ready.
