@@ -121,12 +121,16 @@
   independent audit, target-network profile evidence, finality and reorg
   assumptions, and live rehearsal under
   `docs/operations/keystore-proof-profile.md`.
-- The OP Stack L2 keystore verifier roots its trust in Ethereum L1 state read
-  through the `L1Block` predeploy's `stateRoot()` plus a caller-supplied
-  EIP-1186 proof, with no bridge, oracle, messaging layer, or Loom-operated
-  service in the trust path. Under that design the OP Stack sequencer is a
-  liveness dependency for state-root currency, not a safety dependency: a
-  withheld or stale `L1Block` root can only delay keystore sync, and
+- The OP Stack L2 keystore verifier roots its trust in Ethereum L1 state proven
+  against the `L1Block` predeploy's `hash()`. The predeploy publishes no state
+  root, so the caller supplies the RLP L1 block header, the verifier requires
+  `keccak256(header)` to equal the committed block hash, and reads the state root
+  from the header. The header is untrusted calldata; the hash binding is the
+  entire basis for trusting the root. With the caller-supplied EIP-1186 proof
+  there is no bridge, oracle, messaging layer, or Loom-operated service in the
+  trust path. Under that design the OP Stack sequencer is a liveness dependency
+  for L1-attribute currency, not a safety dependency: a withheld or stale
+  `L1Block` hash can only delay keystore sync, and
   `KeystoreConfig.version` monotonicity plus the `KeystoreSyncRecoveryModule`
   cancellation window prevent a stale root from validating a config the user did
   not author. Until the verifier is audited and rehearsed per target chain, no

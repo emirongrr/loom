@@ -17,12 +17,32 @@ configuration and cannot benefit from L1-rooted keystore sync.
 
 ## Evidence
 
-OP Stack L2s include the `L1Block` predeploy at `0x4200000000000000000000000000000000000015`.
-`L1Block.stateRoot()` returns the Ethereum L1 state root of the most recently
-committed L1 block as seen by the OP Stack sequencer. This is updated every L2
-block. The state root is sufficient to verify any Ethereum L1 account or storage
-value via a standard EIP-1186 Merkle-Patricia-trie proof without a bridge,
-oracle, or Loom-operated service.
+OP Stack L2s include the `L1Block` predeploy at `0x4200000000000000000000000000000000000015`,
+written by the sequencer each L2 block with attributes of the most recently
+committed Ethereum L1 block.
+
+**Correction, 2026-07-30.** The original version of this record stated that
+`L1Block.stateRoot()` returns the Ethereum L1 state root. That function does not
+exist and never has. The predeploy publishes the L1 block *hash*, number,
+timestamp, and fee parameters -- not a state root. Because the predeploy has no
+fallback, the verifier built on that assumption reverted on every real OP Stack
+chain, and its `try/catch` mapped the revert to `false`, so it returned false for
+every proof. The error was fail-closed rather than exploitable, but the contract
+was inert on the only chains it targets.
+
+The mistake survived review because the unit test supplied a mock implementing
+the imagined function, so the suite validated this record's assumption instead of
+the chain's interface. That is the real defect this correction addresses; see
+`test/fork/OPStackL1BlockPredeploy.fork.t.sol`.
+
+What the predeploy does provide is enough. `L1Block.hash()` commits to an L1
+block, and an Ethereum block header contains the state root as its fourth field.
+A caller can therefore supply the RLP-encoded header, the verifier can require
+`keccak256(header) == L1Block.hash()`, and read the state root out of it. The
+header is untrusted calldata; the hash binding is what makes the root authentic.
+The state root then verifies any Ethereum L1 account or storage value via a
+standard EIP-1186 Merkle-Patricia-trie proof, still without a bridge, oracle, or
+Loom-operated service.
 
 `LoomKeystore` stores `controllerOf` in slot 0 and `_configs` in slot 1.
 The storage slot for `_configs[identityId]` is
@@ -43,9 +63,11 @@ field monotonically advances).
 
 ## Options
 
-**Option A: Use `L1Block.stateRoot()` directly with a single-level storage
-proof.** The on-chain verifier reads the current `L1Block.stateRoot()` and
-verifies the caller-supplied EIP-1186 account-and-storage proof against it.
+**Option A: Root the proof in `L1Block.hash()` via a caller-supplied block
+header.** The on-chain verifier reads `L1Block.hash()`, requires the caller's
+RLP-encoded L1 block header to hash to it, extracts the state root from the
+header, and verifies the caller-supplied EIP-1186 account-and-storage proof
+against that root.
 
 - Pros: no bridge, no oracle, no Loom service; proof is self-contained in the
   transaction calldata; caller (wallet, user, watcher) can generate it from any
@@ -60,7 +82,7 @@ OP Stack's dispute game protocol exposes a finalized output root after the
 dispute window. Rooting the proof there would ensure higher confidence in L1
 finality.
 
-- Pros: stronger finality guarantee than `L1Block.stateRoot()`.
+- Pros: stronger finality guarantee than the sequencer-written `L1Block` attributes.
 - Cons: output roots apply to L2 state, not L1 state directly; the mapping
   back to an L1 storage proof requires additional indirection; the dispute game
   contract address changes per deployment and per protocol upgrade; the added
@@ -78,8 +100,12 @@ EVM Gateway).** These would provide a unified interface.
 
 Implement `OPStackL2KeystoreVerifier` using **Option A**. The verifier:
 
-1. Reads `L1Block(0x4200000000000000000000000000000000000015).stateRoot()` as
-   the trusted L1 state root for this verification call.
+1. Reads `L1Block(0x4200000000000000000000000000000000000015).hash()`, requires
+   the caller-supplied RLP block header to hash to it, and takes the state root
+   from the header's fourth field as the trusted L1 state root for this
+   verification call. The constructor probes the configured `L1Block` address for
+   `hash()` so a deployment onto a chain that cannot serve it fails loudly rather
+   than returning false for every proof.
 2. Accepts a caller-supplied `proof` encoded as the RLP output of `eth_getProof`
    against the LoomKeystore address and the storage slot
    `keccak256(abi.encode(identityId, uint256(1)))` on Ethereum L1.
@@ -126,10 +152,17 @@ code does not by itself discharge the per-deployment audit requirement.
   `guardianRoot`, mismatched `appAccountRoot`, mismatched `guardianThreshold`,
   non-empty but malformed proof bytes.
 - Storage slot derivation is unit-tested against known `eth_getProof` fixture
-  outputs (Ethereum L1 testnet and mainnet).
-- `L1Block` state root round-trip test: proof generated against an L1 block
-  whose hash matches `L1Block.hash()` is accepted; proof against an older block
-  root is rejected.
+  outputs (Ethereum L1 testnet and mainnet). **Not yet met:** the committed
+  fixture is generated locally by `tools/keystore/generate-op-stack-fixture.mjs`,
+  not from real `eth_getProof` output.
+- `L1Block` round-trip test: a proof whose header hashes to `L1Block.hash()` is
+  accepted; a header that does not hash to it, a header carrying a forged state
+  root, and a stale block hash are all rejected. **Met** by
+  `test/unit/OPStackL2KeystoreVerifier.t.sol`.
+- Predeploy conformance against a real OP Stack chain: the functions the verifier
+  reads exist and return live values, and `stateRoot()` does not exist.
+  `test/fork/OPStackL1BlockPredeploy.fork.t.sol` asserts this, and is **only
+  evidence when `OP_STACK_RPC_URL` is set**; it skips otherwise.
 - Fuzzer exercises proof byte mutations to confirm no false accepts.
 - `KeystoreSyncRecoveryModule` integration test: propose and execute sync on a
   testnet OP Stack chain using this verifier with two independent bundlers.
