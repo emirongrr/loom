@@ -6,6 +6,8 @@
 - A factory attempting to control accounts it deployed.
 - A compromised primary key immediately changing account configuration.
 - Duplicate guardian signatures satisfying a threshold.
+- One guardian authority satisfying a threshold more than once through
+  different salts or verifier paths.
 - Publishing guardian addresses during initial account configuration.
 - Duplicate credential identifiers or the same passkey registered under
   multiple identifiers satisfying an MFA threshold.
@@ -145,6 +147,9 @@
 - A committed guardian verifier becoming unavailable can impair recovery.
   Production configurations should use multiple independent guardians and
   immutable verifier deployments.
+- A counterfactual contract guardian must be deployed before setup-time
+  classification can pin it to the ERC-1271 verifier. Guardian verification
+  never calls a factory or deploys signer code.
 - The contracts do not themselves provide private transfers, light-client verification, or
   L2 force-withdrawal construction; those belong to the future wallet client.
 - Contracts are unaudited and must not secure production assets.

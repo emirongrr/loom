@@ -15,6 +15,23 @@ export interface FreezePreparation {
   readonly submit: { readonly to: Address; readonly data: Hex };
 }
 
+/** Re-read live authority and return the exact digest the guardian must approve. */
+export async function prepareGuardianFreezeChallenge(input: {
+  config: NetworkConfig;
+  deployment: WalletDeployment;
+  capability: GuardianInviteV1;
+}): Promise<{ readonly digest: Hex }> {
+  if (!input.deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
+  const client = createAccountGuardianClient({
+    config: input.config,
+    chainId: input.capability.chainId,
+    account: input.capability.account,
+    recoveryManager: input.deployment.recoveryModule
+  });
+  const prepared = await client.prepareFreeze(input.capability);
+  return Object.freeze({ digest: prepared.digest });
+}
+
 /**
  * Prepare an emergency freeze for an account this device holds a capability for.
  *

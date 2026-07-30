@@ -1,8 +1,8 @@
 # Loom passkey wallet
 
-A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, live balances and transfers, private guardian capabilities, guardian set management under the account's own timelock, and guardian-initiated emergency freeze — without requiring a Loom-hosted service.
+A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, live balances and transfers, private guardian capabilities, guardian set management under the account's own timelock, guardian-initiated emergency freeze, and the complete delayed recovery lifecycle — without requiring a Loom-hosted service.
 
-This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings. Guardian setup and emergency freeze run against live chain state through `@loom/sdk/recovery`. Executing a guardian recovery is not part of this example: it needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) records as a separate contract change.
+This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, account history, guardian setup, freeze, recovery proposal and execution use live Sepolia infrastructure by default. RPC, bundler and explorer endpoints remain overridable in Developer settings. Recovery validator provisioning follows [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md); runtime and receipt trust boundaries follow [ADR-0017](../../docs/decisions/0017-passkey-wallet-runtime-and-submission-boundaries.md).
 
 ## What this example proves
 
@@ -149,15 +149,15 @@ sequenceDiagram
   A-->>W: Receipt and updated frozen state
 ```
 
-## Recovery room (design, not implemented here)
+## Recovery room
 
-This section records the intended shape of a guardian recovery flow. **This example does not implement it**: executing a recovery needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) defers to a separate contract change. What the example does implement is guardian set management and guardian-initiated freeze, both against live chain state.
+The example implements recovery as four explicit stages: verify the protected account from live state; create and persist a replacement passkey plus deterministic validator draft; collect and verify guardian responses before proposing; then resume through the contract-enforced delay and execute. The final on-chain state is re-read before new passkey metadata is linked to the existing Saved Wallet identity.
 
 Recovery requests bind the same account, chain, current root/config version, replacement credential/validator, expiry, and replay-resistant nonce. An implementation may derive a 64-bit grouped comparison code from that exact proposal digest and compare it over a separate trusted channel — derived from the live digest, never from a fixed value.
 
 `createGuardianRecoveryClient` also fails closed unless the replacement is present in `trustedRecoveryValidators`, its deployed runtime bytecode matches the manifest code hash, its P256 initializer has the exact supported shape, and its policy hook is explicitly allowed. Treat this profile as signed deployment metadata, not user-supplied recovery input.
 
-An approval transport should encrypt payloads before an opaque mailbox sees them, with the decryption key travelling separately — in a URL fragment, never a query parameter. Such a mailbox learns ciphertext size, timing, capability identifier/IP metadata, and expiry; it holds no signing authority and cannot alter ciphertext undetectably. It must enforce size, expiry, one-time retrieval, origin policy, and rate limits. The example ships the encrypted invitation link on this principle; the approval mailbox is not built.
+Portable recovery requests and guardian responses can be copied as versioned JSON or delivered as encrypted fragment links. Fragment key material is not sent to the web server. This transport provides confidentiality and integrity for the artifact, not guardian authority; the receiver still revalidates live root, config version, verifier bytecode, proof, digest, expiry and signature.
 
 ```mermaid
 sequenceDiagram
@@ -232,7 +232,7 @@ Relays transport already-authorized operations. They can censor, delay, observe 
 
 ## Security limitations and browser compatibility
 
-Balances and transfers are read and submitted over the configured RPC and bundler, and holdings and history come from the configured block explorer's index (public endpoints by default). An explorer index is not a trust anchor: it can omit or mislabel history, so it is presented as history only and never as account authority or as the source of a balance. Guardian changes are scheduled through the account's own timelock and freezes are verified against the account's live configuration before submission; the recovery-progress screen remains illustrative reference behavior, not chain evidence. The guardian roster is the only copy of who your guardians are — losing it does not lose the account or its recovery, but it does lose the ability to edit the set from that device. The default public endpoints are rate-limited and best-effort — a production integrator points them at owned infrastructure, wires `createGuardianRecoveryClient` to independent state and submit transports, replaces the memory mailbox, performs real WebAuthn ceremonies, and provides authenticated relay operations. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, a malicious RPC, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
+Balances and transfers are read and submitted over the configured RPC and bundler, and holdings and history come from the configured block explorer's index (public endpoints by default). An explorer index is not a trust anchor: it can omit or mislabel history, so it is presented as history only and never as account authority or as the source of a balance. Guardian changes and recovery are re-read from account state; proposal readiness and execution are chain evidence, not local-clock claims. Submitted UserOperation hashes remain account-scoped in local storage until a matching success or failure receipt is observed, so reopening does not turn uncertainty into cancellation or duplicate submission. The guardian roster is the only copy of who your guardians are — losing it does not lose the account or its recovery, but it does lose the ability to edit the set from that device. The default public endpoints are rate-limited and best-effort. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, malicious or inconsistent infrastructure, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
 
 Current Chromium, Safari, and Firefox can run the shell, but authenticator support differs by OS/browser. Test discoverable credentials, UV behavior, synced-passkey policy, PRF availability, and WebAuthn cancellation on every supported combination.
 
@@ -240,16 +240,16 @@ Current Chromium, Safari, and Firefox can run the shell, but authenticator suppo
 
 ```text
 src/app/              navigation and stable services
-src/components/       reusable account header and security posture UI
+src/components/       reusable dialog, status, account header and security posture UI
 src/config/           network endpoints, defaulted to public RPC and bundler
 src/features/         Home, Activity, Apps, Security, send, guardian and wallet flows
 src/notifications/    transaction and action notifications
-src/storage/          account store, encrypted GuardianVault and guardian roster
+src/storage/          account store, pending confirmations, encrypted GuardianVault and guardian roster
 src/transports/       encrypted invitation links
 src/styles/           tokens, responsive layout, accessibility and themes
-test/                 guardian, activity, asset, transport and activation unit tests
+test/                 domain, mock-transport and jsdom component regression tests
 sponsor-server.mjs    optional development-only funded submitter
 docs/                 boundary audit and migration notes
 ```
 
-Replace an adapter by implementing its narrow interface in `AppServices`: `AccountStore`, `GuardianVault`, `InvitationTransport`, `EncryptedMailbox`/`RecoveryRoom`, or `SimulationAdapter`. The recovery client similarly accepts separate state and submit transports; no provider is mandatory.
+Replace an adapter by implementing its narrow interface in `AppServices`: `AccountStore`, `GuardianVault`, `PendingOperationStore`, `InvitationTransport`, `PublicClientRegistry`, or `RuntimeVerifier`. The recovery client similarly accepts separate state and submit transports; no provider is mandatory.

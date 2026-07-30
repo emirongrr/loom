@@ -117,10 +117,22 @@ three-day delay and seven-day execution window, supports account or guardian
 cancellation, and atomically replaces the complete committed validator set
 and guardian root through the account's narrow recovery entry point. Guardian
 leaves bind salted key commitments to immutable verifier code hashes. The
-manager has no arbitrary execution authority. Loom includes guardian verifiers
-for ECDSA address commitments, WebAuthn P-256 passkeys, and ERC-1271 contract
-wallets such as multisigs.
+manager has no arbitrary execution authority. Wallets classify guardian
+addresses during setup and pin the separate ECDSA, ERC-1271, or WebAuthn P-256
+verifier and its runtime code hash into each guardian leaf; contracts never
+infer or change a guardian type at approval time.
+Threshold verification rejects repeated key commitments even when different
+salts or verifier paths are used.
 Recovery behavior is documented in `docs/design/recovery.md`.
+
+`P256RecoveryValidatorFactory` permissionlessly provisions a fresh P-256
+validator for recovery. Its CREATE2 salt binds the account, current recovery
+nonce, and initialization-data hash. The factory is immutable and has no owner;
+deploying a child grants no authority because the validator is initialized only
+during the delayed, guardian-approved recovery execution. Deployment manifests
+pin both factory and child runtime code hashes plus the immutable fallback
+verifier, so wallets can derive and independently verify the exact validator
+before requesting approvals.
 
 ## Graded access
 

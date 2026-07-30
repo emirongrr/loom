@@ -20,6 +20,7 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 - `src/recovery/ECDSAGuardianVerifier.sol`
 - `src/validators/ECDSAValidator.sol`
 - `src/validators/P256Validator.sol`
+- `src/validators/P256RecoveryValidatorFactory.sol`
 - `src/validators/MultiP256Validator.sol`
 - `src/validators/ExactCallSessionValidator.sol`
 - `src/validators/GranularSessionValidator.sol`
@@ -66,8 +67,8 @@ especially EntryPoint validation, nonce handling, and sender creation.
    plus guardian-root replacement entry point, and recovery cannot grant
    arbitrary execution authority.
 19. Recovery rejects partial, duplicate, unsorted, or stale validator sets.
-20. Guardian approvals are unique, committed to verifier code hash, and cannot
-   use an uncommitted signer or verifier.
+20. Guardian approvals are unique by both leaf and key commitment, committed
+   to verifier code hash, and cannot use an uncommitted signer or verifier.
 21. Scheduled execution cannot bypass an active policy, except that the exact
    delayed removal of an installed hook bypasses hooks for liveness.
 22. A hook-set change during scheduled lifecycle execution cannot alter the
@@ -110,6 +111,12 @@ especially EntryPoint validation, nonce handling, and sender creation.
     register accounts, duplicate registration cannot inflate `accountCount`,
     and registry membership grants no execution, recovery, or migration
     authority.
+37. Recovery-validator provisioning is permissionless and deterministic: its
+    address is bound to the factory, account, recovery nonce, and initialization
+    hash, and neither deployment nor front-running can select different code or
+    gain account authority.
+38. The recovery-validator factory has no mutable authority, and every child
+    uses the factory's immutable P-256 fallback-verifier binding.
 
 ## Reviewer focus areas
 
@@ -127,6 +134,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
   binding.
 - Recovery proposal identity, cancellation, expiry, replay protection,
   validator replacement, and recovery-module authority.
+- CREATE2 recovery-validator address derivation, idempotent deployment,
+  front-running behavior, immutable fallback-verifier binding, and manifest
+  code-hash verification.
 - ERC-4337 validation behavior, malformed signatures, prefunding, and nonce
   semantics.
 - Proxy initialization, immutable implementation dispatch, revert bubbling,

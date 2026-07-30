@@ -21,6 +21,8 @@ recovery approval to exact verifier bytecode.
 
 - Guardian verifier contracts are not registries and do not receive upgrade,
   execution, token, or recovery-provider authority.
+- One key commitment can satisfy at most one approval in a threshold, even if
+  it appears under multiple salts or verifier contracts.
 - A guardian leaf binds `verifier.codehash`; proxy or mutable verifier
   implementations are not acceptable production guardians.
 - Acting guardians reveal their verifier, commitment, salt, proof, and

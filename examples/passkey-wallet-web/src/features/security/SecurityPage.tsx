@@ -6,13 +6,14 @@ import { readAccountSafety } from "../wallet/accountClient";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import { GuardianManager } from "./GuardianManager";
 import type { AccountHandle } from "../../types";
+import { safeUserMessage } from "../../domain/errors/appError";
 
 type SafetyView =
   | { status: "loading" }
   | { status: "loaded"; state: AccountSafetyState }
   | { status: "error"; message: string };
 
-export function SecurityPage({ account, onGuardian }: { readonly account: AccountHandle; readonly onGuardian: () => void }) {
+export function SecurityPage({ account, onGuardian, onRecovery }: { readonly account: AccountHandle; readonly onGuardian: () => void; readonly onRecovery: () => void }) {
   const { config } = useNetwork();
   const localThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
   const [safety, setSafety] = useState<SafetyView>({ status: "loading" });
@@ -24,7 +25,7 @@ export function SecurityPage({ account, onGuardian }: { readonly account: Accoun
     setSafety({ status: "loading" });
     readAccountSafety(config, account)
       .then(state => { if (active) setSafety({ status: "loaded", state }); })
-      .catch(error => { if (active) setSafety({ status: "error", message: error instanceof Error ? error.message : "State could not be read" }); });
+      .catch(error => { if (active) setSafety({ status: "error", message: safeUserMessage(error, "Account safety state could not be read.", "configuration") }); });
     return () => { active = false; };
   }, [config, account, reloads]);
 
@@ -44,14 +45,19 @@ export function SecurityPage({ account, onGuardian }: { readonly account: Accoun
     <GuardianManager
       account={account}
       deployment={deployment}
-      onChain={chain ? { root: chain.config.guardianRoot, threshold: chain.config.guardianThreshold, recoveryConfigured: chain.recoveryConfigured } : null}
+      onChain={chain ? {
+        root: chain.config.guardianRoot,
+        threshold: chain.config.guardianThreshold,
+        recoveryConfigured: chain.recoveryConfigured,
+        configVersion: chain.config.configVersion
+      } : null}
       onChanged={refresh}
     />
 
     <section className="section-card">
       <p className="eyebrow">Primary access</p><h2>Passkey</h2>
       <div className="security-row"><span className="round-icon">◆</span><div><strong>{account.rpId}</strong><p>The private credential stays in this device's authenticator and never reaches the page.</p></div><span className="pill included">Active</span></div>
-      <button className="secondary" onClick={onGuardian}>Accounts I protect</button>
+      <div className="guardian-actions"><button className="secondary" onClick={onGuardian}>Accounts I protect</button><button className="secondary" onClick={onRecovery}>Start recovery</button></div>
     </section>
     <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Installed authority</p><h2>On-chain state</h2></div>{stateBadge(safety)}</div>
       {safety.status === "loading" && <p>Reading account state from {hostOf(config.rpcUrl)}…</p>}

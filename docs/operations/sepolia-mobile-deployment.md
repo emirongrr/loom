@@ -72,6 +72,7 @@ The script deploys:
 - account implementation;
 - immutable account factory and per-app registry;
 - policy and vault hooks;
+- permissionless deterministic P-256 recovery-validator factory;
 - P-256, multi-P-256, ECDSA, exact-call session, and granular session
   validators;
 - recovery manager;
@@ -131,6 +132,32 @@ example keeps its reviewed Sepolia evidence in
    device.
 5. Run two independent bundler qualification attempts before claiming Sepolia
    lifecycle support.
+
+## Existing web deployment recovery provisioner
+
+The existing Sepolia web-wallet deployment was extended without replacing its
+account implementation, account factory, validators, or user accounts:
+
+- factory: `0x37b49ed62ef13d49af4a22dd3c4ee799d0e6b5d1`;
+- deployment transaction:
+  `0xed2b63ecd7d1a5e2a8c9020dfdbdfd22f913152d62d917613c11d2ca23dffa62`;
+- block: `11370862`;
+- deployment gas: `1883375`;
+- factory runtime code hash:
+  `0xbd192d6a2bb04f06a6fac0faf9cfb8e448627261acc05393224cf8e2bd22c0a3`;
+- child P-256 validator runtime code hash:
+  `0xd9e71725d3bc1af92f51078b2292c75da55f61d7929423983889c5662aa58c6b`;
+- fallback verifier: zero address (Sepolia native P-256 mode);
+- validator init-code hash:
+  `0x6ad89cb026e842264f8e675929ad3370cb129a65267d3ad84db7292d1b85aba0`.
+
+The child hash was independently re-read from factory-provisioned validators
+`0x9a28a7598118a3fbc6090193ce0d08a3de05d4c8` and
+`0x2553b1491801a6f233db490f04c80d7109b3e014`; both carry the same 6,754-byte
+runtime. It intentionally differs from the older primary validator module's
+runtime hash. These values are published in the web deployment profile. The standalone deployment used
+`script/DeploySepoliaRecoveryProvisioner.s.sol`; it does not migrate or mutate
+existing wallet accounts.
 
 ## Non-Goals
 

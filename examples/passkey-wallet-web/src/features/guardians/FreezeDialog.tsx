@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import type { Hex } from "@loom/core";
 import type { GuardianInviteV1 } from "@loom/sdk/recovery";
+import { GUARDIAN_ACCOUNT_LABEL } from "../security/guardianInvitation";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { shorten } from "../../components/AccountHeader";
-import { prepareGuardianFreeze, readFreezeState, type FreezePreparation } from "./freeze";
+import { prepareGuardianFreeze, prepareGuardianFreezeChallenge, readFreezeState, type FreezePreparation } from "./freeze";
+import { guardianCapabilityMatchesAccount, signFreezeDigestWithPasskey } from "./freezeSigning";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
+import type { AccountHandle } from "../../types";
 
 type Step =
   | { status: "checking" }
@@ -15,16 +17,18 @@ type Step =
   | { status: "verifying" }
   | { status: "ready"; prepared: FreezePreparation };
 
-export function FreezeDialog({ capability, deployment, onClose }: {
+export function FreezeDialog({ capability, deployment, guardianAccount, onClose }: {
   capability: GuardianInviteV1;
   deployment: WalletDeployment;
+  guardianAccount: AccountHandle;
   onClose(): void;
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
   const [step, setStep] = useState<Step>({ status: "checking" });
-  const [signature, setSignature] = useState("");
   const [error, setError] = useState("");
+  const matchesOpenWallet = guardianCapabilityMatchesAccount(capability, guardianAccount);
+  const canUsePasskey = matchesOpenWallet && capability.guardian.kind === "p256";
 
   useEffect(() => {
     let active = true;
@@ -39,15 +43,21 @@ export function FreezeDialog({ capability, deployment, onClose }: {
     return () => { active = false; };
   }, [config, deployment, capability]);
 
-  const verify = async () => {
+  const authorize = async () => {
     setError("");
-    const trimmed = signature.trim();
-    if (!/^0x[0-9a-fA-F]+$/.test(trimmed)) { setError("Paste the guardian signature as hex."); return; }
     setStep({ status: "verifying" });
     try {
-      const prepared = await prepareGuardianFreeze({ config, deployment, capability, signature: trimmed as Hex });
+      const challenge = await prepareGuardianFreezeChallenge({ config, deployment, capability });
+      const signature = await signFreezeDigestWithPasskey({
+        capability,
+        account: guardianAccount,
+        digest: challenge.digest
+      });
+      // Re-read and verify after the passkey ceremony. A changed config or
+      // nonce invalidates the assertion instead of submitting stale authority.
+      const prepared = await prepareGuardianFreeze({ config, deployment, capability, signature });
       setStep({ status: "ready", prepared });
-      notifications.notify({ status: "success", title: "Freeze authorised", detail: "The verifier accepted this signature. Submit the call to freeze the account." });
+      notifications.notify({ status: "success", title: "Freeze authorised", detail: "Your passkey approved the exact live freeze request." });
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The freeze could not be prepared.");
       setStep({ status: "signing" });
@@ -62,7 +72,7 @@ export function FreezeDialog({ capability, deployment, onClose }: {
   return <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-label="Emergency freeze" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="review-sheet">
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="section-heading"><div><p className="eyebrow">{capability.accountAlias} · {shorten(capability.account)}</p><h2>Emergency freeze</h2></div></div>
+      <div className="section-heading"><div><p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL} · {shorten(capability.account)}</p><h2>Emergency freeze</h2></div></div>
 
       {step.status === "checking" && <p className="form-note">Re-reading the account's live guardian state…</p>}
 
@@ -79,18 +89,19 @@ export function FreezeDialog({ capability, deployment, onClose }: {
       {(step.status === "signing" || step.status === "verifying") && <>
         <p>Freezing pauses ordinary execution for the contract's emergency window. It moves no funds, approves no recovery, and grants you no spending power.</p>
         <p className="callout warning">Your guardian commitment and Merkle proof become public when this is submitted. Only freeze if you believe the owner's key is compromised.</p>
-        <label className="field"><span>Guardian signature over the freeze digest</span>
-          <textarea value={signature} onChange={event => setSignature(event.target.value)} rows={3} placeholder="0x…" spellCheck={false} />
-          <small className="form-note">
-            Sign with the {capability.guardian.kind.toUpperCase()} key this capability commits to. The digest is re-derived from live chain state, so it cannot be replayed against a different configuration.
-          </small>
-        </label>
+        {canUsePasskey
+          ? <p className="callout">The open wallet matches this direct P-256 guardian. Your passkey will approve the exact live freeze request; no signature copying is needed.</p>
+          : <p className="callout warning">{matchesOpenWallet && capability.guardian.kind === "erc1271"
+              ? "This Loom wallet was saved through the legacy smart-contract path, whose P-256 validator cannot sign arbitrary ERC-1271 digests. Ask the owner to remove this guardian and add the same address again through the delayed guardian change."
+              : capability.guardian.kind === "ecdsa"
+                ? "This guardian was saved through the legacy ECDSA path. If it is a Loom account, ask the owner to remove it and add the same address again so Loom can resolve its P-256 authority."
+                : "Open the Loom wallet whose P-256 key matches this guardian capability, then try again."}</p>}
         {error && <p className="callout warning">{error}</p>}
         <div className="sheet-actions">
           <button className="secondary" onClick={onClose} disabled={step.status === "verifying"}>Cancel</button>
-          <button className="danger-button" onClick={() => void verify()} disabled={step.status === "verifying" || signature.trim() === ""}>
-            {step.status === "verifying" ? "Verifying with the verifier…" : "Verify signature"}
-          </button>
+          {canUsePasskey && <button className="danger-button" onClick={() => void authorize()} disabled={step.status === "verifying"}>
+            {step.status === "verifying" ? "Confirming with passkey…" : "Confirm freeze with passkey"}
+          </button>}
         </div>
       </>}
 

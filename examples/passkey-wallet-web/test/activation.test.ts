@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { deriveAccountAddress } from "@loom/core/account";
 import { createLoomClient, createPasskeySigner } from "@loom/sdk";
-import { deriveCreatedAccountHandle, resolveCreationConfig } from "../src/features/onboarding/accountLifecycle.ts";
+import { deriveCreatedAccountHandle, loadWalletDeployment, resolveCreationConfig } from "../src/features/onboarding/accountLifecycle.ts";
 import { planActivation } from "../src/features/wallet/activate.ts";
 
 // The real Sepolia deployment this example ships with.
@@ -14,6 +14,11 @@ const DEPLOYMENT = {
   implementation: "0x708e5c9c53a0e129ead9b14a73ebd891e2d0ca24",
   validator: "0xd86b5531361f6382342f59700ff1b309919eaf0a",
   policyHook: "0xceda8174e7943765993bd09c6d714a0a3d1dd82a",
+  runtimeCodeHashes: {
+    entryPoint: `0x${"01".repeat(32)}`, factory: `0x${"02".repeat(32)}`,
+    implementation: `0x${"03".repeat(32)}`, validator: `0x${"04".repeat(32)}`,
+    policyHook: `0x${"05".repeat(32)}`
+  },
   proxyCreationCode: "0x60a060405261027a80380380610014816101",
   recoveryModule: "0x245d394e4ce2f63679cd776d0af408921452caf0"
 } as const;
@@ -21,6 +26,11 @@ const DEPLOYMENT = {
 const PASSKEY = {
   credentialId: "0xaabbccdd",
   publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` }
+} as const;
+
+const INITIAL_GUARDIANS = {
+  root: `0x${"73".repeat(32)}`,
+  threshold: 2
 } as const;
 
 function handle() {
@@ -32,6 +42,24 @@ function handle() {
     origin: "http://localhost:5174"
   });
 }
+
+test("deployment metadata bypasses browser caches so newly published trust roots are visible", async () => {
+  let requestInit: RequestInit | undefined;
+  const request = (async (_source: RequestInfo | URL, init?: RequestInit) => {
+    requestInit = init;
+    return { ok: true, json: async () => DEPLOYMENT } as Response;
+  }) as typeof fetch;
+
+  await loadWalletDeployment(request);
+
+  assert.equal(requestInit?.cache, "no-store");
+});
+
+test("deployment metadata without runtime commitments fails closed", async () => {
+  const { runtimeCodeHashes: _runtimeCodeHashes, ...incomplete } = DEPLOYMENT;
+  const request = (async () => ({ ok: true, json: async () => incomplete } as Response)) as typeof fetch;
+  await assert.rejects(loadWalletDeployment(request), /runtime code hashes are required/);
+});
 
 // Creating an account publishes a configuration. If the rebuilt configuration
 // differed from the one the address was derived from, activation would create a
@@ -137,6 +165,46 @@ test("the creation operation carries no call data of its own", () => {
 // rather than implying recovery is already in place.
 test("a new account's creation is described as unprotected", () => {
   assert.equal(planActivation(handle(), DEPLOYMENT as never).recoveryStatus, "unprotected");
+});
+
+test("an advanced creation binds guardians and the recovery module into the account address", () => {
+  const protectedAccount = deriveCreatedAccountHandle({
+    label: "Protected wallet",
+    deployment: DEPLOYMENT as never,
+    passkey: PASSKEY as never,
+    rpId: "localhost",
+    origin: "http://localhost:5174",
+    initialGuardians: INITIAL_GUARDIANS
+  });
+  const config = resolveCreationConfig(protectedAccount, DEPLOYMENT as never);
+
+  assert.ok(config);
+  assert.equal(protectedAccount.kind === "derived" ? protectedAccount.creation.guardianRoot : "", INITIAL_GUARDIANS.root);
+  assert.equal(protectedAccount.kind === "derived" ? protectedAccount.creation.guardianThreshold : 0, 2);
+  assert.equal(protectedAccount.kind === "derived" ? protectedAccount.creation.recoveryModule : undefined, DEPLOYMENT.recoveryModule);
+  assert.deepEqual(config?.modules.map(module => module.moduleTypeId), [4n, 5n, 1n]);
+  assert.equal(planActivation(protectedAccount, DEPLOYMENT as never).recoveryStatus, "guardian-protected");
+});
+
+test("advanced creation refuses an unusable guardian binding", () => {
+  const withoutRecovery = { ...DEPLOYMENT, recoveryModule: undefined };
+  assert.throws(() => deriveCreatedAccountHandle({
+    label: "Protected wallet",
+    deployment: withoutRecovery as never,
+    passkey: PASSKEY as never,
+    rpId: "localhost",
+    origin: "http://localhost:5174",
+    initialGuardians: INITIAL_GUARDIANS
+  }), /recovery module/i);
+
+  assert.throws(() => deriveCreatedAccountHandle({
+    label: "Protected wallet",
+    deployment: DEPLOYMENT as never,
+    passkey: PASSKEY as never,
+    rpId: "localhost",
+    origin: "http://localhost:5174",
+    initialGuardians: { root: `0x${"00".repeat(32)}`, threshold: 2 }
+  }), /guardian configuration/i);
 });
 
 test("an account carrying a recovery module includes it in its configuration", () => {
