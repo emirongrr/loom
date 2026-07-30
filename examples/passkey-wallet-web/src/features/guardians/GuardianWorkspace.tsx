@@ -51,7 +51,7 @@ export function GuardianWorkspace({ account }: { readonly account: AccountHandle
       }}>Remove local record</button></div>)}
     </section>}
     {records.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts</h2><p>Open an encrypted invitation or scan its QR code. Generating an invite alone never marks it delivered or accepted.</p></section> : records.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onFreeze={() => setFreezing(record.capability)} />)}
-    {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} onClose={() => setFreezing(null)} />}
+    {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} guardianAccount={account} onClose={() => setFreezing(null)} />}
   </div>;
 }
 
