@@ -10,6 +10,9 @@ import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
 import {ReentrantModule} from "../mocks/ReentrantModule.sol";
+import {P256RecoveryValidatorFactory} from "../../src/validators/P256RecoveryValidatorFactory.sol";
+import {P256Validator} from "../../src/validators/P256Validator.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 
 interface VmRecovery {
     function warp(uint256) external;
@@ -91,6 +94,33 @@ contract RecoveryManagerTest {
         require(account.guardianThreshold() == 1, "guardian threshold not rotated");
         require(recovery.recoveryNonces(address(account)) == 1, "recovery nonce not advanced");
         require(account.configVersion() == version + 1, "config version not advanced once");
+    }
+
+    function testPermissionlessFactoryProvisionsTheNewPasskeyValidator() public {
+        address policyHook = address(0xBEEF);
+        bytes32 x = P256TestKeys.x(1);
+        bytes32 y = P256TestKeys.y(1);
+        bytes memory initData = abi.encodeCall(
+            P256Validator.initialize,
+            (x, y, keccak256("localhost"), keccak256("http://localhost:5174"), policyHook)
+        );
+        P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
+        address provisioned = provisioner.deploy(address(account), 0, keccak256(initData));
+        address[] memory oldValidators = _sortedValidators();
+        GuardianVerificationLib.Approval[] memory approvals =
+            _proposalApprovalsFor(provisioned, oldValidators, initData, 0, account.configVersion());
+
+        recovery.proposeRecovery(
+            address(account), oldValidators, provisioned, keccak256(initData), NEW_GUARDIAN_ROOT, 1, approvals
+        );
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+        vm.warp(readyAt);
+        recovery.executeRecovery(address(account), oldValidators, initData);
+
+        require(account.validatorCount() == 1, "recovery did not replace validator set");
+        require(account.validatorAt(0) == provisioned, "provisioned validator not installed");
+        (bytes32 storedX, bytes32 storedY,,) = P256Validator(provisioned).publicKeys(address(account));
+        require(storedX == x && storedY == y, "new passkey was not initialized");
     }
 
     function testGuardianlessAccountCannotProposeRecovery() public {
@@ -489,10 +519,20 @@ contract RecoveryManagerTest {
         internal
         returns (GuardianVerificationLib.Approval[] memory)
     {
+        return _proposalApprovalsFor(address(newValidator), validators, initData, nonce, version);
+    }
+
+    function _proposalApprovalsFor(
+        address targetValidator,
+        address[] memory validators,
+        bytes memory initData,
+        uint64 nonce,
+        uint64 version
+    ) internal returns (GuardianVerificationLib.Approval[] memory) {
         bytes32 digest = recovery.proposalDigest(
             address(account),
             keccak256(abi.encode(validators)),
-            address(newValidator),
+            targetValidator,
             keccak256(initData),
             NEW_GUARDIAN_ROOT,
             1,
