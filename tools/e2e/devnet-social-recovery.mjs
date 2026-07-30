@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import { createJsonRpcClient, parseFoundryBroadcast, probeP256Precompile } from "../../packages/deployment/src/index.js";
 import {
   base64UrlEncode, deriveAccountAddress, encodeValidatorSignature, encodeWebAuthnSignature,
-  EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256ValidatorAbi,
+  EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256RecoveryValidatorFactoryAbi, P256ValidatorAbi,
   packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
 import {
@@ -135,7 +135,9 @@ function proofFor(layers, leaf) {
   const proof = [];
   for (let level = 0; level < layers.length - 1; level += 1) {
     const sibling = index % 2 === 0 ? index + 1 : index - 1;
-    if (sibling < layers[level].length) proof.push(layers[level][sibling]);
+    // The tree duplicates an unpaired final node, so its proof must carry that
+    // same hash. Omitting it would prove against a promoted-node tree instead.
+    proof.push(sibling < layers[level].length ? layers[level][sibling] : layers[level][index]);
     index = Math.floor(index / 2);
   }
   return proof;
@@ -148,13 +150,6 @@ async function deployFromArtifact(rpc, name, constructorArgsHex = "") {
   if (!mined.contractAddress) fail(`${name} deployment produced no address`);
   return mined.contractAddress;
 }
-async function deploySecondValidator(rpc, existingValidator) {
-  const fallback = `0x${(await ethCall(rpc, existingValidator, encodeFunctionData({
-    abi: parseAbi(["function fallbackVerifier() view returns (address)"]), functionName: "fallbackVerifier"
-  }))).slice(26)}`;
-  return deployFromArtifact(rpc, "P256Validator", encodeAbiParameters([{ type: "address" }], [fallback]).slice(2));
-}
-
 async function accountNonce(rpc, entryPoint, account) {
   return BigInt(await ethCall(rpc, entryPoint, `0x35567e1a${account.slice(2).toLowerCase().padStart(64, "0")}${"0".repeat(64)}`));
 }
@@ -198,6 +193,7 @@ async function main() {
   const created = parsed.createdContracts;
   const need = n => created[n] ?? fail(`deployment is missing ${n}`);
   const entryPoint = need("EntryPoint"), factory = need("LoomAccountFactory"), validator = need("P256Validator");
+  const recoveryValidatorFactory = need("P256RecoveryValidatorFactory");
   const policyHook = need("PolicyHook"), recoveryManager = need("RecoveryManager");
   const ecdsaGuardian = await deployFromArtifact(rpc, "ECDSAGuardianVerifier");
 
@@ -259,7 +255,6 @@ async function main() {
   // --- the new owner: a fresh passkey, and a fresh validator for it ---------
   console.log("\n==> Lost the passkey; generating a new one (same account, new key)");
   const newKey = softwareP256Key();
-  const newValidator = await deploySecondValidator(rpc, validator);
   const newValidatorInit = encodeFunctionData({ abi: P256ValidatorAbi, functionName: "initialize",
     args: [newKey.x, newKey.y, rpIdHash, originHash, policyHook] });
 
@@ -275,12 +270,31 @@ async function main() {
     "function guardianRoot() view returns (bytes32)"
   ]);
 
+  const initDataHash = keccak256(newValidatorInit);
+  const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
+  const predicted = await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
+    abi: P256RecoveryValidatorFactoryAbi,
+    functionName: "getAddress",
+    args: [account, recoveryNonce, initDataHash]
+  }));
+  const newValidator = `0x${predicted.slice(-40)}`;
+  const provisionTx = await rpc("eth_sendTransaction", [{
+    from: DEPLOYER_ADDRESS,
+    to: recoveryValidatorFactory,
+    data: encodeFunctionData({
+      abi: P256RecoveryValidatorFactoryAbi,
+      functionName: "deploy",
+      args: [account, recoveryNonce, initDataHash]
+    }),
+    gas: "0x4c4b40"
+  }]);
+  await waitForReceipt(rpc, provisionTx);
+  if ((await rpc("eth_getCode", [newValidator, "latest"])) === "0x") fail("recovery validator not provisioned");
+
   const oldValidators = [validator];
   const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
   const newRoot = keccak256(stringToHex("loom.devnet.social.newroot"));
-  const initDataHash = keccak256(newValidatorInit);
   const configVersion = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "configVersion" })));
-  const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
 
   // The one digest everyone signs. It commits to the new key, so a guardian who
   // signs it is approving this exact recovery and nothing else.
