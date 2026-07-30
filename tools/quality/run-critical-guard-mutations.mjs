@@ -49,6 +49,15 @@ const mutants = [
     testName: "testMigrationIsDelayedPermissionlessAndDestinationBound",
   },
   {
+    id: "frozen-recovery-cancellation-config-advance",
+    category: "authority",
+    source: "src/LoomAccount.sol",
+    search: "if (frozen) _advanceConfig(FROZEN_RECOVERY_CANCELLED_HASH);",
+    replacement: "if (false) _advanceConfig(FROZEN_RECOVERY_CANCELLED_HASH);",
+    testPath: "test/integration/RecoveryManager.t.sol",
+    testName: "testFrozenRecoveryCancellationRetiresScheduleAndRearmsGuardians",
+  },
+  {
     id: "recovery-config-snapshot",
     category: "stale-authority",
     source: "src/recovery/RecoveryManager.sol",

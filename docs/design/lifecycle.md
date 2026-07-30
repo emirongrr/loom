@@ -28,7 +28,7 @@ stateDiagram-v2
     [*] --> Uninitialized
     Uninitialized --> Operational: initialize() · configVersion 0→1
 
-    Operational --> Frozen: guardian freeze() · frozenUntil = now + 2d
+    Operational --> Frozen: guardian freeze() · frozenUntil = now + 5d
     Frozen --> Operational: unfreeze() once the window lapses
 
     Operational --> MigrationPending: scheduleMigration()
@@ -60,7 +60,7 @@ frozenUntil`:
 | Action | While frozen |
 |---|---|
 | `execute` / `executeDirect` (ordinary) | **Blocked** (`AccountFrozen`) |
-| `execute` of exactly a recovery-cancel call | **Allowed** (`_isFrozenSafe` carve-out) |
+| `execute` of exactly a recovery-cancel call | **Allowed** (`_isFrozenSafe` carve-out), and advances `configVersion` |
 | `executeScheduled` | **Blocked** |
 | `executeMigration` | **Blocked** |
 | `RecoveryManager.executeRecovery` → `recoverConfiguration` | **Allowed** (no frozen check, by design) |
@@ -72,6 +72,26 @@ so a single guardian can buy the window for the full guardian threshold to
 recover a compromised account. Blocking recovery during a freeze would let a
 compromised primary validator freeze the account to stall its own replacement.
 See `test/integration/RecoveryManager.t.sol:testGuardianFreezeProtectsRecoveryFromScheduledConfigBump`.
+
+The window has to cover the whole recovery path, not just its start.
+`FREEZE_DURATION` is `RECOVERY_DELAY` plus a margin to publish the recovery
+execution, and `invariantFreezeOutlastsRecoveryDelay` pins that relationship so it
+cannot be tuned away. See
+`docs/decisions/0016-freeze-covers-recovery-path.md`.
+
+The recovery-cancel carve-out is the one action a compromised validator can still
+take while frozen, so it advances `configVersion`. That re-arms every guardian
+leaf, because `freeze` allows one freeze per leaf per configuration version, and
+retires every pending scheduled operation, migration, and vault withdrawal,
+because each binds the configuration version it was created at. Cancelling from
+inside a freeze therefore costs the canceller their pending operations and hands
+the guardians another freeze. Cancelling while **not** frozen is an ordinary
+uncontested action and does not advance the configuration.
+
+A freeze on its own is a delay, not a veto. If guardians freeze but never propose
+recovery, pending operations become executable again once the window lapses; a
+lapsed freeze that permanently retired operations would let one guardian destroy
+the owner's pending work without meeting the recovery threshold.
 
 ## configVersion is the anti-stale-authority spine
 
