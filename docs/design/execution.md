@@ -48,6 +48,43 @@ A direct validator must:
 - reject arbitrary ERC-1271 message signing unless that validator explicitly
   documents a narrower, reviewed ERC-1271 authority profile.
 
+## What ERC-1271 does today
+
+The account routes `isValidSignature` to the validator named in the signature
+envelope, but **every validator bundled in this repository returns false**. The
+primary ones (`ECDSAValidator`, `P256Validator`, `MultiP256Validator`) cannot
+classify a bare hash against a policy, and the session ones
+(`ExactCallSessionValidator`, `GranularSessionValidator`) authorize
+UserOperations only. `supportsInterface` reports `false` for `0x1626ba7e`
+accordingly, so ERC-165 probing already tells the truth.
+
+So no configuration built only from this repository produces a valid ERC-1271
+signature. That is a deliberate refusal, not an omission: a hash carries no
+target, selector, amount, or counterparty, so a policy-aware validator has
+nothing to check it against, and signing it would hand out authority the account
+otherwise meters call by call.
+
+The consequence for dApps is concrete. These do **not** work against a Loom
+account as shipped:
+
+| Flow | Why it needs ERC-1271 |
+| --- | --- |
+| Sign-In with Ethereum | The verifier checks a signature over a plain message. |
+| Permit2 and ERC-2612 permits | Approval is a typed-data signature, not a call. |
+| NFT marketplace listings | Orders are signed off-chain and settled later by a taker. |
+| Off-chain governance voting | Votes are signed messages tallied off-chain. |
+
+The supported alternative is to make the intent a transaction rather than a
+signature: approve through `execute` under a policy hook, or grant an exact-call
+session for the specific settlement. Where an off-chain signature is genuinely
+required, install a validator that documents a reviewed ERC-1271 profile through
+the ERC-7579 shim (decision 0010) and accept that it is external code in a
+signing slot, as trusted as any other installed validator.
+
+A wallet client must report this capability from the installed validator set
+rather than from the account, and must not present a signing request it knows
+will fail as if it might succeed.
+
 A direct validator must not:
 
 - authorize calls by trusting `msg.sender`, `tx.origin`, the relayer, or a

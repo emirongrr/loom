@@ -12,7 +12,7 @@ path or privileged factory operation. Every authority must be installed by the
 account and exercised through an installed validator.
 
 The account implements the ERC-4337 validation entry point, provider-independent
-direct signed execution, ERC-1271 signature validation, and Loom-specific
+direct signed execution, ERC-1271 routing to the named validator, and Loom-specific
 single and atomic batch execution using the ERC-7579 mode-byte layout. Loom is
 not a conformant ERC-7579 account: its
 single-call encoding and module interfaces are intentionally narrower and are
@@ -116,7 +116,13 @@ account guardian root, records a visible pending recovery, enforces a
 three-day delay and seven-day execution window, supports account or guardian
 cancellation, and atomically replaces the complete committed validator set
 and guardian root through the account's narrow recovery entry point. Guardian
-leaves bind salted key commitments to immutable verifier code hashes. The
+leaves bind salted key commitments to a verifier address and its `codehash`.
+Note what that does and does not prove: it pins the code deployed at that
+address, so substituting a different contract there changes the leaf, but a
+`codehash` is stable across an upgradeable proxy's implementation changes. Using
+only immutable verifiers is therefore a production convention enforced by review
+and deployment profile, not by the contract; see
+[`docs/design/guardians.md`](guardians.md). The
 manager has no arbitrary execution authority. Loom includes guardian verifiers
 for ECDSA address commitments, WebAuthn P-256 passkeys, and ERC-1271 contract
 wallets such as multisigs.
