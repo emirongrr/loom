@@ -20,7 +20,7 @@
   "overrides": {
     "@hono/node-server": "2.0.11",
     "dompurify": "3.4.12",
-    "hono": "4.12.31",
+    "hono": "4.12.34",
     "esbuild": "0.28.1",
     "postcss": "8.5.23",
     "react-router": "8.3.0"
