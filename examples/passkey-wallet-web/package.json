@@ -16,7 +16,7 @@
     "@loom/core": "file:../../packages/core",
     "@loom/passkey": "file:../../packages/passkey",
     "@loom/sdk": "file:../../packages/sdk",
-    "loom": "file:../..",
+    "qrcode-generator": "2.0.4",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "viem": "^2.55.1"

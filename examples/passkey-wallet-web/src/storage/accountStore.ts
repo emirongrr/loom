@@ -3,6 +3,7 @@ import type { AccountHandle } from "../types";
 export interface AccountStore {
   list(): Promise<readonly AccountHandle[]>;
   save(handle: AccountHandle): Promise<void>;
+  linkRecovered(handle: Extract<AccountHandle, { readonly kind: "recovered" }>): Promise<AccountHandle>;
 }
 
 const KEY = "loom.wallet.accounts.v1";
@@ -24,8 +25,26 @@ export function createBrowserAccountStore(storage: Storage = window.localStorage
       records.unshift(parsed);
       if (records.length > MAX_ACCOUNTS) throw new Error(`saved account limit of ${MAX_ACCOUNTS} reached; export an existing handle before adding another`);
       storage.setItem(KEY, JSON.stringify(records));
+    },
+    async linkRecovered(handle: Extract<AccountHandle, { readonly kind: "recovered" }>) {
+      const parsed = parseAccountHandle(handle);
+      if (parsed.kind !== "recovered") throw new Error("only a recovered account handle can replace a saved passkey");
+      const current = read();
+      const previous = current.find(item => sameAccount(item, parsed));
+      const linked = parseAccountHandle(previous
+        ? { ...parsed, id: previous.id, label: previous.label }
+        : parsed);
+      const records = current.filter(item => !sameAccount(item, parsed));
+      records.unshift(linked);
+      if (records.length > MAX_ACCOUNTS) throw new Error(`saved account limit of ${MAX_ACCOUNTS} reached; export an existing handle before adding another`);
+      storage.setItem(KEY, JSON.stringify(records));
+      return linked;
     }
   });
+}
+
+function sameAccount(left: AccountHandle, right: AccountHandle): boolean {
+  return left.chainId === right.chainId && left.account.toLowerCase() === right.account.toLowerCase();
 }
 
 export function parseAccountHandle(value: unknown): AccountHandle {
