@@ -10,6 +10,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./abi": {
+      "types": "./dist/abi/index.d.ts",
+      "default": "./dist/abi/index.js"
+    },
+    "./account": {
+      "types": "./dist/account.d.ts",
+      "default": "./dist/account.js"
     }
   },
   "sideEffects": false,

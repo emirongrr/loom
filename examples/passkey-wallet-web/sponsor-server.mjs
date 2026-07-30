@@ -39,6 +39,8 @@ const port = Number(flag("port") ?? process.env.SPONSOR_PORT ?? 8787);
 const deposit = parseEther(flag("deposit") ?? process.env.SPONSOR_DEPOSIT_ETH ?? "0.02");
 const entryPoint = flag("entry-point") ?? "0x433709009B8330FDa32311DF1C2AFA402eD8D009";
 const key = process.env.SEPOLIA_SPONSOR_PRIVATE_KEY;
+// Must match the origin the wallet page is served from (dev.mjs defaults to 5174).
+const allowedOrigin = process.env.SPONSOR_ALLOWED_ORIGIN ?? "http://localhost:5174";
 
 if (!rpcUrl) throw new Error("--rpc-url or SEPOLIA_RPC_URL is required");
 if (!key) throw new Error("SEPOLIA_SPONSOR_PRIVATE_KEY is required (never pass the key in argv)");
@@ -139,8 +141,15 @@ async function deploy(packed, { selfFunded = false } = {}) {
 }
 
 const server = createServer((req, res) => {
-  // The page is served from a different port, so it is a cross-origin caller.
-  res.setHeader("access-control-allow-origin", "*");
+  // This is development infrastructure, but it still fail-closes to one
+  // configured browser origin. Production operators should authenticate and
+  // rate-limit before exposing any funded relay.
+  const origin = req.headers.origin;
+  if (origin && origin !== allowedOrigin) {
+    return res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "origin not allowed" }));
+  }
+  if (origin === allowedOrigin) res.setHeader("access-control-allow-origin", allowedOrigin);
+  res.setHeader("vary", "Origin");
   res.setHeader("access-control-allow-headers", "content-type");
   if (req.method === "OPTIONS") return res.writeHead(204).end();
 
