@@ -7,8 +7,9 @@ import { useAppServices } from "../../app/AppServices";
 import { FreezeDialog } from "./FreezeDialog";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { GuardianVaultIssue, GuardianVaultRecord } from "../../storage/guardianVault";
+import type { AccountHandle } from "../../types";
 
-export function GuardianWorkspace() {
+export function GuardianWorkspace({ account }: { readonly account: AccountHandle }) {
   const services = useAppServices();
   const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
@@ -16,10 +17,28 @@ export function GuardianWorkspace() {
   const [message, setMessage] = useState("");
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
-  const refresh = () => services.guardianVault.inspect()
+  const refresh = () => services.guardianVault.inspect(account)
     .then(snapshot => { setRecords(snapshot.records); setIssues(snapshot.issues); })
     .catch(error => setMessage(error instanceof Error ? error.message : "Guardian vault unavailable"));
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let active = true;
+    // Clear synchronously so a wallet switch cannot render the previous
+    // wallet's protected-account relationships while the scoped read runs.
+    setRecords([]);
+    setIssues([]);
+    setFreezing(null);
+    setMessage("");
+    services.guardianVault.inspect(account)
+      .then(snapshot => {
+        if (!active) return;
+        setRecords(snapshot.records);
+        setIssues(snapshot.issues);
+      })
+      .catch(error => {
+        if (active) setMessage(error instanceof Error ? error.message : "Guardian vault unavailable");
+      });
+    return () => { active = false; };
+  }, [services.guardianVault, account.id, account.chainId, account.account, account.publicKey.x, account.publicKey.y]);
   useEffect(() => {
     let active = true;
     loadWalletDeployment().then(result => { if (active) setDeployment(result); }).catch(() => { if (active) setDeployment(null); });
@@ -30,7 +49,7 @@ export function GuardianWorkspace() {
       const invite = link.trim().startsWith("{")
         ? parseGuardianInvite(link)
         : await receiveGuardianInvite(link, services.invitationLinks, Math.floor(services.now() / 1000));
-      await services.guardianVault.put({ capability: invite, acceptedAt: services.now(), status: "unverified" });
+      await services.guardianVault.put(account, { capability: invite, acceptedAt: services.now(), status: "unverified" });
       setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Capability could not be accepted"); }
   };

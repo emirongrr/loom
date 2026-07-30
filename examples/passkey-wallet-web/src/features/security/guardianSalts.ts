@@ -3,7 +3,7 @@ import { keccak256, encodeAbiParameters, parseAbiParameters, stringToHex } from 
 import { guardianAuthority, type RosterEntry } from "./guardianPlan.ts";
 import type { GuardianDescriptor } from "@loom/sdk/recovery";
 
-// Guardian leaves commit to a per-guardian salt. A random salt keeps guardian
+// Legacy compatibility only. Guardian leaves commit to a per-guardian salt. A random salt keeps guardian
 // identities private — without it anyone could test "is this address a guardian
 // of that account?" against the published root, and the space of plausible
 // guardians is small enough to enumerate.
@@ -39,6 +39,8 @@ export interface PasskeyBinding {
  * Returns null when the authenticator does not support the PRF extension, in
  * which case the caller must fall back to random salts plus an exported backup.
  */
+/** @deprecated Existing PRF-derived roots remain verifiable, but new guardian
+ * epochs must use independent random salts through withFreshSalts. */
 export async function deriveGuardianSaltMaster(
   binding: PasskeyBinding,
   account: string
@@ -73,6 +75,7 @@ export async function deriveGuardianSaltMaster(
  * do not shift when guardians are reordered, added, or removed — only the
  * guardian that actually changed gets a different leaf.
  */
+/** @deprecated Compatibility helper for an already-committed legacy root. */
 export function deriveGuardianSalt(master: GuardianSaltMaster, descriptor: GuardianDescriptor): Hex {
   return keccak256(encodeAbiParameters(
     parseAbiParameters("bytes32 master, bytes32 info, bytes32 authority"),
@@ -82,6 +85,7 @@ export function deriveGuardianSalt(master: GuardianSaltMaster, descriptor: Guard
 
 /** Apply derived salts to a roster, so the set rebuilds identically anywhere the
  * passkey is available. */
+/** @deprecated Never use for a new or rotated guardian epoch. */
 export function withDerivedSalts(entries: readonly RosterEntry[], master: GuardianSaltMaster): readonly RosterEntry[] {
   return Object.freeze(entries.map(entry => Object.freeze({
     ...entry,

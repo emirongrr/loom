@@ -4,7 +4,7 @@
 // this origin can still use the key.
 
 export interface StoredEnvelope {
-  readonly version: 1;
+  readonly version: 1 | 2;
   readonly iv: string;
   readonly ciphertext: string;
 }
@@ -30,7 +30,7 @@ export function createEncryptedStore(dbName: string): EncryptedStore {
       for (let index = 0; index < keys.length; index += 1) {
         const entryKey = String(keys[index]);
         try {
-          results.push({ key: entryKey, value: await decrypt(key, envelopes[index]), corrupt: false });
+          results.push({ key: entryKey, value: await decrypt(key, envelopes[index], entryKey), corrupt: false });
         } catch {
           results.push({ key: entryKey, value: undefined, corrupt: true });
         }
@@ -39,7 +39,7 @@ export function createEncryptedStore(dbName: string): EncryptedStore {
     },
     async put(key: string, value: unknown) {
       const db = await open(dbName);
-      const envelope = await encrypt(await deviceKey(db), value);
+      const envelope = await encrypt(await deviceKey(db), value, key);
       await done(db, "readwrite", store => store.put(envelope, key));
     },
     async remove(key: string) {
@@ -70,25 +70,29 @@ async function deviceKey(db: IDBDatabase): Promise<CryptoKey> {
   return key;
 }
 
-async function encrypt(key: CryptoKey, value: unknown): Promise<StoredEnvelope> {
+async function encrypt(key: CryptoKey, value: unknown, recordKey: string): Promise<StoredEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(value));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
-  return { version: 1, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(recordKey) }, key, plaintext);
+  return { version: 2, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
 }
 
-async function decrypt(key: CryptoKey, value: unknown): Promise<unknown> {
+async function decrypt(key: CryptoKey, value: unknown, recordKey: string): Promise<unknown> {
   if (!value || typeof value !== "object") throw new Error("envelope is invalid");
   const envelope = value as Partial<StoredEnvelope>;
-  if (envelope.version !== 1 || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") {
+  if ((envelope.version !== 1 && envelope.version !== 2) || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") {
     throw new Error("unsupported envelope");
   }
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: bytes(unbase64(envelope.iv)) },
+    { name: "AES-GCM", iv: bytes(unbase64(envelope.iv)), ...(envelope.version === 2 ? { additionalData: aad(recordKey) } : {}) },
     key,
     bytes(unbase64(envelope.ciphertext))
   );
   return JSON.parse(new TextDecoder().decode(plaintext));
+}
+
+function aad(recordKey: string): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`loom.encrypted-store.v2:${recordKey}`);
 }
 
 function base64(value: Uint8Array): string {
