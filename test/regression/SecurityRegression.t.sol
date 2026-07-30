@@ -203,7 +203,8 @@ contract SecurityRegressionTest {
         (bool cancelledWhileFrozen,) =
             address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(cancelScheduled))));
         require(!cancelledWhileFrozen, "frozen primary cancelled scheduled operation");
-        require(account.scheduledOperations(operationId) != 0, "failed frozen cancel cleared operation");
+        (uint48 pendingReadyAt1,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt1 != 0, "failed frozen cancel cleared operation");
 
         (bool replayed,) = address(account)
             .call(
@@ -554,7 +555,7 @@ contract SecurityRegressionTest {
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, firstSchedule)));
 
         bytes32 operationId = keccak256(abi.encode(address(target), uint256(0), data, account.configVersion()));
-        uint48 readyAt = account.scheduledOperations(operationId);
+        (uint48 readyAt,,) = account.scheduledOperations(operationId);
         require(readyAt != 0, "operation not scheduled");
 
         bytes memory overwriteSchedule =
@@ -568,7 +569,8 @@ contract SecurityRegressionTest {
             );
 
         require(!ok, "duplicate schedule overwrote readyAt");
-        require(account.scheduledOperations(operationId) == readyAt, "readyAt changed");
+        (uint48 pendingReadyAt2,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt2 == readyAt, "readyAt changed");
     }
 
     function testScheduleCallRejectsDelayBeyondMaximum() public {

@@ -165,7 +165,7 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, schedule));
         AuthoritySnapshot memory beforeState = _snapshotAuthority(account);
         bytes32 operationId = keccak256(abi.encode(address(account), uint256(0), uninstall, account.configVersion()));
-        uint48 readyAtBefore = account.scheduledOperations(operationId);
+        (uint48 readyAtBefore,,) = account.scheduledOperations(operationId);
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
 
         (bool ok, bytes memory revertData) =
@@ -174,7 +174,8 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         assert(!ok);
         _assertRevert(revertData, LoomAccount.InvalidModule.selector);
         _assertAuthorityUnchanged(account, beforeState);
-        assert(account.scheduledOperations(operationId) == readyAtBefore);
+        (uint48 pendingReadyAt1,,) = account.scheduledOperations(operationId);
+        assert(pendingReadyAt1 == readyAtBefore);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
     }
 
@@ -191,7 +192,7 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(account), 0, scheduleTarget));
         bytes32 staleOperationId =
             keccak256(abi.encode(address(target), uint256(0), targetCall, account.configVersion()));
-        uint48 staleReadyAt = account.scheduledOperations(staleOperationId);
+        (uint48 staleReadyAt,,) = account.scheduledOperations(staleOperationId);
 
         bytes memory guardianUpdate = abi.encodeCall(LoomAccount.setGuardianConfig, (keccak256("new-root"), uint8(1)));
         bytes memory scheduleUpdate =
@@ -212,7 +213,8 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         _assertRevert(revertData, LoomAccount.OperationNotScheduled.selector);
         assert(target.value() == 0);
         _assertAuthorityUnchanged(account, updatedState);
-        assert(account.scheduledOperations(staleOperationId) == staleReadyAt);
+        (uint48 pendingReadyAt2,,) = account.scheduledOperations(staleOperationId);
+        assert(pendingReadyAt2 == staleReadyAt);
     }
 
     function testFuzz_GuardianCannotPerformValidatorAction(uint256 newValue) public {
@@ -317,8 +319,10 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
         assert(!unfreezeOk);
         _assertRevert(unfreezeRevertData, LoomAccount.OnlySelf.selector);
         _assertAuthorityUnchanged(account, beforeState);
-        assert(account.scheduledOperations(attemptedOperationId) == 0);
-        assert(account.scheduledOperations(operationId) == 0);
+        (uint48 pendingReadyAt3,,) = account.scheduledOperations(attemptedOperationId);
+        assert(pendingReadyAt3 == 0);
+        (uint48 pendingReadyAt4,,) = account.scheduledOperations(operationId);
+        assert(pendingReadyAt4 == 0);
         assert(account.directExecutionNonces(address(validator)) == 0);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));

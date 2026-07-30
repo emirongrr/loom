@@ -73,6 +73,34 @@ recover a compromised account. Blocking recovery during a freeze would let a
 compromised primary validator freeze the account to stall its own replacement.
 See `test/integration/RecoveryManager.t.sol:testGuardianFreezeProtectsRecoveryFromScheduledConfigBump`.
 
+## Scheduled calls are windowed and instance-identified
+
+`scheduleCall` stores `readyAt`, `expiresAt = readyAt + SCHEDULE_WINDOW`, and an
+instance counter. Before the window existed a scheduled call stayed executable
+forever once ready, unless an unrelated configuration change happened to
+invalidate it. Because `executeScheduled` is permissionless, that let anyone —
+including a compromised validator who scheduled the call in the first place —
+park a ready operation and publish it at the moment it was least defensible.
+
+`operationId` is `keccak256(target, value, data, configVersion)`, so it names a
+call shape at a configuration version and the same call scheduled again reuses the
+slot. The counter distinguishes the current occupant from every previous one.
+Consumption — cancellation or execution — clears `readyAt` and advances the
+counter rather than deleting the entry, so `readyAt == 0` still means "not
+scheduled" while the counter continues across instances.
+
+Two identical calls still cannot be pending at the same time; the second
+`scheduleCall` reverts with `OperationAlreadyScheduled`. That is a usability
+limit, not an ambiguity: allowing concurrent duplicates would require
+`executeScheduled` to name which instance it means, and it currently identifies
+the operation by its call shape alone.
+
+`cancelScheduledWithGuardians` gives the guardian threshold the same cancellation
+power it already has over migrations, vault withdrawals, recovery, and keystore
+sync. Guardians gain no execution or spending authority; cancellation is the whole
+power. The cancellation digest binds the instance counter, so a revealed approval
+cannot be replayed against a re-scheduled operation.
+
 ## configVersion is the anti-stale-authority spine
 
 `_advanceConfig` runs on every authority mutation: guardian config change, module

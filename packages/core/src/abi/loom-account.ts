@@ -81,6 +81,19 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
+    "name": "CANCEL_SCHEDULED_TYPEHASH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "DIRECT_EXECUTION_TYPEHASH",
     "inputs": [],
     "outputs": [
@@ -354,6 +367,19 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
+    "name": "SCHEDULE_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "SINGLE_EXECUTION_MODE",
     "inputs": [],
     "outputs": [
@@ -433,6 +459,80 @@ export const LoomAccountAbi = [
         "name": "operationId",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelScheduledDigest",
+    "inputs": [
+      {
+        "name": "operationId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "operationConfigVersion",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "nonce",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "cancelScheduledWithGuardians",
+    "inputs": [
+      {
+        "name": "operationId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "guardianApprovals",
+        "type": "tuple[]",
+        "internalType": "struct GuardianVerificationLib.Approval[]",
+        "components": [
+          {
+            "name": "verifier",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "keyCommitment",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "signature",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
       }
     ],
     "outputs": [],
@@ -1620,6 +1720,16 @@ export const LoomAccountAbi = [
         "name": "readyAt",
         "type": "uint48",
         "internalType": "uint48"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "nonce",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
@@ -2092,6 +2202,18 @@ export const LoomAccountAbi = [
         "type": "uint48",
         "indexed": false,
         "internalType": "uint48"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint48",
+        "indexed": false,
+        "internalType": "uint48"
+      },
+      {
+        "name": "nonce",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -2195,6 +2317,11 @@ export const LoomAccountAbi = [
   {
     "type": "error",
     "name": "OperationAlreadyScheduled",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OperationExpired",
     "inputs": []
   },
   {
