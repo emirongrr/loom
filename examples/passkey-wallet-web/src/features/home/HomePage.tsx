@@ -10,6 +10,9 @@ import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { SendableAsset } from "../wallet/transfers";
 import type { AccountHandle, NavigationArea } from "../../types";
+import { safeUserMessage } from "../../domain/errors/appError";
+import { useAppServices } from "../../app/AppServices";
+import { resumePendingConfirmation } from "../../services/loom/pendingConfirmation";
 
 const EMPTY_ASSETS: AccountAssets = {
   native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
@@ -23,6 +26,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   readonly onLock: () => void;
 }) {
   const { config } = useNetwork();
+  const { runtime, pendingOperations } = useAppServices();
   const notifications = useNotifications();
   const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
@@ -38,7 +42,8 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     setActivating(true);
     const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
     try {
-      const result = await activateAccount({ config, account, deployment });
+      await runtime.verify(config, deployment);
+      const result = await activateAccount({ config, account, deployment, pendingOperations });
       notifications.update(toast, {
         status: "success",
         title: "Account created",
@@ -50,7 +55,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
       notifications.update(toast, {
         status: "error",
         title: "Account could not be created",
-        detail: issue instanceof Error ? issue.message : "The creation operation failed."
+        detail: safeUserMessage(issue, "The creation operation failed.", "submission")
       });
     } finally { setActivating(false); }
   };
@@ -72,6 +77,21 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   }, [config, account.account]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void pendingOperations.list(account.id).then(async operations => {
+      for (const operation of operations) {
+        const result = await resumePendingConfirmation({ config, account, operation, store: pendingOperations });
+        if (!active || result.status === "pending") continue;
+        if (result.status === "success") {
+          notifications.notify({ status: "success", title: "Operation confirmed", detail: "A previously submitted wallet operation was confirmed after reopening.", href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" });
+        } else {
+          notifications.notify({ status: "error", title: "Operation failed", detail: result.error.userMessage });
+        }
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [account, config, notifications, pendingOperations]);
 
   const refresh = async () => {
     await load(true);
