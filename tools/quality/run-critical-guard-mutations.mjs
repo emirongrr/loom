@@ -58,6 +58,15 @@ const mutants = [
     testName: "testConfigChangeInvalidatesAndExpiryBlocksRecovery",
   },
   {
+    id: "vault-cancellation-instance-nonce",
+    category: "replay",
+    source: "src/hooks/VaultHook.sol",
+    search: "PendingWithdrawal({readyAt: 0, expiresAt: 0, configVersion: 0, nonce: nonce + 1});",
+    replacement: "PendingWithdrawal({readyAt: 0, expiresAt: 0, configVersion: 0, nonce: nonce});",
+    testPath: "test/unit/VaultHook.t.sol",
+    testName: "testGuardianCancellationCannotBeReplayedAgainstARescheduledWithdrawal",
+  },
+  {
     id: "vault-withdrawal-delay",
     category: "time",
     source: "src/hooks/VaultHook.sol",
