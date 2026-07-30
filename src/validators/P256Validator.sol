@@ -4,12 +4,13 @@ pragma solidity 0.8.35;
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
+import {ILoomPolicyBoundValidator} from "../interfaces/ILoomPolicyBoundValidator.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {WebAuthnP256} from "../libraries/WebAuthnP256.sol";
 
-contract P256Validator is ILoomValidator, ILoomDirectValidator {
+contract P256Validator is ILoomValidator, ILoomDirectValidator, ILoomPolicyBoundValidator {
     error InvalidPublicKey();
     error KeyAlreadyInitialized();
     error ConfigTimelockRequired();
@@ -50,6 +51,11 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
 
     function initialize(bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook) external {
         if (publicKeys[msg.sender].x != bytes32(0)) revert KeyAlreadyInitialized();
+        // Only a non-zero check here. The account cannot be called back during its
+        // own construction -- it has no code yet -- so a validator cannot ask
+        // whether the hook is installed at initialization time. The account
+        // enforces that coherence itself once the module set is in place; see
+        // `_assertPolicyHookCoherence`.
         if (policyHook == address(0)) revert InvalidPolicyHook();
         _setKey(msg.sender, x, y, rpIdHash, originHash);
         policyHooks[msg.sender] = policyHook;
@@ -129,5 +135,24 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
             ),
             fallbackVerifier
         );
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    function policyHookFor(address account) external view returns (address) {
+        return policyHooks[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    /// @dev Gated on the account reporting an in-progress guardian hook eviction.
+    /// Ordinary hook changes go through `setPolicyHook` and the configuration
+    /// timelock; without this gate the account could re-point itself at a
+    /// permissive hook instantly.
+    function rebindPolicyHook(address newHook) external {
+        if (!ILoomAccount(msg.sender).isEvictingHook()) revert InvalidPolicyHook();
+        if (newHook == address(0) || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)) {
+            revert InvalidPolicyHook();
+        }
+        policyHooks[msg.sender] = newHook;
+        emit PolicyHookSet(msg.sender, newHook);
     }
 }

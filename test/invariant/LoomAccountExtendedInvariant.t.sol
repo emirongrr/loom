@@ -427,10 +427,10 @@ contract LoomAccountExtendedHandler {
             return;
         }
         uint64 versionBefore = account.configVersion();
-        bytes32 digest = account.evictHookDigest(installedHook, account.configVersion());
+        bytes32 digest = account.evictHookDigest(installedHook, address(0), account.configVersion());
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
-        (bool ok,) =
-            address(account).call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (installedHook, approvals)));
+        (bool ok,) = address(account)
+            .call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (installedHook, address(0), approvals)));
         if (ok) {
             if (account.isModuleInstalled(ModuleType.HOOK, installedHook)) violated = true;
             installedHook = address(0);

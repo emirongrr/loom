@@ -18,6 +18,12 @@ interface ILoomAccount {
     function validatorAt(uint256 index) external view returns (address);
     function frozenUntil() external view returns (uint48);
     function isExecutingScheduled() external view returns (bool);
+
+    /// @notice True only while the account is performing a guardian hook eviction.
+    /// @dev Policy-bound validators gate `rebindPolicyHook` on this, so a hook swap
+    /// is possible during a guardian eviction and never as an ordinary, untimelocked
+    /// configuration change.
+    function isEvictingHook() external view returns (bool);
     function isModuleInstalled(uint256 moduleTypeId, address module) external view returns (bool);
     function execute(bytes32 mode, bytes calldata executionCalldata) external payable;
     function notifyConfigChange(bytes32 changeHash) external;

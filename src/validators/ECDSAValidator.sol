@@ -4,12 +4,13 @@ pragma solidity 0.8.35;
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
+import {ILoomPolicyBoundValidator} from "../interfaces/ILoomPolicyBoundValidator.sol";
 import {ECDSA} from "../libraries/ECDSA.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 
-contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
+contract ECDSAValidator is ILoomValidator, ILoomDirectValidator, ILoomPolicyBoundValidator {
     error AlreadyInitialized();
     error InvalidOwner();
     error ConfigTimelockRequired();
@@ -23,6 +24,11 @@ contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
 
     function initialize(address owner, address policyHook) external {
         if (owners[msg.sender] != address(0)) revert AlreadyInitialized();
+        // Only a non-zero check here. The account cannot be called back during its
+        // own construction -- it has no code yet -- so a validator cannot ask
+        // whether the hook is installed at initialization time. The account
+        // enforces that coherence itself once the module set is in place; see
+        // `_assertPolicyHookCoherence`.
         if (policyHook == address(0)) revert InvalidPolicyHook();
         _setOwner(msg.sender, owner);
         policyHooks[msg.sender] = policyHook;
@@ -93,5 +99,24 @@ contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
 
     function _verify(address account, bytes32 hash, bytes calldata signature) internal view returns (bool) {
         return ECDSA.recover(hash, signature) == owners[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    function policyHookFor(address account) external view returns (address) {
+        return policyHooks[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    /// @dev Gated on the account reporting an in-progress guardian hook eviction.
+    /// Ordinary hook changes go through `setPolicyHook` and the configuration
+    /// timelock; without this gate the account could re-point itself at a
+    /// permissive hook instantly.
+    function rebindPolicyHook(address newHook) external {
+        if (!ILoomAccount(msg.sender).isEvictingHook()) revert InvalidPolicyHook();
+        if (newHook == address(0) || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)) {
+            revert InvalidPolicyHook();
+        }
+        policyHooks[msg.sender] = newHook;
+        emit PolicyHookSet(msg.sender, newHook);
     }
 }

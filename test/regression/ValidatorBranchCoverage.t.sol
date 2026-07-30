@@ -9,6 +9,7 @@ import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../../src/validators/P256Validator.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {P256TestKeys} from "../helpers/P256TestKeys.sol";
+import {UninstalledHookAccount} from "../mocks/UninstalledHookAccount.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
 
@@ -85,22 +86,25 @@ contract ValidatorBranchCoverageTest {
             "denied direct policy accepted"
         );
 
+        // A real LoomAccount can no longer be driven into "validator bound to an
+        // uninstalled hook": it refuses to remove a hook an installed validator
+        // depends on. The validator's own fail-closed branch still matters for
+        // accounts that cannot vouch for that invariant, so it is exercised through
+        // a stub that reports the hook as absent.
         ECDSAValidator validator = new ECDSAValidator();
         MockPolicyHook hook = new MockPolicyHook();
-        LoomAccount account = _ecdsaAccount(validator, address(hook));
-        bytes memory uninstall =
-            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.HOOK, address(hook), bytes("")));
-        _schedule(account, address(account), uninstall);
-        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
-        account.executeScheduled(address(account), 0, uninstall);
+        UninstalledHookAccount stub = new UninstalledHookAccount();
+        stub.initializeValidator(
+            address(validator), abi.encodeCall(ECDSAValidator.initialize, (vm.addr(OWNER_KEY), address(hook)))
+        );
 
         require(
-            validator.validateUserOp(address(account), digest, 0, signature, bytes("call"), address(0))
+            validator.validateUserOp(address(stub), digest, 0, signature, bytes("call"), address(0))
                 == ValidationDataLib.SIG_VALIDATION_FAILED,
             "removed hook accepted"
         );
         require(
-            !validator.validateDirectExecution(address(account), digest, signature, bytes("call")),
+            !validator.validateDirectExecution(address(stub), digest, signature, bytes("call")),
             "removed hook accepted for direct execution"
         );
     }

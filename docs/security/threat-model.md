@@ -39,6 +39,12 @@
   wrong-call migration attempts.
 - A malicious or compromised primary credential scheduling a dangerous
   migration that the guardian threshold needs to cancel before execution.
+- Removing a policy hook that an installed validator depends on. Validators
+  fail closed without their hook, so removing one out from under them used to
+  leave the account unable to authorize anything, with no repair path. The
+  account now refuses such a removal on every path, and guardian eviction takes
+  a replacement so a stuck hook can still be escaped without stranding the
+  account.
 - A privacy protocol, scanner, relayer, indexer, prover, or bridge becoming a
   mandatory dependency for ordinary Loom account control, recovery, migration,
   or native-gas operation.

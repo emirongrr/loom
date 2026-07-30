@@ -145,14 +145,14 @@ contract SovereignMigrationTest {
         (bool blocked,) = address(source).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(normal))));
         require(!blocked, "reverting hook did not block normal execution");
 
-        bytes32 digest = source.evictHookDigest(address(hook), source.configVersion());
+        bytes32 digest = source.evictHookDigest(address(hook), address(0), source.configVersion());
         GuardianVerificationLib.Approval[] memory single = new GuardianVerificationLib.Approval[](1);
         single[0] = _approval(source, GUARDIAN_KEY, "guardian-salt", _secondGuardianLeaf(), digest);
-        (bool acceptedSingle,) =
-            address(source).call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook), single)));
+        (bool acceptedSingle,) = address(source)
+            .call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook), address(0), single)));
         require(!acceptedSingle, "below-threshold guardian approval evicted hook");
 
-        source.evictHookWithGuardians(address(hook), _guardianApprovals(source, digest));
+        source.evictHookWithGuardians(address(hook), address(0), _guardianApprovals(source, digest));
 
         require(!source.isModuleInstalled(ModuleType.HOOK, address(hook)), "stuck hook not evicted");
         (bool nowAllowed,) = address(source).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(normal))));
