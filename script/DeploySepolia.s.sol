@@ -10,6 +10,7 @@ import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../src/validators/P256Validator.sol";
+import {P256RecoveryValidatorFactory} from "../src/validators/P256RecoveryValidatorFactory.sol";
 import {MultiP256Validator} from "../src/validators/MultiP256Validator.sol";
 import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
@@ -44,6 +45,7 @@ contract DeploySepolia is Script {
         address policyHook,
         address vaultHook,
         address p256Validator,
+        address p256RecoveryValidatorFactory,
         address multiP256Validator,
         address ecdsaValidator,
         address exactCallSessionValidator,
@@ -71,6 +73,9 @@ contract DeploySepolia is Script {
         VaultHook vaultHook = new VaultHook();
         ECDSAValidator ecdsaValidator = new ECDSAValidator();
         P256Validator p256Validator = new P256Validator(
+            p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
+        );
+        P256RecoveryValidatorFactory p256RecoveryValidatorFactory = new P256RecoveryValidatorFactory(
             p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
         );
         MultiP256Validator multiP256Validator = new MultiP256Validator(
@@ -124,6 +129,7 @@ contract DeploySepolia is Script {
             address(policyHook),
             address(vaultHook),
             address(p256Validator),
+            address(p256RecoveryValidatorFactory),
             address(multiP256Validator),
             address(ecdsaValidator),
             address(exactCallSessionValidator),

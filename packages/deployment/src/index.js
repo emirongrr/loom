@@ -23,10 +23,29 @@ export const MANIFEST_SCHEMA_VERSION = 1;
 export const DEFAULT_CONTRACTS = Object.freeze({
   accountFactory: "LoomAccountFactory",
   passkeyValidator: "P256Validator",
+  recoveryValidatorFactory: "P256RecoveryValidatorFactory",
   accountImplementation: "LoomAccount"
 });
 
 export const NATIVE_P256_PRECOMPILE = "0x0000000000000000000000000000000000000100";
+
+/** Build a live-chain-verified profile for a standalone recovery provisioner. */
+export async function buildP256RecoveryValidatorProvisioner(options) {
+  assertObject(options, "options");
+  const rpc = requireFunction(options.rpc, "options.rpc");
+  const factory = requireAddress(options.factory, "factory");
+  const validator = requireAddress(options.validator, "validator");
+  const [runtimeCodeHash, validatorRuntimeCodeHash, fallbackVerifier, validatorFallbackVerifier] = await Promise.all([
+    codehash(rpc, factory, "P256RecoveryValidatorFactory"),
+    codehash(rpc, validator, "P256Validator"),
+    readAddressView(rpc, factory, "fallbackVerifier()", "factory fallback verifier"),
+    readAddressView(rpc, validator, "fallbackVerifier()", "validator fallback verifier")
+  ]);
+  if (fallbackVerifier.toLowerCase() !== validatorFallbackVerifier.toLowerCase()) {
+    throw new Error("recovery factory fallback verifier does not match the sampled recovery validator child");
+  }
+  return Object.freeze({ address: factory, runtimeCodeHash, validatorRuntimeCodeHash, fallbackVerifier });
+}
 
 export function parseFoundryBroadcast(broadcast, options = {}) {
   assertObject(broadcast, "broadcast");
@@ -60,6 +79,7 @@ export function parseFoundryBroadcast(broadcast, options = {}) {
     addresses: Object.freeze({
       accountFactory: addressFor("accountFactory"),
       passkeyValidator: addressFor("passkeyValidator"),
+      recoveryValidatorFactory: addressFor("recoveryValidatorFactory"),
       accountImplementation: addressFor("accountImplementation")
     }),
     createdContracts: Object.freeze(Object.fromEntries(created)),
@@ -80,12 +100,18 @@ export async function buildWalletDeploymentManifest(options) {
     options.p256Verifier ?? (p256VerifierMode === "native-precompile" ? NATIVE_P256_PRECOMPILE : undefined),
     "p256Verifier"
   );
+  const recoveryValidator = requireAddress(
+    options.recoveryValidator ?? parsed.addresses.passkeyValidator,
+    "recoveryValidator"
+  );
 
   const codehashes = {
     accountFactory: await codehash(rpc, parsed.addresses.accountFactory, "LoomAccountFactory"),
     passkeyValidator: await codehash(rpc, parsed.addresses.passkeyValidator, "P256Validator"),
+    recoveryValidatorFactory: await codehash(rpc, parsed.addresses.recoveryValidatorFactory, "P256RecoveryValidatorFactory"),
     accountImplementation: await codehash(rpc, parsed.addresses.accountImplementation, "LoomAccount")
   };
+  const recoveryValidatorRuntimeCodeHash = await codehash(rpc, recoveryValidator, "P256 recovery validator child");
   await codehash(rpc, entryPoint, "EntryPoint");
   if (p256VerifierMode === "fallback-contract") {
     codehashes.p256Verifier = await codehash(rpc, p256Verifier, "P-256 fallback verifier");
@@ -104,6 +130,15 @@ export async function buildWalletDeploymentManifest(options) {
     entryPoint,
     accountFactory: parsed.addresses.accountFactory,
     passkeyValidator: parsed.addresses.passkeyValidator,
+    recoveryValidatorFactory: parsed.addresses.recoveryValidatorFactory,
+    recoveryValidatorProvisioner: Object.freeze({
+      address: parsed.addresses.recoveryValidatorFactory,
+      runtimeCodeHash: codehashes.recoveryValidatorFactory,
+      validatorRuntimeCodeHash: recoveryValidatorRuntimeCodeHash,
+      fallbackVerifier: p256VerifierMode === "native-precompile"
+        ? "0x0000000000000000000000000000000000000000"
+        : p256Verifier
+    }),
     p256Verifier,
     p256VerifierMode,
     codehashes: Object.freeze(codehashes),
@@ -131,6 +166,10 @@ export async function buildCanonicalDeploymentManifest(options) {
   if (typeof proxyCreation !== "string" || typeof proxyRuntime !== "string") {
     throw new Error("options.proxyArtifact must carry bytecode.object and deployedBytecode.object");
   }
+  const recoveryValidator = requireAddress(
+    options.recoveryValidator ?? parsed.addresses.passkeyValidator,
+    "recoveryValidator"
+  );
 
   const manifest = parseDeploymentManifest({
     schemaVersion: "1",
@@ -163,6 +202,18 @@ export async function buildCanonicalDeploymentManifest(options) {
         status: options.moduleStatus ?? "beta"
       },
       ...(options.extraModules ?? [])
+    ],
+    provisioners: [
+      {
+        type: "p256-recovery-validator-factory",
+        address: parsed.addresses.recoveryValidatorFactory,
+        runtimeCodeHash: await codehash(rpc, parsed.addresses.recoveryValidatorFactory, "P256RecoveryValidatorFactory"),
+        validatorRuntimeCodeHash: await codehash(rpc, recoveryValidator, "P256 recovery validator child"),
+        fallbackVerifier: requireAddress(
+          options.p256FallbackVerifier ?? (options.p256VerifierMode === "fallback-contract" ? options.p256Verifier : "0x0000000000000000000000000000000000000000"),
+          "p256FallbackVerifier"
+        )
+      }
     ],
     compatibility: {
       contractRelease: compatibility.contractRelease,
@@ -198,6 +249,9 @@ export async function verifyManifestOnChain(options) {
   for (const [index, module] of manifest.modules.entries()) {
     await check(`modules[${index}] (${module.type})`, module.address, module.runtimeCodeHash);
   }
+  for (const [index, provisioner] of (manifest.provisioners ?? []).entries()) {
+    await check(`provisioners[${index}] (${provisioner.type})`, provisioner.address, provisioner.runtimeCodeHash);
+  }
 
   const failures = checks.filter(entry => !entry.ok);
   return Object.freeze({
@@ -224,6 +278,10 @@ export function bindWalletManifestToCanonical(appManifest, canonicalManifest) {
   if (!same(appManifest.accountFactory, canonical.factory.address)) disagreements.push("accountFactory");
   const validator = canonical.modules.find(module => module.type === "validator");
   if (!validator || !same(appManifest.passkeyValidator, validator.address)) disagreements.push("passkeyValidator");
+  const recoveryFactory = canonical.provisioners?.find(item => item.type === "p256-recovery-validator-factory");
+  if (!recoveryFactory || !same(appManifest.recoveryValidatorFactory, recoveryFactory.address)) {
+    disagreements.push("recoveryValidatorFactory");
+  }
   if (disagreements.length !== 0) {
     throw new Error(`app manifest disagrees with the canonical manifest: ${disagreements.join(", ")}`);
   }
@@ -238,6 +296,7 @@ export function envForWalletDeployment(manifest, manifestReference) {
     EXPO_PUBLIC_LOOM_ENTRYPOINT: requireAddress(manifest.entryPoint, "manifest.entryPoint"),
     EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY: requireAddress(manifest.accountFactory, "manifest.accountFactory"),
     EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR: requireAddress(manifest.passkeyValidator, "manifest.passkeyValidator"),
+    EXPO_PUBLIC_LOOM_RECOVERY_VALIDATOR_FACTORY: requireAddress(manifest.recoveryValidatorFactory, "manifest.recoveryValidatorFactory"),
     EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE: requireMode(manifest.p256VerifierMode),
     EXPO_PUBLIC_LOOM_P256_VERIFIER: requireAddress(manifest.p256Verifier, "manifest.p256Verifier"),
     EXPO_PUBLIC_LOOM_DEPLOYMENT_MANIFEST: requireString(manifestReference, "manifestReference")
@@ -272,12 +331,29 @@ export async function verifyWalletDeploymentFiles(options) {
   add("env entryPoint == manifest", same(env.EXPO_PUBLIC_LOOM_ENTRYPOINT, manifest.entryPoint));
   add("env factory == manifest", same(env.EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY, manifest.accountFactory));
   add("env passkeyValidator == manifest", same(env.EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR, manifest.passkeyValidator));
+  add("env recoveryValidatorFactory == manifest", same(env.EXPO_PUBLIC_LOOM_RECOVERY_VALIDATOR_FACTORY, manifest.recoveryValidatorFactory));
   add("env p256Verifier == manifest", same(env.EXPO_PUBLIC_LOOM_P256_VERIFIER, manifest.p256Verifier));
   add("env p256 mode == manifest", same(env.EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE, manifest.p256VerifierMode));
+
+  const provisioner = assertObject(manifest.recoveryValidatorProvisioner, "manifest.recoveryValidatorProvisioner");
+  add("recovery provisioner address == manifest", same(provisioner.address, manifest.recoveryValidatorFactory));
+  add("recovery provisioner factory hash == manifest", same(provisioner.runtimeCodeHash, manifest.codehashes?.recoveryValidatorFactory));
+  const liveProvisioner = await buildP256RecoveryValidatorProvisioner({
+    rpc,
+    factory: provisioner.address,
+    validator: options.recoveryValidator ?? manifest.passkeyValidator
+  });
+  add(
+    "recovery provisioner validator hash == chain",
+    same(provisioner.validatorRuntimeCodeHash, liveProvisioner.validatorRuntimeCodeHash),
+    options.recoveryValidator ?? manifest.passkeyValidator
+  );
+  add("recovery provisioner fallback verifier == chain", same(provisioner.fallbackVerifier, liveProvisioner.fallbackVerifier));
 
   const codeAddress = {
     accountFactory: manifest.accountFactory,
     passkeyValidator: manifest.passkeyValidator,
+    recoveryValidatorFactory: manifest.recoveryValidatorFactory,
     accountImplementation: options.accountImplementation,
     p256Verifier: manifest.p256Verifier
   };
@@ -391,6 +467,15 @@ function requireFunction(value, label) {
 function assertObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
   return value;
+}
+
+async function readAddressView(rpc, contract, signature, label) {
+  const selector = `0x${keccak256(signature).slice(0, 8)}`;
+  const result = await rpc("eth_call", [{ to: contract, data: selector }, "latest"]);
+  if (typeof result !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
+    throw new Error(`${label} returned malformed data`);
+  }
+  return requireAddress(`0x${result.slice(-40)}`, label);
 }
 
 // ---------------------------------------------------------------------------
