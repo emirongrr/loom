@@ -16,16 +16,17 @@ Measured on anvil (chain 31337) with the current source:
 
 | Contract | Deployment gas |
 | --- | ---: |
-| LoomAccount (implementation) | 5,206,749 |
+| LoomAccount (implementation) | 5,238,796 |
 | VaultHook | 1,851,827 |
+| P256RecoveryValidatorFactory | 1,883,375 |
 | GranularSessionValidator | 1,826,576 |
 | RecoveryManager | 1,534,099 |
-| P256Validator | 1,483,873 |
+| P256Validator | 1,514,781 |
 | PolicyHook | 1,255,444 |
 | ExactCallSessionValidator | 751,714 |
 | LoomAccountFactory | 732,990 |
 | ECDSAValidator | 670,568 |
-| **Total (production)** | **15,313,840** |
+| **Total (production)** | **17,260,170** |
 
 Excluded from the production total: the vendored ERC-4337 `EntryPoint`
 (~3.80M, deployed here only because the devnet has no canonical EntryPoint;

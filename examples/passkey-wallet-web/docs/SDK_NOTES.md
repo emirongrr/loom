@@ -4,6 +4,26 @@ Observations from wiring live balances and ETH transfers into this example
 against `@loom/sdk` and `@loom/core`. Recorded so the gaps are visible; only the
 first was fixed in this change.
 
+## 0. Recovery validator provisioning (implemented and published)
+
+Recovery needs a fresh, uninstalled validator because `RecoveryManager` replaces
+the complete validator set and `P256Validator` keys cannot be reinitialized. A
+generic hosted deploy endpoint would make a Loom-operated service appear
+necessary even though provisioning itself needs no authority.
+
+The core now includes an ownerless `P256RecoveryValidatorFactory`. The SDK
+derives a child from the account, live recovery nonce, and initialization-data
+hash; verifies the manifest-pinned factory code and fallback verifier; and
+accepts the child only after its runtime code hash also matches. Core deployment
+scripts include the factory, and a standalone script can add it to the existing
+Sepolia deployment without changing account addresses or stored wallets.
+
+The browser ceremony now creates and persists the new passkey draft, verifies
+and publishes the permissionless child, rotates guardian salts, collects and
+verifies portable approvals, proposes the recovery, resumes through the on-chain
+delay, executes, and links the recovered credential to the existing Saved Wallet.
+The deployment manifest publishes the verified Sepolia factory and code hashes.
+
 ## 1. `@loom/core` compiled JSON schemas at import time (fixed)
 
 `packages/core/src/manifest.ts` built its ajv validator at module load
@@ -69,14 +89,13 @@ does not implement it, so the SDK's own transport leaves every delay in the
 transport itself, as `src/features/security/guardianClient.ts` does. The RPC
 transport should implement `getBlockTimestamp` (it already speaks JSON-RPC).
 
-## 3d. Deployment manifests pin verifier addresses but not their code hashes
+## 3d. Generic deployment manifests do not model verifier code hashes
 
 Guardian descriptors require a `verifierCodeHash`, and the SDK re-checks it against
-the chain before use — but `public/sepolia.deployment.json` publishes only verifier
-addresses. The wallet therefore reads the hash from the same chain it will later
-verify against, which detects a verifier whose code changes between setup and use,
-yet cannot detect a wrong verifier at setup time. Deployment manifests should pin
-the expected runtime code hash alongside each verifier address.
+the chain before use. This example now pins verifier and core runtime hashes in its
+application deployment profile, but the SDK's generic deployment manifest schema
+does not provide typed fields for those commitments. A future backward-compatible
+schema version should model them so every consumer does not invent a parallel shape.
 
 ## 3e. Guardian set membership has no persistence helper
 
@@ -148,3 +167,202 @@ rebuilds it and refuses to proceed unless it re-derives the account's own addres
 otherwise a subtly wrong configuration would create a different account under the
 user's name. `prepareDeployAccount` takes an already-built `initCode`, so it does
 not close this.
+
+## 5. Recovery-to-basic SDK gaps found during the guardian lifecycle
+
+### 5a. ABI integer types need runtime normalization
+
+TypeScript assertions do not change viem's decoded runtime type. Small Solidity
+integers such as the account's `uint48` scheduled-operation timestamp can arrive
+as a JavaScript `number`, while the recovery UI and chain clock use `bigint`.
+Mixing them crashed the pending guardian screen after setup.
+
+Scheduled guardian and pending-recovery timestamps are now normalized at the SDK
+boundary, with a regression test for the real numeric decode. The same rule should
+be audited and centralized across the simplest account reads through nonce,
+balance, freeze, session, migration, vault, and recovery readers: coerce and
+bounds-check every ABI integer before exposing a public SDK result.
+
+### 5b. Recovered-validator provisioning remains a P0 deployment dependency
+
+The current example deployment has no trusted mechanism for provisioning a fresh
+validator instance for recovered control. Reusing the installed validator is
+forbidden. Keep `UNSUPPORTED_RECOVERED_VALIDATOR_PATH` fail-closed until decision
+0013 is implemented by deployment tooling rather than adding an incidental UI
+factory.
+
+### 5c. Capability V2 still needs a complete consumer integration
+
+The SDK can create and strictly parse individualized current/standby guardian
+epochs. Guardian vault admission, live verifier-code checks, proof of possession,
+passkey or EIP-1193 approval signing, standby activation, and V1-to-V2 delivery
+still need one SDK-owned integration before the browser flow is end-to-end.
+
+### 5d. Recovery coordination and cancellation should be first-class
+
+Portable request/response schemas and pre-submit live-state revalidation now
+exist. The SDK should additionally expose an immutable coordinator that rejects
+duplicate or mismatched guardian responses, plus typed owner-cancel and
+guardian-threshold-cancel preparation that uses the same revalidation policy.
+
+### 5e. Local vault lifecycle needs an SDK boundary
+
+Add explicit lock/unlock, WebAuthn-PRF key wrapping, account/chain/record/version
+AAD, and encrypted export/import interfaces. PRF may wrap local vault keys but
+must never derive guardian Merkle salts.
+
+### 5f. Portable transport ergonomics
+
+File, clipboard, encrypted fragment, and QR chunking adapters should remain
+optional transport only. Add maximum-size and fragmentation tests covering
+truncated, reordered, stale, duplicate, corrupt, and mixed healthy/corrupt
+records. Integrity, signatures, proofs, live chain state, and independent human
+code comparison remain the trust checks.
+
+### 5g. Scheduled-operation provenance should be an SDK read model
+
+The SDK can check `scheduledOperations(operationId)`, but it does not return the
+matching `OperationScheduled` log provenance. The web example therefore has to
+query account logs, match the event's operation id and ready time to account
+storage at one fixed block, and carry the transaction hash itself. Promote this
+into a transport-neutral SDK reader that returns the schedule transaction hash,
+event block, verification block, ready time, and current live/cancelled state.
+When historical log scans are unavailable it should accept discovery hints only
+after re-reading the transaction receipt from the chain. Missing provenance must
+never hide a live storage record, and stale events whose ready time no longer
+matches storage must be rejected.
+
+### 5h. Protected account creation needs one canonical SDK planner
+
+The account contract supports a guardian root, threshold, and recovery module at
+initialization, but the SDK has no single planner that validates this protected
+creation shape, binds it into the configuration hash, returns the exact
+counterfactual address, and carries the private salted roster to wallet storage.
+The web example currently composes those pieces itself. A canonical helper should
+also require deployment-pinned guardian verifier code hashes and accept explicit
+proof-of-possession ceremony evidence; a live RPC code read alone must not become
+the production trust anchor.
+
+### 5i. Guardian onboarding needs an active-epoch delivery coordinator
+
+Adding a guardian root on chain does not populate the guardian's local vault:
+the private salted proof and individualized capability cannot be discovered from
+public state. The example now rebuilds the active root, creates one V1 capability,
+and delivers it as a local encrypted link/QR, but every application should not
+reimplement that boundary. The SDK should expose a coordinator that admits only
+an active, live-root-matching roster; creates one capability per guardian; binds
+config and set versions; reports delivery/acceptance state without central
+account linkage; and supports V2 current/standby rotation. Delivery remains an
+optional transport, while encrypted file export is the provider-independent
+fallback.
+
+Vault admission should also be idempotent for a
+`(chainId, protectedAccount, guardianAuthority)` identity: replaying a
+capability for an already-active epoch must be rejected,
+while a newer configuration or an expired/removed epoch may replace the visible
+entry atomically. Mixed corrupt, expired, and healthy records must be isolated so
+an unusable record can neither hide a healthy capability nor make a replay look
+like a new protected account.
+
+That identity must include the guardian authority, and admission/listing must be
+scoped to the local signer context. Otherwise one browser-wide vault can expose
+one guardian wallet's protected-account relationships in every other local
+wallet, or incorrectly merge two independent guardians of the same account. The
+SDK coordinator should provide this signer-to-capability match and reject an
+invite before persistence when the open signer does not own its commitment.
+
+### 5j. Prepared recovery should produce its portable request canonically
+
+`prepareRecovery` verifies the live account, nonce, deployed validator, fresh
+guardian root, and recovery digest, but applications still have to manually map
+that result plus the current guardian state into `createRecoveryRequest`. Add an
+SDK helper that accepts one `PreparedRecovery` and its already-inspected current
+state, fixes the bounded request lifetime, and returns the canonical portable
+request. It must reject state from another account/config/nonce and must never
+put validator initialization data, passkey credential metadata, or the private
+fresh guardian roster into the portable artifact; those remain encrypted,
+device-local execution material.
+
+### 5k. Guardian recovery approval needs one SDK-owned verifier/signing planner
+
+The browser example currently has to reconstruct the old-validator hash from
+live account state, bind a portable request back to `requestId` and the EIP-712
+digest, verify the active capability proof and verifier bytecode, verify the
+factory-derived validator address and runtime code, drive a direct P-256 guardian
+passkey signature, and finally create a response. The SDK should expose this as
+one fail-closed planner plus a signer adapter. It must accept only a request
+matching the live account, config version, recovery nonce, guardian root,
+threshold, and complete validator set; return a clear-signing review and exact
+digest; then emit a response only after the configured verifier accepts the
+signature. Transport and gas publication remain separate and optional.
+
+Prepared recovery passkey material also needs a serializable SDK draft shape.
+The factory call intentionally commits only `initDataHash`, so credential ID,
+public key, origin binding, and full init data cannot be reconstructed from the
+chain after a page reload. The SDK shape should contain no `bigint`, should be
+strictly parsed, and should support matching the restored draft against the
+live deterministic factory result before it is resumed.
+
+### 5l. Recovery provisioner profiles must hash a factory child
+
+The primary P-256 validator in an older account deployment can differ from the
+child bytecode compiled into a later standalone recovery factory, even when
+both use the same fallback verifier. Deployment tooling must therefore accept
+and live-read a factory-provisioned child when building or verifying
+`validatorRuntimeCodeHash`; it must not silently reuse the primary validator
+module hash. Wallets should continue to fail closed by checking the pinned
+factory address, deterministic child address, and deployed child runtime hash
+before creating or accepting guardian approvals.
+
+### 5m. P-256 recovery init data must remain callable calldata (fixed)
+
+`LoomAccount.recoverConfiguration` forwards recovery initialization bytes to
+the newly installed validator with a direct call. The SDK previously validated
+only five selectorless ABI words, even though that payload could not invoke
+`P256Validator.initialize`. Validation now requires the exact `initialize`
+selector followed by its five canonical ABI words, checks the credential
+bindings and allowed policy hook, and rejects selectorless or substituted
+calldata. Existing browser recovery drafts already used this callable form and
+remain valid.
+
+### 5n. Loom-address guardians need a canonical P-256 resolver and signer
+
+A Loom account's primary `P256Validator` intentionally rejects arbitrary
+ERC-1271 hashes, so adding a Loom address through `ERC1271GuardianVerifier`
+creates a guardian that cannot approve freeze or recovery digests. The browser
+example now verifies that the address belongs to the deployment factory's
+per-app registry, accepts only the manifest primary validator or a
+runtime-hash-pinned recovery-validator child, checks the configured fallback
+verifier, reads the account's active public key, and commits that key through
+`P256GuardianVerifier`. The Loom address is discovery input only and is not
+stored in the guardian leaf.
+
+The SDK should own this resolution policy and the exact
+`abi.encode(WebAuthnP256.PublicKey, WebAuthnP256.Signature)` encoder. It should
+reject unregistered accounts, unknown validator bytecode, zero or ambiguous
+keys, and fallback-verifier disagreement, and return a P-256 descriptor plus a
+clear-signing adapter. Keeping these checks in one SDK implementation prevents
+other wallets from repeating the ERC-1271 misconfiguration or subtly encoding
+an incompatible WebAuthn signature.
+
+### 5o. Guardian address admission should be account-type agnostic
+
+Applications should not ask users to decide whether an address is an EOA, a
+smart-contract account, or a Loom wallet. The SDK now exposes the canonical
+address-backed signature envelope and descriptor, and rejects repeated key
+commitments even when different kinds or verifiers are supplied. It should
+also own the browser example's fail-closed resolver that checks the deployment
+registry first and returns the exact descriptor and pinned verifier evidence.
+RPC or registry failure must not fall back to an assumed type.
+
+The SDK should keep the form address-only while resolving the verifier before
+the guardian set is committed. It must check the Loom registry first, otherwise
+read runtime code and pin either the ECDSA or ERC-1271 verifier and its code
+hash. A canonical non-magic `isValidSignature` response confirms the interface;
+an inconclusive/reverting probe must produce a user-visible warning, while a
+contract that returns the magic value for the deliberately invalid probe must
+be rejected as unsafe. The contract must not reclassify the address at approval
+time. This keeps
+the authority visible and immutable for the lifetime of the guardian leaf.
+Counterfactual contract wallets must be deployed before setup-time detection;
+RPC or registry failure must fail closed instead of guessing.
