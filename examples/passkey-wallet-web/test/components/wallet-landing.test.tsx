@@ -4,6 +4,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WalletLanding } from "../../src/features/onboarding/WalletLanding";
 import type { AccountHandle } from "../../src/types";
+import { NetworkProvider } from "../../src/config/NetworkContext";
+import { AppServicesProvider, type AppServices } from "../../src/app/AppServices";
 
 afterEach(cleanup);
 
@@ -22,21 +24,31 @@ const account = {
   creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
 } as AccountHandle;
 
+const services = { publicClients: {} } as AppServices;
+
+function renderLanding(input: {
+  readonly onRemove: (account: AccountHandle) => Promise<void>;
+  readonly onOpen?: (account: AccountHandle) => Promise<void>;
+}) {
+  return render(<NetworkProvider><AppServicesProvider services={services}><WalletLanding
+    accounts={[account]}
+    busy={false}
+    message=""
+    onCreate={async () => undefined}
+    onImport={async () => undefined}
+    onOpen={input.onOpen ?? (async () => undefined)}
+    onRemove={input.onRemove}
+    onGuardianRecover={() => undefined}
+    onClearMessage={() => undefined}
+  /></AppServicesProvider></NetworkProvider>);
+}
+
 describe("WalletLanding saved wallet removal", () => {
   it("requires confirmation and removes only the selected saved-wallet entry", async () => {
     const user = userEvent.setup();
     const onRemove = vi.fn(async () => undefined);
     const onOpen = vi.fn(async () => undefined);
-    render(<WalletLanding
-      accounts={[account]}
-      busy={false}
-      message=""
-      onCreate={async () => undefined}
-      onImport={async () => undefined}
-      onOpen={onOpen}
-      onRemove={onRemove}
-      onClearMessage={() => undefined}
-    />);
+    renderLanding({ onRemove, onOpen });
 
     await user.click(screen.getByRole("button", { name: "Remove Primary wallet" }));
     assert.ok(screen.getByRole("dialog", { name: "Remove saved wallet" }));
@@ -56,16 +68,7 @@ describe("WalletLanding saved wallet removal", () => {
   it("cancels without removing the wallet", async () => {
     const user = userEvent.setup();
     const onRemove = vi.fn(async () => undefined);
-    render(<WalletLanding
-      accounts={[account]}
-      busy={false}
-      message=""
-      onCreate={async () => undefined}
-      onImport={async () => undefined}
-      onOpen={async () => undefined}
-      onRemove={onRemove}
-      onClearMessage={() => undefined}
-    />);
+    renderLanding({ onRemove });
 
     await user.click(screen.getByRole("button", { name: "Remove Primary wallet" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -75,16 +78,7 @@ describe("WalletLanding saved wallet removal", () => {
 
   it("keeps the confirmation open when removal fails", async () => {
     const user = userEvent.setup();
-    render(<WalletLanding
-      accounts={[account]}
-      busy={false}
-      message=""
-      onCreate={async () => undefined}
-      onImport={async () => undefined}
-      onOpen={async () => undefined}
-      onRemove={async () => { throw new Error("storage unavailable"); }}
-      onClearMessage={() => undefined}
-    />);
+    renderLanding({ onRemove: async () => { throw new Error("storage unavailable"); } });
 
     await user.click(screen.getByRole("button", { name: "Remove Primary wallet" }));
     await user.type(screen.getByRole("textbox", { name: "Type REMOVE to confirm" }), "REMOVE");

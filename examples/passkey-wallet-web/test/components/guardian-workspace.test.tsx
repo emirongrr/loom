@@ -22,11 +22,12 @@ function account(id: string, byte: string): AccountHandle {
   };
 }
 
-function snapshot(alias: string, accountAddress: `0x${string}`, capabilityByte: string): GuardianVaultSnapshot {
+function snapshot(alias: string, accountAddress: `0x${string}`, capabilityByte: string, guardianAccount: AccountHandle): GuardianVaultSnapshot {
   const set = createGuardianSet({
     guardians: [{
-      kind: "ecdsa",
-      address: "0x6666666666666666666666666666666666666666",
+      kind: "p256",
+      publicKey: guardianAccount.publicKey,
+      credentialId: guardianAccount.credentialId,
       verifier: "0x3333333333333333333333333333333333333333",
       verifierCodeHash: `0x${"a1".repeat(32)}`,
       salt: `0x${capabilityByte.repeat(32)}`
@@ -54,8 +55,10 @@ function snapshot(alias: string, accountAddress: `0x${string}`, capabilityByte: 
 test("switching wallets clears the previous guardian relationships before loading the next scope", async () => {
   const first = account("wallet-a", "11");
   const second = account("wallet-b", "22");
-  const firstSnapshot = snapshot("Protected A", "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "a1");
-  const secondSnapshot = snapshot("Protected B", "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "b1");
+  const firstProtected = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const secondProtected = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const firstSnapshot = snapshot("Protected A", firstProtected, "a1", first);
+  const secondSnapshot = snapshot("Protected B", secondProtected, "b1", second);
   let resolveSecond!: (value: GuardianVaultSnapshot) => void;
   const pendingSecond = new Promise<GuardianVaultSnapshot>(resolve => { resolveSecond = resolve; });
   const services = {
@@ -76,14 +79,16 @@ test("switching wallets clears the previous guardian relationships before loadin
   const view = render(
     <AppServicesProvider services={services}><GuardianWorkspace account={first} /></AppServicesProvider>
   );
-  await screen.findByText("Protected A");
+  await screen.findByText(/^0xaaaa…aaaa$/iu);
+  expect(screen.queryByText("Protected A")).toBeNull();
 
   view.rerender(
     <AppServicesProvider services={services}><GuardianWorkspace account={second} /></AppServicesProvider>
   );
-  await waitFor(() => { expect(screen.queryByText("Protected A")).toBeNull(); });
+  await waitFor(() => { expect(screen.queryByText(/^0xaaaa…aaaa$/iu)).toBeNull(); });
 
   await act(async () => { resolveSecond(secondSnapshot); });
-  await screen.findByText("Protected B");
-  expect(screen.queryByText("Protected A")).toBeNull();
+  await screen.findByText(/^0xbbbb…bbbb$/iu);
+  expect(screen.queryByText(/^0xaaaa…aaaa$/iu)).toBeNull();
+  expect(screen.queryByText("Protected B")).toBeNull();
 });

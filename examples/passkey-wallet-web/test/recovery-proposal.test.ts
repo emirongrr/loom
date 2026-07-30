@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createGuardianSet, createRecoveryId, createRecoveryRequest, createRecoveryResponse, createGuardianProof } from "@loom/sdk/recovery";
 import { encodeAbiParameters, keccak256, parseAbiParameters } from "viem";
-import { assertPreparedRecoveryMatchesRequest, restorePreparedRecovery, verifyRecoveryResponseForProposal } from "../src/features/recovery/recoveryProposal.ts";
+import { assertPendingRecoveryMatchesPrepared, assertPreparedRecoveryMatchesRequest, assertSuccessfulTransactionReceipt, restorePreparedRecovery, verifyRecoveryResponseForProposal } from "../src/features/recovery/recoveryProposal.ts";
 
 const ACCOUNT = "0x1111111111111111111111111111111111111111";
 const MANAGER = "0x2222222222222222222222222222222222222222";
@@ -40,4 +40,26 @@ test("pending recovery execution is reconstructed only from request-bound encryp
   assert.throws(() => restorePreparedRecovery({ request, initData: INIT_DATA, oldValidators: [], newGuardianSet: freshSet }), /previous validator set/u);
   assert.throws(() => restorePreparedRecovery({ request, initData: "0xabcd", oldValidators: [OLD_VALIDATOR], newGuardianSet: freshSet }), /initialization data/u);
   assert.throws(() => restorePreparedRecovery({ request: { ...request, requestId: `0x${"ff".repeat(32)}` }, initData: INIT_DATA, oldValidators: [OLD_VALIDATOR], newGuardianSet: freshSet }), /no longer matches/u);
+});
+
+test("pending chain state must match every reviewed recovery identity field", () => {
+  const fullPrepared = restorePreparedRecovery({ request, initData: INIT_DATA, oldValidators: [OLD_VALIDATOR], newGuardianSet: freshSet });
+  const pending = {
+    pending: true,
+    oldValidatorsHash: fullPrepared.oldValidatorsHash,
+    newValidator: fullPrepared.newValidator,
+    initDataHash: fullPrepared.initDataHash,
+    newGuardianRoot: fullPrepared.newGuardianSet.root,
+    newGuardianThreshold: fullPrepared.newGuardianSet.threshold,
+    configVersion: fullPrepared.configVersion,
+    nonce: fullPrepared.nonce
+  };
+  assert.doesNotThrow(() => assertPendingRecoveryMatchesPrepared(pending, fullPrepared));
+  assert.throws(() => assertPendingRecoveryMatchesPrepared({ ...pending, nonce: 1n }, fullPrepared), /does not match this reviewed request/iu);
+  assert.throws(() => assertPendingRecoveryMatchesPrepared({ ...pending, newValidator: ACCOUNT }, fullPrepared), /does not match this reviewed request/iu);
+});
+
+test("reverted transaction receipts never advance recovery", () => {
+  assert.doesNotThrow(() => assertSuccessfulTransactionReceipt({ status: "success" }));
+  assert.throws(() => assertSuccessfulTransactionReceipt({ status: "reverted" }), /reverted on chain/iu);
 });
