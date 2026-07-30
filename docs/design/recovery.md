@@ -22,6 +22,22 @@ recovery service.
 ## Lifecycle
 
 1. The user creates a new validator or passkey configuration on a new device.
+   This step needs a *deployed validator instance the account does not already
+   have installed*, because recovery replaces the whole validator set and both
+   `proposeRecovery` and `recoverConfiguration` reject an already-installed
+   `newValidator`. Loom's validators are multi-tenant, so recovering to a new
+   credential of the same kind cannot reuse the installed instance.
+
+   `LoomValidatorFactory` provisions it without a privileged party.
+   `predict(account, recoveryNonce, creationCodeHash)` gives the address offline,
+   before it exists, so the guardians in step 2 can commit to it; `deploy(...)` is
+   permissionless and idempotent, so the user, a guardian, a relayer, or a
+   stranger may publish it, and racing parties converge on the same instance.
+   The deployer gains nothing: the factory never initializes the instance, and
+   validator state is keyed by the calling account, which binds it during step 5.
+
+   Binding the recovery nonce into the salt gives every recovery a distinct
+   instance, so a later recovery is never blocked by the already-installed rule.
 2. The guardian threshold signs a recovery-specific EIP-712 proposal binding
    the account, complete old-validator-set hash, new validator,
    initialization-data hash, fresh guardian root and threshold,

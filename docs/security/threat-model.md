@@ -42,6 +42,11 @@
 - A privacy protocol, scanner, relayer, indexer, prover, or bridge becoming a
   mandatory dependency for ordinary Loom account control, recovery, migration,
   or native-gas operation.
+- A hosted deployment service becoming a recovery precondition. Recovery needs a
+  validator instance the account does not already have installed;
+  `LoomValidatorFactory` derives that address deterministically and lets any
+  party publish it, so no operator key is required and the deployer gains no
+  authority over the instance or the account.
 
 ## Assumptions
 

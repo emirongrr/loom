@@ -39,6 +39,7 @@ Status labels:
 | Same-chain Ethereum L1 keystore verifier | `src/keystore/EthereumL1KeystoreVerifier.sol`, `test/unit/EthereumL1KeystoreVerifier.t.sol` | Implemented | Direct same-chain read; not an L2 proof verifier. |
 | OP Stack L2 keystore verifier | `src/keystore/OPStackL2KeystoreVerifier.sol`, `test/unit/OPStackL2KeystoreVerifier.t.sol` | Partially implemented | Source and tests exist; production deployment requires audit, profile evidence, and live rehearsal. |
 | Keystore sync recovery module | `src/recovery/KeystoreSyncRecoveryModule.sol`, `test/integration/KeystoreSync.t.sol` | Partially implemented | Proof-gated sync boundary exists; production L2 verifier evidence remains a release gate. |
+| Permissionless validator provisioning | `src/LoomValidatorFactory.sol`, `test/integration/PermissionlessValidatorProvisioning.t.sol` | Implemented | Deterministic CREATE2 instance per account and recovery nonce, so recovery no longer needs an operator-key deploy service. No owner, no upgrade path, no registry; the deployer gains no authority. |
 | App account registry | `src/AppAccountRegistry.sol`, `docs/decisions/0009-app-account-registry.md` | Implemented | Registry is analytics/discovery support, not account authority. |
 | SDK account builders | `packages/account/`, `test/integration/SdkCalldataDifferential.t.sol` | Implemented | Local lifecycle builders; no default network side effects. |
 | Guardian SDK tooling | `packages/guardian/` | Implemented | Off-chain Merkle tree, setup, possession, and backup ceremony helpers. |

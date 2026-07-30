@@ -69,7 +69,7 @@ The pure surface accepts explicit verifier code hashes and an injected randomnes
 
 ## Unsafe or misleading shortcuts
 
-1. The generic `/deploy-validator` endpoint spends a backend key to deploy arbitrary per-recovery instances. It is unauthenticated, rate-unlimited, provider-dependent, and not a production recovery architecture.
+1. The generic `/deploy-validator` endpoint spends a backend key to deploy arbitrary per-recovery instances. It is unauthenticated, rate-unlimited, provider-dependent, and not a production recovery architecture. It is also no longer necessary: `src/LoomValidatorFactory.sol` derives the instance address deterministically from the account, recovery nonce, and creation code, and anyone may deploy it. A production client should predict the address locally and publish the deployment itself rather than asking a service that holds a key.
 2. `access-control-allow-origin: *` is applied to every relay response without an explicit production origin policy.
 3. Guardian invitations contain the full set and are exported as plaintext JSON. Every recipient learns the owner's complete guardian graph.
 4. The UI calls a generated invite "delivered", conflating creation with transport receipt.
