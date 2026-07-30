@@ -40,8 +40,9 @@ library GuardianVerificationLib {
     }
 
     /// @notice Returns true only if `approvals` contains at least `threshold`
-    /// distinct guardians (by strictly increasing leaf), each included under
-    /// `root` and each producing a valid verifier signature over `digest`.
+    /// distinct guardians (by strictly increasing leaf and unique key
+    /// commitment), each included under `root` and each producing a valid
+    /// verifier signature over `digest`.
     /// Fails closed: any malformed entry, failed proof, or reverting verifier
     /// returns false rather than reverting.
     function approved(bytes32 root, uint256 threshold, bytes32 digest, Approval[] calldata approvals)
@@ -55,6 +56,9 @@ library GuardianVerificationLib {
         for (uint256 i; i < approvals.length; ++i) {
             Approval calldata item = approvals[i];
             if (item.verifier.code.length == 0 || item.keyCommitment == bytes32(0)) return false;
+            for (uint256 j; j < i; ++j) {
+                if (approvals[j].keyCommitment == item.keyCommitment) return false;
+            }
             bytes32 leaf = guardianLeaf(item.verifier, item.keyCommitment, item.salt);
             if (leaf <= previous || item.proof.length > MAX_PROOF_LENGTH) return false;
             previous = leaf;
