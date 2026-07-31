@@ -43,6 +43,17 @@ Rebinding is reachable only while the account reports `isEvictingHook()`.
 Otherwise it would be an instant, untimelocked way to re-point a validator at a
 permissive hook, which `setPolicyHook`'s configuration delay exists to prevent.
 
+The residual this amendment accepts, stated plainly: the guardian threshold now
+chooses the contract that gates direct execution, because `isLowRisk` on the
+policy hook is the only authorization gate `validateDirectExecution` consults in
+`ECDSAValidator`, `P256Validator`, and `MultiP256Validator`. That is more than
+the "guardians can cancel, never act" line the rest of the design holds to. It is
+accepted because the same threshold can already replace every validator through
+`recoverConfiguration` and so can already take the account; the delta is that
+recovery is visible for three days before it applies and this is immediate. An
+owner unwilling to grant that immediate lever should set the guardian threshold
+so that reaching it is equivalent to consenting to recovery.
+
 Beyond installing the replacement it names, the function still cannot move funds
 or change guardian/validator configuration, and works the same way during an
 active freeze as `cancelMigrationWithGuardians` does, since it draws on
