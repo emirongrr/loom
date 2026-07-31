@@ -81,6 +81,30 @@ The rule takes no judgement and admits no prose exception, because the previous
 arrangement was a hand-maintained list with a comment explaining which trees were
 covered, and it had fallen behind without anything noticing.
 
+## Documented limits match the contracts
+
+Security documents state contract limits as numbers — `MAX_HOOKS` is 8,
+`MIN_CONFIG_DELAY` is 3 days, `MAX_REVERT_DATA_LENGTH` is 2,048 bytes. A reader
+budgets against those numbers, so a stale one is worse than none at all.
+`npm run docs:constants:check` reads every named numeric constant out of `src/`
+and every place the docs state a value for one, and fails when they disagree.
+Durations are compared in seconds, so writing 72 hours where the contract says
+3 days is accepted.
+
+Two rules follow from what the checker can and cannot see:
+
+- **Name the constant when stating its value.** The checker matches
+  `` `NAME` is 8 `` and `` `NAME` (3 days) ``. A number written without the
+  constant beside it — "the window is two days" — is invisible to it and will
+  rot silently. Prefer naming the constant with no number at all when the exact
+  value does not matter to the sentence, as `docs/design/lifecycle.md` does for
+  `FREEZE_DURATION`.
+- **The checker verifies agreement, not correctness.** It cannot tell whether a
+  documented limit is the *right* one to describe in that paragraph, and it
+  ignores names the contracts do not declare. It also declines to guess when a
+  constant is declared twice with different values, reporting the ambiguity
+  instead.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
