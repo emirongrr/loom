@@ -179,6 +179,40 @@ or durable `wallet_getCallsStatus` store. Those remain wallet-client
 responsibilities and must be backed by independent conformance and integration
 tests before a product claims full ERC-5792 wallet-provider support.
 
+## How multiple hooks compose
+
+Up to `MAX_HOOKS` (8) hooks can be installed at once, and every one of them runs
+on every unscheduled `execute()`/`executeDirect()` call. The composition rules
+are:
+
+- **Hooks are peers, not nested wrappers.** All `preCheck` callbacks run before
+  the first target call, in installation order; all `postCheck` callbacks run
+  after the last one, in the *same* order. `postCheck` is not reversed. A hook
+  written to expect LIFO teardown would be wrong.
+- **Hooks wrap the whole operation, not each call.** A batch of 32 calls
+  produces one `preCheck`/`postCheck` pair per hook, not 32. A hook sees the
+  complete account call and must do its own accounting across the items.
+- **Installation order is stable.** Hooks run in the order they were installed,
+  and uninstalling one does not reorder the rest — removal shifts the tail
+  rather than swapping the last entry into the gap. Hooks are still required to
+  be order-independent, and Loom's own `PolicyHook` and `VaultHook` are, but
+  "the order changed because an unrelated hook was removed" is not a failure
+  anyone would think to look for.
+- **Any hook can veto, and a veto is total.** A reverting `preCheck` reverts the
+  whole execution. There is no try-mode and no partial application: hooks that
+  already ran do not get a `postCheck`, because the state those earlier calls
+  produced is rolled back with everything else. A hook therefore cannot
+  implement cleanup-on-failure, and must not hold state that assumes its
+  `postCheck` always follows its `preCheck` within a transaction.
+- **`hookData` is per hook.** Whatever a hook returns from `preCheck` is handed
+  back to that same hook in `postCheck`, never to another one.
+- **The hook set is snapshotted at `preCheck`.** A hook uninstalled during the
+  execution still receives its `postCheck`, so the pairing stays symmetric.
+
+`test/regression/HookComposition.t.sol` pins the ordering and the pairing;
+`test/regression/MaliciousHookTests.t.sol` covers reverting, reentrant,
+gas-griefing, and storage-modifying hooks.
+
 ## Guardian hook eviction
 
 Hooks run on every unscheduled `execute()`/`executeDirect()` call. A hook that

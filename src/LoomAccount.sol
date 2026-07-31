@@ -490,13 +490,22 @@ contract LoomAccount is IERC1271, ILoomAccount {
         emit ModuleUninstalled(ModuleType.VALIDATOR, module);
     }
 
-    /// @dev Removes the first occurrence of `value` from `array` with a swap-and-pop.
-    /// Order is not preserved, which is fine for the validator and hook sets.
+    /// @dev Removes the first occurrence of `value` from `array`, shifting the
+    /// tail down so the relative order of the remaining entries is preserved.
+    /// This matters for `_hooks`: they run in array order, so a swap-and-pop
+    /// would silently reorder the surviving hooks whenever an unrelated one was
+    /// uninstalled. Hooks are required to be order-independent, but "the order
+    /// changed because you removed a different hook" is not a failure anyone
+    /// would think to look for, and the account can make it impossible for the
+    /// cost of a bounded shift - `MAX_HOOKS` is 8 and `MAX_VALIDATORS` is 16,
+    /// and this runs only on the timelocked uninstall path.
     function _removeFromArray(address[] storage array, address value) internal {
         uint256 length = array.length;
         for (uint256 i; i < length; ++i) {
             if (array[i] == value) {
-                array[i] = array[length - 1];
+                for (uint256 j = i + 1; j < length; ++j) {
+                    array[j - 1] = array[j];
+                }
                 array.pop();
                 break;
             }
@@ -923,6 +932,13 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
+    /// @dev Hooks are peers around one execution, not nested wrappers: every
+    /// `preCheck` runs before the first target call and every `postCheck` after
+    /// the last, both in installation order. The hook set is snapshotted here
+    /// so a hook uninstalled mid-execution still receives its `postCheck` and
+    /// the pairing stays symmetric. A reverting `preCheck` reverts everything,
+    /// so earlier hooks get no `postCheck` - their state is rolled back with
+    /// it. See docs/design/execution.md for the full composition contract.
     function _preCheck(address caller, bytes memory accountCall)
         internal
         returns (address[] memory checkedHooks, bytes[] memory hookData)
