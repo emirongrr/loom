@@ -23,6 +23,46 @@ static analysis, review, deployment rehearsals, and audit.
 | `LoomVaultHookFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact withdrawal readiness errors, complete pending/spending/balance rollback, and guardian cancellation grants no spending authority. |
 | `LoomKeystoreSyncFormal.t.sol` | Symbolic and fuzz-compatible property tests | Exact controller/sync errors, complete configuration and pending-sync rollback, and guardian-threshold cancellation grants no validator authority. |
 
+## What these properties actually quantify over
+
+Read the path counts Halmos reports before treating any of these as a proof over
+arbitrary inputs. Of the 30 `check_` properties, 12 take no parameters at all,
+and most of the parameterised ones still explore a single path — the symbolic
+argument never reaches a branch, so the engine proves the statement for one
+execution rather than for the argument's domain. Measured on the pinned
+toolchain:
+
+| Paths explored | Properties |
+|---|---|
+| 1 | 21 — the statement holds, but over one concrete execution |
+| 2–3 | 8 |
+| 7 | `check_InvalidDirectExecutionDoesNotConsumeNonce` |
+
+That is not a defect on its own: an exact-revert-selector-plus-full-rollback
+assertion is worth having even when it is concrete, and these files are
+deliberately kept runnable as ordinary Foundry tests. It does mean the honest
+description is "property tests written in a symbolic-execution-compatible
+style", and that a `check_` prefix and a symbolic parameter are not by
+themselves evidence that a statement was proven for all inputs.
+
+When strengthening a property, the useful question is which input the guard
+under test actually reads. `check_UnsupportedExecutionModeNeverExecutes`
+originally took a `uint8 callType` and built the mode word from it, so every
+mode it could express had all-zero trailing bytes — while the account's rule is
+that the *whole* 32-byte word must equal one of two constants. The property
+passed against a mutant that checked only the call-type byte. Quantifying over
+`bytes32 mode` instead makes the same mutant produce a counterexample
+(`0x0180…00`: a supported call type with a trailing byte set). That mutant is
+recorded in `tools/formal/run-property-mutations.mjs`.
+
+## Proving a property can fail
+
+`npm run formal:mutation` breaks one guard at a time and requires the named
+property to report a counterexample. A mutant costs a full recompile of the
+symbolic build, so the run belongs to the formal and nightly workflows;
+`verify:quick` runs `npm run formal:mutation:self-test`, which only checks the
+manifest still matches the source.
+
 Functions intended for symbolic execution use the `check_` prefix so Halmos can
 discover them directly. Stateful Foundry invariant tests live outside this
 directory unless a dedicated invariant harness is added here.
