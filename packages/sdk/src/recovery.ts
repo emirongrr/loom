@@ -2,12 +2,15 @@ import type { Address, Hex } from "@loom/core";
 import {
   ECDSAGuardianVerifierAbi,
   LoomAccountAbi,
+  P256RecoveryValidatorFactoryAbi,
+  P256ValidatorAbi,
   RecoveryManagerAbi
 } from "@loom/core/abi";
 import type { LoomStateReadTransport } from "./types.js";
 import {
   concatHex,
   decodeAbiParameters,
+  decodeFunctionData,
   decodeFunctionResult,
   encodeAbiParameters,
   encodeFunctionData,
@@ -92,7 +95,12 @@ export type GuardianRecoveryErrorCode =
   | "RECOVERY_CONFIG_VERSION_MISMATCH"
   | "ACCOUNT_FROZEN"
   | "TRANSPORT_PAYLOAD_EXPIRED"
+  | "INVALID_RECOVERY_REQUEST"
+  | "INVALID_RECOVERY_RESPONSE"
   | "UNSUPPORTED_RECOVERED_VALIDATOR_PATH";
+
+export * from "./recoveryProtocol.js";
+export * from "./guardianCapability.js";
 
 export class GuardianRecoveryError extends Error {
   readonly code: GuardianRecoveryErrorCode;
@@ -147,7 +155,7 @@ export function createGuardianSet(input: {
   const salts = new Set<string>();
   const members = input.guardians.map((guardian, index) => {
     const keyCommitment = keyCommitmentFor(guardian);
-    const authorityKey = `${guardian.kind}:${keyCommitment.toLowerCase()}`;
+    const authorityKey = keyCommitment.toLowerCase();
     if (authority.has(authorityKey)) {
       fail("DUPLICATE_GUARDIAN", "guardian authority appears more than once", {
         firstIndex: authority.get(authorityKey),
@@ -450,6 +458,79 @@ export interface P256RecoveryValidatorProfile {
   readonly allowedPolicyHooks: readonly Address[];
 }
 
+export interface P256RecoveryValidatorFactoryProfile {
+  readonly address: Address;
+  readonly runtimeCodeHash: Hex;
+  readonly validatorRuntimeCodeHash: Hex;
+  readonly fallbackVerifier: Address;
+  readonly allowedPolicyHooks: readonly Address[];
+}
+
+export interface PreparedP256RecoveryValidator {
+  readonly validator: Address;
+  readonly initDataHash: Hex;
+  readonly alreadyDeployed: boolean;
+  readonly deploy?: { readonly to: Address; readonly data: Hex; readonly value: 0n; readonly permissionless: true };
+}
+
+/**
+ * Verify a manifest-pinned permissionless factory and prepare the deterministic
+ * validator deployment for one exact recovery nonce and passkey initializer.
+ */
+export async function prepareP256RecoveryValidator(input: {
+  readonly account: Address;
+  readonly recoveryNonce: bigint;
+  readonly initData: Hex;
+  readonly profile: P256RecoveryValidatorFactoryProfile;
+  readonly stateTransport: LoomStateReadTransport;
+}): Promise<PreparedP256RecoveryValidator> {
+  const account = address(input.account, "account");
+  const recoveryNonce = nonNegativeBigInt(input.recoveryNonce, "recovery nonce");
+  if (recoveryNonce > ((1n << 64n) - 1n)) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery nonce exceeds uint64");
+  const initData = hexBytes(input.initData, "validator initialization data", 65_536);
+  const initDataHash = keccak256(initData);
+  const factory = address(input.profile.address, "recovery validator factory");
+  const state = input.stateTransport;
+  if (!state?.getCode) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory verification requires getCode");
+
+  const factoryCode = await state.getCode({ address: factory });
+  if (!factoryCode || factoryCode === "0x" || keccak256(factoryCode) !== bytes32(input.profile.runtimeCodeHash, "recovery validator factory code hash")) {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory does not match the trusted deployment profile");
+  }
+
+  let fallbackVerifier: Address;
+  let validator: Address;
+  try {
+    fallbackVerifier = address(await readContract(state, factory, P256RecoveryValidatorFactoryAbi, "fallbackVerifier"), "factory fallback verifier");
+    validator = address(await readContract(state, factory, P256RecoveryValidatorFactoryAbi, "getAddress", [account, recoveryNonce, initDataHash]), "recovery validator");
+  } catch {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory could not be verified");
+  }
+  if (fallbackVerifier !== address(input.profile.fallbackVerifier, "trusted fallback verifier")) {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory fallback verifier does not match the trusted deployment profile");
+  }
+
+  const validatorCode = await state.getCode({ address: validator });
+  if (validatorCode && validatorCode !== "0x") {
+    if (keccak256(validatorCode) !== bytes32(input.profile.validatorRuntimeCodeHash, "recovery validator code hash")) {
+      fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "deployed recovery validator code does not match the trusted deployment profile");
+    }
+    return Object.freeze({ validator, initDataHash, alreadyDeployed: true });
+  }
+
+  return Object.freeze({
+    validator,
+    initDataHash,
+    alreadyDeployed: false,
+    deploy: Object.freeze({
+      to: factory,
+      data: encodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, functionName: "deploy", args: [account, recoveryNonce, initDataHash] }),
+      value: 0n,
+      permissionless: true
+    })
+  });
+}
+
 export function createGuardianRecoveryClient(options: {
   chainId: number;
   account: Address;
@@ -458,6 +539,7 @@ export function createGuardianRecoveryClient(options: {
   submitTransport?: GuardianSubmitTransport;
   deployment?: { chainId: number; recoveryManager?: Address };
   trustedRecoveryValidators?: readonly P256RecoveryValidatorProfile[];
+  recoveryValidatorFactory?: P256RecoveryValidatorFactoryProfile;
 }) {
   const chainId = positiveInteger(options.chainId, "chainId");
   const account = address(options.account, "account");
@@ -542,12 +624,26 @@ export function createGuardianRecoveryClient(options: {
     inspectAccount,
     inspectGuardianCandidate,
     prepareGuardianConfiguration,
+    async prepareRecoveryValidator(input: { initData: Hex }) {
+      if (!options.recoveryValidatorFactory) {
+        fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "the deployment does not publish a trusted recovery validator factory");
+      }
+      const nonce = await recoveryRead("recoveryNonces", [account]) as bigint;
+      return prepareP256RecoveryValidator({
+        account,
+        recoveryNonce: nonce,
+        initData: input.initData,
+        profile: options.recoveryValidatorFactory,
+        stateTransport: state
+      });
+    },
     async scheduleGuardianConfiguration(prepared: Awaited<ReturnType<typeof prepareGuardianConfiguration>>) {
       return submit(account, prepared.scheduleCall.data, prepared.review, false);
     },
     async readPendingGuardianConfiguration(prepared: Awaited<ReturnType<typeof prepareGuardianConfiguration>>) {
-      const readyAt = await accountRead("scheduledOperations", [prepared.operationId]) as bigint;
-      const now = state.getBlockTimestamp ? await state.getBlockTimestamp() : undefined;
+      const readyAt = BigInt(await accountRead("scheduledOperations", [prepared.operationId]) as bigint | number);
+      const timestamp = state.getBlockTimestamp ? await state.getBlockTimestamp() : undefined;
+      const now = timestamp === undefined ? undefined : BigInt(timestamp);
       return deepFreeze({ pending: readyAt > 0n, operationId: prepared.operationId, readyAt, ready: now === undefined ? undefined : readyAt > 0n && now >= readyAt, chainTimestamp: now });
     },
     async cancelGuardianConfiguration(prepared: Awaited<ReturnType<typeof prepareGuardianConfiguration>>) {
@@ -587,14 +683,34 @@ export function createGuardianRecoveryClient(options: {
     async prepareRecovery(input: { newValidator: Address; initData: Hex; newGuardianSet: GuardianSet }): Promise<PreparedRecovery> {
       const current = await inspectAccount();
       if (!current.recoveryConfigured) fail("RECOVERY_NOT_CONFIGURED", "account has no active guardian recovery");
-      const pending = await recoveryRead("pendingRecoveries", [account]) as readonly unknown[];
+      const [pending, nonce] = await Promise.all([
+        recoveryRead("pendingRecoveries", [account]) as Promise<readonly unknown[]>,
+        recoveryRead("recoveryNonces", [account]) as Promise<bigint>
+      ]);
       if (BigInt(pending[5] as bigint) !== 0n) fail("RECOVERY_ALREADY_PENDING", "a recovery is already pending");
       const newValidator = address(input.newValidator, "new validator");
       if (current.validators.includes(newValidator)) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "new recovery validator is already installed");
       if (!state.getCode) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "validator verification requires getCode");
       const validatorCode = await state.getCode({ address: newValidator });
       if (!validatorCode || validatorCode === "0x") fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "new recovery validator has no deployed code");
-      const profile = options.trustedRecoveryValidators?.find(candidate => address(candidate.address, "trusted recovery validator") === newValidator);
+      let profile = options.trustedRecoveryValidators?.find(candidate => address(candidate.address, "trusted recovery validator") === newValidator);
+      if (!profile && options.recoveryValidatorFactory) {
+        const provisioned = await prepareP256RecoveryValidator({
+          account,
+          recoveryNonce: nonce,
+          initData: input.initData,
+          profile: options.recoveryValidatorFactory,
+          stateTransport: state
+        });
+        if (provisioned.validator === newValidator && provisioned.alreadyDeployed) {
+          profile = {
+            kind: "p256",
+            address: provisioned.validator,
+            runtimeCodeHash: options.recoveryValidatorFactory.validatorRuntimeCodeHash,
+            allowedPolicyHooks: options.recoveryValidatorFactory.allowedPolicyHooks
+          };
+        }
+      }
       if (!profile) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "new recovery validator is not in the trusted deployment profile");
       const runtimeCodeHash = keccak256(validatorCode);
       if (runtimeCodeHash !== bytes32(profile.runtimeCodeHash, "trusted recovery validator code hash")) {
@@ -606,7 +722,6 @@ export function createGuardianRecoveryClient(options: {
       const initData = hexBytes(input.initData, "validator initialization data", 65_536);
       validateP256RecoveryInitData(initData, profile);
       const initDataHash = keccak256(initData);
-      const nonce = await recoveryRead("recoveryNonces", [account]) as bigint;
       const identity = {
         account, oldValidatorsHash, newValidator, initDataHash, newGuardianRoot: input.newGuardianSet.root,
         newGuardianThreshold: input.newGuardianSet.threshold, configVersion: current.configVersion, nonce
@@ -633,18 +748,55 @@ export function createGuardianRecoveryClient(options: {
     },
     async proposeRecovery(prepared: PreparedRecovery, approvals: readonly GuardianApprovalTuple[]) {
       if (approvals.length < prepared.review.threshold!) fail("INSUFFICIENT_APPROVALS", "guardian threshold has not been reached");
-      const tuples = approvals.map(({ leaf: _leaf, ...approval }) => approval);
+      const approvalLeaves = new Set<string>();
+      const [current, pending, nonce] = await Promise.all([
+        inspectAccount(),
+        recoveryRead("pendingRecoveries", [account]) as Promise<readonly unknown[]>,
+        recoveryRead("recoveryNonces", [account]) as Promise<bigint>
+      ]);
+      const currentValidatorsHash = keccak256(encodeAbiParameters(parseAbiParameters("address[] oldValidators"), [current.validators]));
+      if (current.configVersion !== prepared.configVersion || nonce !== prepared.nonce || currentValidatorsHash !== prepared.oldValidatorsHash) {
+        fail("RECOVERY_CONFIG_VERSION_MISMATCH", "account recovery state changed after approvals were prepared");
+      }
+      if (BigInt(pending[5] as bigint) !== 0n) fail("RECOVERY_ALREADY_PENDING", "a recovery became pending after approvals were prepared");
+      if (current.guardianRoot === prepared.newGuardianSet.root) fail("STALE_GUARDIAN_INVITE", "recovery no longer rotates the guardian root");
+      for (const approval of approvals) {
+        if (approvalLeaves.has(approval.leaf)) fail("DUPLICATE_GUARDIAN", "guardian recovery approval is duplicated", { leaf: approval.leaf });
+        approvalLeaves.add(approval.leaf);
+        if (!state.getCode) fail("INVALID_DEPLOYMENT", "guardian verifier revalidation requires getCode");
+        const code = await state.getCode({ address: approval.verifier });
+        if (!code || code === "0x") fail("UNSUPPORTED_GUARDIAN_VERIFIER", "guardian verifier has no runtime code");
+        const member: GuardianSetMember = {
+          kind: "ecdsa",
+          verifier: approval.verifier,
+          verifierCodeHash: keccak256(code),
+          keyCommitment: approval.keyCommitment,
+          salt: approval.salt,
+          leaf: approval.leaf
+        };
+        const liveLeaf = createGuardianLeaf(member);
+        if (liveLeaf !== approval.leaf || !verifyGuardianProof({ root: current.guardianRoot, leaf: liveLeaf, proof: approval.proof })) {
+          fail("GUARDIAN_PROOF_MISMATCH", "guardian approval no longer belongs to the active guardian root");
+        }
+        if (!(await verifyApproval(member, prepared.digest, approval.signature))) {
+          fail("INVALID_GUARDIAN_SIGNATURE", "guardian recovery signature is invalid");
+        }
+      }
+      const tuples = [...approvals].sort((left, right) => compareHex(left.leaf, right.leaf)).map(({ leaf: _leaf, ...approval }) => approval);
       const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "proposeRecovery", args: [account, prepared.oldValidators, prepared.newValidator, prepared.initDataHash, prepared.newGuardianSet.root, prepared.newGuardianSet.threshold, tuples] });
       return submit(recoveryManager, data, prepared.review, true);
     },
     async readPendingRecovery() {
       const pending = await recoveryRead("pendingRecoveries", [account]) as readonly [Hex, Address, Hex, Hex, number, bigint, bigint, bigint, bigint];
-      const now = state.getBlockTimestamp ? await state.getBlockTimestamp() : undefined;
-      const readyAt = pending[5];
-      const expiresAt = pending[6];
+      const timestamp = state.getBlockTimestamp ? await state.getBlockTimestamp() : undefined;
+      const now = timestamp === undefined ? undefined : BigInt(timestamp);
+      const readyAt = BigInt(pending[5]);
+      const expiresAt = BigInt(pending[6]);
+      const configVersion = BigInt(pending[7]);
+      const nonce = BigInt(pending[8]);
       return deepFreeze({
         pending: readyAt > 0n, oldValidatorsHash: pending[0], newValidator: pending[1], initDataHash: pending[2], newGuardianRoot: pending[3],
-        newGuardianThreshold: Number(pending[4]), readyAt, expiresAt, configVersion: pending[7], nonce: pending[8], chainTimestamp: now,
+        newGuardianThreshold: Number(pending[4]), readyAt, expiresAt, configVersion, nonce, chainTimestamp: now,
         status: readyAt === 0n ? "none" : now === undefined ? "unknown" : now < readyAt ? "delay-active" : now > expiresAt ? "expired" : "ready"
       });
     },
@@ -663,6 +815,14 @@ export function createGuardianRecoveryClient(options: {
       if (pending.status === "expired") fail("RECOVERY_EXPIRED", "recovery execution window expired");
       if (pending.status !== "ready") fail("RECOVERY_NOT_READY", "no executable recovery is pending");
       if (pending.configVersion !== prepared.configVersion) fail("RECOVERY_CONFIG_VERSION_MISMATCH", "account configuration changed since recovery approval");
+      if (
+        pending.oldValidatorsHash !== prepared.oldValidatorsHash
+        || pending.newValidator.toLowerCase() !== prepared.newValidator.toLowerCase()
+        || pending.initDataHash !== prepared.initDataHash
+        || pending.newGuardianRoot !== prepared.newGuardianSet.root
+        || pending.newGuardianThreshold !== prepared.newGuardianSet.threshold
+        || pending.nonce !== prepared.nonce
+      ) fail("RECOVERY_CONFIG_VERSION_MISMATCH", "pending recovery does not match the reviewed recovery");
       const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "executeRecovery", args: [account, prepared.oldValidators, prepared.initData] });
       return submit(recoveryManager, data, prepared.review, true);
     }
@@ -844,17 +1004,16 @@ function proofArray(value: unknown): readonly Hex[] {
 
 function validateP256RecoveryInitData(initData: Hex, profile: P256RecoveryValidatorProfile): void {
   if (profile.kind !== "p256") fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "unsupported trusted recovery validator profile");
-  if (initData.length !== 2 + (32 * 5 * 2)) {
-    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "P256 recovery initialization data must encode exactly five ABI words");
+  if (initData.length !== 2 + 8 + (32 * 5 * 2)) {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "P256 recovery initialization data must encode initialize selector plus exactly five ABI words");
   }
   let decoded: readonly [Hex, Hex, Hex, Hex, Address];
   try {
-    decoded = decodeAbiParameters(
-      parseAbiParameters("bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook"),
-      initData
-    );
+    const call = decodeFunctionData({ abi: P256ValidatorAbi, data: initData });
+    if (call.functionName !== "initialize") throw new Error("unexpected P256 initializer selector");
+    decoded = call.args as readonly [Hex, Hex, Hex, Hex, Address];
   } catch {
-    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "P256 recovery initialization data is malformed");
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "P256 recovery initialization data is not canonical initialize calldata");
   }
   if (decoded[0] === ZERO_BYTES32 || decoded[1] === ZERO_BYTES32 || decoded[2] === ZERO_BYTES32 || decoded[3] === ZERO_BYTES32) {
     fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "P256 recovery initialization data contains an empty credential binding");
