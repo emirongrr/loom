@@ -26,9 +26,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJsonRpcClient, parseFoundryBroadcast, probeP256Precompile } from "../../packages/deployment/src/index.js";
+import { buildGuardianTree, guardianLeaf } from "../../packages/guardian/src/index.js";
 import {
   base64UrlEncode, deriveAccountAddress, encodeValidatorSignature, encodeWebAuthnSignature,
-  EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256ValidatorAbi,
+  EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256RecoveryValidatorFactoryAbi, P256ValidatorAbi,
   packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
 import {
@@ -111,36 +112,6 @@ const packedTuple = op => ({
   gasFees: op.gasFees, paymasterAndData: op.paymasterAndData, signature: op.signature
 });
 
-// A guardian merkle tree with the leaf encoding the contract uses. Sorted-pair
-// hashing matches OpenZeppelin's MerkleProof; proofs are the sibling hashes up
-// to the root.
-function buildTree(leaves) {
-  const sorted = [...leaves].sort((a, b) => (BigInt(a.leaf) < BigInt(b.leaf) ? -1 : 1));
-  let layer = sorted.map(l => l.leaf);
-  const layers = [layer];
-  while (layer.length > 1) {
-    const next = [];
-    for (let i = 0; i < layer.length; i += 2) {
-      const left = layer[i], right = layer[i + 1] ?? left;
-      const [a, b] = BigInt(left) <= BigInt(right) ? [left, right] : [right, left];
-      next.push(keccak256(`0x${a.slice(2)}${b.slice(2)}`));
-    }
-    layers.push(next);
-    layer = next;
-  }
-  return { root: layer[0], layers, sorted };
-}
-function proofFor(layers, leaf) {
-  let index = layers[0].indexOf(leaf);
-  const proof = [];
-  for (let level = 0; level < layers.length - 1; level += 1) {
-    const sibling = index % 2 === 0 ? index + 1 : index - 1;
-    if (sibling < layers[level].length) proof.push(layers[level][sibling]);
-    index = Math.floor(index / 2);
-  }
-  return proof;
-}
-
 async function deployFromArtifact(rpc, name, constructorArgsHex = "") {
   const artifact = JSON.parse(readFileSync(join(repoRoot, "out", `${name}.sol`, `${name}.json`), "utf8"));
   const receipt = await rpc("eth_sendTransaction", [{ from: DEPLOYER_ADDRESS, data: artifact.bytecode.object + constructorArgsHex, gas: "0x1c9c380" }]);
@@ -148,13 +119,6 @@ async function deployFromArtifact(rpc, name, constructorArgsHex = "") {
   if (!mined.contractAddress) fail(`${name} deployment produced no address`);
   return mined.contractAddress;
 }
-async function deploySecondValidator(rpc, existingValidator) {
-  const fallback = `0x${(await ethCall(rpc, existingValidator, encodeFunctionData({
-    abi: parseAbi(["function fallbackVerifier() view returns (address)"]), functionName: "fallbackVerifier"
-  }))).slice(26)}`;
-  return deployFromArtifact(rpc, "P256Validator", encodeAbiParameters([{ type: "address" }], [fallback]).slice(2));
-}
-
 async function accountNonce(rpc, entryPoint, account) {
   return BigInt(await ethCall(rpc, entryPoint, `0x35567e1a${account.slice(2).toLowerCase().padStart(64, "0")}${"0".repeat(64)}`));
 }
@@ -198,6 +162,7 @@ async function main() {
   const created = parsed.createdContracts;
   const need = n => created[n] ?? fail(`deployment is missing ${n}`);
   const entryPoint = need("EntryPoint"), factory = need("LoomAccountFactory"), validator = need("P256Validator");
+  const recoveryValidatorFactory = need("P256RecoveryValidatorFactory");
   const policyHook = need("PolicyHook"), recoveryManager = need("RecoveryManager");
   const ecdsaGuardian = await deployFromArtifact(rpc, "ECDSAGuardianVerifier");
 
@@ -207,14 +172,10 @@ async function main() {
   const salt = keccak256(stringToHex("loom.devnet.social.salt"));
   const guardianLeaves = guardians.map(g => {
     const keyCommitment = keccak256(encodeAbiParameters([{ type: "address" }], [g.address]));
-    return {
-      address: g.address, account: g, keyCommitment,
-      leaf: keccak256(encodeAbiParameters(
-        [{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
-        [ecdsaGuardian, guardianCodeHash, keyCommitment, salt]))
-    };
+    const input = { verifier: ecdsaGuardian, verifierCodeHash: guardianCodeHash, keyCommitment, salt };
+    return { address: g.address, account: g, keyCommitment, leaf: guardianLeaf(input), ...input };
   });
-  const tree = buildTree(guardianLeaves);
+  const tree = buildGuardianTree(guardianLeaves);
   const THRESHOLD = 2;
   console.log(`==> 3 guardians, threshold ${THRESHOLD}:`);
   guardians.forEach((g, i) => console.log(`    guardian ${i + 1}: ${g.address}`));
@@ -259,7 +220,6 @@ async function main() {
   // --- the new owner: a fresh passkey, and a fresh validator for it ---------
   console.log("\n==> Lost the passkey; generating a new one (same account, new key)");
   const newKey = softwareP256Key();
-  const newValidator = await deploySecondValidator(rpc, validator);
   const newValidatorInit = encodeFunctionData({ abi: P256ValidatorAbi, functionName: "initialize",
     args: [newKey.x, newKey.y, rpIdHash, originHash, policyHook] });
 
@@ -275,12 +235,31 @@ async function main() {
     "function guardianRoot() view returns (bytes32)"
   ]);
 
+  const initDataHash = keccak256(newValidatorInit);
+  const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
+  const predicted = await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
+    abi: P256RecoveryValidatorFactoryAbi,
+    functionName: "getAddress",
+    args: [account, recoveryNonce, initDataHash]
+  }));
+  const newValidator = `0x${predicted.slice(-40)}`;
+  const provisionTx = await rpc("eth_sendTransaction", [{
+    from: DEPLOYER_ADDRESS,
+    to: recoveryValidatorFactory,
+    data: encodeFunctionData({
+      abi: P256RecoveryValidatorFactoryAbi,
+      functionName: "deploy",
+      args: [account, recoveryNonce, initDataHash]
+    }),
+    gas: "0x4c4b40"
+  }]);
+  await waitForReceipt(rpc, provisionTx);
+  if ((await rpc("eth_getCode", [newValidator, "latest"])) === "0x") fail("recovery validator not provisioned");
+
   const oldValidators = [validator];
   const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
   const newRoot = keccak256(stringToHex("loom.devnet.social.newroot"));
-  const initDataHash = keccak256(newValidatorInit);
   const configVersion = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "configVersion" })));
-  const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
 
   // The one digest everyone signs. It commits to the new key, so a guardian who
   // signs it is approving this exact recovery and nothing else.
@@ -294,7 +273,7 @@ async function main() {
   const approvalFor = async i => {
     const leaf = guardianLeaves[i];
     const s = await sign({ hash: digest, privateKey: GUARDIAN_KEYS[i] });
-    return { verifier: ecdsaGuardian, keyCommitment: leaf.keyCommitment, salt, signature: serializeSignature(s), proof: proofFor(tree.layers, leaf.leaf) };
+    return { verifier: ecdsaGuardian, keyCommitment: leaf.keyCommitment, salt, signature: serializeSignature(s), proof: tree.proofFor(leaf.leaf) };
   };
 
   // --- one approval alone must be refused (below threshold) -----------------

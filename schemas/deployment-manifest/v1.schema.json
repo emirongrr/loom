@@ -72,6 +72,12 @@
         "$ref": "#/definitions/module"
       }
     },
+    "provisioners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/provisioner"
+      }
+    },
     "compatibility": {
       "type": "object",
       "additionalProperties": false,
@@ -146,6 +152,38 @@
             "beta",
             "experimental"
           ]
+        }
+      }
+    },
+    "provisioner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "address",
+        "runtimeCodeHash",
+        "validatorRuntimeCodeHash",
+        "fallbackVerifier"
+      ],
+      "properties": {
+        "type": {
+          "const": "p256-recovery-validator-factory"
+        },
+        "address": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "runtimeCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "validatorRuntimeCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "fallbackVerifier": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
         }
       }
     }
