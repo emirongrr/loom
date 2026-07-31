@@ -61,6 +61,26 @@ these drifts:
 The checker's own tests build broken fixtures and assert each rule fires, so it
 cannot pass by checking nothing.
 
+## Dependency audit coverage
+
+The repository is a hybrid monorepo. Four packages are npm workspaces sharing
+the root lockfile; every other tree — the remaining SDKs, the CLI, the examples,
+the monitoring component, and the documentation site — keeps its own. That is a
+deliberate boundary: the examples and the mobile wallet carry build stacks that
+have no business in the root dependency tree, and the SDKs are installed
+independently by design.
+
+The cost is that `npm audit` sees one lockfile at a time, so coverage is exactly
+the target list in `tools/quality/audit-dependencies.mjs`.
+`npm run deps:coverage:check` makes that list total: one audit target per
+committed lockfile, in both directions. A new tree with a lockfile fails until it
+is audited, and a target for a tree that no longer has one fails as a stale claim
+of coverage.
+
+The rule takes no judgement and admits no prose exception, because the previous
+arrangement was a hand-maintained list with a comment explaining which trees were
+covered, and it had fallen behind without anything noticing.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
