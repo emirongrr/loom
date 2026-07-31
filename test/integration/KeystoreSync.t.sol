@@ -15,6 +15,26 @@ import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockKeystoreProofVerifier} from "../mocks/MockKeystoreProofVerifier.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
 
+/// @notice Stands in for a controller that is a contract, so the acceptance
+/// half of the handshake is exercised by an address that actually has to call
+/// the keystore rather than by the test contract itself.
+contract KeystoreControllerRecipient {
+    function accept(LoomKeystore keystore, bytes32 identityId) external {
+        keystore.acceptController(identityId);
+    }
+
+    function updateConfig(
+        LoomKeystore keystore,
+        bytes32 identityId,
+        bytes32 validatorRoot,
+        bytes32 guardianRoot,
+        bytes32 appAccountRoot,
+        uint8 guardianThreshold
+    ) external {
+        keystore.updateConfig(identityId, validatorRoot, guardianRoot, appAccountRoot, guardianThreshold);
+    }
+}
+
 contract RecoverySetCaller is ILoomModule {
     function recoverSet(
         LoomAccount account,
@@ -97,10 +117,26 @@ contract KeystoreSyncTest {
             );
         require(!rejectedDuplicate, "duplicate identity registered");
 
-        (bool unauthorized,) =
-            address(keystore).call(abi.encodeCall(LoomKeystore.transferController, (IDENTITY_ID, address(0xBEEF))));
-        require(unauthorized, "self controller transfer should succeed");
-        require(keystore.controllerOf(IDENTITY_ID) == address(0xBEEF), "controller not transferred");
+        KeystoreControllerRecipient recipient = new KeystoreControllerRecipient();
+        keystore.transferController(IDENTITY_ID, address(recipient));
+        require(keystore.pendingControllerOf(IDENTITY_ID) == address(recipient), "transfer not recorded as pending");
+        require(keystore.controllerOf(IDENTITY_ID) == address(this), "offer moved control before acceptance");
+
+        // The offer grants nothing on its own: the recipient cannot act as the
+        // controller and the current controller has not lost authority.
+        (bool pendingActed,) = address(recipient)
+            .call(
+                abi.encodeCall(
+                    KeystoreControllerRecipient.updateConfig,
+                    (keystore, IDENTITY_ID, keccak256("premature"), NEW_GUARDIAN_ROOT, appRoot, 2)
+                )
+            );
+        require(!pendingActed, "pending controller updated config before accepting");
+        keystore.updateConfig(IDENTITY_ID, keccak256("still ours"), NEW_GUARDIAN_ROOT, appRoot, 2);
+
+        recipient.accept(keystore, IDENTITY_ID);
+        require(keystore.controllerOf(IDENTITY_ID) == address(recipient), "controller not transferred on acceptance");
+        require(keystore.pendingControllerOf(IDENTITY_ID) == address(0), "pending controller not cleared");
 
         (bool rejectedOldController,) = address(keystore)
             .call(
@@ -109,6 +145,45 @@ contract KeystoreSyncTest {
                 )
             );
         require(!rejectedOldController, "old controller updated config");
+    }
+
+    /// @dev The keystore has no administrator and no recovery path, so a
+    /// single-step transfer to an address that cannot call back would strand
+    /// the identity forever. These are the cases that would have stranded it.
+    function testControllerTransferNeedsTheRecipientToProveItCanAct() public {
+        LoomKeystore keystore = new LoomKeystore();
+        bytes32 validatorRoot = keccak256("validator root");
+        bytes32 appRoot = keccak256("app root");
+        keystore.register(IDENTITY_ID, address(this), validatorRoot, NEW_GUARDIAN_ROOT, appRoot, 2);
+
+        // An address that can never call `acceptController` never takes
+        // control, and the identity stays usable by its current controller.
+        address strandedTarget = address(0xDEAD);
+        keystore.transferController(IDENTITY_ID, strandedTarget);
+        require(keystore.controllerOf(IDENTITY_ID) == address(this), "unusable target took control");
+
+        // A wrong-address offer is recoverable: re-target it.
+        KeystoreControllerRecipient recipient = new KeystoreControllerRecipient();
+        keystore.transferController(IDENTITY_ID, address(recipient));
+        require(keystore.pendingControllerOf(IDENTITY_ID) == address(recipient), "offer not re-targeted");
+
+        // Only the exact offered address can claim it.
+        KeystoreControllerRecipient impostor = new KeystoreControllerRecipient();
+        (bool impostorAccepted,) =
+            address(impostor).call(abi.encodeCall(KeystoreControllerRecipient.accept, (keystore, IDENTITY_ID)));
+        require(!impostorAccepted, "non-offered address accepted control");
+
+        // Or withdraw it entirely.
+        keystore.cancelControllerTransfer(IDENTITY_ID);
+        require(keystore.pendingControllerOf(IDENTITY_ID) == address(0), "cancellation left a pending offer");
+        (bool acceptedAfterCancel,) =
+            address(recipient).call(abi.encodeCall(KeystoreControllerRecipient.accept, (keystore, IDENTITY_ID)));
+        require(!acceptedAfterCancel, "cancelled offer was still claimable");
+        require(keystore.controllerOf(IDENTITY_ID) == address(this), "controller changed after cancellation");
+
+        (bool rejectedSelfTransfer,) =
+            address(keystore).call(abi.encodeCall(LoomKeystore.transferController, (IDENTITY_ID, address(this))));
+        require(!rejectedSelfTransfer, "no-op transfer to the current controller accepted");
     }
 
     function testL1KeystoreRejectsMissingIdentityAndInvalidUpdates() public {

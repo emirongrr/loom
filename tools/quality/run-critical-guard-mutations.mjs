@@ -66,6 +66,15 @@ const mutants = [
     testPath: "test/unit/VaultHook.t.sol",
     testName: "testDelayedVaultWithdrawalIsExactAndAtomic",
   },
+  {
+    id: "keystore-controller-acceptance",
+    category: "authority",
+    source: "src/keystore/LoomKeystore.sol",
+    search: "if (newController == address(0) || msg.sender != newController) revert Unauthorized();",
+    replacement: "if (false) revert Unauthorized();",
+    testPath: "test/integration/KeystoreSync.t.sol",
+    testName: "testControllerTransferNeedsTheRecipientToProveItCanAct",
+  },
 ];
 
 function occurrences(source, search) {
