@@ -66,6 +66,24 @@ const mutants = [
     testPath: "test/unit/VaultHook.t.sol",
     testName: "testDelayedVaultWithdrawalIsExactAndAtomic",
   },
+  {
+    id: "session-self-target-grant",
+    category: "authority",
+    source: "src/validators/GranularSessionValidator.sol",
+    search: "|| permission.target == account",
+    replacement: "|| false",
+    testPath: "test/regression/SessionAdministrativeTargets.t.sol",
+    testName: "testSessionPermissionCannotTargetTheAccountItself",
+  },
+  {
+    id: "session-module-target",
+    category: "authority",
+    source: "src/validators/GranularSessionValidator.sol",
+    search: "if (_isAdministrativeTarget(account, permission.target)) return false;",
+    replacement: "if (false) return false;",
+    testPath: "test/regression/SessionAdministrativeTargets.t.sol",
+    testName: "testSessionPermissionStopsWorkingOnceItsTargetBecomesAModule",
+  },
 ];
 
 function occurrences(source, search) {
