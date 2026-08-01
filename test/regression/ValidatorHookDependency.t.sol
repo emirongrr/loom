@@ -35,6 +35,25 @@ interface VmDep {
 /// The account now refuses to remove a depended-on hook, and the guardian eviction
 /// path takes a replacement, so a stuck hook can still be escaped -- atomically,
 /// without stranding the account.
+/// @notice Minimal stand-in for an installed recovery module, so the recovery
+/// path can be driven without pulling in the whole `RecoveryManager` flow.
+contract RecoveryModuleStub {
+    function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
+        return moduleTypeId == ModuleType.RECOVERY;
+    }
+
+    function recover(
+        LoomAccount account,
+        address[] calldata oldValidators,
+        address newValidator,
+        bytes calldata initData,
+        bytes32 newGuardianRoot,
+        uint8 newGuardianThreshold
+    ) external {
+        account.recoverConfiguration(oldValidators, newValidator, initData, newGuardianRoot, newGuardianThreshold);
+    }
+}
+
 contract ValidatorHookDependencyTest {
     VmDep internal constant vm = VmDep(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -91,6 +110,44 @@ contract ValidatorHookDependencyTest {
         );
         (bool ok,) = address(this).call(abi.encodeCall(this.deployAccount, (modules)));
         require(!ok, "validator initialized against an uninstalled hook");
+    }
+
+    /// @dev Recovery is deliberately exempt from the hook-coherence check. It is
+    /// the last-resort path: it is driven by the guardian threshold through an
+    /// installed recovery module and needs no working validator, so refusing it
+    /// here would leave whatever validator the guardians are replacing in place.
+    /// A recovery that installs a validator naming an absent hook produces one
+    /// that fails closed, and a further recovery can repair that; a blocked
+    /// recovery cannot be repaired at all.
+    ///
+    /// The exemption is bounded: the same validator and init data are still
+    /// refused on the ordinary construction path, which this asserts in the same
+    /// test so the two cannot drift apart.
+    function testRecoveryMayInstallAValidatorWhoseHookIsAbsentButOrdinaryInstallationMayNot() public {
+        PolicyHook absent = new PolicyHook();
+        ECDSAValidator recovered = new ECDSAValidator();
+        bytes memory initData = abi.encodeCall(ECDSAValidator.initialize, (owner, address(absent)));
+
+        LoomAccount.ModuleInit[] memory refused = new LoomAccount.ModuleInit[](1);
+        refused[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(recovered), initData);
+        (bool ordinary,) = address(this).call(abi.encodeCall(this.deployAccount, (refused)));
+        require(!ordinary, "ordinary installation accepted an absent hook");
+
+        RecoveryModuleStub recovery = new RecoveryModuleStub();
+        bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.RECOVERY, address(recovery), ""));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, install, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(account), 0, install);
+
+        address[] memory oldValidators = new address[](1);
+        oldValidators[0] = address(validator);
+        recovery.recover(account, oldValidators, address(recovered), initData, keccak256("rotated-guardian-root"), 1);
+
+        require(account.isModuleInstalled(ModuleType.VALIDATOR, address(recovered)), "recovery was refused");
+        require(!account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "old validator survived");
+        require(!account.isModuleInstalled(ModuleType.HOOK, address(absent)), "absent hook was installed");
     }
 
     function deployAccount(LoomAccount.ModuleInit[] calldata modules) external returns (LoomAccount) {

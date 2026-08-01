@@ -39,6 +39,18 @@ order. Eviction without a replacement remains available when nothing depends on
 the hook. `_uninstallModule` refuses to remove a depended-on hook on every path,
 so the ordinary scheduled-uninstall route is guarded too.
 
+Recovery is exempt from the coherence check that refuses to install a validator
+whose declared policy hook is absent. That check belongs on the ordinary
+timelocked path, where the owner is choosing the module set and a mismatch is a
+mistake worth refusing. On the recovery path refusing is the more dangerous
+answer: recovery is driven by the guardian threshold through an installed
+recovery module and needs no working validator, so a revert leaves the validator
+the guardians are replacing in place. A recovery that installs a validator naming
+an absent hook yields one that fails closed, and a further recovery repairs it; a
+blocked recovery cannot be repaired at all. The exemption is pinned in
+`test/regression/ValidatorHookDependency.t.sol:testRecoveryMayInstallAValidatorWhoseHookIsAbsentButOrdinaryInstallationMayNot`,
+which asserts the same validator is still refused on the ordinary path.
+
 Rebinding is reachable only while the account reports `isEvictingHook()`.
 Otherwise it would be an instant, untimelocked way to re-point a validator at a
 permissive hook, which `setPolicyHook`'s configuration delay exists to prevent.

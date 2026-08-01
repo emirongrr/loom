@@ -176,6 +176,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// Modules arrive as a set there, so a validator may legitimately name a hook
     /// that appears later in the list; coherence is asserted once, at the end.
     bool private _initializing;
+    bool private _recovering;
 
     // --- Events ---
     event ModuleInstalled(uint256 indexed moduleTypeId, address indexed module);
@@ -531,7 +532,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         for (uint256 i; i < oldValidators.length; ++i) {
             _removeValidatorForRecovery(oldValidators[i]);
         }
+        _recovering = true;
         _installModule(ModuleType.VALIDATOR, newValidator, initData);
+        _recovering = false;
         _advanceConfig(
             keccak256(
                 abi.encode(
@@ -564,9 +567,11 @@ contract LoomAccount is IERC1271, ILoomAccount {
         for (uint256 i; i < oldValidators.length; ++i) {
             _removeValidatorForRecovery(oldValidators[i]);
         }
+        _recovering = true;
         for (uint256 i; i < newValidators.length; ++i) {
             _installModule(ModuleType.VALIDATOR, newValidators[i].module, newValidators[i].initData);
         }
+        _recovering = false;
         _advanceConfig(
             keccak256(
                 abi.encode(
@@ -1098,7 +1103,15 @@ contract LoomAccount is IERC1271, ILoomAccount {
         // exist until that call returns. Checked in the account rather than in the
         // validator because a validator cannot call back into an account that is
         // still inside its constructor -- it has no code yet.
-        if (moduleTypeId == ModuleType.VALIDATOR && !_initializing) _assertValidatorHookInstalled(module);
+        // Recovery is exempt. It is the last-resort path, driven by the guardian
+        // threshold and needing no working validator, so refusing it here would
+        // leave a compromised validator in place -- strictly worse than
+        // installing one that fails closed until its hook is installed, which a
+        // further recovery can repair. The guard belongs on the ordinary
+        // timelocked path, where the owner is choosing the module set.
+        if (moduleTypeId == ModuleType.VALIDATOR && !_initializing && !_recovering) {
+            _assertValidatorHookInstalled(module);
+        }
         emit ModuleInstalled(moduleTypeId, module);
         if (_executingScheduled) _advanceConfig(keccak256(abi.encode("MODULE_INSTALLED", moduleTypeId, module)));
     }
