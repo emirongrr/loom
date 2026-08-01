@@ -411,8 +411,8 @@ contract RecoveryManagerTest {
         _propose(initData);
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
 
-        // FREEZE_DURATION is 2 days, so freezing one day before readiness
-        // covers the moment both operations become executable.
+        // Freezing one day before readiness covers the moment both operations
+        // become executable.
         vm.warp(readyAt - 1 days);
         _freeze();
 
@@ -430,6 +430,148 @@ contract RecoveryManagerTest {
         (bool late,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, bump)));
         require(!late, "stale scheduled config bump executed after recovery");
         require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "attacker rotated guardians after recovery");
+    }
+
+    /// @notice A freeze must cover the whole recovery path, not just its start.
+    /// @dev The sibling test above schedules a configuration call, which carries the
+    /// 3-day `MIN_CONFIG_DELAY` and therefore becomes ready at the same moment
+    /// recovery does -- the one case a 2-day freeze happened to cover. External
+    /// calls use the 1-day `MIN_EXTERNAL_DELAY`, so an attacker's operation is
+    /// already ready when the guardian freezes. With a 2-day freeze the protection
+    /// lapsed at T+2d while recovery only became executable at T+3d, leaving a
+    /// roughly one-day window in which `executeScheduled` -- which is
+    /// permissionless -- would have run the attacker's call.
+    function testFreezeCoversRecoveryDelayForAlreadyReadyExternalOperation() public {
+        bytes memory initData = "";
+        address[] memory validators = _sortedValidators();
+        MockTarget target = new MockTarget();
+        bytes memory steal = abi.encodeCall(MockTarget.setValue, (42));
+
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, steal, account.MIN_EXTERNAL_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+
+        // The attacker's operation is ready before the guardians can react.
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
+        uint256 frozenAt = block.timestamp;
+        _freeze();
+        _propose(initData);
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAt == frozenAt + recovery.RECOVERY_DELAY(), "unexpected recovery readiness");
+        require(account.frozenUntil() >= readyAt, "freeze lapses before recovery is executable");
+
+        (bool early,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, steal)));
+        require(!early, "frozen account executed the attacker operation");
+
+        // The moment the old two-day freeze would have lapsed, the account must
+        // still be protected and the operation still blocked.
+        vm.warp(frozenAt + 2 days + 1);
+        // The timestamp comparison is the property under test, not an incidental
+        // read: at the instant the old window would have expired, the freeze has
+        // to still cover the account. The time is set by `vm.warp` here, so
+        // there is no validator to manipulate it.
+        // forge-lint: disable-next-line(block-timestamp)
+        require(block.timestamp < account.frozenUntil(), "freeze lapsed before recovery could complete");
+        (bool inOldGap,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, steal)));
+        require(!inOldGap, "attacker executed in the old freeze gap");
+        require(target.value() == 0, "attacker operation moved state");
+
+        // Recovery becomes executable while the freeze still holds, and its own
+        // configuration advance retires the attacker's operation for good.
+        vm.warp(readyAt);
+        recovery.executeRecovery(address(account), validators, initData);
+        require(account.validatorAt(0) == address(newValidator), "recovery did not replace the validator set");
+
+        vm.warp(uint256(account.frozenUntil()) + 1);
+        (bool late,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, steal)));
+        require(!late, "stale attacker operation executed after recovery");
+        require(target.value() == 0, "attacker operation executed after recovery");
+    }
+
+    /// @notice Cancelling a recovery while frozen must not let a compromised
+    /// validator outlast the guardians.
+    /// @dev `_isFrozenSafe` deliberately allows exactly one action while frozen:
+    /// cancelling this account's pending recovery. That exists so a real owner can
+    /// stop a malicious guardian recovery, and it must stay -- but a compromised
+    /// validator inherits it. Because `freeze` allows each guardian leaf one freeze
+    /// per configuration version and `RecoveryManager._cancel` advances only its own
+    /// nonce, an attacker could previously cancel, reset the guardians' 3-day clock,
+    /// and exhaust their freezes while a pre-scheduled operation waited.
+    ///
+    /// The cancellation now advances the account configuration, which both retires
+    /// that pending operation and re-arms every guardian leaf.
+    function testFrozenRecoveryCancellationRetiresScheduleAndRearmsGuardians() public {
+        bytes memory initData = "";
+        MockTarget target = new MockTarget();
+        bytes memory steal = abi.encodeCall(MockTarget.setValue, (42));
+
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, steal, account.MIN_EXTERNAL_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
+
+        _freeze();
+        _propose(initData);
+        uint64 versionBeforeCancel = account.configVersion();
+        uint48 frozenUntilBeforeCancel = account.frozenUntil();
+
+        // The compromised validator cancels the recovery from inside the freeze.
+        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
+
+        (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAtAfterCancel == 0, "recovery was not cancelled");
+        require(account.configVersion() == versionBeforeCancel + 1, "frozen cancellation did not advance config");
+        require(account.frozenUntil() == frozenUntilBeforeCancel, "cancellation changed the freeze window");
+
+        // The attacker's already-ready operation died with the configuration bump.
+        (bool stale,) = address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, steal)));
+        require(!stale, "attacker operation survived the frozen cancellation");
+        require(target.value() == 0, "attacker operation executed");
+
+        // The same guardian leaf can freeze again, so cancelling bought no ground.
+        // `freeze` only ever extends the window, so let time pass first to make the
+        // extension observable rather than a no-op in the same block.
+        uint256 freezeNonceBefore = account.freezeNonces(guardianLeaf);
+        vm.warp(block.timestamp + 1 days);
+        _freeze();
+        require(account.freezeNonces(guardianLeaf) == freezeNonceBefore + 1, "guardian leaf could not freeze again");
+        require(account.frozenUntil() > frozenUntilBeforeCancel, "re-freeze did not extend the window");
+
+        // And recovery can be proposed and completed on the new configuration.
+        _propose(initData);
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+        vm.warp(readyAt);
+        recovery.executeRecovery(address(account), _sortedValidators(), initData);
+        require(account.validatorAt(0) == address(newValidator), "recovery did not complete after cancellation");
+    }
+
+    /// @notice An unfrozen recovery cancellation stays an ordinary action.
+    /// @dev The configuration advance is scoped to the frozen path. Cancelling an
+    /// uncontested recovery must not silently discard the owner's pending
+    /// operations.
+    function testUnfrozenRecoveryCancellationDoesNotAdvanceConfig() public {
+        MockTarget target = new MockTarget();
+        bytes memory pending = abi.encodeCall(MockTarget.setValue, (7));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(target), 0, pending, account.MIN_EXTERNAL_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+
+        _propose("");
+        uint64 versionBefore = account.configVersion();
+
+        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
+
+        (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAtAfterCancel == 0, "recovery was not cancelled");
+        require(account.configVersion() == versionBefore, "unfrozen cancellation advanced config");
+
+        // The owner's unrelated scheduled operation survives and still executes.
+        vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
+        account.executeScheduled(address(target), 0, pending);
+        require(target.value() == 7, "owner operation was discarded by an unfrozen cancellation");
     }
 
     function testCompositeFreezeRecoveryAndMigrationState() public {

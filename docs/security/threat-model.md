@@ -122,8 +122,13 @@
   reject shimmed-validator operations unless staking or bundler policy allows
   them; this is a liveness concern only, and `executeDirect` is unaffected.
 - Migration is blocked while frozen. A guardian freeze can delay but not
-  permanently veto a migration because freeze duration is shorter than the
-  configuration delay and cancellation remains available while frozen.
+  permanently veto a migration: each guardian leaf may freeze only once per
+  configuration version, so the window cannot be renewed at will, and a migration
+  stays executable until its own `expiresAt`. The freeze duration exceeds
+  `MIN_CONFIG_DELAY`, so a migration whose execution window is shorter than
+  `FREEZE_DURATION` can be pushed past its expiry by a freeze taken at the wrong
+  moment; choose an execution window longer than `FREEZE_DURATION`. Guardian
+  cancellation also remains available while frozen.
 - Module initialization performs an external call. Constructor initialization
   runs before account runtime code exists; scheduled installation runs under
   the account execution reentrancy guard. Every module init path still belongs

@@ -70,7 +70,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// use the longer MIN_CONFIG_DELAY; see scheduleCall.
     uint48 public constant MIN_EXTERNAL_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
-    uint48 public constant FREEZE_DURATION = 2 days;
+    /// @notice How long a guardian freeze holds.
+    /// @dev Must cover the whole recovery path, not just its start. A guardian who
+    /// freezes the instant an attack is noticed also needs `RecoveryManager`'s
+    /// `RECOVERY_DELAY` to pass before recovery is executable, plus room to publish
+    /// that execution. At two days this was shorter than the three-day recovery
+    /// delay, so the freeze lapsed roughly a day before recovery could replace the
+    /// compromised validator -- and `MIN_EXTERNAL_DELAY` is one day, so an operation
+    /// scheduled before the freeze was already ready and waiting in that window,
+    /// executable permissionlessly by the attacker.
+    ///
+    /// Recovery execution is not blocked by the freeze: `recoverConfiguration` is
+    /// gated on the recovery module, not on `frozenUntil`. Lengthening the freeze
+    /// therefore delays nothing legitimate.
+    uint48 public constant FREEZE_DURATION = 5 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
     uint256 public constant MAX_VALIDATORS = ValidatorSetLib.MAX_VALIDATORS;
@@ -100,6 +113,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
     bytes32 private constant CONFIGURATION_SET_RECOVERED_HASH = keccak256("CONFIGURATION_SET_RECOVERED");
+    bytes32 private constant FROZEN_RECOVERY_CANCELLED_HASH = keccak256("FROZEN_RECOVERY_CANCELLED");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
@@ -383,7 +397,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (callType == ExecutionLib.CALLTYPE_BATCH) _validateBatchSize(executionCalldata);
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < frozenUntil && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
+        bool frozen = block.timestamp < frozenUntil;
+        if (frozen && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
 
         bool bypassHooks = _isHookRecoverySchedule(callType, executionCalldata);
         address[] memory checkedHooks = new address[](0);
@@ -400,6 +415,30 @@ contract LoomAccount is IERC1271, ILoomAccount {
             revert UnsupportedExecutionMode();
         }
         if (!bypassHooks) _postCheck(checkedHooks, hookData);
+
+        // Reaching here while frozen means `_isFrozenSafe` accepted the call, and
+        // the only shape it accepts is cancelling this account's pending recovery
+        // on an installed recovery module. That carve-out exists so the real owner
+        // can stop a malicious guardian recovery even while guardians hold a
+        // freeze, and it must stay. But a compromised validator inherits it, and
+        // without this the compromise won: cancelling reset the guardians' 3-day
+        // recovery clock while `freeze` allowed each guardian leaf only one freeze
+        // per configuration version, so the guardians ran out of freezes before
+        // recovery could ever complete, and any operation the attacker had already
+        // scheduled survived to be executed once the freeze lapsed.
+        //
+        // Advancing the configuration makes that cancellation self-defeating. It
+        // re-arms every guardian leaf, because the freeze gate compares against
+        // `configVersion`, and it invalidates every pending scheduled operation,
+        // migration, and vault withdrawal, because each binds the configuration
+        // version it was created at. The attacker can still cancel recovery, but
+        // each cancellation destroys the payload the freeze was buying time to
+        // stop and hands the guardians another freeze.
+        //
+        // Only the frozen path does this. Cancelling a recovery on an unfrozen
+        // account is an ordinary uncontested action and must not silently discard
+        // the owner's other pending operations.
+        if (frozen) _advanceConfig(FROZEN_RECOVERY_CANCELLED_HASH);
     }
 
     function supportsExecutionMode(bytes32 mode) external pure returns (bool) {
