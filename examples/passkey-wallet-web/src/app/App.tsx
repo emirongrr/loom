@@ -12,9 +12,11 @@ import { authenticateBrowserAccount, deriveCreatedAccountHandle, loadWalletDeplo
 import { parseAccountHandle } from "../storage/accountStore";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
+import { useNetwork } from "../config/NetworkContext";
 
 export function App() {
   const services = useAppServices();
+  const { config } = useNetwork();
   const [area, setArea] = useState<NavigationArea>(() => routeFromLocation());
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("loom.theme") === "dark" ? "dark" : "light");
   const [accounts, setAccounts] = useState<readonly AccountHandle[]>([]);
@@ -47,6 +49,7 @@ export function App() {
     setBusy(true); setMessage("");
     try {
       const deployment = await loadWalletDeployment();
+      await services.runtime.verify(config, deployment);
       const passkey = await registerBrowserPasskey(label.trim());
       const handle = deriveCreatedAccountHandle({ label, deployment, passkey, rpId: location.hostname, origin: location.origin });
       await services.accounts.save(handle);
