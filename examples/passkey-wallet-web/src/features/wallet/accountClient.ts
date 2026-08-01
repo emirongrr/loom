@@ -10,6 +10,7 @@ import {
 } from "@loom/sdk";
 import { AppError, normalizeAppError } from "../../domain/errors/appError";
 import {
+  operationFailureStage,
   reduceOperationState,
   type OperationEvent,
   type OperationState
@@ -23,6 +24,7 @@ import type { PendingOperationStore } from "../../storage/pendingOperations";
 import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier";
 import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 import { acquireAccountOperation } from "../../services/loom/operationGuard";
+import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation";
 
 export async function readAccountSafety(
   config: NetworkConfig,
@@ -86,8 +88,16 @@ export async function submitAccountCalls(input: {
   let release: (() => void) | undefined;
   const validator = account.kind === "recovered" ? account.validator : deployment.validator;
   try {
-    release = await acquireAccountOperation(account.id, pendingOperations);
     await runtime.verify(config, deployment);
+    await reconcilePendingOperations({
+      config,
+      account,
+      store: pendingOperations,
+      entryPoint: deployment.entryPoint,
+      publicClient: publicClients.forEndpoint(config.rpcUrl),
+      verificationPublicClient: publicClients.forEndpoint(config.verificationRpcUrl)
+    });
+    release = await acquireAccountOperation(account.id, pendingOperations);
     emit({ type: "PREPARE" });
     const signer = createPasskeySigner({
       credentialId: account.credentialId,
@@ -149,7 +159,7 @@ export async function submitAccountCalls(input: {
     emit({ type: "SUCCEED", userOperationHash: result.userOpHash, transactionHash });
     return { userOpHash: result.userOpHash, transactionHash };
   } catch (issue) {
-    const error = normalizeAppError(issue, submittedHash ? "confirmation" : "submission");
+    const error = normalizeAppError(issue, submittedHash ? "confirmation" : operationFailureStage(state));
     emit({ type: "FAIL", error, ...(submittedHash ? { userOperationHash: submittedHash } : {}) });
     throw error;
   } finally {
