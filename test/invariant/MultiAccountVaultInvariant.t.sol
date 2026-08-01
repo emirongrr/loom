@@ -202,7 +202,8 @@ contract MultiAccountVaultHandler {
             abi.encodeCall(LoomAccount.execute, (ExecutionLib.SINGLE_EXECUTION_MODE, abi.encode(scheduleExecution)));
         require(_submit(account, signingKey, scheduleCall), "vault policy schedule failed");
         bytes32 operationId = keccak256(abi.encode(address(vault), uint256(0), policyCall, account.configVersion()));
-        require(account.scheduledOperations(operationId) != 0, "vault policy schedule missing");
+        (uint48 pendingReadyAt1,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt1 != 0, "vault policy schedule missing");
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
         bytes memory executeCall = abi.encodeCall(LoomAccount.executeScheduled, (address(vault), 0, policyCall));
         require(_submit(account, signingKey, executeCall), "vault policy execution failed");
