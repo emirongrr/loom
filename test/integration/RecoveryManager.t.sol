@@ -466,6 +466,11 @@ contract RecoveryManagerTest {
         // The moment the old two-day freeze would have lapsed, the account must
         // still be protected and the operation still blocked.
         vm.warp(frozenAt + 2 days + 1);
+        // The timestamp comparison is the property under test, not an incidental
+        // read: at the instant the old window would have expired, the freeze has
+        // to still cover the account. The time is set by `vm.warp` here, so
+        // there is no validator to manipulate it.
+        // forge-lint: disable-next-line(block-timestamp)
         require(block.timestamp < account.frozenUntil(), "freeze lapsed before recovery could complete");
         (bool inOldGap,) =
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 0, steal)));
