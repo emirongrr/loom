@@ -21,6 +21,7 @@ export function DeveloperSettings() {
   return <div className="page-stack"><header className="page-title"><p className="eyebrow">Advanced</p><h1>Developer settings</h1><p>Infrastructure is replaceable and kept outside consumer flows. Changing it cannot grant account authority — the same passkey-signed operation is valid through any endpoint.</p></header>
     <section className="section-card form-stack">
       {field("rpcUrl", "RPC endpoint", "Reads balances and simulates transactions. Defaults to a public Sepolia node.", DEFAULT_NETWORK.rpcUrl)}
+      {field("verificationRpcUrl", "Independent verification RPC", "Corroborates deployment bytecode and confirmed EntryPoint events. Keep it operated separately from the primary RPC.", DEFAULT_NETWORK.verificationRpcUrl)}
       {field("bundlerUrl", "Bundler endpoint", "Submits account operations. Defaults to Pimlico's public keyless bundler.", DEFAULT_NETWORK.bundlerUrl)}
       {field("explorerUrl", "Block explorer", "Builds transaction links.", DEFAULT_NETWORK.explorerUrl)}
       {field("relayUrl", "Optional sponsor relay", "Development-only endpoint for funding and deploying new accounts. Leave empty to disable.", "http://localhost:8787")}

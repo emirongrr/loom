@@ -9,6 +9,8 @@ const CHAIN_ID = 11155111;
 export interface NetworkConfig {
   /** JSON-RPC endpoint used for reads (balance, code) and simulation. */
   readonly rpcUrl: string;
+  /** Independent JSON-RPC endpoint used to corroborate security-critical chain evidence. */
+  readonly verificationRpcUrl: string;
   /** ERC-4337 bundler endpoint used to submit account operations. */
   readonly bundlerUrl: string;
   /** Block explorer used for transaction links. */
@@ -22,6 +24,7 @@ export interface NetworkConfig {
 // endpoint the user points at instead.
 export const DEFAULT_NETWORK: NetworkConfig = Object.freeze({
   rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+  verificationRpcUrl: "https://1rpc.io/sepolia",
   bundlerUrl: `https://public.pimlico.io/v2/${CHAIN_ID}/rpc`,
   explorerUrl: "https://eth-sepolia.blockscout.com",
   relayUrl: ""
@@ -46,6 +49,7 @@ export function normalizeNetworkConfig(value: unknown): NetworkConfig {
   };
   return Object.freeze({
     rpcUrl: pick("rpcUrl"),
+    verificationRpcUrl: pick("verificationRpcUrl"),
     bundlerUrl: pick("bundlerUrl"),
     explorerUrl: pick("explorerUrl"),
     relayUrl: pick("relayUrl", true)

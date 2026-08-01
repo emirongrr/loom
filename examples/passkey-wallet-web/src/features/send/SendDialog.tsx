@@ -24,7 +24,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
-  const { runtime, pendingOperations } = useAppServices();
+  const { runtime, pendingOperations, publicClients } = useAppServices();
   const options = useMemo<SendableAsset[]>(() => [
     { type: "token", token: assets.native },
     ...assets.tokens.map(token => ({ type: "token", token } as const)),
@@ -61,8 +61,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
     const label = assetLabel(asset);
     const toastId = notifications.notify({ status: "pending", title: `Sending ${label}`, detail: `To ${short(recipient)} · waiting for confirmation` });
     try {
-      await runtime.verify(config, deployment);
-      const result = await submitAccountCalls({ config, account, deployment, calls: [call], onState: setOperation, pendingOperations });
+      const result = await submitAccountCalls({ config, account, deployment, calls: [call], onState: setOperation, pendingOperations, runtime, publicClients });
       notifications.update(toastId, {
         status: "success",
         title: `Sent ${label}`,

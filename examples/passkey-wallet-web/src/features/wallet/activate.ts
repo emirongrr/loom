@@ -7,8 +7,11 @@ import type { NetworkConfig } from "../../config/network";
 import type { AccountHandle } from "../../types";
 import type { SendResult } from "./accountClient";
 import { AppError } from "../../domain/errors/appError.ts";
-import { validateUserOperationReceipt } from "../../services/loom/operationReceipt.ts";
+import { confirmUserOperationReceipt } from "../../services/loom/operationReceipt.ts";
 import type { PendingOperationStore } from "../../storage/pendingOperations";
+import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier.ts";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients.ts";
+import { acquireAccountOperation } from "../../services/loom/operationGuard.ts";
 
 // A counterfactual account is created by its first operation, which carries the
 // factory call. The account pays for that itself: `validateUserOp` forwards the
@@ -65,10 +68,16 @@ export async function activateAccount(input: {
   config: NetworkConfig;
   account: AccountHandle;
   deployment: WalletDeployment;
-  pendingOperations?: PendingOperationStore;
+  pendingOperations: PendingOperationStore;
+  runtime: RuntimeVerifier;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const { config, account, deployment } = input;
   const plan = planActivation(account, deployment);
+  const release = await acquireAccountOperation(account.id, input.pendingOperations);
+
+  try {
+    await input.runtime.verify(config, deployment);
 
   const signer = createPasskeySigner({
     credentialId: account.credentialId,
@@ -112,7 +121,7 @@ export async function activateAccount(input: {
   const signed = { ...filled, userOperation: { ...filled.userOperation, signature } };
 
   const sent = await transport.sendUserOperation(signed);
-  await input.pendingOperations?.save({ accountId: account.id, userOperationHash: sent.userOpHash, submittedAt: Date.now() });
+  await input.pendingOperations.save({ accountId: account.id, userOperationHash: sent.userOpHash, submittedAt: Date.now() });
   if (!transport.waitForUserOperationReceipt) {
     throw new AppError({
       code: "BUNDLER_UNAVAILABLE",
@@ -123,7 +132,17 @@ export async function activateAccount(input: {
     });
   }
   const receipt = await transport.waitForUserOperationReceipt({ userOpHash: sent.userOpHash });
-  const transactionHash = validateUserOperationReceipt(receipt, sent.userOpHash, account.account);
-  await input.pendingOperations?.complete(account.id, sent.userOpHash);
+  const transactionHash = await confirmUserOperationReceipt({
+    receipt,
+    expectedUserOperationHash: sent.userOpHash,
+    expectedSender: account.account,
+    entryPoint: deployment.entryPoint,
+    publicClient: input.publicClients.forEndpoint(config.rpcUrl),
+    verificationPublicClient: input.publicClients.forEndpoint(config.verificationRpcUrl)
+  });
+  await input.pendingOperations.complete(account.id, sent.userOpHash);
   return { userOpHash: sent.userOpHash, transactionHash };
+  } finally {
+    release();
+  }
 }
