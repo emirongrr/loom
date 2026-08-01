@@ -264,7 +264,7 @@ contract VaultHook is ILoomHook {
         if (execution.value != 0) {
             if (
                 policies[account][execution.target].enabled
-                    && ERC20CallLib.isTokenSelector(ERC20CallLib.selector(execution.callData))
+                    && ERC20CallLib.isMixedValueTokenCall(execution.callData, execution.value)
             ) {
                 // Attaching ETH to a token-shaped call on a protected token must
                 // not reclassify the spend as plain ETH: some tokens accept value

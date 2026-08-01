@@ -7,9 +7,22 @@ export type P256VerifierMode = "native-precompile" | "fallback-contract";
 export const MANIFEST_SCHEMA_VERSION: number;
 /** EIP-7951 native P-256 precompile address (same on every supporting chain). */
 export const NATIVE_P256_PRECOMPILE: Hex;
-export const DEFAULT_CONTRACTS: Readonly<Record<"accountFactory" | "passkeyValidator" | "accountImplementation", string>>;
+export const DEFAULT_CONTRACTS: Readonly<Record<"accountFactory" | "passkeyValidator" | "recoveryValidatorFactory" | "accountImplementation", string>>;
 
 export type JsonRpcCall = (method: string, params: unknown[]) => Promise<unknown>;
+
+export interface P256RecoveryValidatorProvisioner {
+  readonly address: Hex;
+  readonly runtimeCodeHash: Hex;
+  readonly validatorRuntimeCodeHash: Hex;
+  readonly fallbackVerifier: Hex;
+}
+
+export function buildP256RecoveryValidatorProvisioner(options: {
+  rpc: JsonRpcCall;
+  factory: Hex;
+  validator: Hex;
+}): Promise<P256RecoveryValidatorProvisioner>;
 
 export interface ParsedFoundryBroadcast {
   readonly chainId: number;
@@ -17,6 +30,7 @@ export interface ParsedFoundryBroadcast {
   readonly addresses: Readonly<{
     accountFactory: Hex;
     passkeyValidator: Hex;
+    recoveryValidatorFactory: Hex;
     accountImplementation: Hex;
   }>;
   readonly createdContracts: Readonly<Record<string, Hex>>;
@@ -31,6 +45,8 @@ export interface WalletDeploymentManifest {
   readonly entryPoint: Hex;
   readonly accountFactory: Hex;
   readonly passkeyValidator: Hex;
+  readonly recoveryValidatorFactory: Hex;
+  readonly recoveryValidatorProvisioner: P256RecoveryValidatorProvisioner;
   readonly p256Verifier: Hex;
   readonly p256VerifierMode: P256VerifierMode;
   readonly codehashes: Readonly<Record<string, Hex>>;
@@ -68,6 +84,9 @@ export function buildWalletDeploymentManifest(options: {
   entryPoint: Hex;
   p256VerifierMode?: P256VerifierMode;
   p256Verifier?: Hex;
+  p256FallbackVerifier?: Hex;
+  /** A live child deployed by the recovery factory; required when its build differs from the primary validator. */
+  recoveryValidator?: Hex;
   probeP256?: () => Promise<P256ProbeResult>;
   deploymentBlock?: number | null;
   deployedAt?: string;
@@ -81,6 +100,11 @@ export function buildCanonicalDeploymentManifest(options: {
   rpc: JsonRpcCall;
   entryPoint: Hex;
   releaseChannel?: "devnet" | "testnet" | "mainnet";
+  p256VerifierMode?: P256VerifierMode;
+  p256Verifier?: Hex;
+  p256FallbackVerifier?: Hex;
+  /** A live child deployed by the recovery factory; required when its build differs from the primary validator. */
+  recoveryValidator?: Hex;
   compatibility: { contractRelease: string; sdkRange: string };
   proxyArtifact: { bytecode: { object: Hex }; deployedBytecode: { object: Hex } };
   moduleStatus?: "stable" | "beta" | "experimental";
@@ -119,6 +143,7 @@ export function verifyWalletDeploymentFiles(options: {
   manifestPath: string;
   envPath: string;
   rpc: JsonRpcCall;
+  recoveryValidator?: Hex;
   accountImplementation?: Hex;
   probeP256?: () => Promise<P256ProbeResult>;
 }): Promise<DeploymentVerification>;
@@ -132,6 +157,8 @@ export function connectWalletAppDeployment(options: {
   entryPoint: Hex;
   p256VerifierMode?: P256VerifierMode;
   p256Verifier?: Hex;
+  p256FallbackVerifier?: Hex;
+  recoveryValidator?: Hex;
   probeP256?: () => Promise<P256ProbeResult>;
   notes?: string;
   contracts?: Record<string, string>;
