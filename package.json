@@ -50,6 +50,7 @@
     "test:unit": "forge test --match-path \"test/unit/**/*.t.sol\"",
     "test:integration": "forge test --match-path \"test/integration/**/*.t.sol\"",
     "test:fork:tokens": "forge test --match-path \"test/fork/MainnetTokenCompatibility.fork.t.sol\" -vvv",
+    "test:fork:opstack": "forge test --match-path \"test/fork/OPStackL1BlockPredeploy.fork.t.sol\" -vvv",
     "test:evidence": "forge test --match-path \"test/evidence/**/*.t.sol\"",
     "test:invariant": "forge test --match-path \"test/invariant/**/*.t.sol\"",
     "test:regression": "forge test --match-path \"test/regression/**/*.t.sol\"",
