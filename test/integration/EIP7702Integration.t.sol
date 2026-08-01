@@ -157,6 +157,127 @@ contract EIP7702IntegrationTest {
         require(account.configHash() == keccak256("7702-config"), "authorization replay changed account state");
     }
 
+    /// @notice Regression: a third party must not be able to initialize an
+    /// uninitialized EIP-7702 delegated EOA through the immutable-proxy bootstrap
+    /// initializer.
+    /// @dev `initialize` exists for `LoomAccountProxy`, which delegatecalls it from
+    /// its own constructor, so it cannot require `msg.sender == address(this)`.
+    /// Before the initialization-context guard it had no caller check at all, and an
+    /// uninitialized delegated account has `configVersion == 0`, so anyone observing
+    /// the delegation transaction could front-run the owner's self-initialization and
+    /// install an attacker-chosen EntryPoint, validator, hook, and guardian
+    /// configuration. `_initialize` then wrote `configVersion = 1`, so the real
+    /// owner's `initializeDelegatedAccount` reverted forever: the takeover was
+    /// permanent and every recovery path keyed off the attacker's guardian root.
+    function testExternalCallerCannotInitializeUninitializedDelegatedAccount() public {
+        EntryPoint entryPoint = new EntryPoint();
+        MockPolicyHook attackerHook = new MockPolicyHook();
+        ECDSAValidator attackerValidator = new ECDSAValidator();
+        address delegated = vm.addr(OWNER_KEY);
+        _installSignedDelegation(delegated, address(entryPoint));
+
+        LoomAccount account = LoomAccount(payable(delegated));
+        require(account.configVersion() == 0, "delegated account already initialized");
+
+        address attacker = address(0xBAD);
+        LoomAccount.ModuleInit[] memory attackerModules = new LoomAccount.ModuleInit[](2);
+        attackerModules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(attackerHook), "");
+        attackerModules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(attackerValidator),
+            abi.encodeCall(ECDSAValidator.initialize, (attacker, address(attackerHook)))
+        );
+
+        vm.prank(attacker);
+        (bool ok, bytes memory revertData) = delegated.call(
+            abi.encodeCall(
+                LoomAccount.initialize,
+                (
+                    address(entryPoint),
+                    keccak256("attacker-guardians"),
+                    uint8(1),
+                    keccak256("attacker-config"),
+                    attackerModules
+                )
+            )
+        );
+
+        require(!ok, "external caller initialized delegated account through proxy initializer");
+        require(
+            keccak256(revertData)
+                == keccak256(abi.encodeWithSelector(LoomAccount.InvalidInitializationContext.selector)),
+            "wrong rejection: initialization-context guard not reached"
+        );
+
+        // No configuration was installed, so the owner is not locked out.
+        require(account.configVersion() == 0, "failed takeover advanced config version");
+        require(account.configHash() == bytes32(0), "failed takeover wrote config hash");
+        require(account.entryPoint() == address(0), "failed takeover wrote entry point");
+        require(account.guardianRoot() == bytes32(0), "failed takeover wrote guardian root");
+        require(account.guardianThreshold() == 0, "failed takeover wrote guardian threshold");
+        require(account.validatorCount() == 0, "failed takeover installed a validator");
+        require(
+            !account.isModuleInstalled(ModuleType.VALIDATOR, address(attackerValidator)),
+            "failed takeover installed attacker validator"
+        );
+        require(
+            !account.isModuleInstalled(ModuleType.HOOK, address(attackerHook)),
+            "failed takeover installed attacker hook"
+        );
+
+        // The legitimate owner can still take ownership through the self-only path.
+        MockPolicyHook hook = new MockPolicyHook();
+        ECDSAValidator validator = new ECDSAValidator();
+        LoomAccount.ModuleInit[] memory ownerModules = new LoomAccount.ModuleInit[](2);
+        ownerModules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        ownerModules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(ECDSAValidator.initialize, (delegated, address(hook)))
+        );
+        require(
+            _tryInitialize(delegated, delegated, address(entryPoint), ownerModules),
+            "owner self initialization failed after rejected takeover"
+        );
+        require(account.guardianRoot() == keccak256("guardians"), "owner guardian root missing");
+        require(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "owner validator missing");
+    }
+
+    /// @notice The runtime template a delegation points at must reject the bootstrap
+    /// initializer on itself, so a delegation target can never be configured in place.
+    function testTemplateRejectsProxyInitializer() public {
+        EntryPoint entryPoint = new EntryPoint();
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount template = new LoomAccount(
+            address(entryPoint), keccak256("template-guardians"), 1, keccak256("template-config"), modules
+        );
+
+        (bool ok, bytes memory revertData) = address(template)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.initialize,
+                    (
+                        address(entryPoint),
+                        keccak256("attacker-guardians"),
+                        uint8(1),
+                        keccak256("attacker-config"),
+                        modules
+                    )
+                )
+            );
+
+        require(!ok, "template accepted proxy initializer");
+        require(
+            keccak256(revertData)
+                == keccak256(abi.encodeWithSelector(LoomAccount.InvalidInitializationContext.selector)),
+            "wrong rejection: initialization-context guard not reached on template"
+        );
+        require(template.configHash() == keccak256("template-config"), "template config changed");
+        require(template.configVersion() == 1, "template config version changed");
+    }
+
     function testConstructorInitializedAccountRejectsDelegatedInitializer() public {
         EntryPoint entryPoint = new EntryPoint();
         MockValidator validator = new MockValidator();

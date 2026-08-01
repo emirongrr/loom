@@ -31,6 +31,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error OperationNotScheduled();
     error CallFailed(bytes returnData);
     error InvalidInitialization();
+    error InvalidInitializationContext();
     error Reentrancy();
     error ModuleLimitReached();
     error InvalidTokenAllowance();
@@ -160,6 +161,32 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     receive() external payable {}
 
+    /// @notice Immutable-proxy bootstrap entry point. Callable only from a
+    /// `LoomAccountProxy` constructor, never by a third party.
+    /// @dev `LoomAccountProxy` delegatecalls this from its own constructor, where
+    /// `address(this)` is the proxy under construction and therefore still has no
+    /// code. That makes "no code at `address(this)`" an exact discriminator for the
+    /// one legitimate caller, and it is why this initializer cannot simply require
+    /// `msg.sender == address(this)`: during proxy construction the caller is the
+    /// factory.
+    ///
+    /// Every other context is rejected. In particular an EIP-7702 delegated EOA
+    /// carries the 23-byte `0xef0100 || template` delegation indicator as its code,
+    /// so it can never reach `_initialize` through this function. Delegated accounts
+    /// must use `initializeDelegatedAccount`, which requires the EOA itself to send
+    /// the transaction and therefore to authorize the exact initialization payload
+    /// with its own key, replay-protected by its own nonce and bound to the chain by
+    /// the transaction's chain id.
+    ///
+    /// Without this guard an uninitialized delegated EOA has `configVersion == 0`,
+    /// so any third party could install an attacker-chosen EntryPoint, validator
+    /// set, hooks, and guardian configuration and then drain the account.
+    ///
+    /// A deployed runtime template is covered by the same check, since it has code.
+    /// The permitted context cannot be reached by an external call at all: an account
+    /// under construction has no code, so a call to it dispatches no runtime and
+    /// returns success without executing anything. Only the proxy constructor's own
+    /// delegatecall runs this function there, atomically with deployment.
     function initialize(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -167,9 +194,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bytes32 configHash_,
         ModuleInit[] calldata modules
     ) external payable {
+        if (address(this).code.length != 0) {
+            revert InvalidInitializationContext();
+        }
         _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
+    /// @notice EIP-7702 initialization entry point for a delegated EOA.
+    /// @dev `msg.sender == address(this)` means the delegated EOA itself sent the
+    /// transaction, so the EOA key authorizes this exact payload. The EOA's own
+    /// transaction nonce provides replay protection and the transaction's chain id
+    /// provides chain separation; no separate signature envelope is required.
+    /// One-shot: `_initialize` rejects any account whose `configVersion != 0`.
     function initializeDelegatedAccount(
         address entryPoint_,
         bytes32 guardianRoot_,

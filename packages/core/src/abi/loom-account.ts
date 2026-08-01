@@ -2154,6 +2154,11 @@ export const LoomAccountAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidInitializationContext",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidMigration",
     "inputs": []
   },

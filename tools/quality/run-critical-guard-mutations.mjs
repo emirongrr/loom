@@ -20,6 +20,15 @@ const mutants = [
     testName: "testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund",
   },
   {
+    id: "account-initialization-context",
+    category: "authority",
+    source: "src/LoomAccount.sol",
+    search: "if (address(this).code.length != 0) {\n            revert InvalidInitializationContext();",
+    replacement: "if (false) {\n            revert InvalidInitializationContext();",
+    testPath: "test/integration/EIP7702Integration.t.sol",
+    testName: "testExternalCallerCannotInitializeUninitializedDelegatedAccount",
+  },
+  {
     id: "scheduled-call-delay",
     category: "time",
     source: "src/LoomAccount.sol",

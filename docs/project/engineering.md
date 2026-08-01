@@ -39,6 +39,28 @@ from production claims and immutable authority.
 - Dogfood independent build, deployment, recovery, direct execution, and
   walkaway procedures.
 
+## Toolchain pinning
+
+Everything that can change the bytecode or run code in CI is pinned to an
+immutable reference, and `npm run toolchain:check` fails the build when one of
+these drifts:
+
+- **One Solidity version.** `foundry.toml`, the `solc` npm dependency,
+  `solc-select` invocations, and the Kontrol `SOLC_BINARY` must all name the
+  same version. A second compiler reachable from the repository produces
+  different bytecode than the gates and the deployment manifest measure, which
+  voids the reproducibility claim made about them without failing anything.
+- **Every GitHub Action at a commit SHA**, with the human-readable tag kept as a
+  trailing comment. A moving tag lets a compromised or merely retagged upstream
+  run new code in a job that has repository checkout access.
+- **No remote script piped into a shell, and no fetch from a branch ref.**
+  Download to a file at a pinned commit, verify a recorded `sha256`, then run
+  it. When bumping such a dependency, update the commit and the checksum
+  together — the checker only proves the ref is pinned, not that the two agree.
+
+The checker's own tests build broken fixtures and assert each rule fires, so it
+cannot pass by checking nothing.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
