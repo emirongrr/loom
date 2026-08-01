@@ -8,20 +8,27 @@
     "dev": "node dev.mjs",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "npm run test:domain && npm run test:components",
+    "test:domain": "node --experimental-strip-types --test test/*.test.ts",
+    "test:components": "vitest run"
   },
   "dependencies": {
     "@loom/core": "file:../../packages/core",
     "@loom/passkey": "file:../../packages/passkey",
     "@loom/sdk": "file:../../packages/sdk",
+    "loom": "file:../..",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "viem": "^2.55.1"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "19.1.9",
     "@types/react-dom": "19.1.7",
+    "jsdom": "^27.0.1",
     "typescript": "7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^3.2.7"
   }
 }

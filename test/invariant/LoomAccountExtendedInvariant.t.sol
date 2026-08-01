@@ -1012,6 +1012,24 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
         require(frozen >= account.FREEZE_DURATION(), "frozenUntil must be at least FREEZE_DURATION if set");
     }
 
+    /// @notice A guardian freeze must outlast the recovery it is buying time for.
+    /// @dev Structural, not state-dependent: it pins the relationship between the
+    /// two constants so the gap cannot be reintroduced by tuning either one. A
+    /// guardian who freezes the moment an attack is noticed still has to wait
+    /// `RECOVERY_DELAY` before recovery is executable; if the freeze expired first,
+    /// any operation already past `MIN_EXTERNAL_DELAY` would become executable in
+    /// between, and `executeScheduled` is permissionless. The margin also has to
+    /// leave room to actually publish the recovery execution.
+    function invariantFreezeOutlastsRecoveryDelay() public view {
+        uint48 freezeDuration = account.FREEZE_DURATION();
+        uint48 recoveryDelay = recovery.RECOVERY_DELAY();
+        require(freezeDuration >= recoveryDelay, "freeze must cover the recovery delay");
+        require(
+            freezeDuration - recoveryDelay >= account.MIN_EXTERNAL_DELAY(),
+            "freeze must leave a publication margin after recovery becomes executable"
+        );
+    }
+
     /// @notice A pending recovery snapshots the account's configVersion at
     ///         proposal time. WHY: executeRecovery re-checks that snapshot and
     ///         reverts if the account's configVersion has since advanced, so the

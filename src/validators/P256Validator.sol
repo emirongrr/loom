@@ -49,7 +49,10 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator, ILoomPolicyBound
         fallbackVerifier = fallbackVerifier_;
     }
 
-    function initialize(bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook) external {
+    function initialize(bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook)
+        external
+        virtual
+    {
         if (publicKeys[msg.sender].x != bytes32(0)) revert KeyAlreadyInitialized();
         // Only a non-zero check here. The account cannot be called back during its
         // own construction -- it has no code yet -- so a validator cannot ask

@@ -36,6 +36,14 @@ self-initialization succeeds on delegated runtime storage, normal constructor
 accounts cannot be reinitialized, and initialized delegated accounts can use
 Loom direct execution.
 
+Amended 2026-07-30: the original acceptance condition was read as covering
+`initializeDelegatedAccount` only, and the tests written for it exercised just
+that selector. The runtime's other initializer, `initialize`, was left reachable
+by any caller on an uninitialized delegated EOA. That hole and its fix are
+recorded in `docs/decisions/0015-initialization-context-separation.md`;
+"external initialization fails" is now required to hold for every initializer on
+the runtime, not one selector.
+
 ## Residual risks
 
 7702 authorization UX remains high risk. Users must verify the delegated
