@@ -23,7 +23,7 @@ jobs:
       SOLC_SHA256: fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Prepare prover evidence
@@ -50,7 +50,7 @@ jobs:
         run: |
           free -h > artifacts/kontrol/memory-before.txt
       - name: Install pinned Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
         with:
           version: v1.7.1
       - name: Install pinned Solidity compiler
@@ -123,7 +123,7 @@ jobs:
           df -h > artifacts/kontrol/disk-final.txt
       - name: Upload Kontrol prover evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: kontrol-prover-${{ github.sha }}
           path: artifacts/kontrol

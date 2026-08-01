@@ -42,6 +42,8 @@
     "release:nightly:check": "node tools/ci/require-recent-nightly.mjs",
     "deps:audit": "node --test tools/quality/dependency-audit-policy.test.mjs && node tools/quality/audit-dependencies.mjs",
     "docs:check": "node tools/quality/validate-doc-links.mjs",
+    "toolchain:check": "node tools/quality/validate-toolchain-pins.mjs",
+    "toolchain:test": "node --test tools/quality/validate-toolchain-pins.test.mjs",
     "fixtures:check": "node tools/evidence/validate-webauthn-fixtures.mjs",
     "fixtures:test": "node --test tools/evidence/validate-webauthn-fixtures.test.mjs",
     "fixtures:release": "node tools/evidence/validate-webauthn-fixtures.mjs --require-complete",
@@ -112,7 +114,7 @@
   },
   "devDependencies": {
     "js-sha3": "0.9.3",
-    "solc": "0.8.36",
+    "solc": "0.8.35",
     "typescript": "7.0.2"
   },
   "optionalDependencies": {

@@ -259,7 +259,7 @@ contract LoomAccountTest {
         bytes32 guardianRootBefore = account.guardianRoot();
         uint8 guardianThresholdBefore = account.guardianThreshold();
         bytes32 operationId = keccak256(abi.encode(address(account), 0, clear, configVersionBefore));
-        uint48 readyAtBefore = account.scheduledOperations(operationId);
+        (uint48 readyAtBefore,,) = account.scheduledOperations(operationId);
         require(readyAtBefore != 0, "guardian clear schedule missing");
 
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
@@ -269,7 +269,8 @@ contract LoomAccountTest {
         require(account.guardianRoot() == guardianRootBefore, "failed clear changed guardian root");
         require(account.guardianThreshold() == guardianThresholdBefore, "failed clear changed guardian threshold");
         require(account.configVersion() == configVersionBefore, "failed clear changed config version");
-        require(account.scheduledOperations(operationId) == readyAtBefore, "failed clear consumed schedule");
+        (uint48 pendingReadyAt1,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt1 == readyAtBefore, "failed clear consumed schedule");
     }
 
     function testNoExecutorOrFallbackModules() public view {
@@ -307,7 +308,8 @@ contract LoomAccountTest {
         vm.warp(block.timestamp + account.MIN_EXTERNAL_DELAY());
         vm.expectRevert(abi.encodeWithSelector(LoomAccount.OperationNotScheduled.selector));
         account.executeScheduled(address(target), 0, callData);
-        require(account.scheduledOperations(operationId) == 0, "cancelled operation schedule restored");
+        (uint48 pendingReadyAt2,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt2 == 0, "cancelled operation schedule restored");
         require(target.value() == 0, "cancelled operation changed target state");
     }
 
@@ -327,13 +329,14 @@ contract LoomAccountTest {
         require(account.configVersion() == 2, "config did not advance");
 
         bytes32 staleOperationId = keccak256(abi.encode(address(target), 0, targetCall, uint256(1)));
-        uint48 staleReadyAt = account.scheduledOperations(staleOperationId);
+        (uint48 staleReadyAt,,) = account.scheduledOperations(staleOperationId);
         require(staleReadyAt != 0, "stale operation schedule missing");
         vm.expectRevert(abi.encodeWithSelector(LoomAccount.OperationNotScheduled.selector));
         account.executeScheduled(address(target), 0, targetCall);
         require(target.value() == 0, "stale operation changed state");
         require(account.configVersion() == 2, "stale operation changed config version");
-        require(account.scheduledOperations(staleOperationId) == staleReadyAt, "stale operation changed old schedule");
+        (uint48 pendingReadyAt3,,) = account.scheduledOperations(staleOperationId);
+        require(pendingReadyAt3 == staleReadyAt, "stale operation changed old schedule");
     }
 
     function testTokenAllowanceCanBeRevoked() public {
@@ -367,7 +370,7 @@ contract LoomAccountTest {
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
         uint256 configVersionBefore = account.configVersion();
         bytes32 operationId = keccak256(abi.encode(address(account), 0, uninstall, configVersionBefore));
-        uint48 readyAtBefore = account.scheduledOperations(operationId);
+        (uint48 readyAtBefore,,) = account.scheduledOperations(operationId);
         require(readyAtBefore != 0, "validator removal schedule missing");
 
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
@@ -375,7 +378,8 @@ contract LoomAccountTest {
         account.executeScheduled(address(account), 0, uninstall);
         require(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)), "last validator missing");
         require(account.configVersion() == configVersionBefore, "failed validator removal changed config");
-        require(account.scheduledOperations(operationId) == readyAtBefore, "failed validator removal consumed schedule");
+        (uint48 pendingReadyAt4,,) = account.scheduledOperations(operationId);
+        require(pendingReadyAt4 == readyAtBefore, "failed validator removal consumed schedule");
     }
 
     function _modules(MockValidator moduleValidator) internal pure returns (LoomAccount.ModuleInit[] memory modules) {

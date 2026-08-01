@@ -10,6 +10,7 @@ import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { SendableAsset } from "../wallet/transfers";
 import type { AccountHandle, NavigationArea } from "../../types";
+import { useAppServices } from "../../app/AppServices";
 
 const EMPTY_ASSETS: AccountAssets = {
   native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
@@ -24,6 +25,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
+  const { runtime, pendingOperations, publicClients } = useAppServices();
   const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
@@ -38,7 +40,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     setActivating(true);
     const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
     try {
-      const result = await activateAccount({ config, account, deployment });
+      const result = await activateAccount({ config, account, deployment, runtime, pendingOperations, publicClients });
       notifications.update(toast, {
         status: "success",
         title: "Account created",

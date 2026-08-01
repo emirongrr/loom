@@ -3,6 +3,9 @@ import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { createBrowserAccountStore, type AccountStore } from "../storage/accountStore";
 import { createBrowserGuardianVault, type GuardianVault } from "../storage/guardianVault";
 import { createEncryptedLinkTransport, type InvitationTransport } from "../transports/invitations";
+import { createPublicClientRegistry, type PublicClientRegistry } from "../services/rpc/publicClients";
+import { createRuntimeVerifier, type RuntimeVerifier } from "../services/runtime/runtimeVerifier";
+import { createBrowserPendingOperationStore, type PendingOperationStore } from "../storage/pendingOperations";
 
 /**
  * The replaceable I/O the wallet depends on, injected in one place so a test — or
@@ -14,6 +17,10 @@ export interface AppServices {
   readonly guardianVault: GuardianVault;
   /** Delivery for guardian invitations; the link keeps ciphertext in the fragment. */
   readonly invitationLinks: InvitationTransport<GuardianInviteV1>;
+  /** Cached read-only RPC clients. Components never construct endpoint clients. */
+  readonly publicClients: PublicClientRegistry;
+  readonly runtime: RuntimeVerifier;
+  readonly pendingOperations: PendingOperationStore;
   /** Injectable clock, so expiry handling is testable. */
   readonly now: () => number;
 }
@@ -32,10 +39,14 @@ export function useAppServices(): AppServices {
 }
 
 function createDefaultServices(): AppServices {
+  const publicClients = createPublicClientRegistry();
   return Object.freeze({
     accounts: createBrowserAccountStore(),
     guardianVault: createBrowserGuardianVault(),
     invitationLinks: createEncryptedLinkTransport<GuardianInviteV1>({ origin: window.location.origin }),
+    publicClients,
+    runtime: createRuntimeVerifier({ publicClients }),
+    pendingOperations: createBrowserPendingOperationStore(),
     now: () => Date.now()
   });
 }
