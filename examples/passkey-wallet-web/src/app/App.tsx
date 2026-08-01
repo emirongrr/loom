@@ -34,7 +34,9 @@ export function App() {
         try {
           const legacyAccounts = await migrateLegacyAccountHandles(window.localStorage, { rpId: location.hostname, origin: location.origin });
           for (const legacy of [...legacyAccounts].reverse()) {
-            if (!saved.some(account => account.id === legacy.id)) await services.accounts.save(legacy);
+            if (!saved.some(account => account.id === legacy.id) && !(await services.accounts.isRemoved(legacy.id))) {
+              await services.accounts.save(legacy);
+            }
           }
           saved = await services.accounts.list();
         } catch { /* Legacy data stays untouched and is never surfaced as a separate onboarding flow. */ }
@@ -76,11 +78,23 @@ export function App() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Passkey authentication failed"); }
     finally { setBusy(false); }
   };
+  const removeAccount = async (account: AccountHandle) => {
+    setBusy(true); setMessage("");
+    try {
+      const removed = await services.accounts.remove(account.id);
+      await refreshAccounts();
+      setMessage(removed ? `${account.label} was removed from Saved Wallets.` : `${account.label} is no longer saved.`);
+    } catch (error) {
+      setMessage("Saved wallet could not be removed. Try again.");
+      throw error;
+    }
+    finally { setBusy(false); }
+  };
   const switchAccount = () => { setSelected(null); setLocked(null); setArea("home"); setMessage(""); };
   const lockAccount = () => { setSelected(null); setLocked(selected); setArea("home"); setMessage(""); };
   if (!accountsLoaded) return <main className="wallet-landing"><section className="landing-panel"><p>Loading saved wallets…</p></section></main>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
-  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onImport={importAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onImport={importAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   return <div className="app-shell">
     <aside className="sidebar">
       <button className="brand" onClick={() => setArea("home")} aria-label="Loom wallet home"><span className="brand-mark">L</span><span>Loom</span></button>
