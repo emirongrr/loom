@@ -20,6 +20,15 @@ const mutants = [
     testName: "testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund",
   },
   {
+    id: "account-initialization-context",
+    category: "authority",
+    source: "src/LoomAccount.sol",
+    search: "if (address(this).code.length != 0) {\n            revert InvalidInitializationContext();",
+    replacement: "if (false) {\n            revert InvalidInitializationContext();",
+    testPath: "test/integration/EIP7702Integration.t.sol",
+    testName: "testExternalCallerCannotInitializeUninitializedDelegatedAccount",
+  },
+  {
     id: "scheduled-call-delay",
     category: "time",
     source: "src/LoomAccount.sol",
@@ -65,6 +74,15 @@ const mutants = [
     replacement: "if (false) revert InvalidRecovery();",
     testPath: "test/integration/RecoveryManager.t.sol",
     testName: "testConfigChangeInvalidatesAndExpiryBlocksRecovery",
+  },
+  {
+    id: "policy-hook-mixed-value-spend",
+    category: "policy-accounting",
+    source: "src/hooks/PolicyHook.sol",
+    search: "if (ERC20CallLib.isMixedValueTokenCall(item.callData, item.value)) return type(uint256).max;",
+    replacement: "if (false) return type(uint256).max;",
+    testPath: "test/integration/MixedValueSpendPolicy.t.sol",
+    testName: "testMixedSpendIsNotLowRiskAndCannotDirectExecute",
   },
   {
     id: "vault-withdrawal-delay",

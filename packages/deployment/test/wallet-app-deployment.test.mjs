@@ -7,6 +7,7 @@ import jsSha3 from "js-sha3";
 import {
   bindWalletManifestToCanonical,
   buildCanonicalDeploymentManifest,
+  buildP256RecoveryValidatorProvisioner,
   buildWalletDeploymentManifest,
   connectWalletAppDeployment,
   envForWalletDeployment,
@@ -19,7 +20,26 @@ const { keccak256 } = jsSha3;
 const ENTRYPOINT = address("entrypoint");
 const FACTORY = address("factory");
 const P256 = address("p256");
+const RECOVERY_CHILD = address("p256-recovery-child");
+const RECOVERY_FACTORY = address("p256-recovery-factory");
 const ACCOUNT = address("account");
+
+test("builds a standalone recovery provisioner profile from live code and immutables", async () => {
+  const zeroWord = `0x${"0".repeat(64)}`;
+  const rpc = async (method, params) => {
+    if (method === "eth_getCode") return rpcFor()(method, params);
+    assert.equal(method, "eth_call");
+    assert.equal(params[0].data, `0x${keccak256("fallbackVerifier()").slice(0, 8)}`);
+    return zeroWord;
+  };
+  const profile = await buildP256RecoveryValidatorProvisioner({ rpc, factory: RECOVERY_FACTORY, validator: RECOVERY_CHILD });
+  assert.deepEqual(profile, {
+    address: RECOVERY_FACTORY,
+    runtimeCodeHash: codehash("recovery-factory-code"),
+    validatorRuntimeCodeHash: codehash("p256-recovery-child-code"),
+    fallbackVerifier: "0x0000000000000000000000000000000000000000"
+  });
+});
 
 test("parses a Foundry broadcast into wallet deployment components", () => {
   const parsed = parseFoundryBroadcast(broadcast());
@@ -27,6 +47,7 @@ test("parses a Foundry broadcast into wallet deployment components", () => {
   assert.deepEqual(parsed.addresses, {
     accountFactory: FACTORY,
     passkeyValidator: P256,
+    recoveryValidatorFactory: RECOVERY_FACTORY,
     accountImplementation: ACCOUNT
   });
 });
@@ -36,6 +57,7 @@ test("builds a manifest from chain code, not from broadcast trust", async () => 
     broadcast: broadcast(),
     rpc: rpcFor(),
     entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
     probeP256: async () => ({ supported: true })
   });
 
@@ -43,6 +65,14 @@ test("builds a manifest from chain code, not from broadcast trust", async () => 
   assert.equal(manifest.p256VerifierMode, "native-precompile");
   assert.equal(manifest.codehashes.accountFactory, codehash("factory-code"));
   assert.equal(manifest.codehashes.passkeyValidator, codehash("p256-code"));
+  assert.equal(manifest.recoveryValidatorFactory, RECOVERY_FACTORY);
+  assert.deepEqual(manifest.recoveryValidatorProvisioner, {
+    address: RECOVERY_FACTORY,
+    runtimeCodeHash: codehash("recovery-factory-code"),
+    validatorRuntimeCodeHash: codehash("p256-recovery-child-code"),
+    fallbackVerifier: "0x0000000000000000000000000000000000000000"
+  });
+  assert.equal(manifest.codehashes.recoveryValidatorFactory, codehash("recovery-factory-code"));
   assert.equal(manifest.codehashes.accountImplementation, codehash("account-code"));
 });
 
@@ -55,6 +85,7 @@ test("writes env-compatible values and verifies env manifest chain agreement", a
     manifestReference: "deployment/sepolia.manifest.json",
     rpc: rpcFor(),
     entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
     probeP256: async () => ({ supported: true })
   });
 
@@ -62,6 +93,7 @@ test("writes env-compatible values and verifies env manifest chain agreement", a
     manifestPath: join(root, "deployment", "sepolia.manifest.json"),
     envPath: join(root, ".env.local"),
     rpc: rpcFor(),
+    recoveryValidator: RECOVERY_CHILD,
     accountImplementation: ACCOUNT,
     probeP256: async () => ({ supported: true })
   });
@@ -75,11 +107,19 @@ test("reports changed app values instead of silently accepting drift", async () 
     entryPoint: ENTRYPOINT,
     accountFactory: FACTORY,
     passkeyValidator: P256,
+    recoveryValidatorFactory: RECOVERY_FACTORY,
+    recoveryValidatorProvisioner: {
+      address: RECOVERY_FACTORY,
+      runtimeCodeHash: codehash("recovery-factory-code"),
+      validatorRuntimeCodeHash: codehash("p256-code"),
+      fallbackVerifier: "0x0000000000000000000000000000000000000000"
+    },
     p256Verifier: address("native"),
     p256VerifierMode: "native-precompile",
     codehashes: {
       accountFactory: codehash("factory-code"),
       passkeyValidator: codehash("p256-code"),
+      recoveryValidatorFactory: codehash("recovery-factory-code"),
       accountImplementation: codehash("account-code")
     }
   };
@@ -93,6 +133,7 @@ test("reports changed app values instead of silently accepting drift", async () 
     `EXPO_PUBLIC_LOOM_ENTRYPOINT=${ENTRYPOINT}`,
     `EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY=${address("wrong-factory")}`,
     `EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR=${P256}`,
+    `EXPO_PUBLIC_LOOM_RECOVERY_VALIDATOR_FACTORY=${RECOVERY_FACTORY}`,
     "EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE=native-precompile",
     `EXPO_PUBLIC_LOOM_P256_VERIFIER=${address("native")}`,
     "EXPO_PUBLIC_LOOM_DEPLOYMENT_MANIFEST=deployment/sepolia.manifest.json",
@@ -112,6 +153,11 @@ test("reports changed app values instead of silently accepting drift", async () 
 test("rejects missing broadcast components and missing chain code", async () => {
   const missing = broadcast().transactions.filter(tx => tx.contractName !== "P256Validator");
   assert.throws(() => parseFoundryBroadcast({ chain: 11155111, transactions: missing }), /P256Validator/);
+  const missingRecoveryFactory = broadcast().transactions.filter(tx => tx.contractName !== "P256RecoveryValidatorFactory");
+  assert.throws(
+    () => parseFoundryBroadcast({ chain: 11155111, transactions: missingRecoveryFactory }),
+    /P256RecoveryValidatorFactory/
+  );
 
   await assert.rejects(
     () => buildWalletDeploymentManifest({
@@ -137,9 +183,12 @@ function rpcFor() {
     [ENTRYPOINT.toLowerCase(), "entrypoint-code"],
     [FACTORY.toLowerCase(), "factory-code"],
     [P256.toLowerCase(), "p256-code"],
+    [RECOVERY_CHILD.toLowerCase(), "p256-recovery-child-code"],
+    [RECOVERY_FACTORY.toLowerCase(), "recovery-factory-code"],
     [ACCOUNT.toLowerCase(), "account-code"]
   ]);
   return async (method, params) => {
+    if (method === "eth_call") return `0x${"0".repeat(64)}`;
     assert.equal(method, "eth_getCode");
     return hexText(codes.get(String(params[0]).toLowerCase()) ?? "");
   };
@@ -152,6 +201,7 @@ function broadcast() {
     transactions: [
       { transactionType: "CREATE", contractName: "LoomAccountFactory", contractAddress: FACTORY },
       { transactionType: "CREATE", contractName: "P256Validator", contractAddress: P256 },
+      { transactionType: "CREATE", contractName: "P256RecoveryValidatorFactory", contractAddress: RECOVERY_FACTORY },
       { transactionType: "CREATE", contractName: "LoomAccount", contractAddress: ACCOUNT }
     ]
   };
@@ -178,6 +228,7 @@ async function canonicalFixture() {
     broadcast: broadcast(),
     rpc: rpcFor(),
     entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
     releaseChannel: "testnet",
     compatibility: { contractRelease: "0.1.0", sdkRange: "^0.1.0" },
     proxyArtifact: proxyArtifact()
@@ -195,6 +246,7 @@ test("builds a schema-valid canonical manifest from live chain code", async () =
   assert.equal(manifest.account.proxy.creationCodeHash, codehash("proxy-creation"));
   assert.equal(manifest.modules[0].type, "validator");
   assert.equal(manifest.modules[0].runtimeCodeHash, codehash("p256-code"));
+  assert.equal(manifest.provisioners[0].validatorRuntimeCodeHash, codehash("p256-recovery-child-code"));
 });
 
 test("verifyManifestOnChain passes on agreement and fails closed on drift", async () => {
@@ -222,6 +274,7 @@ test("app manifests bind to the canonical manifest and reject disagreement", asy
     broadcast: broadcast(),
     rpc: rpcFor(),
     entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
     probeP256: async () => ({ supported: true })
   });
 
@@ -231,6 +284,18 @@ test("app manifests bind to the canonical manifest and reject disagreement", asy
 
   const foreign = { ...app, passkeyValidator: address("other-validator") };
   assert.throws(() => bindWalletManifestToCanonical(foreign, canonical), /passkeyValidator/);
+
+  const forgedProvisioner = {
+    ...app,
+    recoveryValidatorProvisioner: {
+      ...app.recoveryValidatorProvisioner,
+      validatorRuntimeCodeHash: codehash("forged-recovery-child")
+    }
+  };
+  assert.throws(
+    () => bindWalletManifestToCanonical(forgedProvisioner, canonical),
+    /recoveryValidatorProvisioner\.validatorRuntimeCodeHash/
+  );
 });
 
 test("p256 probe accepts only a 1-for-valid, empty-for-corrupted precompile", async () => {
