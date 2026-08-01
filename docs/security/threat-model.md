@@ -14,6 +14,10 @@
 - A session signer using a revoked, expired, future, or altered permission.
 - A compromised low-risk key changing session permissions immediately or
   sending policy-controlled ERC-20 calls to an unapproved counterparty.
+- A caller escaping native-value limits by shaping calldata as an ERC-20 call.
+  Every enforcement layer classifies a token selector carrying `msg.value` as an
+  unbounded spend through one shared classifier, so it can satisfy no limit and
+  is not classified low risk.
 - Guardians gaining general UserOperation or ERC-1271 signing authority.
 - Hidden, immediate, replayed, expired, or stale-config validator recovery.
 - A recovery module transferring assets or invoking arbitrary account calls.
@@ -84,6 +88,12 @@
   `transferFrom`, and `approve` calldata and can bind their recipient or
   spender to one address. Rich allowlists and non-standard token methods
   require a separately audited policy version.
+- `PolicyHook` policies are keyed by `(target, selector)`, so a native-value
+  policy constrains only calls with empty calldata. It is not a cap on all ETH
+  leaving the account toward a target; `VaultHook` is the deny-by-default
+  per-asset control. A `(target, selector)` pair with no configured policy is
+  not metered by `PolicyHook` at all. See
+  `docs/design/permissions.md` for the exact accounting boundary.
 - Hook callbacks are fail-closed. This prevents policy bypass but makes hook
   availability part of account availability during the removal timelock.
 - Timelocked execution still passes through installed hooks. The only hook
