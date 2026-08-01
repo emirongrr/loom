@@ -77,7 +77,11 @@ will invoke the validator only when it is installed.
   per-call and per-UserOperation amount limits, time range, call count, use
   count, and one explicitly selected paymaster. Every item in an atomic batch
   must satisfy the same permission. Grants are timelocked and revocation is
-  immediate.
+  immediate. The account itself and its installed modules are not valid
+  permission targets, because the arguments of a permitted selector there would
+  be account authority rather than a spending capability. Calldata arguments are
+  otherwise unconstrained; `docs/design/permissions.md` states what that does
+  and does not bound.
 - `ECDSAValidator` exists for testing, migration, and hardware-wallet
   integrations. It is not the preferred primary validator.
 
