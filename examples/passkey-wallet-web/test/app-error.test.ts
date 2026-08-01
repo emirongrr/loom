@@ -26,3 +26,20 @@ test("unknown infrastructure diagnostics never become the visible message", () =
   const issue = new Error("RPC failed at https://secret.example with raw payload");
   assert.equal(safeUserMessage(issue, "The account could not be checked.", "configuration"), "The account could not be checked.");
 });
+
+test("a bundler RPC rejection keeps a safe actionable classification and diagnostic", () => {
+  const issue = Object.assign(new Error("bundler rpc request failed"), {
+    name: "InvalidSdkRequestError",
+    details: {
+      method: "eth_estimateUserOperationGas",
+      code: -32500,
+      message: "AA21 didn't pay prefund at https://bundler.example/private-token"
+    }
+  });
+  const error = normalizeAppError(issue, "estimation");
+  assert.equal(error.code, "USER_OPERATION_REJECTED");
+  assert.equal(error.stage, "estimation");
+  assert.match(error.userMessage, /gas estimation/u);
+  assert.match(error.diagnostic, /AA21/u);
+  assert.doesNotMatch(error.diagnostic, /private-token/u);
+});

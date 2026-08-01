@@ -23,15 +23,15 @@ export async function resumePendingConfirmation(input: {
   verificationPublicClient: PublicClient;
   request?: typeof fetch;
 }): Promise<PendingConfirmationResult> {
-  const response = await (input.request ?? fetch)(input.config.bundlerUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getUserOperationReceipt", params: [input.operation.userOperationHash] })
-  });
-  if (!response.ok) return { status: "pending", userOperationHash: input.operation.userOperationHash };
-  const body = await response.json() as { result?: UserOperationReceipt | null };
-  if (!body.result) return { status: "pending", userOperationHash: input.operation.userOperationHash };
   try {
+    const response = await (input.request ?? fetch)(input.config.bundlerUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getUserOperationReceipt", params: [input.operation.userOperationHash] })
+    });
+    if (!response.ok) return { status: "pending", userOperationHash: input.operation.userOperationHash };
+    const body = await response.json() as { result?: UserOperationReceipt | null };
+    if (!body.result) return { status: "pending", userOperationHash: input.operation.userOperationHash };
     const transactionHash = await confirmUserOperationReceipt({
       receipt: body.result,
       expectedUserOperationHash: input.operation.userOperationHash,
@@ -43,6 +43,42 @@ export async function resumePendingConfirmation(input: {
     await input.store.complete(input.account.id, input.operation.userOperationHash);
     return { status: "success", userOperationHash: input.operation.userOperationHash, transactionHash };
   } catch (issue) {
-    return { status: "failed", userOperationHash: input.operation.userOperationHash, error: normalizeAppError(issue, "confirmation") };
+    const error = normalizeAppError(issue, "confirmation");
+    if (error.code === "TRANSACTION_REVERTED") {
+      await input.store.complete(input.account.id, input.operation.userOperationHash);
+    }
+    return { status: "failed", userOperationHash: input.operation.userOperationHash, error };
   }
+}
+
+export async function reconcilePendingOperations(input: {
+  config: NetworkConfig;
+  account: AccountHandle;
+  store: PendingOperationStore;
+  entryPoint: Address;
+  publicClient: PublicClient;
+  verificationPublicClient: PublicClient;
+  request?: typeof fetch;
+  maxAttempts?: number;
+  intervalMs?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
+}): Promise<readonly PendingConfirmationResult[]> {
+  const operations = await input.store.list(input.account.id);
+  const results: PendingConfirmationResult[] = [];
+  for (const operation of operations) {
+    let result: PendingConfirmationResult = { status: "pending", userOperationHash: operation.userOperationHash };
+    const maxAttempts = Math.max(1, input.maxAttempts ?? 2);
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      result = await resumePendingConfirmation({ ...input, operation });
+      const retryable = result.status === "pending" || (result.status === "failed" && result.error.retryable);
+      if (!retryable || attempt === maxAttempts - 1) break;
+      await (input.sleep ?? delay)(input.intervalMs ?? 750);
+    }
+    results.push(result);
+  }
+  return Object.freeze(results);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
