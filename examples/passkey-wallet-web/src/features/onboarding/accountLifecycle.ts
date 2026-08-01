@@ -3,6 +3,17 @@ import { deriveAccountAddress } from "@loom/core/account";
 import { P256ValidatorAbi } from "@loom/core/abi";
 import { encodeAbiParameters, encodeFunctionData, keccak256, sha256, stringToHex } from "viem";
 import type { AccountHandle } from "../../types";
+import { loadWalletDeployment, type WalletDeployment } from "../../services/deployment/deploymentProfile.ts";
+export { loadWalletDeployment, type WalletDeployment } from "../../services/deployment/deploymentProfile.ts";
+import {
+  base64Url,
+  bytesFromHex as hexBytes,
+  concatBytes,
+  derP256SignatureToRaw,
+  equalBytes,
+  hexFromBytes as hex,
+  ownedBuffer
+} from "../../services/webauthn/encoding.ts";
 
 const ZERO_BYTES32 = `0x${"00".repeat(32)}` as Hex;
 const LEGACY_ACCOUNTS_KEY = "loom.passkey-wallet.accounts";
@@ -11,32 +22,9 @@ const LEGACY_DEPLOYMENT_KEY = "loom.passkey-wallet.deployment";
 const LEGACY_GUARDIAN_ROOT = keccak256(stringToHex("passkey-wallet-web.guardians"));
 const LEGACY_CONFIG_HASH = keccak256(stringToHex("passkey-wallet-web.config"));
 
-export interface WalletDeployment {
-  readonly chainId: number;
-  readonly entryPoint: Address;
-  readonly factory: Address;
-  readonly implementation: Address;
-  readonly validator: Address;
-  readonly policyHook: Address;
-  readonly proxyCreationCode: Hex;
-  /** Present only when the deployment publishes guardian recovery. */
-  readonly recoveryModule?: Address;
-  /** Guardian verifier addresses this deployment provides, by guardian kind. */
-  readonly guardianVerifiers?: { readonly ecdsa?: Address; readonly erc1271?: Address; readonly p256?: Address };
-}
-
 export interface RegisteredPasskey {
   readonly credentialId: Hex;
   readonly publicKey: { readonly x: Hex; readonly y: Hex };
-}
-
-export async function loadWalletDeployment(
-  request: typeof fetch = fetch,
-  source = "/sepolia.deployment.json"
-): Promise<WalletDeployment> {
-  const response = await request(source, { headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(`deployment configuration returned ${response.status}`);
-  return validateDeployment(await response.json());
 }
 
 export async function registerBrowserPasskey(label: string): Promise<RegisteredPasskey> {
@@ -138,19 +126,38 @@ export function deriveCreatedAccountHandle(input: {
   readonly passkey: RegisteredPasskey;
   readonly rpId: string;
   readonly origin: string;
+  readonly initialGuardians?: { readonly root: Hex; readonly threshold: number };
 }): AccountHandle {
   const label = input.label.trim();
   if (!label) throw new Error("Wallet name is required.");
   const { deployment, passkey } = input;
-  const configHash = keccak256(encodeAbiParameters(
-    [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "address" }],
-    [passkey.publicKey.x, passkey.publicKey.y, deployment.validator, deployment.policyHook]
-  ));
+  const protectedCreation = input.initialGuardians;
+  if (protectedCreation) {
+    if (!deployment.recoveryModule) throw new Error("Protected creation requires a recovery module in this deployment.");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(protectedCreation.root)
+      || protectedCreation.root === ZERO_BYTES32
+      || !Number.isInteger(protectedCreation.threshold)
+      || protectedCreation.threshold < 1
+      || protectedCreation.threshold > 32) {
+      throw new Error("The initial guardian configuration is invalid.");
+    }
+  }
+  const guardianRoot = protectedCreation?.root ?? ZERO_BYTES32;
+  const guardianThreshold = protectedCreation?.threshold ?? 0;
+  const recoveryModule = protectedCreation ? deployment.recoveryModule : undefined;
+  const configHash = creationConfigHash({
+    passkey,
+    deployment,
+    guardianRoot,
+    guardianThreshold,
+    ...(recoveryModule ? { recoveryModule } : {})
+  });
   return deriveAccountHandle({
     ...input,
     label,
-    guardianRoot: ZERO_BYTES32,
-    guardianThreshold: 0,
+    guardianRoot,
+    guardianThreshold,
+    ...(recoveryModule ? { recoveryModule } : {}),
     configHash
   });
 }
@@ -179,13 +186,20 @@ export function resolveCreationConfig(
   if (handle.kind !== "derived") return null;
   const rpIdHash = sha256(stringToHex(handle.rpId));
   const originHash = keccak256(stringToHex(handle.origin));
-  const candidates: Hex[] = [
-    keccak256(encodeAbiParameters(
-      [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "address" }],
-      [handle.publicKey.x, handle.publicKey.y, deployment.validator, deployment.policyHook]
-    )),
-    LEGACY_CONFIG_HASH
-  ];
+  const basicConfigHash = creationConfigHash({
+    passkey: handle,
+    deployment,
+    guardianRoot: ZERO_BYTES32,
+    guardianThreshold: 0
+  });
+  const boundConfigHash = creationConfigHash({
+    passkey: handle,
+    deployment,
+    guardianRoot: handle.creation.guardianRoot,
+    guardianThreshold: handle.creation.guardianThreshold,
+    ...(handle.creation.recoveryModule ? { recoveryModule: handle.creation.recoveryModule } : {})
+  });
+  const candidates: Hex[] = [...new Set([boundConfigHash, basicConfigHash, LEGACY_CONFIG_HASH])];
 
   for (const configHash of candidates) {
     const config: AccountCreationConfig = {
@@ -217,6 +231,36 @@ export function resolveCreationConfig(
     if (derived.toLowerCase() === handle.account.toLowerCase()) return Object.freeze(config);
   }
   return null;
+}
+
+function creationConfigHash(input: {
+  readonly passkey: RegisteredPasskey;
+  readonly deployment: WalletDeployment;
+  readonly guardianRoot: Hex;
+  readonly guardianThreshold: number;
+  readonly recoveryModule?: Address;
+}): Hex {
+  if (input.recoveryModule) {
+    return keccak256(encodeAbiParameters(
+      [
+        { type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "address" },
+        { type: "bytes32" }, { type: "uint8" }, { type: "address" }
+      ],
+      [
+        input.passkey.publicKey.x,
+        input.passkey.publicKey.y,
+        input.deployment.validator,
+        input.deployment.policyHook,
+        input.guardianRoot,
+        input.guardianThreshold,
+        input.recoveryModule
+      ]
+    ));
+  }
+  return keccak256(encodeAbiParameters(
+    [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "address" }],
+    [input.passkey.publicKey.x, input.passkey.publicKey.y, input.deployment.validator, input.deployment.policyHook]
+  ));
 }
 
 export async function migrateLegacyAccountHandle(
@@ -253,7 +297,7 @@ export async function migrateLegacyAccountHandles(
     let deploymentValue: unknown;
     try { deploymentValue = JSON.parse(savedDeployment); }
     catch { throw new Error("Previous wallet deployment is invalid; its original records were left unchanged."); }
-    deployment = validateDeployment(deploymentValue);
+    deployment = validateLegacyDeployment(deploymentValue);
   } else {
     deployment = await loadFallbackDeployment();
   }
@@ -269,6 +313,30 @@ export async function migrateLegacyAccountHandles(
   }
   return Object.freeze(migrated);
 }
+
+function validateLegacyDeployment(value: unknown): WalletDeployment {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
+  const record = value as Record<string, unknown>;
+  if (!Number.isSafeInteger(record.chainId) || Number(record.chainId) <= 0) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
+  for (const field of ["entryPoint", "factory", "implementation", "validator", "policyHook"] as const) if (!address(record[field])) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
+  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
+  if (record.recoveryModule !== undefined && !address(record.recoveryModule)) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
+  const placeholder = `0x${"00".repeat(32)}` as Hex;
+  return Object.freeze({
+    chainId: Number(record.chainId),
+    entryPoint: record.entryPoint as Address,
+    factory: record.factory as Address,
+    implementation: record.implementation as Address,
+    validator: record.validator as Address,
+    policyHook: record.policyHook as Address,
+    proxyCreationCode: record.proxyCreationCode as Hex,
+    runtimeCodeHashes: { entryPoint: placeholder, factory: placeholder, implementation: placeholder, validator: placeholder, policyHook: placeholder },
+    ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address })
+  });
+}
+
+function bytes32(value: unknown): boolean { return /^0x[0-9a-fA-F]{64}$/.test(String(value)); }
+function address(value: unknown): boolean { return /^0x[0-9a-fA-F]{40}$/.test(String(value)); }
 
 function migrateLegacyRecord(
   value: unknown,
@@ -384,111 +452,4 @@ function deriveAccountHandle(input: {
       ...(input.recoveryModule ? { recoveryModule: input.recoveryModule } : {})
     })
   });
-}
-
-function validateDeployment(value: unknown): WalletDeployment {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("deployment configuration is invalid");
-  const record = value as Record<string, unknown>;
-  if (!Number.isSafeInteger(record.chainId) || Number(record.chainId) <= 0) throw new Error("deployment chain is invalid");
-  for (const field of ["entryPoint", "factory", "implementation", "validator", "policyHook"] as const) {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(String(record[field]))) throw new Error(`deployment ${field} is invalid`);
-  }
-  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("deployment proxy creation code is invalid");
-  // Recovery is optional in a deployment, but a malformed entry must fail rather
-  // than be silently dropped: it would present an account as unprotectable.
-  if (record.recoveryModule !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(String(record.recoveryModule))) {
-    throw new Error("deployment recovery module is invalid");
-  }
-  const verifiers = parseGuardianVerifiers(record.guardianVerifiers);
-  return Object.freeze({
-    chainId: Number(record.chainId),
-    entryPoint: record.entryPoint as Address,
-    factory: record.factory as Address,
-    implementation: record.implementation as Address,
-    validator: record.validator as Address,
-    policyHook: record.policyHook as Address,
-    proxyCreationCode: record.proxyCreationCode as Hex,
-    ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address }),
-    ...(verifiers ? { guardianVerifiers: verifiers } : {})
-  });
-}
-
-function parseGuardianVerifiers(value: unknown): WalletDeployment["guardianVerifiers"] | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "object" || Array.isArray(value)) throw new Error("deployment guardian verifiers are invalid");
-  const record = value as Record<string, unknown>;
-  const verifiers: Record<string, Address> = {};
-  for (const kind of ["ecdsa", "erc1271", "p256"] as const) {
-    const candidate = record[kind];
-    if (candidate === undefined || candidate === null) continue;
-    if (!/^0x[0-9a-fA-F]{40}$/.test(String(candidate))) throw new Error(`deployment ${kind} guardian verifier is invalid`);
-    verifiers[kind] = candidate as Address;
-  }
-  return Object.keys(verifiers).length > 0 ? Object.freeze(verifiers) : null;
-}
-
-function hex(value: Uint8Array): Hex {
-  return `0x${Array.from(value, byte => byte.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function bytes32(value: unknown): boolean { return /^0x[0-9a-fA-F]{64}$/.test(String(value)); }
-function address(value: unknown): boolean { return /^0x[0-9a-fA-F]{40}$/.test(String(value)); }
-
-function hexBytes(value: Hex): Uint8Array<ArrayBuffer> {
-  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(value)) throw new Error("Passkey credential metadata is invalid.");
-  const pairs = value.slice(2).match(/../g) ?? [];
-  const output = new Uint8Array(pairs.length);
-  for (let index = 0; index < pairs.length; index += 1) output[index] = Number.parseInt(pairs[index]!, 16);
-  return output;
-}
-
-function base64Url(value: Uint8Array): string {
-  let binary = "";
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= left[index]! ^ right[index]!;
-  return difference === 0;
-}
-
-function concatBytes(...values: Uint8Array[]): Uint8Array {
-  const output = new Uint8Array(values.reduce((total, value) => total + value.length, 0));
-  let offset = 0;
-  for (const value of values) { output.set(value, offset); offset += value.length; }
-  return output;
-}
-
-function ownedBuffer(value: Uint8Array): ArrayBuffer {
-  const output = new Uint8Array(value.length);
-  output.set(value);
-  return output.buffer;
-}
-
-function derP256SignatureToRaw(signature: Uint8Array): Uint8Array {
-  if (signature.length < 8 || signature[0] !== 0x30 || signature[1] !== signature.length - 2) throw new Error("Passkey signature encoding is invalid.");
-  let offset = 2;
-  const integer = (): Uint8Array => {
-    if (signature[offset] !== 0x02) throw new Error("Passkey signature encoding is invalid.");
-    const length = signature[offset + 1];
-    if (length === undefined || length < 1 || length > 33 || offset + 2 + length > signature.length) throw new Error("Passkey signature encoding is invalid.");
-    let value = signature.slice(offset + 2, offset + 2 + length);
-    offset += 2 + length;
-    if (value.length === 33) {
-      if (value[0] !== 0 || (value[1]! & 0x80) === 0) throw new Error("Passkey signature encoding is invalid.");
-      value = value.slice(1);
-    } else if ((value[0]! & 0x80) !== 0 || (value.length > 1 && value[0] === 0 && (value[1]! & 0x80) === 0)) {
-      throw new Error("Passkey signature encoding is invalid.");
-    }
-    const padded = new Uint8Array(32);
-    padded.set(value, 32 - value.length);
-    return padded;
-  };
-  const r = integer();
-  const s = integer();
-  if (offset !== signature.length) throw new Error("Passkey signature encoding is invalid.");
-  return concatBytes(r, s);
 }

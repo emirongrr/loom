@@ -1,4 +1,5 @@
 import type { Hex } from "@loom/core";
+import { bytesFromHex, hexFromBytes } from "../../services/webauthn/encoding.ts";
 
 // Typed structurally rather than against one package's challenge type: the SDK's
 // account client and @loom/passkey's raw-hash signer describe the same ceremony
@@ -43,16 +44,4 @@ export async function signWithBrowserPasskey(challenge: PasskeySignRequest): Pro
     clientDataJSON: hexFromBytes(new Uint8Array(credential.response.clientDataJSON)),
     signature: hexFromBytes(new Uint8Array(credential.response.signature))
   });
-}
-
-function bytesFromHex(value: Hex): Uint8Array<ArrayBuffer> {
-  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(value)) throw new Error("Passkey challenge is not valid hex.");
-  const pairs = value.slice(2).match(/../g) ?? [];
-  const output = new Uint8Array(pairs.length);
-  for (let index = 0; index < pairs.length; index += 1) output[index] = Number.parseInt(pairs[index]!, 16);
-  return output;
-}
-
-function hexFromBytes(value: Uint8Array): Hex {
-  return `0x${Array.from(value, byte => byte.toString(16).padStart(2, "0")).join("")}`;
 }

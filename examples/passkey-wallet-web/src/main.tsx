@@ -4,6 +4,7 @@ import { App } from "./app/App";
 import { AppServicesProvider } from "./app/AppServices";
 import { NetworkProvider } from "./config/NetworkContext";
 import { NotificationsProvider } from "./notifications/NotificationsContext";
+import { AppErrorBoundary } from "./app/AppErrorBoundary";
 import "./styles/tokens.css";
 import "./styles/app.css";
 
@@ -15,7 +16,7 @@ createRoot(root).render(
     <NetworkProvider>
       <NotificationsProvider>
         <AppServicesProvider>
-          <App />
+          <AppErrorBoundary><App /></AppErrorBoundary>
         </AppServicesProvider>
       </NotificationsProvider>
     </NetworkProvider>
