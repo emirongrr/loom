@@ -20,6 +20,7 @@ export interface LoomDeploymentManifest {
     proxy: { creationCodeHash: Hex; runtimeCodeHash: Hex };
   };
   modules: ManifestModule[];
+  provisioners?: ManifestProvisioner[];
   compatibility: { contractRelease: string; sdkRange: string };
 }
 
@@ -36,6 +37,14 @@ export interface ManifestModule {
   status: "stable" | "beta" | "experimental";
 }
 
+export interface ManifestProvisioner {
+  type: "p256-recovery-validator-factory";
+  address: Address;
+  runtimeCodeHash: Hex;
+  validatorRuntimeCodeHash: Hex;
+  fallbackVerifier: Address;
+}
+
 /** An application-facing projection, cryptographically bound to its source manifest. */
 export interface DeploymentProfile {
   sourceManifestHash: Hex;
@@ -44,6 +53,7 @@ export interface DeploymentProfile {
   accountImplementation: Address;
   factory: Address;
   modules: ReadonlyArray<Pick<ManifestModule, "type" | "address" | "version" | "status">>;
+  provisioners: ReadonlyArray<ManifestProvisioner>;
 }
 
 const ADDRESS = { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" } as const;
@@ -82,6 +92,7 @@ export const DEPLOYMENT_MANIFEST_SCHEMA_V1 = {
       }
     },
     modules: { type: "array", items: { $ref: "#/definitions/module" } },
+    provisioners: { type: "array", items: { $ref: "#/definitions/provisioner" } },
     compatibility: {
       type: "object",
       additionalProperties: false,
@@ -106,6 +117,18 @@ export const DEPLOYMENT_MANIFEST_SCHEMA_V1 = {
         runtimeCodeHash: BYTES32,
         version: { type: "string", minLength: 1 },
         status: { enum: ["stable", "beta", "experimental"] }
+      }
+    },
+    provisioner: {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "address", "runtimeCodeHash", "validatorRuntimeCodeHash", "fallbackVerifier"],
+      properties: {
+        type: { const: "p256-recovery-validator-factory" },
+        address: ADDRESS,
+        runtimeCodeHash: BYTES32,
+        validatorRuntimeCodeHash: BYTES32,
+        fallbackVerifier: ADDRESS
       }
     }
   }
@@ -169,7 +192,8 @@ export function createDeploymentProfile(
     entryPoint: manifest.entryPoint.address,
     accountImplementation: manifest.account.implementation.address,
     factory: manifest.factory.address,
-    modules: Object.freeze(modules)
+    modules: Object.freeze(modules),
+    provisioners: Object.freeze([...(manifest.provisioners ?? [])])
   });
 }
 

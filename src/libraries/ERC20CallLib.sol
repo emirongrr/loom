@@ -25,6 +25,21 @@ library ERC20CallLib {
         return callSelector == TRANSFER || callSelector == TRANSFER_FROM || callSelector == APPROVE;
     }
 
+    /// @notice True when ERC-20-shaped calldata also carries attached native value.
+    /// @dev This shape moves two assets at once and neither field describes it on
+    /// its own: the calldata names a token amount while `value` sends ETH to the
+    /// same target. A payable or token-like target receives both, so metering only
+    /// the token amount lets the native value through unbounded, and reclassifying
+    /// the call as a plain ETH send drops the token limit. Policy code must treat
+    /// it as its own case.
+    ///
+    /// This predicate is shared so every enforcement layer classifies the shape
+    /// identically. Each caller still maps it to its own fail-closed behavior;
+    /// both Loom hooks meter it as an unbounded spend, which no limit can admit.
+    function isMixedValueTokenCall(bytes memory callData, uint256 value) internal pure returns (bool) {
+        return value != 0 && isTokenSelector(selector(callData));
+    }
+
     /// @dev Decodes a token call into (from, to, amount).
     /// transfer(to, amount) and approve(spender, amount): `to` is the recipient
     /// or spender and `from` is zero. transferFrom(from, to, amount) fills all

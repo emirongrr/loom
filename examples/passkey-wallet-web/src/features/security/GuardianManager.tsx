@@ -23,6 +23,7 @@ import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
+import { useAppServices } from "../../app/AppServices";
 
 type Stage = "list" | "review";
 
@@ -34,6 +35,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
+  const { runtime, pendingOperations, publicClients } = useAppServices();
   const roster = useMemo(() => createBrowserGuardianRoster(), []);
 
   const [committed, setCommitted] = useState<readonly RosterEntry[]>([]);
@@ -236,7 +238,8 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
 
       const result = await submitAccountCalls({
         config, account, deployment,
-        calls: [{ target: prepared.scheduleCall.target as Address, value: 0n, data: prepared.scheduleCall.data as Hex }]
+        calls: [{ target: prepared.scheduleCall.target as Address, value: 0n, data: prepared.scheduleCall.data as Hex }],
+        runtime, pendingOperations, publicClients
       });
       // Stored as pending, not committed: until the delay elapses and the change
       // executes, the guardian set that can actually recover this account is
@@ -266,7 +269,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setBusy(true); setError("");
     const toast = notifications.notify({ status: "pending", title: "Applying guardian change" });
     try {
-      const result = await executePendingGuardianChange({ config, account, deployment, prepared: status.prepared });
+      const result = await executePendingGuardianChange({ config, account, deployment, prepared: status.prepared, runtime, pendingOperations, publicClients });
       // Only now is the new set the one that can recover the account.
       await roster.write(account.id, { entries: pending.entries, version: Date.now(), pending: null });
       notifications.update(toast, {
@@ -288,7 +291,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setBusy(true); setError("");
     const toast = notifications.notify({ status: "pending", title: "Cancelling guardian change" });
     try {
-      const result = await cancelPendingGuardianChange({ config, account, deployment, prepared: status.prepared });
+      const result = await cancelPendingGuardianChange({ config, account, deployment, prepared: status.prepared, runtime, pendingOperations, publicClients });
       await roster.write(account.id, { entries: committed, version: Date.now(), pending: null });
       notifications.update(toast, {
         status: "success", title: "Guardian change cancelled", detail: "Your existing guardians are unchanged.",

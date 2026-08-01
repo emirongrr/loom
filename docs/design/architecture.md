@@ -37,8 +37,10 @@ The same account runtime can also be used as an EIP-7702 delegation target for
 EOAs that need to preserve an existing address. A delegated EOA must perform a
 self-call to `initializeDelegatedAccount(...)` with an explicitly selected
 EntryPoint before it has Loom authority. Constructor-deployed accounts cannot
-use this initializer because their `configVersion` is already non-zero. EIP-7702
-behavior is documented in `docs/design/eip-7702.md`.
+use this initializer because their `configVersion` is already non-zero, and the
+proxy bootstrap initializer `initialize` cannot reach a delegated EOA because it
+is restricted to the proxy-construction context. EIP-7702 behavior is documented
+in `docs/design/eip-7702.md`.
 
 The account also exposes a delayed sovereign migration state machine. A user
 can schedule an exact atomic batch that moves assets or authority toward a
@@ -75,7 +77,11 @@ will invoke the validator only when it is installed.
   per-call and per-UserOperation amount limits, time range, call count, use
   count, and one explicitly selected paymaster. Every item in an atomic batch
   must satisfy the same permission. Grants are timelocked and revocation is
-  immediate.
+  immediate. The account itself and its installed modules are not valid
+  permission targets, because the arguments of a permitted selector there would
+  be account authority rather than a spending capability. Calldata arguments are
+  otherwise unconstrained; `docs/design/permissions.md` states what that does
+  and does not bound.
 - `ECDSAValidator` exists for testing, migration, and hardware-wallet
   integrations. It is not the preferred primary validator.
 

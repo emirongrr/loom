@@ -42,12 +42,15 @@
     "release:nightly:check": "node tools/ci/require-recent-nightly.mjs",
     "deps:audit": "node --test tools/quality/dependency-audit-policy.test.mjs && node tools/quality/audit-dependencies.mjs",
     "docs:check": "node tools/quality/validate-doc-links.mjs",
+    "toolchain:check": "node tools/quality/validate-toolchain-pins.mjs",
+    "toolchain:test": "node --test tools/quality/validate-toolchain-pins.test.mjs",
     "fixtures:check": "node tools/evidence/validate-webauthn-fixtures.mjs",
     "fixtures:test": "node --test tools/evidence/validate-webauthn-fixtures.test.mjs",
     "fixtures:release": "node tools/evidence/validate-webauthn-fixtures.mjs --require-complete",
     "test:unit": "forge test --match-path \"test/unit/**/*.t.sol\"",
     "test:integration": "forge test --match-path \"test/integration/**/*.t.sol\"",
     "test:fork:tokens": "forge test --match-path \"test/fork/MainnetTokenCompatibility.fork.t.sol\" -vvv",
+    "test:fork:opstack": "forge test --match-path \"test/fork/OPStackL1BlockPredeploy.fork.t.sol\" -vvv",
     "test:evidence": "forge test --match-path \"test/evidence/**/*.t.sol\"",
     "test:invariant": "forge test --match-path \"test/invariant/**/*.t.sol\"",
     "test:regression": "forge test --match-path \"test/regression/**/*.t.sol\"",
@@ -112,7 +115,7 @@
   },
   "devDependencies": {
     "js-sha3": "0.9.3",
-    "solc": "0.8.36",
+    "solc": "0.8.35",
     "typescript": "7.0.2"
   },
   "optionalDependencies": {

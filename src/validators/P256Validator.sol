@@ -48,7 +48,10 @@ contract P256Validator is ILoomValidator, ILoomDirectValidator {
         fallbackVerifier = fallbackVerifier_;
     }
 
-    function initialize(bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook) external {
+    function initialize(bytes32 x, bytes32 y, bytes32 rpIdHash, bytes32 originHash, address policyHook)
+        external
+        virtual
+    {
         if (publicKeys[msg.sender].x != bytes32(0)) revert KeyAlreadyInitialized();
         if (policyHook == address(0)) revert InvalidPolicyHook();
         _setKey(msg.sender, x, y, rpIdHash, originHash);

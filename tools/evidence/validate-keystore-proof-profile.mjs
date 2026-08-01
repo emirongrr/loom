@@ -116,6 +116,20 @@ function assertProof(proof, network, verifier) {
     throw new Error("proof.stateRootSource.family must match network.family");
   }
   assertAddress(proof.stateRootSource.contract, "proof.stateRootSource.contract");
+  // An address alone says nothing about how the root is obtained. The OP Stack
+  // `L1Block` predeploy publishes no state root, so a profile that names it must
+  // also name the mechanism that turns what it does publish into one. Requiring
+  // the mechanism is what stops a profile from silently assuming a function the
+  // target chain does not implement.
+  const mechanisms = ["l1-block-hash-header-preimage", "direct-same-chain-read"];
+  if (!mechanisms.includes(proof.stateRootSource.mechanism)) {
+    throw new Error(`proof.stateRootSource.mechanism must be one of: ${mechanisms.join(", ")}`);
+  }
+  if (proof.stateRootSource.mechanism === "l1-block-hash-header-preimage") {
+    if (proof.stateRootSource.blockHashAccessor !== "hash()") {
+      throw new Error("l1-block-hash-header-preimage requires proof.stateRootSource.blockHashAccessor to be hash()");
+    }
+  }
   if (!Number.isSafeInteger(proof.finality.minDelaySeconds) || proof.finality.minDelaySeconds <= 0) {
     throw new Error("l2 proof.finality.minDelaySeconds must be positive");
   }

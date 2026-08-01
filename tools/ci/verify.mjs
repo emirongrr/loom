@@ -81,6 +81,8 @@ run("Kontrol program structure", process.execPath, ["tools/formal/validate-kontr
 run("Kontrol program structure tests", process.execPath, ["--test", "tools/formal/validate-kontrol-program.test.mjs"]);
 run("Formal program structure", process.execPath, ["tools/formal/validate-formal-program.mjs"]);
 run("Formal program structure tests", process.execPath, ["--test", "tools/formal/validate-formal-program.test.mjs"]);
+run("Toolchain pins", process.execPath, ["tools/quality/validate-toolchain-pins.mjs"]);
+run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-toolchain-pins.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
 run("Website checks", process.execPath, ["tools/site/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
@@ -141,7 +143,7 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
+  ".*Formal|MainnetTokenCompatibilityForkTest|OPStackL1BlockPredeployForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
   "--no-match-path",
   "test/{formal,invariant,script}/**"
 ]);
