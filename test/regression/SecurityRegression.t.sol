@@ -236,7 +236,8 @@ contract SecurityRegressionTest {
         // `RecoveryManagerTest::testFreezeCoversRecoveryDelayForAlreadyReadyExternalOperation`
         // and `testFrozenRecoveryCancellationRetiresScheduleAndRearmsGuardians`
         // pin down.
-        require(account.scheduledOperations(operationId) != 0, "operation lost across the freeze");
+        (uint48 survivingReadyAt,,) = account.scheduledOperations(operationId);
+        require(survivingReadyAt != 0, "operation lost across the freeze");
         account.executeScheduled(address(target), 0, scheduledCall);
         require(target.value() == 1, "operation not executable after the freeze lapsed");
     }
