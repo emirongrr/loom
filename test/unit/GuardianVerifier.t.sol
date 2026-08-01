@@ -7,8 +7,56 @@ import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {MockERC1271Signer} from "../mocks/MockERC1271Signer.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {P256TestKeys} from "../helpers/P256TestKeys.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
+
+contract GuardianVerificationHarness {
+    function approved(
+        bytes32 root,
+        uint256 threshold,
+        bytes32 digest,
+        GuardianVerificationLib.Approval[] calldata approvals
+    ) external view returns (bool) {
+        return GuardianVerificationLib.approved(root, threshold, digest, approvals);
+    }
+}
 
 contract GuardianVerifierTest {
+    function testSameCommittedAuthorityCannotSatisfyGuardianThresholdTwice() public {
+        ERC1271GuardianVerifier verifier = new ERC1271GuardianVerifier();
+        GuardianVerificationHarness harness = new GuardianVerificationHarness();
+        MockERC1271Signer signer = new MockERC1271Signer();
+        bytes32 digest = keccak256("one-authority-one-vote");
+        bytes memory signerSignature = hex"cafe";
+        signer.setAccepted(digest, signerSignature);
+        bytes memory signature = abi.encode(address(signer), signerSignature);
+        bytes32 commitment = keccak256(abi.encode(address(signer)));
+        bytes32 saltA = keccak256("salt-a");
+        bytes32 saltB = keccak256("salt-b");
+        bytes32 leafA = keccak256(abi.encode(address(verifier), address(verifier).codehash, commitment, saltA));
+        bytes32 leafB = keccak256(abi.encode(address(verifier), address(verifier).codehash, commitment, saltB));
+        bytes32 root =
+            leafA <= leafB ? keccak256(abi.encodePacked(leafA, leafB)) : keccak256(abi.encodePacked(leafB, leafA));
+
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](2);
+        approvals[0] = _approval(
+            address(verifier), commitment, leafA <= leafB ? saltA : saltB, signature, leafA <= leafB ? leafB : leafA
+        );
+        approvals[1] = _approval(
+            address(verifier), commitment, leafA <= leafB ? saltB : saltA, signature, leafA <= leafB ? leafA : leafB
+        );
+        require(!harness.approved(root, 2, digest, approvals), "one signer satisfied threshold twice");
+    }
+
+    function _approval(address verifier, bytes32 commitment, bytes32 salt, bytes memory signature, bytes32 sibling)
+        internal
+        pure
+        returns (GuardianVerificationLib.Approval memory approval)
+    {
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = sibling;
+        return GuardianVerificationLib.Approval(verifier, commitment, salt, signature, proof);
+    }
+
     function testP256GuardianVerifierBindsPublicKeyCommitmentAndWebAuthnFields() public {
         P256GuardianVerifier verifier = new P256GuardianVerifier(address(new MockP256Verifier()));
         bytes32 digest = keccak256("recovery");

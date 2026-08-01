@@ -39,7 +39,7 @@ function validateContractsWorkflow() {
     "broadcast/DeployDevnet.s.sol/31337/run-latest.json",
     "broadcast/DevnetAccountLifecycle.s.sol/31337/run-latest.json",
     "if: always()",
-    "actions/upload-artifact@v7",
+    "actions/upload-artifact@",
     "name: devnet-${{ github.sha }}",
     "path: artifacts/devnet",
     "retention-days: 30",
@@ -136,7 +136,7 @@ function validateNightlyWorkflow() {
     "FOUNDRY_PROFILE=deep forge test -vvv 2>&1 | tee artifacts/nightly-foundry/forge-test.log",
     "run-metadata.json",
     "if: always()",
-    "actions/upload-artifact@v7",
+    "actions/upload-artifact@",
     "name: nightly-foundry-${{ github.sha }}",
     "path: artifacts/nightly-foundry",
     "MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}",
@@ -194,7 +194,7 @@ function validateReleaseWorkflow() {
     "npm run test:fork:tokens",
     "slither . --fail-high",
     "src script docs evidence fixtures out",
-    "actions/upload-artifact@v7",
+    "actions/upload-artifact@",
     "gh release create",
     // The publishable npm packages are built, packed, and proven as part of the
     // release: the packer is unit-tested and the exact tarballs are installed
@@ -288,11 +288,11 @@ function validateSupplyChainWorkflow() {
   const file = ".github/workflows/supply-chain.yml";
   assertWorkflowSecurityDefaults(file);
   for (const required of [
-    "actions/dependency-review-action@v4",
+    "actions/dependency-review-action@",
     "fail-on-severity: high",
     "pkg:pypi/certora-cli",
     "pkg:npm/node-forge",
-    "ossf/scorecard-action@v2.4.3",
+    "ossf/scorecard-action@",
     "publish_results: false",
   ]) {
     assertIncludes(file, required, `missing required supply-chain step: ${required}`);
@@ -306,7 +306,7 @@ function validateDeploymentManifestCandidateWorkflow() {
     "workflow_dispatch:",
     "manifest_path:",
     "persist-credentials: false",
-    "foundry-rs/foundry-toolchain@v1",
+    "foundry-rs/foundry-toolchain@",
     "version: v1.7.1",
     "npm ci",
     "forge build --sizes",

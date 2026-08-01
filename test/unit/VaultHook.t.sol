@@ -78,7 +78,7 @@ contract VaultHookTest {
         vm.warp(block.timestamp + 1 days);
         account.executeScheduled(address(token), 0, transfer);
         require(token.balanceOf(address(0xCAFE)) == 50, "vault withdrawal failed");
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt == 0, "vault withdrawal not consumed");
     }
 
@@ -90,12 +90,12 @@ contract VaultHookTest {
 
         bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
         bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
-        (,, uint64 version) = vault.pendingWithdrawals(address(account), withdrawalId);
-        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version);
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(account), withdrawalId);
+        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version, nonce);
 
         vault.cancelVaultWithdrawalWithGuardians(address(account), withdrawalId, _guardianApprovals(digest));
 
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt == 0, "guardian cancellation failed");
         _schedule(account, address(token), transfer, account.MIN_EXTERNAL_DELAY());
         vm.warp(block.timestamp + 3 days);
@@ -113,8 +113,8 @@ contract VaultHookTest {
 
         bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
         bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
-        (,, uint64 version) = vault.pendingWithdrawals(address(account), withdrawalId);
-        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version);
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(account), withdrawalId);
+        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version, nonce);
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
 
         GuardianVerificationLib.Approval[] memory missing = new GuardianVerificationLib.Approval[](1);
@@ -136,7 +136,7 @@ contract VaultHookTest {
             );
         require(!acceptedDuplicate, "duplicate guardian accepted");
 
-        bytes32 wrongDigest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version + 1);
+        bytes32 wrongDigest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version + 1, nonce);
         (bool acceptedWrongDigest,) = address(vault)
             .call(
                 abi.encodeCall(
@@ -146,7 +146,7 @@ contract VaultHookTest {
             );
         require(!acceptedWrongDigest, "wrong digest accepted");
 
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt != 0, "failed cancellation mutated pending withdrawal");
     }
 
@@ -161,7 +161,7 @@ contract VaultHookTest {
         account.executeScheduled(address(0xBEEF), 1 ether, "");
 
         require(address(0xBEEF).balance == 1 ether, "eth vault withdrawal failed");
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt == 0, "eth withdrawal not consumed");
     }
 
@@ -180,7 +180,7 @@ contract VaultHookTest {
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(target), 1 ether, failing)));
 
         require(!executed, "reverting vault withdrawal succeeded");
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         require(readyAt != 0, "reverting withdrawal consumed pending state");
     }
 
@@ -442,6 +442,156 @@ contract VaultHookTest {
         bytes memory plainTransfer = abi.encodeCall(MockPayableERC20.transfer, (address(0xBEEF), 5));
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(token), 0, plainTransfer)));
         require(token.balanceOf(address(0xBEEF)) == 55, "plain token transfer under limit blocked");
+    }
+
+    /// @notice A guardian cancellation authorizes exactly one withdrawal instance.
+    /// @dev `withdrawalId` identifies a call shape at a configuration version, so
+    /// re-scheduling the same withdrawal reuses the slot. Cancelling publishes the
+    /// guardian approvals on chain. Without an instance counter those archived
+    /// approvals stayed valid for every later occupant of the slot, so anyone --
+    /// the cancellation entry point is permissionless, gated only by signature
+    /// validity -- could replay them to kill each re-scheduled withdrawal forever,
+    /// with no live guardian involved. The owner's only escape was perturbing the
+    /// call or forcing a `configVersion` bump through the 3-day config path.
+    function testGuardianCancellationCannotBeReplayedAgainstARescheduledWithdrawal() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(2);
+        MockERC20 token = new MockERC20();
+        token.mint(address(account), 100);
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+
+        bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
+        bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(account), withdrawalId);
+        require(nonce == 0, "first instance should start at nonce zero");
+
+        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version, nonce);
+        GuardianVerificationLib.Approval[] memory archived = _guardianApprovals(digest);
+        vault.cancelVaultWithdrawalWithGuardians(address(account), withdrawalId, archived);
+
+        // Re-scheduling the identical withdrawal reuses the same slot, and the
+        // configuration version has not moved, so the identity is unchanged.
+        bytes32 rescheduledId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
+        require(rescheduledId == withdrawalId, "re-scheduled withdrawal should reuse the slot");
+        (,, uint64 newVersion, uint64 newNonce) = vault.pendingWithdrawals(address(account), withdrawalId);
+        require(newVersion == version, "config version moved; replay would be masked");
+        require(newNonce == nonce + 1, "instance counter did not advance on cancellation");
+
+        // The archived approvals must not authorize the new instance.
+        (bool replayed, bytes memory revertData) = address(vault)
+            .call(
+                abi.encodeCall(VaultHook.cancelVaultWithdrawalWithGuardians, (address(account), withdrawalId, archived))
+            );
+        require(!replayed, "archived guardian approvals cancelled a re-scheduled withdrawal");
+        require(
+            keccak256(revertData) == keccak256(abi.encodeWithSelector(VaultHook.InvalidWithdrawal.selector)),
+            "wrong replay rejection"
+        );
+
+        (uint48 stillPending,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        require(stillPending != 0, "replay cleared the pending withdrawal");
+
+        // Live guardians can still cancel the new instance by signing its nonce,
+        // so the counter narrows the authorization rather than removing it.
+        bytes32 freshDigest = vault.cancelWithdrawalDigest(address(account), withdrawalId, newVersion, newNonce);
+        vault.cancelVaultWithdrawalWithGuardians(address(account), withdrawalId, _guardianApprovals(freshDigest));
+        (uint48 cancelled,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        require(cancelled == 0, "fresh guardian approvals failed to cancel");
+        require(token.balanceOf(address(0xCAFE)) == 0, "cancellation moved assets");
+    }
+
+    /// @notice Successful execution consumes the instance for the same reason.
+    function testExecutedWithdrawalApprovalCannotCancelAnIdenticalLaterOne() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(2);
+        MockERC20 token = new MockERC20();
+        token.mint(address(account), 200);
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+
+        bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
+        bytes32 withdrawalId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(account), withdrawalId);
+        // Signed while the withdrawal was pending but never submitted.
+        bytes32 digest = vault.cancelWithdrawalDigest(address(account), withdrawalId, version, nonce);
+        GuardianVerificationLib.Approval[] memory archived = _guardianApprovals(digest);
+
+        _schedule(account, address(token), transfer, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + 3 days);
+        account.executeScheduled(address(token), 0, transfer);
+        require(token.balanceOf(address(0xCAFE)) == 50, "vault withdrawal did not execute");
+
+        bytes32 secondId = _scheduleVaultWithdrawal(account, vault, address(token), 0, transfer);
+        require(secondId == withdrawalId, "second withdrawal should reuse the slot");
+
+        (bool replayed,) = address(vault)
+            .call(
+                abi.encodeCall(VaultHook.cancelVaultWithdrawalWithGuardians, (address(account), withdrawalId, archived))
+            );
+        require(!replayed, "approval for an executed withdrawal cancelled a later one");
+        (uint48 stillPending,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        require(stillPending != 0, "replay cleared the second withdrawal");
+    }
+
+    /// @notice An approval is bound to one account even when two accounts share a
+    /// guardian set and hold an otherwise identical withdrawal.
+    function testGuardianCancellationDoesNotCrossAccounts() public {
+        (LoomAccount first, VaultHook vault) = _accountWithVault(2);
+        MockERC20 token = new MockERC20();
+        token.mint(address(first), 100);
+        _setPolicy(first, vault, address(token), 10, 1 days, 2 days);
+
+        // A second account with the same guardian root and the same vault hook.
+        MockValidator validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(vault), "");
+        LoomAccount second =
+            new LoomAccount(address(this), _guardianRoot(), 2, keccak256("vault-config-second"), modules);
+        token.mint(address(second), 100);
+        _setPolicy(second, vault, address(token), 10, 1 days, 2 days);
+
+        bytes memory transfer = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
+        bytes32 firstId = _scheduleVaultWithdrawal(first, vault, address(token), 0, transfer);
+        bytes32 secondId = _scheduleVaultWithdrawal(second, vault, address(token), 0, transfer);
+        require(firstId != secondId, "withdrawal identity must bind the account");
+
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(first), firstId);
+        bytes32 digest = vault.cancelWithdrawalDigest(address(first), firstId, version, nonce);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
+
+        (bool crossed,) = address(vault)
+            .call(abi.encodeCall(VaultHook.cancelVaultWithdrawalWithGuardians, (address(second), secondId, approvals)));
+        require(!crossed, "approvals for one account cancelled another account's withdrawal");
+        (uint48 secondReady,,,) = vault.pendingWithdrawals(address(second), secondId);
+        require(secondReady != 0, "cross-account replay cleared the pending withdrawal");
+    }
+
+    /// @notice Consuming one slot must not disturb another pending withdrawal.
+    /// @dev This is why the counter is per slot rather than per account, unlike
+    /// `RecoveryManager`: an account may hold many pending withdrawals at once, and
+    /// a per-account counter would change every other withdrawal's identity.
+    function testCancellingOneWithdrawalLeavesOtherPendingWithdrawalsExecutable() public {
+        (LoomAccount account, VaultHook vault) = _accountWithVault(2);
+        MockERC20 token = new MockERC20();
+        token.mint(address(account), 200);
+        _setPolicy(account, vault, address(token), 10, 1 days, 2 days);
+
+        bytes memory first = abi.encodeCall(MockERC20.transfer, (address(0xCAFE), 50));
+        bytes memory second = abi.encodeCall(MockERC20.transfer, (address(0xF00D), 60));
+        bytes32 firstId = _scheduleVaultWithdrawal(account, vault, address(token), 0, first);
+        bytes32 secondId = _scheduleVaultWithdrawal(account, vault, address(token), 0, second);
+        require(firstId != secondId, "distinct withdrawals must use distinct slots");
+
+        (,, uint64 version, uint64 nonce) = vault.pendingWithdrawals(address(account), firstId);
+        bytes32 digest = vault.cancelWithdrawalDigest(address(account), firstId, version, nonce);
+        vault.cancelVaultWithdrawalWithGuardians(address(account), firstId, _guardianApprovals(digest));
+
+        (uint48 secondReady,,, uint64 secondNonce) = vault.pendingWithdrawals(address(account), secondId);
+        require(secondReady != 0, "unrelated withdrawal was cancelled");
+        require(secondNonce == 0, "unrelated withdrawal's counter moved");
+
+        _schedule(account, address(token), second, account.MIN_EXTERNAL_DELAY());
+        vm.warp(block.timestamp + 3 days);
+        account.executeScheduled(address(token), 0, second);
+        require(token.balanceOf(address(0xF00D)) == 60, "unrelated withdrawal became unexecutable");
     }
 
     function _accountWithVault(uint8 guardianThreshold) internal returns (LoomAccount account, VaultHook vault) {

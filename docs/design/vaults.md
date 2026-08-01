@@ -75,6 +75,25 @@ Guardian-threshold cancellation can remove a pending withdrawal without giving
 guardians transfer authority. Guardian approvals are verified against the
 account guardian root and reject duplicate leaves.
 
+A cancellation authorizes exactly one withdrawal instance. A withdrawal is
+stored under an identifier derived from the account, target, value, calldata
+hash, and configuration version, so re-scheduling the same withdrawal reuses
+that slot. Each slot carries an instance counter which the cancellation digest
+binds and which advances whenever the slot is consumed by either cancellation or
+successful execution. Consumption clears the pending fields but keeps the
+counter, so `readyAt == 0` still means "not pending" while the counter continues
+across instances.
+
+Without that counter the approvals published by one cancellation stayed valid
+for every later withdrawal occupying the same slot. Because the cancellation
+entry point is permissionless and gated only by signature validity, anyone could
+replay the archived approvals to cancel each re-scheduled withdrawal
+indefinitely, with no live guardian participation. The counter is per slot
+rather than per account so that cancelling one withdrawal does not change the
+identity of other pending withdrawals; this differs from `RecoveryManager`,
+where an account has at most one pending recovery and a single per-account nonce
+is sufficient.
+
 ## Deliberate limits
 
 The initial hook protects canonical ERC-20 calldata and native ETH. It does

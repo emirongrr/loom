@@ -42,6 +42,41 @@ key is rejected, even if the full 32-byte permission ID differs. This avoids a
 footgun where two visibly different permissions compete for the same EntryPoint
 nonce sequence.
 
+## Policy accounting boundary
+
+`PolicyHook` and `VaultHook` classify a spend from the execution's target,
+calldata selector, decoded ERC-20 amount, and attached native value. All
+enforcement layers share one classifier, `ERC20CallLib`, so they cannot disagree
+about what a call spends.
+
+Exactly what is recognized:
+
+- Canonical `transfer`, `transferFrom`, and `approve` calldata, at the canonical
+  ABI lengths. A token selector with any other calldata length is metered as an
+  unbounded spend, not as zero.
+- Native value on a call with no token selector, metered as a native spend.
+- A token selector **with** attached native value is metered as an unbounded
+  spend by both hooks. This shape moves two assets at once, and neither field
+  describes it alone: a payable or token-like target receives the ETH as well as
+  performing the token movement. Metering only the token amount would let the
+  native value through unbounded, so it fails closed. `PolicyHook` used to
+  discard the value here, which also bypassed the `isLowRisk` gate that
+  authorizes validator direct execution.
+- `GranularSessionValidator` is stricter still: a token permission rejects any
+  attached native value outright, because the permission itself names the asset.
+
+What this does **not** give:
+
+- `PolicyHook` policies are keyed by `(target, selector)`. A native-value policy
+  is keyed by the empty selector, so it constrains only calls with empty
+  calldata. It is not a cap on all ETH leaving the account toward that target;
+  use `VaultHook`, which is deny-by-default per asset, for that.
+- No policy configured for a `(target, selector)` pair means `PolicyHook` does
+  not meter that call. `PolicyHook` is a metering allowlist, not a deny-all
+  gate. The call still requires validator authorization.
+- Fee-on-transfer, rebasing, and other non-standard token behavior is metered by
+  the requested amount, not the delivered amount.
+
 ## Deliberate limits
 
 - A granular permission does not authorize delegatecall, executors, fallback
