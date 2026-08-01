@@ -31,6 +31,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error OperationNotScheduled();
     error CallFailed(bytes returnData);
     error InvalidInitialization();
+    error InvalidInitializationContext();
     error Reentrancy();
     error ModuleLimitReached();
     error InvalidTokenAllowance();
@@ -84,7 +85,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// use the longer MIN_CONFIG_DELAY; see scheduleCall.
     uint48 public constant MIN_EXTERNAL_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
-    uint48 public constant FREEZE_DURATION = 2 days;
+    /// @notice How long a guardian freeze holds.
+    /// @dev Must cover the whole recovery path, not just its start. A guardian who
+    /// freezes the instant an attack is noticed also needs `RecoveryManager`'s
+    /// `RECOVERY_DELAY` to pass before recovery is executable, plus room to publish
+    /// that execution. At two days this was shorter than the three-day recovery
+    /// delay, so the freeze lapsed roughly a day before recovery could replace the
+    /// compromised validator -- and `MIN_EXTERNAL_DELAY` is one day, so an operation
+    /// scheduled before the freeze was already ready and waiting in that window,
+    /// executable permissionlessly by the attacker.
+    ///
+    /// Recovery execution is not blocked by the freeze: `recoverConfiguration` is
+    /// gated on the recovery module, not on `frozenUntil`. Lengthening the freeze
+    /// therefore delays nothing legitimate.
+    uint48 public constant FREEZE_DURATION = 5 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
     /// @notice How long a scheduled call stays executable after it becomes ready.
@@ -125,6 +139,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
     bytes32 private constant CONFIGURATION_SET_RECOVERED_HASH = keccak256("CONFIGURATION_SET_RECOVERED");
+    bytes32 private constant FROZEN_RECOVERY_CANCELLED_HASH = keccak256("FROZEN_RECOVERY_CANCELLED");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
@@ -186,6 +201,32 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     receive() external payable {}
 
+    /// @notice Immutable-proxy bootstrap entry point. Callable only from a
+    /// `LoomAccountProxy` constructor, never by a third party.
+    /// @dev `LoomAccountProxy` delegatecalls this from its own constructor, where
+    /// `address(this)` is the proxy under construction and therefore still has no
+    /// code. That makes "no code at `address(this)`" an exact discriminator for the
+    /// one legitimate caller, and it is why this initializer cannot simply require
+    /// `msg.sender == address(this)`: during proxy construction the caller is the
+    /// factory.
+    ///
+    /// Every other context is rejected. In particular an EIP-7702 delegated EOA
+    /// carries the 23-byte `0xef0100 || template` delegation indicator as its code,
+    /// so it can never reach `_initialize` through this function. Delegated accounts
+    /// must use `initializeDelegatedAccount`, which requires the EOA itself to send
+    /// the transaction and therefore to authorize the exact initialization payload
+    /// with its own key, replay-protected by its own nonce and bound to the chain by
+    /// the transaction's chain id.
+    ///
+    /// Without this guard an uninitialized delegated EOA has `configVersion == 0`,
+    /// so any third party could install an attacker-chosen EntryPoint, validator
+    /// set, hooks, and guardian configuration and then drain the account.
+    ///
+    /// A deployed runtime template is covered by the same check, since it has code.
+    /// The permitted context cannot be reached by an external call at all: an account
+    /// under construction has no code, so a call to it dispatches no runtime and
+    /// returns success without executing anything. Only the proxy constructor's own
+    /// delegatecall runs this function there, atomically with deployment.
     function initialize(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -193,9 +234,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bytes32 configHash_,
         ModuleInit[] calldata modules
     ) external payable {
+        if (address(this).code.length != 0) {
+            revert InvalidInitializationContext();
+        }
         _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
+    /// @notice EIP-7702 initialization entry point for a delegated EOA.
+    /// @dev `msg.sender == address(this)` means the delegated EOA itself sent the
+    /// transaction, so the EOA key authorizes this exact payload. The EOA's own
+    /// transaction nonce provides replay protection and the transaction's chain id
+    /// provides chain separation; no separate signature envelope is required.
+    /// One-shot: `_initialize` rejects any account whose `configVersion != 0`.
     function initializeDelegatedAccount(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -373,7 +423,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (callType == ExecutionLib.CALLTYPE_BATCH) _validateBatchSize(executionCalldata);
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < frozenUntil && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
+        bool frozen = block.timestamp < frozenUntil;
+        if (frozen && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
 
         bool bypassHooks = _isHookRecoverySchedule(callType, executionCalldata);
         address[] memory checkedHooks = new address[](0);
@@ -390,6 +441,30 @@ contract LoomAccount is IERC1271, ILoomAccount {
             revert UnsupportedExecutionMode();
         }
         if (!bypassHooks) _postCheck(checkedHooks, hookData);
+
+        // Reaching here while frozen means `_isFrozenSafe` accepted the call, and
+        // the only shape it accepts is cancelling this account's pending recovery
+        // on an installed recovery module. That carve-out exists so the real owner
+        // can stop a malicious guardian recovery even while guardians hold a
+        // freeze, and it must stay. But a compromised validator inherits it, and
+        // without this the compromise won: cancelling reset the guardians' 3-day
+        // recovery clock while `freeze` allowed each guardian leaf only one freeze
+        // per configuration version, so the guardians ran out of freezes before
+        // recovery could ever complete, and any operation the attacker had already
+        // scheduled survived to be executed once the freeze lapsed.
+        //
+        // Advancing the configuration makes that cancellation self-defeating. It
+        // re-arms every guardian leaf, because the freeze gate compares against
+        // `configVersion`, and it invalidates every pending scheduled operation,
+        // migration, and vault withdrawal, because each binds the configuration
+        // version it was created at. The attacker can still cancel recovery, but
+        // each cancellation destroys the payload the freeze was buying time to
+        // stop and hands the guardians another freeze.
+        //
+        // Only the frozen path does this. Cancelling a recovery on an unfrozen
+        // account is an ordinary uncontested action and must not silently discard
+        // the owner's other pending operations.
+        if (frozen) _advanceConfig(FROZEN_RECOVERY_CANCELLED_HASH);
     }
 
     function supportsExecutionMode(bytes32 mode) external pure returns (bool) {

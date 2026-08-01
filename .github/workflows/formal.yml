@@ -18,12 +18,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Install Lean
         run: |
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat formal/lean/lean-toolchain)"
+          # Pinned to a commit and checksum-verified: `master` would let an
+          # upstream change run arbitrary code in a job that has repository
+          # checkout access. Update the pair together when bumping elan.
+          ELAN_COMMIT=464c9d28395000a2a0128e07081e4956d50eced2
+          ELAN_SHA256=a620ff1641616222c8d37c54845492004bb84d6877cdbc944dd65c1aa685bf53
+          curl -sSfL --proto '=https' --tlsv1.2             "https://raw.githubusercontent.com/leanprover/elan/$ELAN_COMMIT/elan-init.sh" -o elan-init.sh
+          echo "$ELAN_SHA256  elan-init.sh" | sha256sum --check --status
+          sh elan-init.sh -y --default-toolchain "$(cat formal/lean/lean-toolchain)"
+          rm elan-init.sh
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Build Lean model
         run: cd formal/lean && lake build
@@ -34,19 +42,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
         with:
           version: v1.7.1
       - name: Install Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
       - name: Check formal test documentation

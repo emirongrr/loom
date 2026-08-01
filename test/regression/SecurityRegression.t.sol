@@ -224,6 +224,21 @@ contract SecurityRegressionTest {
         vm.warp(account.frozenUntil());
         account.execute(bytes32(0), abi.encode(unfreeze));
         require(account.frozenUntil() == 0, "expired freeze did not clear");
+
+        // A freeze on its own is a delay, not a veto. This account has no recovery
+        // module, so nothing ever invalidated the pending operation and it becomes
+        // executable again once the freeze lapses. That is deliberate: if a lapsed
+        // freeze permanently retired operations, a single guardian could destroy
+        // the owner's pending work without meeting the recovery threshold.
+        //
+        // The freeze only has to outlast the recovery path when a recovery is
+        // actually running, which is what
+        // `RecoveryManagerTest::testFreezeCoversRecoveryDelayForAlreadyReadyExternalOperation`
+        // and `testFrozenRecoveryCancellationRetiresScheduleAndRearmsGuardians`
+        // pin down.
+        require(account.scheduledOperations(operationId) != 0, "operation lost across the freeze");
+        account.executeScheduled(address(target), 0, scheduledCall);
+        require(target.value() == 1, "operation not executable after the freeze lapsed");
     }
 
     function testFrozenAccountRejectsSelfTargetedConfigCallsRegardlessOfSelector() public {
