@@ -42,6 +42,83 @@ key is rejected, even if the full 32-byte permission ID differs. This avoids a
 footgun where two visibly different permissions compete for the same EntryPoint
 nonce sequence.
 
+## Policy accounting boundary
+
+`PolicyHook` and `VaultHook` classify a spend from the execution's target,
+calldata selector, decoded ERC-20 amount, and attached native value. All
+enforcement layers share one classifier, `ERC20CallLib`, so they cannot disagree
+about what a call spends.
+
+Exactly what is recognized:
+
+- Canonical `transfer`, `transferFrom`, and `approve` calldata, at the canonical
+  ABI lengths. A token selector with any other calldata length is metered as an
+  unbounded spend, not as zero.
+- Native value on a call with no token selector, metered as a native spend.
+- A token selector **with** attached native value is metered as an unbounded
+  spend by both hooks. This shape moves two assets at once, and neither field
+  describes it alone: a payable or token-like target receives the ETH as well as
+  performing the token movement. Metering only the token amount would let the
+  native value through unbounded, so it fails closed. `PolicyHook` used to
+  discard the value here, which also bypassed the `isLowRisk` gate that
+  authorizes validator direct execution.
+- `GranularSessionValidator` is stricter still: a token permission rejects any
+  attached native value outright, because the permission itself names the asset.
+
+What this does **not** give:
+
+- `PolicyHook` policies are keyed by `(target, selector)`. A native-value policy
+  is keyed by the empty selector, so it constrains only calls with empty
+  calldata. It is not a cap on all ETH leaving the account toward that target;
+  use `VaultHook`, which is deny-by-default per asset, for that.
+- No policy configured for a `(target, selector)` pair means `PolicyHook` does
+  not meter that call. `PolicyHook` is a metering allowlist, not a deny-all
+  gate. The call still requires validator authorization.
+- Fee-on-transfer, rebasing, and other non-standard token behavior is metered by
+  the requested amount, not the delivered amount.
+
+## What a permission does not constrain
+
+A granular permission binds the target, the selector, and the amount. It does
+**not** constrain the rest of the calldata. For a token permission the remaining
+arguments are the recipient and amount, and both are checked. For any other
+permission — `(target, selector)` with `token == address(0)` — the arguments are
+free, and only attached native value is metered.
+
+That is the intended capability range, not an oversight: a granular session is
+"this key may call this function on this contract", and enumerating the argument
+shape of every third-party function is not something the account can do. Two
+consequences follow, and a wallet client must surface both.
+
+**A target that dispatches is as wide as the target.** A permission for a
+selector that forwards calls — `multicall`, `aggregate`, `exec`, a router's
+generic swap entry point — grants whatever that contract is willing to do on the
+account's behalf, because the forwarded call lives in the unconstrained
+arguments. Loom does not carry a denylist of such selectors: the set is open,
+target-specific, and unknowable to the account, so a denylist would block a few
+familiar names while advertising a boundary it does not have. Use
+`ExactCallSessionValidator` when the call is known in advance; it pins the
+calldata hash and is immune to this by construction.
+
+**The account and its modules are not valid targets.** This is the one case
+where the account *can* enumerate the risk, so it does. A permission whose
+target is the account itself is rejected at grant time, and a permission whose
+target is an installed validator, hook, or recovery module fails validation for
+as long as it stays installed. An execution item targeting the account arrives
+at its own `onlySelf` surface with `msg.sender == address(this)`, so an
+unconstrained argument list on a single permitted selector would be account
+authority rather than a spending capability: `scheduleCall` takes the call to
+queue, `scheduleMigration` takes the destination, `unfreeze` lifts a guardian's
+emergency window, and `RecoveryManager.cancelRecovery` discards a pending
+guardian recovery. The module check reads the current module set rather than the
+one observed at grant time, so an address that becomes a module later is denied
+from that point on without the permission having to be revoked. See
+`test/regression/SessionAdministrativeTargets.t.sol`.
+
+`ExactCallSessionValidator` is not subject to either restriction, because a
+pinned calldata hash is a specific call the granter reviewed during the
+configuration timelock rather than a standing capability.
+
 ## Deliberate limits
 
 - A granular permission does not authorize delegatecall, executors, fallback

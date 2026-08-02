@@ -36,8 +36,23 @@ Each profile must include:
 - production checks proving bytecode verification, documented storage layout,
   no messaging authority, no bridge authority, and no Loom service dependency.
 
-L2 profiles additionally require independent audit completion and finality
-parameters for the target network's accepted L1 state-root path.
+L2 profiles additionally require independent audit completion, finality
+parameters for the target network's accepted L1 state-root path, and a named
+`proof.stateRootSource.mechanism`.
+
+The mechanism field is not bookkeeping. Naming only a contract address once let a
+profile assume the OP Stack `L1Block` predeploy publishes an L1 state root; it
+does not, and the verifier built on that assumption could never accept a proof on
+a real chain. A profile must therefore say how the root is obtained:
+
+| Mechanism | Meaning |
+| --- | --- |
+| `direct-same-chain-read` | The verifier reads the keystore directly; no proof or root is involved. Ethereum L1 only. |
+| `l1-block-hash-header-preimage` | The verifier reads an L1 block hash from a chain-provided accessor, requires the caller's RLP L1 block header to hash to it, and takes the state root from the header. Requires `blockHashAccessor` to be `hash()`. |
+
+Before adding a profile for a new network family, confirm against the live chain
+that the named accessor exists and returns a live value. A mock is not evidence:
+it can implement anything, including a function no chain has.
 
 ## Command
 

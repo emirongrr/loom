@@ -270,7 +270,7 @@ contract MultiAccountSessionHandler {
 
         bytes32 operationId =
             keccak256(abi.encode(address(sessionValidator), uint256(0), grantData, account.configVersion()));
-        uint48 readyAt = account.scheduledOperations(operationId);
+        (uint48 readyAt,,) = account.scheduledOperations(operationId);
         if (readyAt == 0) {
             violated = true;
             return;

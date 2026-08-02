@@ -39,6 +39,72 @@ from production claims and immutable authority.
 - Dogfood independent build, deployment, recovery, direct execution, and
   walkaway procedures.
 
+## Toolchain pinning
+
+Everything that can change the bytecode or run code in CI is pinned to an
+immutable reference, and `npm run toolchain:check` fails the build when one of
+these drifts:
+
+- **One Solidity version.** `foundry.toml`, the `solc` npm dependency,
+  `solc-select` invocations, and the Kontrol `SOLC_BINARY` must all name the
+  same version. A second compiler reachable from the repository produces
+  different bytecode than the gates and the deployment manifest measure, which
+  voids the reproducibility claim made about them without failing anything.
+- **Every GitHub Action at a commit SHA**, with the human-readable tag kept as a
+  trailing comment. A moving tag lets a compromised or merely retagged upstream
+  run new code in a job that has repository checkout access.
+- **No remote script piped into a shell, and no fetch from a branch ref.**
+  Download to a file at a pinned commit, verify a recorded `sha256`, then run
+  it. When bumping such a dependency, update the commit and the checksum
+  together — the checker only proves the ref is pinned, not that the two agree.
+
+The checker's own tests build broken fixtures and assert each rule fires, so it
+cannot pass by checking nothing.
+
+## Dependency audit coverage
+
+The repository is a hybrid monorepo. Four packages are npm workspaces sharing
+the root lockfile; every other tree — the remaining SDKs, the CLI, the examples,
+the monitoring component, and the documentation site — keeps its own. That is a
+deliberate boundary: the examples and the mobile wallet carry build stacks that
+have no business in the root dependency tree, and the SDKs are installed
+independently by design.
+
+The cost is that `npm audit` sees one lockfile at a time, so coverage is exactly
+the target list in `tools/quality/audit-dependencies.mjs`.
+`npm run deps:coverage:check` makes that list total: one audit target per
+committed lockfile, in both directions. A new tree with a lockfile fails until it
+is audited, and a target for a tree that no longer has one fails as a stale claim
+of coverage.
+
+The rule takes no judgement and admits no prose exception, because the previous
+arrangement was a hand-maintained list with a comment explaining which trees were
+covered, and it had fallen behind without anything noticing.
+
+## Documented limits match the contracts
+
+Security documents state contract limits as numbers — `MAX_HOOKS` is 8,
+`MIN_CONFIG_DELAY` is 3 days, `MAX_REVERT_DATA_LENGTH` is 2,048 bytes. A reader
+budgets against those numbers, so a stale one is worse than none at all.
+`npm run docs:constants:check` reads every named numeric constant out of `src/`
+and every place the docs state a value for one, and fails when they disagree.
+Durations are compared in seconds, so writing 72 hours where the contract says
+3 days is accepted.
+
+Two rules follow from what the checker can and cannot see:
+
+- **Name the constant when stating its value.** The checker matches
+  `` `NAME` is 8 `` and `` `NAME` (3 days) ``. A number written without the
+  constant beside it — "the window is two days" — is invisible to it and will
+  rot silently. Prefer naming the constant with no number at all when the exact
+  value does not matter to the sentence, as `docs/design/lifecycle.md` does for
+  `FREEZE_DURATION`.
+- **The checker verifies agreement, not correctness.** It cannot tell whether a
+  documented limit is the *right* one to describe in that paragraph, and it
+  ignores names the contracts do not declare. It also declines to guess when a
+  constant is declared twice with different values, reporting the ambiguity
+  instead.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
