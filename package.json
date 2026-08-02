@@ -50,6 +50,8 @@
     "toolchain:test": "node --test tools/quality/validate-toolchain-pins.test.mjs",
     "docs:constants:check": "node tools/quality/validate-doc-constants.mjs",
     "docs:constants:test": "node --test tools/quality/validate-doc-constants.test.mjs",
+    "doubles:check": "node tools/quality/validate-test-doubles.mjs",
+    "doubles:test": "node --test tools/quality/validate-test-doubles.test.mjs",
     "fixtures:check": "node tools/evidence/validate-webauthn-fixtures.mjs",
     "fixtures:test": "node --test tools/evidence/validate-webauthn-fixtures.test.mjs",
     "fixtures:release": "node tools/evidence/validate-webauthn-fixtures.mjs --require-complete",
