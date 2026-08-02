@@ -63,6 +63,7 @@ the assertion is that the account survives them.
 | `StorageModifyingHook` | hook that attempts to write account storage |
 | `RejectingDirectValidator` | validator that refuses direct execution |
 | `PaymasterAwareValidator` | validator that binds an explicit paymaster |
+| `InitializerReentrantModule` | module that calls `initialize` back on the account while that account is still inside its own constructor |
 | `MockTarget` | ordinary call target with observable state |
 
 ## When adding a double
