@@ -12,6 +12,7 @@ import type { PendingOperationStore } from "../../storage/pendingOperations";
 import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier.ts";
 import type { PublicClientRegistry } from "../../services/rpc/publicClients.ts";
 import { acquireAccountOperation } from "../../services/loom/operationGuard.ts";
+import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation.ts";
 
 // A counterfactual account is created by its first operation, which carries the
 // factory call. The account pays for that itself: `validateUserOp` forwards the
@@ -74,10 +75,19 @@ export async function activateAccount(input: {
 }): Promise<SendResult> {
   const { config, account, deployment } = input;
   const plan = planActivation(account, deployment);
-  const release = await acquireAccountOperation(account.id, input.pendingOperations);
+  let release: (() => void) | undefined;
 
   try {
     await input.runtime.verify(config, deployment);
+    await reconcilePendingOperations({
+      config,
+      account,
+      store: input.pendingOperations,
+      entryPoint: deployment.entryPoint,
+      publicClient: input.publicClients.forEndpoint(config.rpcUrl),
+      verificationPublicClient: input.publicClients.forEndpoint(config.verificationRpcUrl)
+    });
+    release = await acquireAccountOperation(account.id, input.pendingOperations);
 
   const signer = createPasskeySigner({
     credentialId: account.credentialId,
@@ -143,6 +153,6 @@ export async function activateAccount(input: {
   await input.pendingOperations.complete(account.id, sent.userOpHash);
   return { userOpHash: sent.userOpHash, transactionHash };
   } finally {
-    release();
+    release?.();
   }
 }

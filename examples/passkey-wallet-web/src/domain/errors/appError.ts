@@ -74,6 +74,8 @@ export function normalizeAppError(issue: unknown, stage: OperationStage): AppErr
       cause: issue
     });
   }
+  const bundlerError = normalizeBundlerRpcError(issue, stage);
+  if (bundlerError) return bundlerError;
   const diagnostic = safeDiagnostic(issue);
   const lower = diagnostic.toLowerCase();
   if (stage === "validation") {
@@ -109,6 +111,34 @@ function isDomException(value: unknown, name: string): boolean {
 
 function safeDiagnostic(issue: unknown): string {
   if (!(issue instanceof Error)) return "Unknown error";
-  const message = issue.message.replace(/https?:\/\/[^\s)]+/gu, "[endpoint redacted]");
+  const message = redactEndpoints(issue.message);
   return `${issue.name}: ${message}`.slice(0, 1_000);
+}
+
+function normalizeBundlerRpcError(issue: unknown, stage: OperationStage): AppError | undefined {
+  if (!(issue instanceof Error) || issue.name !== "InvalidSdkRequestError" || issue.message !== "bundler rpc request failed") return undefined;
+  const details = "details" in issue && issue.details && typeof issue.details === "object"
+    ? issue.details as Record<string, unknown>
+    : {};
+  const method = typeof details.method === "string" ? details.method : "unknown";
+  const code = typeof details.code === "string" || typeof details.code === "number" ? String(details.code) : "unknown";
+  const message = typeof details.message === "string" ? redactEndpoints(details.message) : "No safe bundler message was provided.";
+  const operationRejected = method === "eth_estimateUserOperationGas" || method === "eth_sendUserOperation";
+  return new AppError({
+    code: operationRejected ? "USER_OPERATION_REJECTED" : "BUNDLER_UNAVAILABLE",
+    userMessage: method === "eth_estimateUserOperationGas"
+      ? "The bundler rejected gas estimation for this wallet operation."
+      : method === "eth_sendUserOperation"
+        ? "The bundler rejected the signed wallet operation."
+        : "The bundler could not complete this request.",
+    diagnostic: `InvalidSdkRequestError: method=${method}; code=${code}; message=${message}`.slice(0, 1_000),
+    retryable: true,
+    stage,
+    cause: issue,
+    metadata: { method, code }
+  });
+}
+
+function redactEndpoints(value: string): string {
+  return value.replace(/https?:\/\/[^\s)]+/gu, "[endpoint redacted]");
 }

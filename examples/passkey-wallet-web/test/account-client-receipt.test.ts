@@ -12,7 +12,7 @@ const TRANSACTION_HASH = `0x${"22".repeat(32)}` as Hex;
 const ACCOUNT = "0x1111111111111111111111111111111111111111" as Address;
 const ENTRY_POINT = "0x3333333333333333333333333333333333333333" as Address;
 
-function chainReceipt(overrides: Record<string, unknown> = {}) {
+function chainReceipt(overrides: Record<string, unknown> = {}, operationSucceeded = true) {
   const event = EntryPointAbi.find(item => item.type === "event" && item.name === "UserOperationEvent")!;
   return {
     transactionHash: TRANSACTION_HASH,
@@ -26,7 +26,7 @@ function chainReceipt(overrides: Record<string, unknown> = {}) {
       } }),
       data: encodeAbiParameters(
         [{ type: "uint256" }, { type: "bool" }, { type: "uint256" }, { type: "uint256" }],
-        [0n, true, 1n, 1n]
+        [0n, operationSucceeded, 1n, 1n]
       )
     }],
     ...overrides
@@ -93,12 +93,12 @@ test("a bundler success claim without a matching EntryPoint event is rejected", 
   );
 });
 
-test("a reverted chain transaction is rejected even when the bundler claims success", async () => {
+test("a reverted outer transaction remains unproven even when the bundler claims success", async () => {
   const receipt: UserOperationReceipt = { userOpHash: USER_OP_HASH, success: true, sender: ACCOUNT, receipt: { transactionHash: TRANSACTION_HASH } };
   const publicClient = { getTransactionReceipt: async () => chainReceipt({ status: "reverted" }) };
   await assert.rejects(
     confirmUserOperationReceipt({ receipt, expectedUserOperationHash: USER_OP_HASH, expectedSender: ACCOUNT, entryPoint: ENTRY_POINT, publicClient: publicClient as never, verificationPublicClient: publicClient as never }),
-    (error: unknown) => error instanceof AppError && error.code === "TRANSACTION_REVERTED"
+    (error: unknown) => error instanceof AppError && error.code === "USER_OPERATION_REJECTED" && error.retryable === true
   );
 });
 
@@ -107,4 +107,22 @@ test("receipt confirmation rejects disagreement between independent RPCs", async
   const primary = { getTransactionReceipt: async () => chainReceipt() };
   const verifierClient = { getTransactionReceipt: async () => chainReceipt({ logs: [] }) };
   await assert.rejects(confirmUserOperationReceipt({ receipt, expectedUserOperationHash: USER_OP_HASH, expectedSender: ACCOUNT, entryPoint: ENTRY_POINT, publicClient: primary as never, verificationPublicClient: verifierClient as never }), AppError);
+});
+
+test("an independently proven failed UserOperation is terminal", async () => {
+  const receipt: UserOperationReceipt = { userOpHash: USER_OP_HASH, success: true, sender: ACCOUNT, receipt: { transactionHash: TRANSACTION_HASH } };
+  const publicClient = { getTransactionReceipt: async () => chainReceipt({}, false) };
+  await assert.rejects(
+    confirmUserOperationReceipt({ receipt, expectedUserOperationHash: USER_OP_HASH, expectedSender: ACCOUNT, entryPoint: ENTRY_POINT, publicClient: publicClient as never, verificationPublicClient: publicClient as never }),
+    (error: unknown) => error instanceof AppError && error.code === "TRANSACTION_REVERTED" && error.retryable === false
+  );
+});
+
+test("a reverted outer transaction is not treated as proof that the UserOperation is terminal", async () => {
+  const receipt: UserOperationReceipt = { userOpHash: USER_OP_HASH, success: false, sender: ACCOUNT, receipt: { transactionHash: TRANSACTION_HASH } };
+  const publicClient = { getTransactionReceipt: async () => chainReceipt({ status: "reverted", logs: [] }) };
+  await assert.rejects(
+    confirmUserOperationReceipt({ receipt, expectedUserOperationHash: USER_OP_HASH, expectedSender: ACCOUNT, entryPoint: ENTRY_POINT, publicClient: publicClient as never, verificationPublicClient: publicClient as never }),
+    (error: unknown) => error instanceof AppError && error.code === "USER_OPERATION_REJECTED" && error.retryable === true
+  );
 });

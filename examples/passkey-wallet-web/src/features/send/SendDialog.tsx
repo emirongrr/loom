@@ -109,7 +109,10 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       <div aria-live="polite">
         {error && <StatusPanel id={errorId} tone="warning">
           <p>{error.userMessage}</p>
-          <AdvancedDetails><code>{error.code} · {error.stage}</code></AdvancedDetails>
+          <AdvancedDetails>
+            <p><code>{error.code} · {error.stage}</code></p>
+            <p><code>{error.diagnostic}</code></p>
+          </AdvancedDetails>
         </StatusPanel>}
       </div>
       <div className="sheet-actions">

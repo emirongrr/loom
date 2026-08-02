@@ -154,6 +154,13 @@ test("an amount over the token balance is refused before signing", () => {
   );
 });
 
+test("a native amount over the account balance is refused before bundler simulation", () => {
+  assert.throws(
+    () => buildTransferCall({ asset: { type: "token", token: nativeToken() }, from: ACCOUNT, to: RECIPIENT, amount: "1.000000000000000001" }),
+    /exceeds/u
+  );
+});
+
 test("a zero or malformed amount is refused", () => {
   for (const amount of ["0", "", ".", "abc", "-1"]) {
     assert.throws(() => buildTransferCall({ asset: { type: "token", token: nativeToken() }, from: ACCOUNT, to: RECIPIENT, amount }));
