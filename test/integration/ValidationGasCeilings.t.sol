@@ -14,10 +14,8 @@ import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
 import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 
-contract AlwaysValidGuardianVerifier is IGuardianVerifier {
-    function verify(bytes32, bytes32, bytes calldata) external pure returns (bool) {
-        return true;
-    }
+interface VmGasCeilings {
+    function etch(address target, bytes calldata code) external;
 }
 
 contract GuardianApprovalGasHarness {
@@ -47,6 +45,29 @@ contract ValidatorSetGasHarness {
 }
 
 contract ValidationGasCeilingsTest {
+    VmGasCeilings internal constant vm = VmGasCeilings(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    /// @dev Fixed address and hand-written runtime for the always-valid guardian
+    /// verifier used by the guardian gas ceilings.
+    ///
+    /// A guardian leaf binds `verifier.codehash`, which is a production security
+    /// property and must not change. But when the verifier was a Solidity contract
+    /// declared in this file, its code -- and therefore its codehash -- carried
+    /// solc's metadata hash, which covers every source in the compilation unit.
+    /// Editing an unrelated imported file, even by adding a comment, changed the
+    /// codehash, which changed the leaves, which changed their sorted order, which
+    /// changed the Merkle proof shapes and so the gas these tests consume. That made
+    /// the gas snapshot gate report drift on changes that could not possibly affect
+    /// guardian verification.
+    ///
+    /// Etching a fixed 10-byte runtime removes the compilation unit from the
+    /// picture entirely: both the address and the codehash are now constants. The
+    /// runtime ignores its calldata and returns a 32-byte word of 1, which is what
+    /// `IGuardianVerifier.verify` returning `true` looks like on the wire:
+    ///   PUSH1 0x01, PUSH1 0x00, MSTORE, PUSH1 0x20, PUSH1 0x00, RETURN
+    address internal constant ALWAYS_VALID_VERIFIER = address(uint160(uint256(keccak256("loom.test.always-valid"))));
+    bytes internal constant ALWAYS_VALID_VERIFIER_RUNTIME = hex"600160005260206000f3";
+
     uint256 internal constant MAX_WEBAUTHN_VALIDATION_GAS = 1_500_000;
     uint256 internal constant MAX_GUARDIAN_APPROVAL_GAS = 1_500_000;
     uint256 internal constant MAX_GUARDIAN_PROOF_GAS = 400_000;
@@ -94,7 +115,7 @@ contract ValidationGasCeilingsTest {
     }
 
     function testMaximumGuardianApprovalsStayUnderGasCeiling() public {
-        AlwaysValidGuardianVerifier verifier = new AlwaysValidGuardianVerifier();
+        address verifier = _alwaysValidVerifier();
         GuardianApprovalGasHarness harness = new GuardianApprovalGasHarness();
         uint256 count = harness.MAX_SIGNATURES();
         (bytes32 root, GuardianVerificationLib.Approval[] memory approvals) = _guardianTreeApprovals(verifier, count);
@@ -108,7 +129,7 @@ contract ValidationGasCeilingsTest {
     }
 
     function testMaximumGuardianProofStaysUnderGasCeiling() public {
-        AlwaysValidGuardianVerifier verifier = new AlwaysValidGuardianVerifier();
+        address verifier = _alwaysValidVerifier();
         GuardianApprovalGasHarness harness = new GuardianApprovalGasHarness();
         bytes32 keyCommitment = bytes32(uint256(1));
         bytes32 salt = keccak256("maximum-proof");
@@ -170,7 +191,12 @@ contract ValidationGasCeilingsTest {
         require(clientDataJSON.length == maximumLength, "client data did not reach maximum");
     }
 
-    function _guardianTreeApprovals(AlwaysValidGuardianVerifier verifier, uint256 count)
+    function _alwaysValidVerifier() internal returns (address) {
+        vm.etch(ALWAYS_VALID_VERIFIER, ALWAYS_VALID_VERIFIER_RUNTIME);
+        return ALWAYS_VALID_VERIFIER;
+    }
+
+    function _guardianTreeApprovals(address verifier, uint256 count)
         internal
         view
         returns (bytes32 root, GuardianVerificationLib.Approval[] memory approvals)

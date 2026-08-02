@@ -31,6 +31,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error OperationNotScheduled();
     error CallFailed(bytes returnData);
     error InvalidInitialization();
+    error InvalidInitializationContext();
     error Reentrancy();
     error ModuleLimitReached();
     error InvalidTokenAllowance();
@@ -44,12 +45,27 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error MigrationNotPending();
     error InvalidMigration();
     error OperationAlreadyScheduled();
+    error OperationExpired();
 
     // --- Types ---
     struct ModuleInit {
         uint256 moduleTypeId;
         address module;
         bytes initData;
+    }
+
+    /// @notice A scheduled call's readiness window and instance counter.
+    /// @dev `operationId` identifies a call shape at a configuration version, so
+    /// the same call scheduled again reuses this slot. `nonce` distinguishes the
+    /// current occupant from every previous one, which is what a guardian
+    /// cancellation approval binds; without it a revealed approval would stay valid
+    /// for every future occupant of the slot. Consumption clears `readyAt` and
+    /// advances `nonce` rather than deleting the entry, so the counter survives in
+    /// the slot it describes. `readyAt == 0` remains the "not scheduled" test.
+    struct ScheduledOperation {
+        uint48 readyAt;
+        uint48 expiresAt;
+        uint64 nonce;
     }
 
     struct PendingMigration {
@@ -69,9 +85,31 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// use the longer MIN_CONFIG_DELAY; see scheduleCall.
     uint48 public constant MIN_EXTERNAL_DELAY = 1 days;
     uint48 public constant MIN_CONFIG_DELAY = 3 days;
-    uint48 public constant FREEZE_DURATION = 2 days;
+    /// @notice How long a guardian freeze holds.
+    /// @dev Must cover the whole recovery path, not just its start. A guardian who
+    /// freezes the instant an attack is noticed also needs `RecoveryManager`'s
+    /// `RECOVERY_DELAY` to pass before recovery is executable, plus room to publish
+    /// that execution. At two days this was shorter than the three-day recovery
+    /// delay, so the freeze lapsed roughly a day before recovery could replace the
+    /// compromised validator -- and `MIN_EXTERNAL_DELAY` is one day, so an operation
+    /// scheduled before the freeze was already ready and waiting in that window,
+    /// executable permissionlessly by the attacker.
+    ///
+    /// Recovery execution is not blocked by the freeze: `recoverConfiguration` is
+    /// gated on the recovery module, not on `frozenUntil`. Lengthening the freeze
+    /// therefore delays nothing legitimate.
+    uint48 public constant FREEZE_DURATION = 5 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
+    /// @notice How long a scheduled call stays executable after it becomes ready.
+    /// @dev Every other delayed mechanism here already bounds its window --
+    /// `RECOVERY_WINDOW`, `SYNC_WINDOW`, `MAX_WITHDRAWAL_WINDOW`,
+    /// `MAX_MIGRATION_WINDOW`. Generic scheduled calls were the one exception: they
+    /// stored only `readyAt`, so once ready they stayed executable forever unless an
+    /// unrelated configuration change happened to invalidate them. That let an
+    /// attacker park a ready operation indefinitely and publish it at the moment it
+    /// was least defensible, since `executeScheduled` is permissionless.
+    uint48 public constant SCHEDULE_WINDOW = 30 days;
     uint256 public constant MAX_VALIDATORS = ValidatorSetLib.MAX_VALIDATORS;
     uint256 public constant MAX_HOOKS = 8;
     uint256 public constant MAX_BATCH_SIZE = 32;
@@ -95,10 +133,13 @@ contract LoomAccount is IERC1271, ILoomAccount {
         "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
     );
     bytes32 public constant EVICT_HOOK_TYPEHASH = keccak256("EvictHook(address hook,uint64 configVersion)");
+    bytes32 public constant CANCEL_SCHEDULED_TYPEHASH =
+        keccak256("CancelScheduled(bytes32 operationId,uint64 configVersion,uint64 nonce)");
     bytes32 private constant NAME_HASH = keccak256("LoomAccount");
     bytes32 private constant VERSION_HASH = keccak256("1");
     bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
     bytes32 private constant CONFIGURATION_SET_RECOVERED_HASH = keccak256("CONFIGURATION_SET_RECOVERED");
+    bytes32 private constant FROZEN_RECOVERY_CANCELLED_HASH = keccak256("FROZEN_RECOVERY_CANCELLED");
     bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
@@ -116,7 +157,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     address[] private _hooks;
     uint256 private _validatorCount;
     uint256 private _recoveryModuleCount;
-    mapping(bytes32 operationId => uint48 readyAt) public scheduledOperations;
+    mapping(bytes32 operationId => ScheduledOperation) public scheduledOperations;
     mapping(bytes32 guardianLeaf => uint256) public freezeNonces;
     mapping(bytes32 guardianLeaf => uint64) public lastFreezeConfigVersion;
     PendingMigration public pendingMigration;
@@ -130,7 +171,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event ConfigUpdated(bytes32 indexed configHash, uint64 indexed configVersion);
     event GuardianConfigUpdated(bytes32 indexed guardianRoot, uint8 guardianThreshold);
     event Frozen(uint48 frozenUntil);
-    event OperationScheduled(bytes32 indexed operationId, uint48 readyAt);
+    event OperationScheduled(bytes32 indexed operationId, uint48 readyAt, uint48 expiresAt, uint64 nonce);
     event OperationCancelled(bytes32 indexed operationId);
     event OperationExecuted(bytes32 indexed operationId);
     event AllowanceRevoked(address indexed token, address indexed spender);
@@ -160,6 +201,32 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     receive() external payable {}
 
+    /// @notice Immutable-proxy bootstrap entry point. Callable only from a
+    /// `LoomAccountProxy` constructor, never by a third party.
+    /// @dev `LoomAccountProxy` delegatecalls this from its own constructor, where
+    /// `address(this)` is the proxy under construction and therefore still has no
+    /// code. That makes "no code at `address(this)`" an exact discriminator for the
+    /// one legitimate caller, and it is why this initializer cannot simply require
+    /// `msg.sender == address(this)`: during proxy construction the caller is the
+    /// factory.
+    ///
+    /// Every other context is rejected. In particular an EIP-7702 delegated EOA
+    /// carries the 23-byte `0xef0100 || template` delegation indicator as its code,
+    /// so it can never reach `_initialize` through this function. Delegated accounts
+    /// must use `initializeDelegatedAccount`, which requires the EOA itself to send
+    /// the transaction and therefore to authorize the exact initialization payload
+    /// with its own key, replay-protected by its own nonce and bound to the chain by
+    /// the transaction's chain id.
+    ///
+    /// Without this guard an uninitialized delegated EOA has `configVersion == 0`,
+    /// so any third party could install an attacker-chosen EntryPoint, validator
+    /// set, hooks, and guardian configuration and then drain the account.
+    ///
+    /// A deployed runtime template is covered by the same check, since it has code.
+    /// The permitted context cannot be reached by an external call at all: an account
+    /// under construction has no code, so a call to it dispatches no runtime and
+    /// returns success without executing anything. Only the proxy constructor's own
+    /// delegatecall runs this function there, atomically with deployment.
     function initialize(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -167,9 +234,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
         bytes32 configHash_,
         ModuleInit[] calldata modules
     ) external payable {
+        if (address(this).code.length != 0) {
+            revert InvalidInitializationContext();
+        }
         _initialize(entryPoint_, guardianRoot_, guardianThreshold_, configHash_, modules);
     }
 
+    /// @notice EIP-7702 initialization entry point for a delegated EOA.
+    /// @dev `msg.sender == address(this)` means the delegated EOA itself sent the
+    /// transaction, so the EOA key authorizes this exact payload. The EOA's own
+    /// transaction nonce provides replay protection and the transaction's chain id
+    /// provides chain separation; no separate signature envelope is required.
+    /// One-shot: `_initialize` rejects any account whose `configVersion != 0`.
     function initializeDelegatedAccount(
         address entryPoint_,
         bytes32 guardianRoot_,
@@ -347,7 +423,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (callType == ExecutionLib.CALLTYPE_BATCH) _validateBatchSize(executionCalldata);
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < frozenUntil && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
+        bool frozen = block.timestamp < frozenUntil;
+        if (frozen && !_isFrozenSafe(callType, executionCalldata)) revert AccountFrozen();
 
         bool bypassHooks = _isHookRecoverySchedule(callType, executionCalldata);
         address[] memory checkedHooks = new address[](0);
@@ -364,6 +441,30 @@ contract LoomAccount is IERC1271, ILoomAccount {
             revert UnsupportedExecutionMode();
         }
         if (!bypassHooks) _postCheck(checkedHooks, hookData);
+
+        // Reaching here while frozen means `_isFrozenSafe` accepted the call, and
+        // the only shape it accepts is cancelling this account's pending recovery
+        // on an installed recovery module. That carve-out exists so the real owner
+        // can stop a malicious guardian recovery even while guardians hold a
+        // freeze, and it must stay. But a compromised validator inherits it, and
+        // without this the compromise won: cancelling reset the guardians' 3-day
+        // recovery clock while `freeze` allowed each guardian leaf only one freeze
+        // per configuration version, so the guardians ran out of freezes before
+        // recovery could ever complete, and any operation the attacker had already
+        // scheduled survived to be executed once the freeze lapsed.
+        //
+        // Advancing the configuration makes that cancellation self-defeating. It
+        // re-arms every guardian leaf, because the freeze gate compares against
+        // `configVersion`, and it invalidates every pending scheduled operation,
+        // migration, and vault withdrawal, because each binds the configuration
+        // version it was created at. The attacker can still cancel recovery, but
+        // each cancellation destroys the payload the freeze was buying time to
+        // stop and hands the guardians another freeze.
+        //
+        // Only the frozen path does this. Cancelling a recovery on an unfrozen
+        // account is an ordinary uncontested action and must not silently discard
+        // the owner's other pending operations.
+        if (frozen) _advanceConfig(FROZEN_RECOVERY_CANCELLED_HASH);
     }
 
     function supportsExecutionMode(bytes32 mode) external pure returns (bool) {
@@ -641,17 +742,65 @@ contract LoomAccount is IERC1271, ILoomAccount {
             : MIN_EXTERNAL_DELAY;
         if (delay < minimum || delay > MAX_SCHEDULE_DELAY) revert InvalidDelay();
         operationId = keccak256(abi.encode(target, value, data, configVersion));
-        if (scheduledOperations[operationId] != 0) revert OperationAlreadyScheduled();
+        ScheduledOperation memory existing = scheduledOperations[operationId];
+        if (existing.readyAt != 0) revert OperationAlreadyScheduled();
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 readyAt = uint48(block.timestamp) + delay;
-        scheduledOperations[operationId] = readyAt;
-        emit OperationScheduled(operationId, readyAt);
+        uint48 expiresAt = readyAt + SCHEDULE_WINDOW;
+        // The slot's counter survives consumption, so this is the next instance.
+        scheduledOperations[operationId] =
+            ScheduledOperation({readyAt: readyAt, expiresAt: expiresAt, nonce: existing.nonce});
+        emit OperationScheduled(operationId, readyAt, expiresAt, existing.nonce);
     }
 
     function cancelScheduled(bytes32 operationId) external onlySelf {
-        if (scheduledOperations[operationId] == 0) revert OperationNotScheduled();
-        delete scheduledOperations[operationId];
+        ScheduledOperation memory operation = scheduledOperations[operationId];
+        if (operation.readyAt == 0) revert OperationNotScheduled();
+        _consumeScheduled(operationId, operation.nonce);
         emit OperationCancelled(operationId);
+    }
+
+    /// @notice Guardian-threshold cancellation of a pending scheduled call.
+    /// @dev Every other delayed mechanism -- migration, vault withdrawal, recovery,
+    /// keystore sync -- already has one; generic scheduled calls did not, so a
+    /// guardian who spotted a dangerous pending operation could only freeze the
+    /// account and wait for recovery to invalidate it. Guardians gain no execution
+    /// or spending authority here: cancellation is the whole power.
+    ///
+    /// The digest binds the instance nonce, so an approval authorizes exactly the
+    /// one occupant of this slot it was signed for. Cancelling publishes the
+    /// approvals on chain, and this entry point is permissionless; without the nonce
+    /// those archived approvals would cancel every future re-scheduling of the same
+    /// call indefinitely.
+    function cancelScheduledWithGuardians(
+        bytes32 operationId,
+        GuardianVerificationLib.Approval[] calldata guardianApprovals
+    ) external {
+        ScheduledOperation memory operation = scheduledOperations[operationId];
+        if (operation.readyAt == 0) revert OperationNotScheduled();
+        bytes32 digest = cancelScheduledDigest(operationId, configVersion, operation.nonce);
+        if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
+            revert InvalidModule();
+        }
+        _consumeScheduled(operationId, operation.nonce);
+        emit OperationCancelled(operationId);
+    }
+
+    function cancelScheduledDigest(bytes32 operationId, uint64 operationConfigVersion, uint64 nonce)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 structHash =
+            keccak256(abi.encode(CANCEL_SCHEDULED_TYPEHASH, operationId, operationConfigVersion, nonce));
+        return EIP712Lib.digest(_domainSeparator(), structHash);
+    }
+
+    /// @dev Clears the pending operation and advances the slot's instance counter,
+    /// so any approval signed for it -- including one a guardian cancellation just
+    /// revealed on chain -- cannot authorize the next occupant.
+    function _consumeScheduled(bytes32 operationId, uint64 nonce) internal {
+        scheduledOperations[operationId] = ScheduledOperation({readyAt: 0, expiresAt: 0, nonce: nonce + 1});
     }
 
     // --- Sovereign migration ---
@@ -803,12 +952,17 @@ contract LoomAccount is IERC1271, ILoomAccount {
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < frozenUntil) revert AccountFrozen();
         bytes32 operationId = keccak256(abi.encode(target, value, data, configVersion));
-        uint48 readyAt = scheduledOperations[operationId];
-        if (readyAt == 0) revert OperationNotScheduled();
+        ScheduledOperation memory operation = scheduledOperations[operationId];
+        if (operation.readyAt == 0) revert OperationNotScheduled();
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < readyAt) revert OperationNotReady();
-        delete scheduledOperations[operationId];
+        if (block.timestamp < operation.readyAt) revert OperationNotReady();
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > operation.expiresAt) revert OperationExpired();
+        // Consuming here, before the call, keeps the operation single-use and
+        // advances the instance counter so a cancellation approval signed for it
+        // cannot authorize the slot's next occupant.
+        _consumeScheduled(operationId, operation.nonce);
         _executingScheduled = true;
         bool bypassHooks = _isHookRemovalExecution(target, value, data);
         address[] memory checkedHooks = new address[](0);

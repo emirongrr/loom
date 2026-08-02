@@ -42,7 +42,9 @@ export function buildTransferCall(input: {
 }): AccountCall {
   const { asset, from, to } = input;
   if (asset.type === "token" && asset.token.kind === "native") {
-    return { target: to, value: parseAmount(input.amount, asset.token.decimals), data: "0x" };
+    const value = parseAmount(input.amount, asset.token.decimals);
+    if (value > asset.token.balance) throw new Error("Amount exceeds the native balance.");
+    return { target: to, value, data: "0x" };
   }
   if (asset.type === "token") {
     const value = parseAmount(input.amount, asset.token.decimals);
