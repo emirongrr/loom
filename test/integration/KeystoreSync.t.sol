@@ -23,6 +23,10 @@ contract KeystoreControllerRecipient {
         keystore.acceptController(identityId);
     }
 
+    function cancel(LoomKeystore keystore, bytes32 identityId) external {
+        keystore.cancelControllerTransfer(identityId);
+    }
+
     function updateConfig(
         LoomKeystore keystore,
         bytes32 identityId,
@@ -184,6 +188,37 @@ contract KeystoreSyncTest {
         (bool rejectedSelfTransfer,) =
             address(keystore).call(abi.encodeCall(LoomKeystore.transferController, (IDENTITY_ID, address(this))));
         require(!rejectedSelfTransfer, "no-op transfer to the current controller accepted");
+    }
+
+    /// @dev The cancel path's own guards. Both are refusals, so neither shows up
+    /// in the happy-path walk through the handshake, and an uncancellable or
+    /// wrongly-cancellable offer is exactly the failure the handshake exists to
+    /// avoid.
+    function testCancellingATransferRequiresTheControllerAndAnOutstandingOffer() public {
+        LoomKeystore keystore = new LoomKeystore();
+        keystore.register(
+            IDENTITY_ID, address(this), keccak256("validator root"), NEW_GUARDIAN_ROOT, keccak256("app root"), 2
+        );
+
+        // Nothing outstanding: cancelling is refused rather than silently passing.
+        (bool cancelledNothing,) =
+            address(keystore).call(abi.encodeCall(LoomKeystore.cancelControllerTransfer, (IDENTITY_ID)));
+        require(!cancelledNothing, "cancelled a transfer that was never offered");
+
+        KeystoreControllerRecipient recipient = new KeystoreControllerRecipient();
+        keystore.transferController(IDENTITY_ID, address(recipient));
+
+        // The offered address cannot withdraw the offer made to it, and neither
+        // can any other caller; only the current controller can.
+        (bool cancelledByRecipient,) =
+            address(recipient).call(abi.encodeCall(KeystoreControllerRecipient.cancel, (keystore, IDENTITY_ID)));
+        require(!cancelledByRecipient, "offered address cancelled its own offer");
+        require(keystore.pendingControllerOf(IDENTITY_ID) == address(recipient), "refused cancel cleared the offer");
+
+        // An identity that was never registered has no controller to authorise.
+        (bool cancelledUnknown,) =
+            address(keystore).call(abi.encodeCall(LoomKeystore.cancelControllerTransfer, (keccak256("unknown"))));
+        require(!cancelledUnknown, "cancelled a transfer on an unregistered identity");
     }
 
     function testL1KeystoreRejectsMissingIdentityAndInvalidUpdates() public {
