@@ -248,7 +248,7 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         assert(recovery.recoveryNonces(address(account)) == 1);
 
         bytes memory cancelScheduled = abi.encodeCall(LoomAccount.cancelScheduled, (scheduledId));
-        uint48 scheduledReadyAt = account.scheduledOperations(scheduledId);
+        (uint48 scheduledReadyAt,,) = account.scheduledOperations(scheduledId);
         uint48 frozenUntilBefore = account.frozenUntil();
         bytes32 configHashBefore = account.configHash();
         uint64 configVersionBefore = account.configVersion();
@@ -262,7 +262,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
             );
         assert(!ordinaryCancel);
         _assertRevert(revertData, LoomAccount.AccountFrozen.selector);
-        assert(account.scheduledOperations(scheduledId) == scheduledReadyAt);
+        (uint48 pendingReadyAt1,,) = account.scheduledOperations(scheduledId);
+        assert(pendingReadyAt1 == scheduledReadyAt);
         _assertPendingRecoveryUnchanged(
             recovery,
             address(account),

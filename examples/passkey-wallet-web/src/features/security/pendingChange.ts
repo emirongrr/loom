@@ -6,6 +6,9 @@ import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { NetworkConfig } from "../../config/network";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
+import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier";
+import type { PendingOperationStore } from "../../storage/pendingOperations";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 
 export interface PendingChangeStatus {
   /** False when the chain holds no such scheduled operation any more. */
@@ -66,13 +69,19 @@ export async function executePendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   prepared: PreparedChange;
+  runtime: RuntimeVerifier;
+  pendingOperations: PendingOperationStore;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const call = input.prepared.executeCall;
   return submitAccountCalls({
     config: input.config,
     account: input.account,
     deployment: input.deployment,
-    calls: [{ target: call.to as Address, value: 0n, data: call.data as Hex }]
+    calls: [{ target: call.to as Address, value: 0n, data: call.data as Hex }],
+    runtime: input.runtime,
+    pendingOperations: input.pendingOperations,
+    publicClients: input.publicClients
   });
 }
 
@@ -82,12 +91,18 @@ export async function cancelPendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   prepared: PreparedChange;
+  runtime: RuntimeVerifier;
+  pendingOperations: PendingOperationStore;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const call = input.prepared.cancelCall;
   return submitAccountCalls({
     config: input.config,
     account: input.account,
     deployment: input.deployment,
-    calls: [{ target: call.target as Address, value: 0n, data: call.data as Hex }]
+    calls: [{ target: call.target as Address, value: 0n, data: call.data as Hex }],
+    runtime: input.runtime,
+    pendingOperations: input.pendingOperations,
+    publicClients: input.publicClients
   });
 }

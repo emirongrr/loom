@@ -47,6 +47,22 @@ test("keystore proof profile rejects l2 profiles without state-root and finality
   assert.throws(() => validateKeystoreProofProfile(missingAudit), /independentAuditCompleted/);
 });
 
+test("keystore proof profile requires a named state-root derivation mechanism", () => {
+  // Naming only a contract address is what let an earlier OP Stack profile assume
+  // the L1Block predeploy publishes a state root, which it does not.
+  const missingMechanism = opStackProfile();
+  delete missingMechanism.proof.stateRootSource.mechanism;
+  assert.throws(() => validateKeystoreProofProfile(missingMechanism), /mechanism must be one of/);
+
+  const unknownMechanism = opStackProfile();
+  unknownMechanism.proof.stateRootSource.mechanism = "direct-predeploy-state-root";
+  assert.throws(() => validateKeystoreProofProfile(unknownMechanism), /mechanism must be one of/);
+
+  const wrongAccessor = opStackProfile();
+  wrongAccessor.proof.stateRootSource.blockHashAccessor = "stateRoot()";
+  assert.throws(() => validateKeystoreProofProfile(wrongAccessor), /blockHashAccessor to be hash\(\)/);
+});
+
 test("keystore proof profile rejects chain-family verifier mismatches", () => {
   const profile = opStackProfile();
   profile.verifier.kind = "same-chain-l1-direct-read";
@@ -115,7 +131,9 @@ function opStackProfile() {
   };
   profile.proof.stateRootSource = {
     family: "op-stack",
-    contract: address("l1-block")
+    contract: address("l1-block"),
+    mechanism: "l1-block-hash-header-preimage",
+    blockHashAccessor: "hash()"
   };
   profile.checks.independentAuditCompleted = true;
   return profile;

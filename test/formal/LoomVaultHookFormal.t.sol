@@ -35,7 +35,7 @@ contract LoomVaultHookFormal is FormalAccountBase {
         view
         returns (VaultHook.PendingWithdrawal memory pending)
     {
-        (pending.readyAt, pending.expiresAt, pending.configVersion) =
+        (pending.readyAt, pending.expiresAt, pending.configVersion, pending.nonce) =
             vault.pendingWithdrawals(address(account), withdrawalId);
     }
 
@@ -174,7 +174,7 @@ contract LoomVaultHookFormal is FormalAccountBase {
 
         vault.cancelVaultWithdrawalWithGuardians(address(account), withdrawalId, approvals);
 
-        (uint48 readyAt,,) = vault.pendingWithdrawals(address(account), withdrawalId);
+        (uint48 readyAt,,,) = vault.pendingWithdrawals(address(account), withdrawalId);
         assert(readyAt == 0);
 
         vm.warp(block.timestamp + 1 days);

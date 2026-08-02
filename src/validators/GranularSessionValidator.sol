@@ -87,6 +87,7 @@ contract GranularSessionValidator is ILoomValidator {
                 || (permission.token != address(0) && permission.token != permission.target)
                 || (permission.token == address(0) && permission.counterparty != address(0))
                 || (permission.token != address(0) && !ERC20CallLib.isTokenSelector(permission.selector))
+                || permission.target == account
         ) revert InvalidPermission();
 
         if (!_knownPermission[account][permissionId]) {
@@ -133,7 +134,7 @@ contract GranularSessionValidator is ILoomValidator {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 || uint64(nonce) >= permission.maxUses || paymaster != permission.allowedPaymaster
                 || ECDSA.recover(userOpHash, signerSignature) != permission.signer
-                || !_allowsAccountCall(permission, callData)
+                || !_allowsAccountCall(account, permission, callData)
         ) return ValidationDataLib.SIG_VALIDATION_FAILED;
 
         return ValidationDataLib.pack(false, permission.validUntil, permission.validAfter);
@@ -151,8 +152,17 @@ contract GranularSessionValidator is ILoomValidator {
         return moduleTypeId == ModuleType.VALIDATOR;
     }
 
-    function _allowsAccountCall(Permission memory permission, bytes calldata accountCall) internal pure returns (bool) {
-        if (accountCall.length < 4 || bytes4(accountCall[:4]) != ILoomSessionExecution.execute.selector) return false;
+    function _allowsAccountCall(address account, Permission memory permission, bytes calldata accountCall)
+        internal
+        view
+        returns (bool)
+    {
+        if (accountCall.length < 4 || bytes4(accountCall[:4]) != ILoomSessionExecution.execute.selector) {
+            return false;
+        }
+        // Every item in a batch is checked against `permission.target`, so the
+        // administrative-target question is settled once per UserOperation.
+        if (_isAdministrativeTarget(account, permission.target)) return false;
         (bytes32 mode, bytes memory executionCalldata) = abi.decode(accountCall[4:], (bytes32, bytes));
 
         if (mode == SINGLE_EXECUTION_MODE) {
@@ -199,6 +209,23 @@ contract GranularSessionValidator is ILoomValidator {
         }
 
         return (amount <= permission.maxAmountPerCall && amount <= permission.maxAmountPerUserOp, amount);
+    }
+
+    /// @dev A permission constrains target, selector, and amount, but never the
+    /// remaining calldata arguments. For a third-party target the granter chose
+    /// deliberately that is the intended capability range. For the account
+    /// itself or one of its installed modules it is not: those addresses expose
+    /// selectors whose arguments *are* the authority (`scheduleCall`,
+    /// `scheduleMigration`, `unfreeze`, `cancelRecovery`, vault withdrawal
+    /// scheduling), so an unconstrained argument list there is account
+    /// configuration authority rather than a spending capability. The check
+    /// runs against the current module set rather than the set observed at
+    /// grant time, so a target that becomes a module later is denied from that
+    /// point on.
+    function _isAdministrativeTarget(address account, address target) internal view returns (bool) {
+        return target == account || ILoomAccount(account).isModuleInstalled(ModuleType.VALIDATOR, target)
+            || ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, target)
+            || ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, target);
     }
 
     function _nonceKey(bytes32 permissionId) internal pure returns (uint192) {

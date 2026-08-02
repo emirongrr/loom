@@ -509,7 +509,8 @@ contract MaliciousHookTest {
 
         // operationId is keyed on (target, 0, externalCall, currentConfigVersion).
         bytes32 opId = keccak256(abi.encode(address(target), uint256(0), externalCall, account2.configVersion()));
-        require(account2.scheduledOperations(opId) != 0, "operation must be scheduled");
+        (uint48 pendingReadyAt1,,) = account2.scheduledOperations(opId);
+        require(pendingReadyAt1 != 0, "operation must be scheduled");
 
         // Step 3: Evict the safe hook — configVersion advances again.
         {

@@ -10,6 +10,10 @@ import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { SendableAsset } from "../wallet/transfers";
 import type { AccountHandle, NavigationArea } from "../../types";
+import { useAppServices } from "../../app/AppServices";
+import { AdvancedDetails, StatusPanel } from "../../components/StatusPanel";
+import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation";
+import type { PendingOperation } from "../../storage/pendingOperations";
 
 const EMPTY_ASSETS: AccountAssets = {
   native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
@@ -24,6 +28,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
+  const { runtime, pendingOperations, publicClients } = useAppServices();
   const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
@@ -31,6 +36,10 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   const [refreshing, setRefreshing] = useState(false);
   const [send, setSend] = useState<{ open: boolean; preselect?: SendableAsset }>({ open: false });
   const [activating, setActivating] = useState(false);
+  const [confirmation, setConfirmation] = useState<{
+    readonly checking: boolean;
+    readonly remaining: readonly PendingOperation[];
+  }>({ checking: false, remaining: [] });
   const guardianThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
 
   const activate = async () => {
@@ -38,7 +47,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     setActivating(true);
     const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
     try {
-      const result = await activateAccount({ config, account, deployment });
+      const result = await activateAccount({ config, account, deployment, runtime, pendingOperations, publicClients });
       notifications.update(toast, {
         status: "success",
         title: "Account created",
@@ -73,6 +82,29 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
 
   useEffect(() => { void load(); }, [load]);
 
+  const checkPending = useCallback(async () => {
+    if (!deployment) return;
+    setConfirmation(current => ({ ...current, checking: true }));
+    try {
+      await runtime.verify(config, deployment);
+      await reconcilePendingOperations({
+        config,
+        account,
+        store: pendingOperations,
+        entryPoint: deployment.entryPoint,
+        publicClient: publicClients.forEndpoint(config.rpcUrl),
+        verificationPublicClient: publicClients.forEndpoint(config.verificationRpcUrl)
+      });
+      const remaining = await pendingOperations.list(account.id);
+      setConfirmation({ checking: false, remaining });
+    } catch {
+      const remaining = await pendingOperations.list(account.id).catch(() => []);
+      setConfirmation({ checking: false, remaining });
+    }
+  }, [account, config, deployment, pendingOperations, publicClients, runtime]);
+
+  useEffect(() => { void checkPending(); }, [checkPending]);
+
   const refresh = async () => {
     await load(true);
     notifications.notify({ status: "info", title: "Balances refreshed", detail: `Read from ${hostOf(config.rpcUrl)}` });
@@ -89,6 +121,18 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
       <button onClick={() => void refresh()} disabled={refreshing}><span aria-hidden="true" className={refreshing ? "spin" : ""}>⟳</span><span>{refreshing ? "Refreshing" : "Refresh"}</span></button>
       <button onClick={() => onNavigate("activity")}><span aria-hidden="true">⋯</span><span>Activity</span></button>
     </div>
+
+    {(confirmation.checking || confirmation.remaining.length > 0) && <StatusPanel tone="warning" busy={confirmation.checking}>
+      <p className="eyebrow">Pending operation</p>
+      <h2>{confirmation.checking ? "Checking the chain…" : "Confirmation is still pending"}</h2>
+      <p>
+        Loom will not request another passkey signature until the existing operation is independently verified by both configured RPCs.
+      </p>
+      {!confirmation.checking && <button className="secondary" onClick={() => void checkPending()}>Check again</button>}
+      {confirmation.remaining.length > 0 && <AdvancedDetails>
+        {confirmation.remaining.map(operation => <p key={operation.userOperationHash}><code>{operation.userOperationHash}</code></p>)}
+      </AdvancedDetails>}
+    </StatusPanel>}
 
     {balance.status === "loaded" && !deployed && account.kind === "derived" && <section className="section-card pending-card">
       <div>

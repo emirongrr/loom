@@ -1,12 +1,17 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { Dialog } from "../../components/Dialog";
+import { AdvancedDetails, StatusPanel } from "../../components/StatusPanel";
+import { useAppServices } from "../../app/AppServices";
 import { useNetwork } from "../../config/NetworkContext";
 import { transactionUrl } from "../../config/network";
+import { normalizeAppError, type AppError } from "../../domain/errors/appError";
+import { operationIsPending, type OperationState } from "../../domain/operations/operationState";
 import { useNotifications } from "../../notifications/NotificationsContext";
-import { submitAccountCalls } from "../wallet/accountClient";
-import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset } from "../wallet/transfers";
-import type { AccountAssets } from "../wallet/assets";
-import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
+import type { WalletDeployment } from "../onboarding/accountLifecycle";
+import { submitAccountCalls } from "../wallet/accountClient";
+import type { AccountAssets } from "../wallet/assets";
+import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset } from "../wallet/transfers";
 
 export function SendDialog({ account, deployment, deployed, assets, preselect, onClose, onSent }: {
   account: AccountHandle;
@@ -19,7 +24,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
-
+  const { runtime, pendingOperations, publicClients } = useAppServices();
   const options = useMemo<SendableAsset[]>(() => [
     { type: "token", token: assets.native },
     ...assets.tokens.map(token => ({ type: "token", token } as const)),
@@ -29,28 +34,34 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
   const [assetKey, setAssetKey] = useState(() => keyOf(preselect ?? options[0]!));
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
+  const [operation, setOperation] = useState<OperationState>({ status: "idle" });
+  const [error, setError] = useState<AppError | null>(null);
+  const errorId = useId();
+  const busy = operationIsPending(operation);
   const asset = options.find(option => keyOf(option) === assetKey) ?? options[0]!;
   const isNft = asset.type === "nft";
   const available = asset.type === "token" ? `${asset.token.formatted} ${asset.token.symbol}` : `${asset.nft.collection} #${asset.nft.tokenId}`;
 
   const submit = async () => {
-    setError("");
-    if (!deployment) { setError("Deployment configuration is still loading."); return; }
+    setError(null);
+    if (!deployment) {
+      setError(normalizeAppError(new Error("Deployment configuration is still loading."), "configuration"));
+      return;
+    }
     let call;
     let recipient;
     try {
       recipient = normalizeRecipient(to);
       call = buildTransferCall({ asset, from: account.account, to: recipient, amount: isNft ? "1" : amount });
-    } catch (issue) { setError(issue instanceof Error ? issue.message : "Check the recipient and amount."); return; }
+    } catch (issue) {
+      setError(normalizeAppError(issue, "validation"));
+      return;
+    }
 
-    setBusy(true);
     const label = assetLabel(asset);
     const toastId = notifications.notify({ status: "pending", title: `Sending ${label}`, detail: `To ${short(recipient)} · waiting for confirmation` });
     try {
-      const result = await submitAccountCalls({ config, account, deployment, calls: [call] });
+      const result = await submitAccountCalls({ config, account, deployment, calls: [call], onState: setOperation, pendingOperations, runtime, publicClients });
       notifications.update(toastId, {
         status: "success",
         title: `Sent ${label}`,
@@ -60,14 +71,14 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       onSent?.();
       onClose();
     } catch (issue) {
-      const message = issue instanceof Error ? issue.message : "The transaction could not be submitted.";
-      notifications.update(toastId, { status: "error", title: `${label} failed`, detail: message });
-      setError(message);
-    } finally { setBusy(false); }
+      const appError = normalizeAppError(issue, "submission");
+      notifications.update(toastId, { status: "error", title: `${label} failed`, detail: appError.userMessage });
+      setError(appError);
+    }
   };
 
-  return <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-label="Send" onClick={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <div className="review-sheet">
+  return <Dialog label="Send" busy={busy} onClose={onClose}>
+    <form onSubmit={event => { event.preventDefault(); void submit(); }} aria-describedby={error ? errorId : undefined}>
       <div className="sheet-handle" aria-hidden="true" />
       <div className="section-heading"><div><p className="eyebrow">On {hostOf(config.rpcUrl)}</p><h2>Send</h2></div></div>
 
@@ -77,31 +88,39 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       </p>}
 
       <label className="field"><span>Asset</span>
-        <select value={assetKey} onChange={event => { setAssetKey(event.target.value); setAmount(""); setError(""); }}>
+        <select value={assetKey} disabled={busy} onChange={event => { setAssetKey(event.target.value); setAmount(""); setError(null); }}>
           {options.map(option => <option key={keyOf(option)} value={keyOf(option)}>{optionLabel(option)}</option>)}
         </select>
         <small className="form-note">Available: {available}</small>
       </label>
 
       <label className="field"><span>Recipient address</span>
-        <input value={to} onChange={event => setTo(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" />
+        <input value={to} disabled={busy} onChange={event => setTo(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" aria-invalid={error?.stage === "validation" || undefined} />
       </label>
 
       {!isNft && <label className="field"><span>Amount ({asset.type === "token" ? asset.token.symbol : ""})</span>
         <div className="amount-row">
-          <input value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.0" inputMode="decimal" />
-          {asset.type === "token" && <button type="button" className="text-button" onClick={() => setAmount(asset.token.formatted)}>Max</button>}
+          <input value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} placeholder="0.0" inputMode="decimal" />
+          {asset.type === "token" && <button type="button" className="text-button" disabled={busy} onClick={() => setAmount(asset.token.formatted)}>Max</button>}
         </div>
       </label>}
       {isNft && <p className="form-note">This transfers the single collectible shown above from your account.</p>}
 
-      {error && <p className="callout warning">{error}</p>}
-      <div className="sheet-actions">
-        <button className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
-        <button className="primary" onClick={submit} disabled={busy || !deployed}>{busy ? "Confirm on your device…" : "Sign & send with passkey"}</button>
+      <div aria-live="polite">
+        {error && <StatusPanel id={errorId} tone="warning">
+          <p>{error.userMessage}</p>
+          <AdvancedDetails>
+            <p><code>{error.code} · {error.stage}</code></p>
+            <p><code>{error.diagnostic}</code></p>
+          </AdvancedDetails>
+        </StatusPanel>}
       </div>
-    </div>
-  </div>;
+      <div className="sheet-actions">
+        <button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="submit" className="primary" disabled={busy || !deployed}>{operationLabel(operation)}</button>
+      </div>
+    </form>
+  </Dialog>;
 }
 
 function keyOf(asset: SendableAsset): string {
@@ -118,3 +137,16 @@ function optionLabel(asset: SendableAsset): string {
 
 function short(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
 function hostOf(url: string): string { return url.replace(/^https?:\/\//, "").split("/")[0] ?? url; }
+
+function operationLabel(state: OperationState): string {
+  switch (state.status) {
+    case "validating": return "Checking transfer…";
+    case "preparing": return "Preparing operation…";
+    case "estimating": return "Estimating gas…";
+    case "awaiting-passkey": return "Confirm on your device…";
+    case "signing": return "Signing…";
+    case "submitting": return "Submitting…";
+    case "confirming": return "Waiting for confirmation…";
+    default: return "Sign & send with passkey";
+  }
+}

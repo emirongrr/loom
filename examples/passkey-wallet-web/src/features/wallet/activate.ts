@@ -6,6 +6,13 @@ import { signWithBrowserPasskey } from "./webauthn.ts";
 import type { NetworkConfig } from "../../config/network";
 import type { AccountHandle } from "../../types";
 import type { SendResult } from "./accountClient";
+import { AppError } from "../../domain/errors/appError.ts";
+import { confirmUserOperationReceipt } from "../../services/loom/operationReceipt.ts";
+import type { PendingOperationStore } from "../../storage/pendingOperations";
+import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier.ts";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients.ts";
+import { acquireAccountOperation } from "../../services/loom/operationGuard.ts";
+import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation.ts";
 
 // A counterfactual account is created by its first operation, which carries the
 // factory call. The account pays for that itself: `validateUserOp` forwards the
@@ -62,9 +69,25 @@ export async function activateAccount(input: {
   config: NetworkConfig;
   account: AccountHandle;
   deployment: WalletDeployment;
+  pendingOperations: PendingOperationStore;
+  runtime: RuntimeVerifier;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const { config, account, deployment } = input;
   const plan = planActivation(account, deployment);
+  let release: (() => void) | undefined;
+
+  try {
+    await input.runtime.verify(config, deployment);
+    await reconcilePendingOperations({
+      config,
+      account,
+      store: input.pendingOperations,
+      entryPoint: deployment.entryPoint,
+      publicClient: input.publicClients.forEndpoint(config.rpcUrl),
+      verificationPublicClient: input.publicClients.forEndpoint(config.verificationRpcUrl)
+    });
+    release = await acquireAccountOperation(account.id, input.pendingOperations);
 
   const signer = createPasskeySigner({
     credentialId: account.credentialId,
@@ -108,18 +131,28 @@ export async function activateAccount(input: {
   const signed = { ...filled, userOperation: { ...filled.userOperation, signature } };
 
   const sent = await transport.sendUserOperation(signed);
-  // The operation is accepted at this point; waiting only resolves its receipt, so
-  // a transport without receipt support still reports a successful submission.
-  const receipt = transport.waitForUserOperationReceipt
-    ? await transport.waitForUserOperationReceipt({ userOpHash: sent.userOpHash })
-    : undefined;
-  const transactionHash = receiptTransactionHash(receipt);
-  return transactionHash ? { userOpHash: sent.userOpHash, transactionHash } : { userOpHash: sent.userOpHash };
-}
-
-function receiptTransactionHash(receipt: unknown): Hex | undefined {
-  if (!receipt || typeof receipt !== "object") return undefined;
-  const value = receipt as { receipt?: { transactionHash?: unknown }; transactionHash?: unknown };
-  const hash = value.receipt?.transactionHash ?? value.transactionHash;
-  return typeof hash === "string" && /^0x[0-9a-fA-F]{64}$/.test(hash) ? (hash as Hex) : undefined;
+  await input.pendingOperations.save({ accountId: account.id, userOperationHash: sent.userOpHash, submittedAt: Date.now() });
+  if (!transport.waitForUserOperationReceipt) {
+    throw new AppError({
+      code: "BUNDLER_UNAVAILABLE",
+      userMessage: "The bundler cannot confirm account activation.",
+      diagnostic: "receipt polling unavailable",
+      retryable: true,
+      stage: "confirmation"
+    });
+  }
+  const receipt = await transport.waitForUserOperationReceipt({ userOpHash: sent.userOpHash });
+  const transactionHash = await confirmUserOperationReceipt({
+    receipt,
+    expectedUserOperationHash: sent.userOpHash,
+    expectedSender: account.account,
+    entryPoint: deployment.entryPoint,
+    publicClient: input.publicClients.forEndpoint(config.rpcUrl),
+    verificationPublicClient: input.publicClients.forEndpoint(config.verificationRpcUrl)
+  });
+  await input.pendingOperations.complete(account.id, sent.userOpHash);
+  return { userOpHash: sent.userOpHash, transactionHash };
+  } finally {
+    release?.();
+  }
 }
