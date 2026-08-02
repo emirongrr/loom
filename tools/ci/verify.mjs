@@ -86,6 +86,8 @@ run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-
 run("Dependency audit coverage", process.execPath, ["tools/quality/validate-audit-coverage.mjs"]);
 run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quality/validate-audit-coverage.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
+run("Documented contract limits", process.execPath, ["tools/quality/validate-doc-constants.mjs"]);
+run("Documented contract limit tests", process.execPath, ["--test", "tools/quality/validate-doc-constants.test.mjs"]);
 run("Website checks", process.execPath, ["tools/site/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
   "--test",

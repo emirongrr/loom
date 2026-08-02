@@ -28,7 +28,7 @@ stateDiagram-v2
     [*] --> Uninitialized
     Uninitialized --> Operational: initialize() · configVersion 0→1
 
-    Operational --> Frozen: guardian freeze() · frozenUntil = now + 5d
+    Operational --> Frozen: guardian freeze() · frozenUntil = now + FREEZE_DURATION
     Frozen --> Operational: unfreeze() once the window lapses
 
     Operational --> MigrationPending: scheduleMigration()
