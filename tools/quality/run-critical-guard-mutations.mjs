@@ -139,6 +139,15 @@ const mutants = [
     testName: "testSessionPermissionStopsWorkingOnceItsTargetBecomesAModule",
   },
   {
+    id: "keystore-controller-acceptance",
+    category: "authority",
+    source: "src/keystore/LoomKeystore.sol",
+    search: "if (newController == address(0) || msg.sender != newController) revert Unauthorized();",
+    replacement: "if (false) revert Unauthorized();",
+    testPath: "test/integration/KeystoreSync.t.sol",
+    testName: "testControllerTransferNeedsTheRecipientToProveItCanAct",
+  },
+  {
     id: "hook-order-preserving-removal",
     category: "state-transition",
     source: "src/LoomAccount.sol",

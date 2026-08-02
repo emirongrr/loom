@@ -22,6 +22,23 @@ controller is the user's L1 Loom account or another user-controlled account
 with its own recovery and delay model. Updating the keystore is therefore a
 user-controlled L1 action.
 
+Control moves only through a two-step handshake. `transferController` records
+an offer and changes nothing else; the offered address takes control by calling
+`acceptController`, and the current controller can re-target the offer or
+withdraw it with `cancelControllerTransfer` until then. Because the keystore has
+no administrator and no recovery path, a single-step transfer to a mistyped
+address, to a contract that cannot call the keystore, or to an address the user
+holds only on another chain would strand the identity permanently — its config
+could never be updated again, and every L2 that syncs from it would be frozen at
+the last version. Requiring the recipient to act is what proves it can.
+
+There is deliberately no delay layered on top. A delay would only constrain an
+already-compromised controller, and such an attacker can rewrite the identity's
+config through `updateConfig` immediately in any case, so the timer would
+advertise protection the rest of the surface does not provide. Controller safety
+comes from choosing a controller with its own recovery and delay model, which is
+a deployment convention this contract does not enforce.
+
 ### `KeystoreSyncRecoveryModule`
 
 The L2 sync module is an optional recovery module. It can replace the local
