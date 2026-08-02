@@ -79,6 +79,7 @@ run("Certora program structure", process.execPath, ["tools/formal/validate-certo
 run("Certora program structure tests", process.execPath, ["--test", "tools/formal/validate-certora-program.test.mjs"]);
 run("Kontrol program structure", process.execPath, ["tools/formal/validate-kontrol-program.mjs"]);
 run("Kontrol program structure tests", process.execPath, ["--test", "tools/formal/validate-kontrol-program.test.mjs"]);
+run("Formal property mutation manifest", process.execPath, ["tools/formal/run-property-mutations.mjs", "--self-test"]);
 run("Formal program structure", process.execPath, ["tools/formal/validate-formal-program.mjs"]);
 run("Formal program structure tests", process.execPath, ["--test", "tools/formal/validate-formal-program.test.mjs"]);
 run("Toolchain pins", process.execPath, ["tools/quality/validate-toolchain-pins.mjs"]);

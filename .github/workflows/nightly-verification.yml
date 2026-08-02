@@ -152,6 +152,44 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  formal-property-mutations:
+    name: Formal property mutation score
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
+        with:
+          version: v1.7.1
+      - name: Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: Install Halmos
+        run: uv tool install --python 3.12 halmos==0.3.3
+      - name: Run formal property mutations
+        run: |
+          mkdir -p artifacts/nightly-formal-mutation
+          set -o pipefail
+          npm run formal:mutation -- --report artifacts/nightly-formal-mutation/report.json 2>&1 | tee artifacts/nightly-formal-mutation/mutation.log
+      - name: Upload formal mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nightly-formal-mutation-${{ github.sha }}
+          path: artifacts/nightly-formal-mutation
+          retention-days: 30
+          if-no-files-found: error
+
   halmos-full:
     name: Full Halmos symbolic properties
     runs-on: ubuntu-latest
