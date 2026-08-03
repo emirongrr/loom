@@ -147,6 +147,15 @@ const mutants = [
     testPath: "test/integration/KeystoreSync.t.sol",
     testName: "testControllerTransferNeedsTheRecipientToProveItCanAct",
   },
+  {
+    id: "hook-order-preserving-removal",
+    category: "state-transition",
+    source: "src/LoomAccount.sol",
+    search: "                for (uint256 j = i + 1; j < length; ++j) {\n                    array[j - 1] = array[j];\n                }",
+    replacement: "                array[i] = array[length - 1];",
+    testPath: "test/regression/HookComposition.t.sol",
+    testName: "testUninstallingAHookDoesNotReorderTheSurvivors",
+  },
 ];
 
 function occurrences(source, search) {
