@@ -100,3 +100,30 @@ test("the recovery provisioner runtime is verified", async () => {
   assert.equal(provisionerRead, true);
   assert.equal(fallbackRead, true);
 });
+
+test("a zero fallback verifier means no fallback authority or bytecode commitment", async () => {
+  const provisioner = validateDeployment({
+    ...deployment,
+    recoveryValidatorProvisioner: {
+      address: "0x3333333333333333333333333333333333333333",
+      runtimeCodeHash: HASH,
+      validatorRuntimeCodeHash: HASH,
+      fallbackVerifier: "0x0000000000000000000000000000000000000000"
+    }
+  }).recoveryValidatorProvisioner!;
+  const reads: Address[] = [];
+  const client = {
+    getChainId: async () => deployment.chainId,
+    getCode: async ({ address }: { address: Address }) => { reads.push(address); return CODE; }
+  };
+  const request = (async () => new Response(JSON.stringify({ result: [ENTRY_POINT] }), { status: 200 })) as typeof fetch;
+  await createRuntimeVerifier({ publicClients: { forEndpoint: () => client as never }, request }).verify(
+    config,
+    { ...deployment, recoveryValidatorProvisioner: provisioner }
+  );
+  assert.equal(reads.some(address => address === provisioner.fallbackVerifier), false);
+  assert.throws(() => validateDeployment({
+    ...deployment,
+    recoveryValidatorProvisioner: { ...provisioner, fallbackVerifierRuntimeCodeHash: HASH }
+  }), /no fallback verifier/u);
+});
