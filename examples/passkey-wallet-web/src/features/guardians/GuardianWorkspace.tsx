@@ -7,8 +7,10 @@ import { useAppServices } from "../../app/AppServices";
 import { FreezeDialog } from "./FreezeDialog";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { GuardianVaultIssue, GuardianVaultRecord } from "../../storage/guardianVault";
+import type { AccountHandle } from "../../types";
+import { safeUserMessage } from "../../domain/errors/appError";
 
-export function GuardianWorkspace() {
+export function GuardianWorkspace({ account }: { readonly account: AccountHandle }) {
   const services = useAppServices();
   const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
@@ -16,10 +18,28 @@ export function GuardianWorkspace() {
   const [message, setMessage] = useState("");
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
-  const refresh = () => services.guardianVault.inspect()
+  const refresh = () => services.guardianVault.inspect(account)
     .then(snapshot => { setRecords(snapshot.records); setIssues(snapshot.issues); })
-    .catch(error => setMessage(error instanceof Error ? error.message : "Guardian vault unavailable"));
-  useEffect(() => { void refresh(); }, []);
+    .catch(error => setMessage(safeUserMessage(error, "Guardian vault unavailable.", "storage")));
+  useEffect(() => {
+    let active = true;
+    // Clear synchronously so a wallet switch cannot render the previous
+    // wallet's protected-account relationships while the scoped read runs.
+    setRecords([]);
+    setIssues([]);
+    setFreezing(null);
+    setMessage("");
+    services.guardianVault.inspect(account)
+      .then(snapshot => {
+        if (!active) return;
+        setRecords(snapshot.records);
+        setIssues(snapshot.issues);
+      })
+      .catch(error => {
+        if (active) setMessage(safeUserMessage(error, "Guardian vault unavailable.", "storage"));
+      });
+    return () => { active = false; };
+  }, [services.guardianVault, account.id, account.chainId, account.account, account.publicKey.x, account.publicKey.y]);
   useEffect(() => {
     let active = true;
     loadWalletDeployment().then(result => { if (active) setDeployment(result); }).catch(() => { if (active) setDeployment(null); });
@@ -30,9 +50,9 @@ export function GuardianWorkspace() {
       const invite = link.trim().startsWith("{")
         ? parseGuardianInvite(link)
         : await receiveGuardianInvite(link, services.invitationLinks, Math.floor(services.now() / 1000));
-      await services.guardianVault.put({ capability: invite, acceptedAt: services.now(), status: "unverified" });
+      await services.guardianVault.put(account, { capability: invite, acceptedAt: services.now(), status: "unverified" });
       setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Capability could not be accepted"); }
+    } catch (error) { setMessage(safeUserMessage(error, "Capability could not be accepted.", "validation")); }
   };
   return <div className="page-stack"><header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>
     <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
@@ -46,11 +66,11 @@ export function GuardianWorkspace() {
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
       {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {
         try { await services.guardianVault.remove(issue.key); await refresh(); setMessage("Unreadable local record removed."); }
-        catch (error) { setMessage(error instanceof Error ? error.message : "Unreadable record could not be removed"); }
+        catch (error) { setMessage(safeUserMessage(error, "Unreadable record could not be removed.", "storage")); }
       }}>Remove local record</button></div>)}
     </section>}
     {records.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts</h2><p>Open an encrypted invitation or scan its QR code. Generating an invite alone never marks it delivered or accepted.</p></section> : records.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onFreeze={() => setFreezing(record.capability)} />)}
-    {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} onClose={() => setFreezing(null)} />}
+    {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} guardianAccount={account} onClose={() => setFreezing(null)} />}
   </div>;
 }
 
