@@ -144,8 +144,21 @@ proofs under `test/formal/`.
 authority to a destination account whose code hash and config hash were
 committed at schedule time). It is **not** a self-destruct and **not** a terminal
 state: the source account clears `pendingMigration`, bumps `migrationNonce`, and
-returns to `Operational`. Sovereignty comes from the destination binding and the
-`MIN_CONFIG_DELAY` window, not from destroying the source.
+returns to `Operational`.
+
+Be precise about what the destination commitment is. `executeMigration` checks
+only that the batch matches `callsHash`, and re-verifies the destination's code
+hash and optional config hash. **Nothing requires any call in the batch to target
+the destination.** The commitment is a reviewable declaration of intent that a
+guardian or the user can inspect during the delay, not an execution constraint;
+the calls are what actually move value. A batch that ignores its committed
+destination is accepted, which is deliberate — it keeps the exit path usable for
+destinations that are not Loom accounts — but it means the destination binding
+cannot be read as a guarantee that assets arrived there.
+
+Sovereignty therefore comes from the delay and the public commitment being
+reviewable and cancellable, not from destroying the source and not from the
+destination binding enforcing delivery.
 
 ## Related material
 
