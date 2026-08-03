@@ -25,6 +25,7 @@ authoritative places for deeper detail.
 
 4. **Review authority and safety**
    - [Threat model](security/threat-model.md)
+   - [Trusted computing base](security/trusted-computing-base.md)
    - [Assumptions and residual risks](security/assumptions-and-risks.md)
    - [Audit scope](security/audit-scope.md)
    - [Production readiness](security/production-readiness.md)
@@ -68,6 +69,7 @@ authoritative places for deeper detail.
 ## Security
 
 - [Threat model](security/threat-model.md)
+- [Trusted computing base](security/trusted-computing-base.md)
 - [Assumptions and residual risks](security/assumptions-and-risks.md)
 - [Production readiness](security/production-readiness.md)
 - [Audit scope](security/audit-scope.md)

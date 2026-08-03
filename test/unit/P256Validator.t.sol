@@ -416,7 +416,14 @@ contract P256ValidatorTest {
         );
     }
 
-    function testP256DirectExecutionRejectsDeniedPolicyAndWrongSignature() public {
+    /// @dev The installed verifier reports every signature as valid, so this
+    /// binds the two properties `P256Validator` enforces around the curve
+    /// operation: a denying policy hook blocks direct execution, and a
+    /// clientDataJSON challenge that does not match the account's direct
+    /// execution digest is rejected. Rejection of a genuinely invalid signature
+    /// is proven against a real verifier in
+    /// `test/evidence/WebAuthnFixtureCorpus.t.sol`.
+    function testP256DirectExecutionRejectsDeniedPolicyAndWrongChallenge() public {
         MockP256Verifier verifier = new MockP256Verifier();
         P256Validator validator = new P256Validator(address(verifier));
         DenyPolicyHook denyHook = new DenyPolicyHook();
@@ -476,7 +483,7 @@ contract P256ValidatorTest {
         );
         require(
             !validator.validateDirectExecution(address(account), digest, abi.encode(signature), executionCalldata),
-            "wrong P-256 direct signature accepted"
+            "challenge not bound to the direct execution digest"
         );
     }
 

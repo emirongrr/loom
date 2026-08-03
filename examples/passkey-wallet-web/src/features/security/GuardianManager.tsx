@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Address, Hex } from "@loom/core";
+import { useAppServices } from "../../app/AppServices";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { submitAccountCalls } from "../wallet/accountClient";
@@ -7,25 +8,26 @@ import { transactionUrl } from "../../config/network";
 import { createAccountGuardianClient, readVerifierCodeHash } from "./guardianClient";
 import {
   assertAddable, buildGuardianDescriptor, clampThreshold, describeGuardian, formatCountdown, formatDelay,
-  formatReadyAt, MIN_DELAY_SECONDS, planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
+  formatReadyAt, MIN_DELAY_SECONDS, planGuardianChange, suggestedThreshold, withFreshSalts, type GuardianChangePlan, type RosterEntry
 } from "./guardianPlan";
 import { cancelPendingGuardianChange, executePendingGuardianChange, readPendingGuardianChange, type PendingChangeStatus } from "./pendingChange";
 import {
-  createRosterBackup, deriveGuardianStatus, parseRosterBackup, rosterMatchesRoot, verifyRosterBackup,
+  createRosterBackup, deriveGuardianStatus, parseRosterBackup, verifyRosterBackup,
   type GuardianStatus, type OnChainGuardians
 } from "./guardianStatus";
-import { deriveGuardianSaltMaster, withDerivedSalts } from "./guardianSalts";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { AddGuardianForm } from "./AddGuardianForm";
+import { createLoomGuardianChainReader, detectGuardianAddress, resolveLoomP256Guardian } from "./loomGuardian";
 import { PendingChangeCard } from "./PendingChangeCard";
 import { RestoreRoster } from "./RestoreRoster";
+import { GuardianInvitationCard, type GuardianInvitationView } from "./GuardianInvitationCard";
+import { createActiveGuardianInvitation } from "./guardianInvitation";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
-import { useAppServices } from "../../app/AppServices";
-
-type Stage = "list" | "review";
+import { useGuardianManagerController } from "./useGuardianManagerController";
+import { safeUserMessage } from "../../domain/errors/appError";
 
 export function GuardianManager({ account, deployment, onChain, onChanged }: {
   account: AccountHandle;
@@ -34,28 +36,30 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   onChanged(): void;
 }) {
   const { config } = useNetwork();
+  const services = useAppServices();
   const notifications = useNotifications();
-  const { runtime, pendingOperations, publicClients } = useAppServices();
+  const { runtime, pendingOperations, publicClients } = services;
   const roster = useMemo(() => createBrowserGuardianRoster(), []);
 
   const [committed, setCommitted] = useState<readonly RosterEntry[]>([]);
+  const [setVersion, setSetVersion] = useState(0);
   const [draft, setDraft] = useState<readonly RosterEntry[]>([]);
   const [threshold, setThreshold] = useState(1);
-  const [stage, setStage] = useState<Stage>("list");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { stage, setStage, busy, setBusy, error, setError } = useGuardianManagerController();
   const [pending, setPending] = useState<RosterPending | null>(null);
   const [status, setStatus] = useState<PendingChangeStatus | null>(null);
   const [statusError, setStatusError] = useState("");
   const [reloads, setReloads] = useState(0);
   // Advances the countdown between chain reads, from the chain's own timestamp.
   const [tick, setTick] = useState(0);
+  const [invitation, setInvitation] = useState<GuardianInvitationView | null>(null);
 
   useEffect(() => {
     let active = true;
     void roster.read(account.id).then(stored => {
       if (!active) return;
       setCommitted(stored.entries);
+      setSetVersion(stored.version);
       setDraft(stored.entries);
       setPending(stored.pending);
       setThreshold(clampThreshold(onChain?.threshold ?? suggestedThreshold(stored.entries.length), Math.max(1, stored.entries.length)));
@@ -68,11 +72,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     if (!pending || !deployment?.recoveryModule) { setStatus(null); return; }
     let active = true;
     setStatusError("");
-    readPendingGuardianChange({ config, account, deployment, pending })
+    readPendingGuardianChange({ config, account, deployment, pending, publicClients })
       .then(result => { if (active) setStatus(result); })
-      .catch(issue => { if (active) setStatusError(issue instanceof Error ? issue.message : "The scheduled change could not be read."); });
+      .catch(issue => { if (active) setStatusError(safeUserMessage(issue, "The scheduled change could not be read.", "confirmation")); });
     return () => { active = false; };
-  }, [config, account, deployment, pending, reloads]);
+  }, [config, account, deployment, pending, publicClients, reloads]);
 
   useEffect(() => {
     if (!status?.found || status.ready) return;
@@ -84,18 +88,24 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   // — exists only on chain. Discover it there so it is never silently invisible.
   const [onChainOperations, setOnChainOperations] = useState<readonly ScheduledOperation[]>([]);
   const [chainNow, setChainNow] = useState(0n);
+  const [operationDiscoveryIncomplete, setOperationDiscoveryIncomplete] = useState(false);
 
   useEffect(() => {
     let active = true;
-    readScheduledOperations({ config, account: account.account })
+    readScheduledOperations({ config, account: account.account, publicClients })
       .then(result => {
         if (!active) return;
         setOnChainOperations(result.operations);
         setChainNow(result.chainTimestamp);
+        setOperationDiscoveryIncomplete(result.discoveryUnavailable);
       })
-      .catch(() => { if (active) setOnChainOperations([]); });
+      .catch(() => {
+        if (!active) return;
+        setOnChainOperations([]);
+        setOperationDiscoveryIncomplete(true);
+      });
     return () => { active = false; };
-  }, [config, account.account, reloads]);
+  }, [config, account.account, publicClients, reloads]);
 
   // Anything the local record already explains is not reported a second time.
   const unexplained = onChainOperations.filter(operation => operation.operationId !== status?.prepared.operationId);
@@ -127,46 +137,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     });
   };
 
-  /**
-   * Rebuild the roster from re-entered guardians. Salts come from the account's
-   * passkey, so this needs no backup file — and it is only accepted when the
-   * rebuilt root equals the one the account publishes, which is what proves the
-   * entered guardians really are its guardian set.
-   */
-  const restoreByReentry = async (addresses: readonly { label: string; value: string }[]) => {
-    setError("");
-    if (!onChain) { setError("The account's guardian state has not loaded yet."); return; }
-    if (!verifiers?.ecdsa) { setError("This deployment publishes no guardian verifier."); return; }
-    setBusy(true);
-    try {
-      const verifierCodeHash = await readVerifierCodeHash(config, verifiers.ecdsa);
-      const entries: RosterEntry[] = addresses.map((item, index) => ({
-        id: crypto.randomUUID(),
-        label: item.label.trim() || `Guardian ${index + 1}`,
-        descriptor: buildGuardianDescriptor({ kind: "ecdsa", value: item.value, verifier: verifiers.ecdsa!, verifierCodeHash })
-      }));
-
-      const master = await deriveGuardianSaltMaster({ credentialId: account.credentialId, rpId: account.rpId }, account.account);
-      if (!master) throw new Error("This authenticator cannot re-derive guardian salts. Restore from an exported backup instead.");
-
-      const salted = withDerivedSalts(entries, master);
-      if (!rosterMatchesRoot({ entries: salted, threshold: onChain.threshold, root: onChain.root })) {
-        throw new Error("These guardians do not rebuild this account's guardian root. Check the addresses, their order-independent completeness, and that none is missing.");
-      }
-
-      await roster.write(account.id, { entries: salted, version: Date.now(), pending: null });
-      notifications.notify({
-        status: "success",
-        title: "Guardian list restored",
-        detail: "The entered guardians rebuild this account's on-chain root."
-      });
-      setReloads(count => count + 1);
-      onChanged();
-    } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "The guardians could not be verified.");
-    } finally { setBusy(false); }
-  };
-
+  /** Restore only a private backup that reconstructs the live root. */
   const restoreRoster = async (text: string) => {
     setError("");
     if (!onChain) { setError("The account's guardian state has not loaded yet."); return; }
@@ -184,33 +155,39 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       setReloads(count => count + 1);
       onChanged();
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "The backup could not be read.");
+      setError(safeUserMessage(issue, "The guardian backup could not be verified.", "storage"));
     } finally { setBusy(false); }
   };
 
   const verifiers = deployment?.guardianVerifiers;
-  const plan = useMemo(() => {
-    if (draft.length === 0) return null;
-    try { return planGuardianChange({ current: committed, next: draft, threshold, ...(onChain ? { onChain } : {}) }); }
-    catch { return null; }
+  const planning = useMemo<{ plan: GuardianChangePlan | null; error: string }>(() => {
+    if (draft.length === 0) return { plan: null, error: "" };
+    try { return { plan: planGuardianChange({ current: committed, next: draft, threshold, ...(onChain ? { onChain } : {}) }), error: "" }; }
+    catch (issue) { return { plan: null, error: safeUserMessage(issue, "Guardian changes could not be reviewed.", "validation") }; }
   }, [committed, draft, threshold, onChain]);
+  const plan = planning.plan;
 
-  const addGuardian = async (kind: "ecdsa" | "erc1271", label: string, value: string) => {
+  const addGuardian = async (label: string, value: string) => {
     setError("");
     if (!verifiers) { setError("This deployment does not publish guardian verifiers."); return; }
-    const verifier = kind === "ecdsa" ? verifiers.ecdsa : verifiers.erc1271;
-    if (!verifier) { setError(`This deployment has no ${kind.toUpperCase()} guardian verifier.`); return; }
     setBusy(true);
     try {
-      const verifierCodeHash = await readVerifierCodeHash(config, verifier);
-      const descriptor = buildGuardianDescriptor({ kind, value, verifier, verifierCodeHash });
+      const chainReader = createLoomGuardianChainReader(config, deployment!, publicClients);
+      const detected = await detectGuardianAddress(value, chainReader);
+      const verifier = detected.kind === "loom" ? verifiers.p256 : detected.kind === "ecdsa" ? verifiers.ecdsa : verifiers.erc1271;
+      if (!verifier) throw new Error("This deployment cannot verify this guardian address type.");
+      const verifierCodeHash = await readVerifierCodeHash(config, verifier, publicClients);
+      const descriptor = detected.kind === "loom"
+        ? await resolveLoomP256Guardian({ value, deployment: deployment!, verifierCodeHash, reader: chainReader })
+        : buildGuardianDescriptor({ kind: detected.kind, value: detected.address, verifier, verifierCodeHash });
       assertAddable(draft, descriptor);
       const entry: RosterEntry = { id: crypto.randomUUID(), label: label.trim() || describeGuardian(descriptor).slice(0, 10), descriptor };
       const next = [...draft, entry];
       setDraft(next);
       setThreshold(current => clampThreshold(current, next.length));
+      if (detected.warning) setError(detected.warning);
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "The guardian could not be added.");
+      setError(safeUserMessage(issue, "The guardian could not be verified and added.", "validation"));
     } finally { setBusy(false); }
   };
 
@@ -221,19 +198,59 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setError("");
   };
 
+  const inviteGuardian = async (entry: RosterEntry) => {
+    setError("");
+    if (!onChain || protection.kind !== "in-sync") {
+      setError("Invites are available only when this device's roster matches the active on-chain guardian set.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const expiresAt = Math.floor(services.now() / 1_000) + 7 * 86_400;
+      const invite = createActiveGuardianInvitation({
+        entries: committed,
+        guardianId: entry.id,
+        setVersion,
+        onChain,
+        chainId: account.chainId,
+        account: account.account,
+        capabilityId: randomBytes32(),
+        expiresAt
+      });
+      const delivered = await services.invitationLinks.deliver(invite, { expiresAt });
+      setInvitation({ guardianId: entry.id, guardianLabel: entry.label, link: delivered.value, expiresAt });
+      notifications.notify({
+        status: "success",
+        title: "Guardian invite ready",
+        detail: `Send it privately to ${entry.label}; they must accept it on their device.`
+      });
+    } catch (issue) {
+      setError(safeUserMessage(issue, "The guardian invite could not be created.", "preparation"));
+    } finally { setBusy(false); }
+  };
+
+  const copyInvitation = async () => {
+    if (!invitation) return;
+    try {
+      await navigator.clipboard.writeText(invitation.link);
+      notifications.notify({ status: "success", title: "Invite link copied", detail: "Send it to the intended guardian over a private channel." });
+    } catch {
+      setError("The browser could not copy the invite. Select the link and copy it manually.");
+    }
+  };
+
   const schedule = async () => {
     if (!deployment?.recoveryModule || !plan) { setError("This deployment has no recovery module."); return; }
     setBusy(true); setError("");
     const toast = notifications.notify({ status: "pending", title: "Scheduling guardian change", detail: `Takes effect after ${formatDelay(MIN_DELAY_SECONDS)}` });
     try {
-      // Prefer salts derived from this account's own passkey: they can be
-      // recomputed on any device holding it, so a lost roster is recoverable by
-      // re-entering the guardians. Authenticators without the PRF extension fall
-      // back to random salts, which need an exported backup instead.
-      const master = await deriveGuardianSaltMaster({ credentialId: account.credentialId, rpId: account.rpId }, account.account);
-      const salted = master ? withDerivedSalts(draft, master) : withFreshSalts(draft);
+      await services.runtime.verify(config, deployment);
+      // Rotate every guardian to a fresh independent salt for the committed
+      // epoch. The reviewed draft used temporary salts only to validate shape;
+      // these are the values persisted and scheduled on chain.
+      const salted = withFreshSalts(draft);
       const finalPlan = planGuardianChange({ current: committed, next: salted, threshold });
-      const client = createAccountGuardianClient({ config, chainId: account.chainId, account: account.account, recoveryManager: deployment.recoveryModule });
+      const client = createAccountGuardianClient({ config, chainId: account.chainId, account: account.account, recoveryManager: deployment.recoveryModule, publicClients });
       const prepared = await client.prepareGuardianConfiguration({ set: finalPlan.set, delaySeconds: MIN_DELAY_SECONDS });
 
       const result = await submitAccountCalls({
@@ -258,7 +275,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       setReloads(count => count + 1);
       onChanged();
     } catch (issue) {
-      const message = issue instanceof Error ? issue.message : "The change could not be scheduled.";
+      const message = safeUserMessage(issue, "The guardian change could not be scheduled.", "submission");
       notifications.update(toast, { status: "error", title: "Scheduling failed", detail: message });
       setError(message);
     } finally { setBusy(false); }
@@ -280,7 +297,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       setReloads(count => count + 1);
       onChanged();
     } catch (issue) {
-      const message = issue instanceof Error ? issue.message : "The change could not be applied.";
+      const message = safeUserMessage(issue, "The guardian change could not be applied.", "submission");
       notifications.update(toast, { status: "error", title: "Could not apply", detail: message });
       setError(message);
     } finally { setBusy(false); }
@@ -300,7 +317,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       setReloads(count => count + 1);
       onChanged();
     } catch (issue) {
-      const message = issue instanceof Error ? issue.message : "The change could not be cancelled.";
+      const message = safeUserMessage(issue, "The guardian change could not be cancelled.", "submission");
       notifications.update(toast, { status: "error", title: "Could not cancel", detail: message });
       setError(message);
     } finally { setBusy(false); }
@@ -336,6 +353,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     </ol>
 
     {pending && <PendingChangeCard
+      config={config}
       pending={pending}
       status={status}
       statusError={statusError}
@@ -368,12 +386,15 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </p>
     </div>}
 
+    {operationDiscoveryIncomplete && <p className="callout warning">
+      Scheduled-change discovery was incomplete. Verified operations remain visible, but this device cannot prove that the list is exhaustive. Try another RPC before relying on the absence of a change.
+    </p>}
+
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
       status={protection}
       busy={busy}
       error={error}
       onRestore={text => void restoreRoster(text)}
-      onReenter={addresses => void restoreByReentry(addresses)}
       onDismissError={() => setError("")}
     />}
 
@@ -383,15 +404,25 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         : <div className="guardian-list">{draft.map(entry => <div className="guardian-row" key={entry.id}>
             <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
             <div><strong>{entry.label}</strong><p className="breakable">{describeGuardian(entry.descriptor)}</p></div>
-            <button className="text-button" onClick={() => removeGuardian(entry.id)}>Remove</button>
+            <div className="guardian-row-actions">
+              {protection.kind === "in-sync" && committed.some(item => item.id === entry.id) &&
+                <button className="text-button" disabled={busy} onClick={() => void inviteGuardian(entry)}>Invite</button>}
+              <button className="text-button" onClick={() => removeGuardian(entry.id)}>Remove</button>
+            </div>
           </div>)}</div>}
+
+      {invitation && <GuardianInvitationCard
+        invitation={invitation}
+        onCopy={() => void copyInvitation()}
+        onClose={() => setInvitation(null)}
+      />}
 
       {protection.kind === "in-sync" && <p className="form-note">
         This list is held only on this device and matches the account's on-chain guardian root.{" "}
         <button className="text-button" onClick={exportRoster}>Export a backup</button> — without it, another device cannot edit the set.
       </p>}
 
-      <AddGuardianForm busy={busy} onAdd={addGuardian} hasErc1271={Boolean(verifiers?.erc1271)} />
+      <AddGuardianForm busy={busy} onAdd={addGuardian} />
 
       {draft.length > 0 && <div className="threshold-row">
         <label className="field"><span>Approvals needed to recover</span>
@@ -403,6 +434,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </div>}
 
       {error && <p className="callout warning">{error}</p>}
+      {!error && planning.error && <p className="callout warning">{planning.error}</p>}
       <div className="guardian-actions">
         <button className="primary" disabled={!dirty || busy || !plan} onClick={() => { setError(""); setStage("review"); }}>Review changes</button>
         {dirty && <button className="secondary" onClick={() => { setDraft(committed); setError(""); }}>Discard</button>}
@@ -425,4 +457,9 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     </>}
 
   </section>;
+}
+
+function randomBytes32(): Hex {
+  const value = crypto.getRandomValues(new Uint8Array(32));
+  return `0x${Array.from(value, byte => byte.toString(16).padStart(2, "0")).join("")}`;
 }
