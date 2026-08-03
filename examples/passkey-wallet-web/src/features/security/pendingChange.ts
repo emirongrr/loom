@@ -1,13 +1,14 @@
 import type { Address, Hex } from "@loom/core";
 import { submitAccountCalls, type SendResult } from "../wallet/accountClient";
+import type { PendingOperationStore } from "../../storage/pendingOperations";
 import { createAccountGuardianClient } from "./guardianClient";
 import { MIN_DELAY_SECONDS, planGuardianChange } from "./guardianPlan";
+import { readScheduledOperations } from "./scheduledOperations";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { NetworkConfig } from "../../config/network";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
 import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier";
-import type { PendingOperationStore } from "../../storage/pendingOperations";
 import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 
 export interface PendingChangeStatus {
@@ -18,6 +19,11 @@ export interface PendingChangeStatus {
   readonly ready: boolean;
   /** The chain's own clock, so the countdown never trusts the device clock. */
   readonly chainTimestamp: bigint;
+  /** Provenance from the matching OperationScheduled account log. */
+  readonly transactionHash?: Hex;
+  readonly blockNumber?: bigint;
+  readonly verifiedAtBlock?: bigint;
+  readonly provenanceUnavailable: boolean;
   readonly prepared: PreparedChange;
 }
 
@@ -38,6 +44,7 @@ export async function readPendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   pending: RosterPending;
+  publicClients: PublicClientRegistry;
 }): Promise<PendingChangeStatus> {
   const { config, account, deployment, pending } = input;
   if (!deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
@@ -48,16 +55,32 @@ export async function readPendingGuardianChange(input: {
     config,
     chainId: account.chainId,
     account: account.account,
-    recoveryManager: deployment.recoveryModule
+    recoveryManager: deployment.recoveryModule,
+    publicClients: input.publicClients
   });
   const prepared = await client.prepareGuardianConfiguration({ set, delaySeconds: MIN_DELAY_SECONDS });
-  const status = await client.readPendingGuardianConfiguration(prepared);
+  const [live, discovered] = await Promise.all([
+    client.readPendingGuardianConfiguration(prepared),
+    readScheduledOperations({ config, account: account.account, publicClients: input.publicClients })
+  ]);
+  const readyAt = BigInt(live.readyAt);
+  const operation = discovered.operations.find(candidate =>
+    candidate.operationId === prepared.operationId && candidate.readyAt === readyAt
+  );
 
   return Object.freeze({
-    found: status.pending,
-    readyAt: status.readyAt,
-    ready: status.ready ?? false,
-    chainTimestamp: status.chainTimestamp ?? 0n,
+    // The account mapping remains authoritative even if log discovery is
+    // censored or unavailable. Provenance may disappear; pending state may not.
+    found: live.pending,
+    readyAt,
+    ready: live.ready ?? false,
+    chainTimestamp: BigInt(live.chainTimestamp ?? discovered.chainTimestamp),
+    provenanceUnavailable: live.pending && operation === undefined,
+    ...(operation ? {
+      transactionHash: operation.transactionHash,
+      blockNumber: operation.blockNumber,
+      ...(discovered.chainBlockNumber === undefined ? {} : { verifiedAtBlock: discovered.chainBlockNumber })
+    } : {}),
     prepared
   });
 }

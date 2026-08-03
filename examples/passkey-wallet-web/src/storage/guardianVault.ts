@@ -1,4 +1,6 @@
 import { validateGuardianInvite, validatePersistedGuardianInvite, type GuardianInviteV1 } from "@loom/sdk/recovery";
+import type { AccountHandle } from "../types.ts";
+import { assertGuardianCapabilityMatchesAccount, guardianVaultRecordsForAccount } from "./guardianVaultScope.ts";
 
 export interface GuardianVaultRecord {
   readonly capability: GuardianInviteV1;
@@ -8,9 +10,9 @@ export interface GuardianVaultRecord {
 }
 
 export interface GuardianVault {
-  list(): Promise<readonly GuardianVaultRecord[]>;
-  inspect(): Promise<GuardianVaultSnapshot>;
-  put(record: GuardianVaultRecord): Promise<void>;
+  list(account: AccountHandle): Promise<readonly GuardianVaultRecord[]>;
+  inspect(account: AccountHandle): Promise<GuardianVaultSnapshot>;
+  put(account: AccountHandle, record: GuardianVaultRecord): Promise<void>;
   remove(key: IDBValidKey): Promise<void>;
 }
 
@@ -26,14 +28,14 @@ export interface GuardianVaultSnapshot {
 }
 
 interface StoredEnvelope {
-  version: 1;
+  version: 1 | 2;
   iv: string;
   ciphertext: string;
 }
 
 export function createBrowserGuardianVault(options: { dbName?: string } = {}): GuardianVault {
   const dbName = options.dbName ?? "loom-guardian-vault-v1";
-  const inspect = async () => {
+  const inspectAll = async () => {
     const db = await openVault(dbName);
     const transaction = db.transaction("records", "readonly");
     const store = transaction.objectStore("records");
@@ -46,17 +48,27 @@ export function createBrowserGuardianVault(options: { dbName?: string } = {}): G
     return decodeGuardianVaultEntries(keys.map((entryKey, index) => ({ key: entryKey, envelope: envelopes[index] })), key);
   };
   return Object.freeze({
-    async list() {
-      return (await inspect()).records;
+    async list(account: AccountHandle) {
+      return guardianVaultRecordsForAccount((await inspectAll()).records, account);
     },
-    inspect,
-    async put(record: GuardianVaultRecord) {
+    async inspect(account: AccountHandle) {
+      const snapshot = await inspectAll();
+      return Object.freeze({ ...snapshot, records: guardianVaultRecordsForAccount(snapshot.records, account) });
+    },
+    async put(account: AccountHandle, record: GuardianVaultRecord) {
       const db = await openVault(dbName);
       const key = await vaultKey(db);
       const capability = validateGuardianInvite(record.capability);
+      assertGuardianCapabilityMatchesAccount(capability, account);
       const accepted = validateGuardianVaultRecord({ ...record, capability });
-      const envelope = await encryptRecord(key, accepted);
-      await transactionDone(db, "records", "readwrite", store => store.put(envelope, accepted.capability.capabilityId));
+      assertGuardianVaultAdmission((await inspectAll()).records, accepted);
+      // New records are keyed by the protected-account/guardian relationship
+      // rather than a random capability id, so repeated accepts converge while
+      // two independent guardian wallets never overwrite one another.
+      // Legacy capability-id keys remain readable and are never deleted here.
+      const recordKey = guardianVaultIdentity(accepted.capability);
+      const envelope = await encryptRecord(key, accepted, recordKey);
+      await transactionDone(db, "records", "readwrite", store => store.put(envelope, recordKey));
     },
     async remove(key: IDBValidKey) {
       const db = await openVault(dbName);
@@ -74,14 +86,68 @@ export async function decodeGuardianVaultEntries(
   const issues: GuardianVaultIssue[] = [];
   for (const entry of entries) {
     try {
-      const record = await decryptRecord(key, entry.envelope, nowSeconds);
-      if (entry.key !== record.capability.capabilityId) throw new Error("guardian vault record key is invalid");
+      const record = await decryptRecord(key, entry.envelope, nowSeconds, String(entry.key));
+      if (String(entry.key) !== record.capability.capabilityId
+        && String(entry.key) !== guardianVaultIdentity(record.capability)
+        && String(entry.key) !== legacyGuardianVaultIdentity(record.capability)) {
+        throw new Error("guardian vault record key is invalid");
+      }
       records.push(record);
     } catch {
       issues.push(Object.freeze({ key: entry.key, reason: "corrupt", message: "Encrypted guardian record could not be verified." }));
     }
   }
-  return Object.freeze({ records: Object.freeze(records), issues: Object.freeze(issues) });
+  return Object.freeze({ records: Object.freeze(collapseGuardianVaultRecords(records)), issues: Object.freeze(issues) });
+}
+
+/** One visible relationship per protected account, chain, and guardian authority. */
+export function guardianVaultIdentity(capability: GuardianInviteV1): string {
+  return `${legacyGuardianVaultIdentity(capability)}:${capability.guardian.kind}:${capability.guardian.keyCommitment.toLowerCase()}`;
+}
+
+function legacyGuardianVaultIdentity(capability: GuardianInviteV1): string {
+  return `${capability.chainId}:${capability.account.toLowerCase()}`;
+}
+
+/**
+ * Repeated delivery of the active capability is not a second acceptance.
+ * A newer configuration or an expired/removed record may be refreshed so
+ * guardian rotation cannot permanently strand the relationship.
+ */
+export function assertGuardianVaultAdmission(
+  existing: readonly GuardianVaultRecord[],
+  candidate: GuardianVaultRecord,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): void {
+  const prior = collapseGuardianVaultRecords(existing).find(record =>
+    guardianVaultIdentity(record.capability) === guardianVaultIdentity(candidate.capability)
+  );
+  if (!prior) return;
+  const priorVersion = BigInt(prior.capability.configVersion);
+  const candidateVersion = BigInt(candidate.capability.configVersion);
+  if (candidateVersion > priorVersion) return;
+  if (prior.status === "stale" || prior.status === "removed" || prior.capability.expiresAt <= nowSeconds) return;
+  throw new Error("This protected account invitation is already accepted on this device.");
+}
+
+function collapseGuardianVaultRecords(records: readonly GuardianVaultRecord[]): GuardianVaultRecord[] {
+  const selected = new Map<string, GuardianVaultRecord>();
+  for (const record of records) {
+    const identity = guardianVaultIdentity(record.capability);
+    const prior = selected.get(identity);
+    if (!prior || preferGuardianRecord(record, prior)) selected.set(identity, record);
+  }
+  return [...selected.values()];
+}
+
+function preferGuardianRecord(candidate: GuardianVaultRecord, prior: GuardianVaultRecord): boolean {
+  const candidateVersion = BigInt(candidate.capability.configVersion);
+  const priorVersion = BigInt(prior.capability.configVersion);
+  if (candidateVersion !== priorVersion) return candidateVersion > priorVersion;
+  const rank = (status: GuardianVaultRecord["status"]) => status === "active" ? 3 : status === "unverified" ? 2 : status === "stale" ? 1 : 0;
+  if (rank(candidate.status) !== rank(prior.status)) return rank(candidate.status) > rank(prior.status);
+  if (candidate.capability.expiresAt !== prior.capability.expiresAt) return candidate.capability.expiresAt > prior.capability.expiresAt;
+  return candidate.acceptedAt > prior.acceptedAt;
 }
 
 async function openVault(name: string): Promise<IDBDatabase> {
@@ -105,25 +171,29 @@ async function vaultKey(db: IDBDatabase): Promise<CryptoKey> {
   return key;
 }
 
-async function encryptRecord(key: CryptoKey, record: GuardianVaultRecord): Promise<StoredEnvelope> {
+async function encryptRecord(key: CryptoKey, record: GuardianVaultRecord, recordKey: string): Promise<StoredEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(record));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
-  return { version: 1, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: vaultAad(recordKey) }, key, plaintext);
+  return { version: 2, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
 }
 
-async function decryptRecord(key: CryptoKey, value: unknown, nowSeconds: number): Promise<GuardianVaultRecord> {
+async function decryptRecord(key: CryptoKey, value: unknown, nowSeconds: number, recordKey: string): Promise<GuardianVaultRecord> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("guardian vault envelope is invalid");
   const envelope = value as Partial<StoredEnvelope>;
-  if (envelope.version !== 1 || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") throw new Error("unsupported guardian vault envelope");
+  if ((envelope.version !== 1 && envelope.version !== 2) || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") throw new Error("unsupported guardian vault envelope");
   const iv = unbase64(envelope.iv);
   const ciphertext = unbase64(envelope.ciphertext);
   try {
-    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buffer(iv) }, key, buffer(ciphertext));
+    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buffer(iv), ...(envelope.version === 2 ? { additionalData: vaultAad(recordKey) } : {}) }, key, buffer(ciphertext));
     return validateGuardianVaultRecord(JSON.parse(new TextDecoder().decode(plaintext)), nowSeconds);
   } catch (cause) {
     throw new Error("guardian vault decryption failed", { cause });
   }
+}
+
+function vaultAad(recordKey: string): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`loom.guardian-vault.v2:${recordKey}`);
 }
 
 export function validateGuardianVaultRecord(value: unknown, nowSeconds = Math.floor(Date.now() / 1000)): GuardianVaultRecord {
