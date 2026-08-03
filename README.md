@@ -121,7 +121,8 @@ infrastructure.
 
 **Account** — immutable smart accounts with no developer, factory, admin, or
 proxy-upgrade authority; ERC-4337 v0.9 validation with atomic single/batch
-execution; ERC-1271 signatures with policy-aware restrictions;
+execution; ERC-1271 routing, though every bundled validator declines arbitrary
+hash signing, so this account signs no off-chain messages today;
 provider-independent direct execution; a limited ERC-7579 adapter surface with
 unsupported modes rejected.
 

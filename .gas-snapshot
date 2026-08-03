@@ -261,6 +261,7 @@ SovereignMigrationTest:testGuardianMigrationCancellationRejectsDuplicateMissingA
 SovereignMigrationTest:testGuardianThresholdCanCancelMigrationWithoutExecutionAuthority() (gas: 10449001)
 SovereignMigrationTest:testGuardianThresholdCanEvictAStuckHookImmediately() (gas: 5441710)
 SovereignMigrationTest:testMigrationBatchCannotUninstallTheLastValidator() (gas: 10578291)
+SovereignMigrationTest:testMigrationBatchIgnoringItsCommittedDestinationIsAccepted() (gas: 10553857)
 SovereignMigrationTest:testMigrationCanTargetCodehashOnlyFutureAccount() (gas: 5495237)
 SovereignMigrationTest:testMigrationCanTargetDifferentEntryPointAccount() (gas: 10757923)
 SovereignMigrationTest:testMigrationIsAtomicAndPreservesPendingStateOnRevert() (gas: 10542255)

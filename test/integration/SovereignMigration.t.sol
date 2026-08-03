@@ -56,6 +56,44 @@ contract SovereignMigrationTest {
         require(clearedHash == bytes32(0), "pending migration not cleared");
     }
 
+    /// @notice The committed destination is a declaration, not an execution constraint.
+    /// @dev `executeMigration` checks the calls hash and re-verifies the destination's
+    /// code hash, but nothing requires any call in the batch to target the
+    /// destination. This is deliberate -- it keeps the exit usable for destinations
+    /// that are not Loom accounts -- but it means the commitment cannot be read as a
+    /// guarantee that assets arrived there, which is why
+    /// `docs/design/lifecycle.md` says so explicitly. Pinned here so the claim is
+    /// backed by behaviour rather than by prose.
+    function testMigrationBatchIgnoringItsCommittedDestinationIsAccepted() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        MockERC20 token = new MockERC20();
+        token.mint(address(source), 100);
+
+        address elsewhere = address(0xBEEF);
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (elsewhere, 100)));
+
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        (address pendingDestination,,,, uint48 readyAt,,,) = source.pendingMigration();
+        require(pendingDestination == address(destination), "destination not committed");
+
+        vm.warp(readyAt);
+        source.executeMigration(calls);
+
+        // Everything went somewhere other than the committed destination, and the
+        // migration still completed.
+        require(token.balanceOf(elsewhere) == 100, "assets did not move to the third party");
+        require(token.balanceOf(address(destination)) == 0, "committed destination received assets");
+        require(source.migrationNonce() == 1, "migration nonce did not advance");
+
+        // And the source account is still fully operational: migration is a delayed
+        // exit batch, not a terminal state.
+        require(source.validatorCount() != 0, "source account lost its validators");
+        (,,, bytes32 clearedHash,,,,) = source.pendingMigration();
+        require(clearedHash == bytes32(0), "pending migration not cleared");
+    }
+
     function testMigrationCanTargetDifferentEntryPointAccount() public {
         LoomAccount source = _account(false);
         LoomAccount destination = _accountWithEntryPoint(address(new MockEntryPoint()));
