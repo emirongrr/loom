@@ -16,7 +16,7 @@ client enablers, and what genuinely remains **client/operational** work.
 | Account abstraction | ERC-4337 validation and open validator selection | `LoomAccount.validateUserOp` |
 | Atomic batching | Batch reverts entirely when any subcall fails | `LoomAccount.execute` |
 | Account unruggability | Non-upgradeable immutable proxy, no admin, no mutable implementation, and no developer recovery authority | Proxy, account, and factory constructors |
-| Account portability | ERC-1271 and ERC-4337; Loom-specific limited module profile | Public interfaces |
+| Account portability | ERC-4337; ERC-1271 is routed but every bundled validator declines arbitrary hash signing, so off-chain message signing needs a non-bundled validator through the ERC-7579 shim; Loom-specific limited module profile | Public interfaces |
 | Account recovery | Visible guardian-threshold proposal, delay, cancellation, expiry, and atomic validator/guardian rotation | `RecoveryManager`, account recovery module |
 | Permissions management | Exact-call and granular enumerable revocable session permissions plus allowance revoke | `ExactCallSessionValidator`, `GranularSessionValidator`, `revokeTokenAllowance` |
 | Impact mitigation | Low-risk policy limits, vault delays, timelocks, and freeze | `PolicyHook`, `VaultHook`, scheduled calls, `freeze` |
