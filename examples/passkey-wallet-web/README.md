@@ -2,7 +2,7 @@
 
 A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, live balances and transfers, private guardian capabilities, guardian set management under the account's own timelock, guardian-initiated emergency freeze, and the complete delayed recovery lifecycle — without requiring a Loom-hosted service.
 
-This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, account history, guardian setup, freeze, recovery proposal and execution use live Sepolia infrastructure by default. RPC, bundler and explorer endpoints remain overridable in Developer settings. Recovery validator provisioning follows [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md); runtime and receipt trust boundaries follow [ADR-0017](../../docs/decisions/0017-passkey-wallet-runtime-and-submission-boundaries.md).
+This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, account history, guardian setup, freeze, recovery proposal and execution use live Sepolia infrastructure by default. RPC, bundler and explorer endpoints remain overridable in Developer settings. Recovery validator provisioning follows [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md); runtime and receipt trust boundaries follow [ADR-0019](../../docs/decisions/0019-passkey-wallet-runtime-and-submission-boundaries.md).
 
 ## What this example proves
 

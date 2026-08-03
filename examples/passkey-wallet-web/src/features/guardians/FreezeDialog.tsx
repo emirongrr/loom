@@ -4,6 +4,9 @@ import { GUARDIAN_ACCOUNT_LABEL } from "../security/guardianInvitation";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { shorten } from "../../components/AccountHeader";
+import { Dialog } from "../../components/Dialog";
+import { useAppServices } from "../../app/AppServices";
+import { safeUserMessage } from "../../domain/errors/appError";
 import { prepareGuardianFreeze, prepareGuardianFreezeChallenge, readFreezeState, type FreezePreparation } from "./freeze";
 import { guardianCapabilityMatchesAccount, signFreezeDigestWithPasskey } from "./freezeSigning";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
@@ -24,6 +27,7 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
   onClose(): void;
 }) {
   const { config } = useNetwork();
+  const { publicClients } = useAppServices();
   const notifications = useNotifications();
   const [step, setStep] = useState<Step>({ status: "checking" });
   const [error, setError] = useState("");
@@ -32,22 +36,22 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
 
   useEffect(() => {
     let active = true;
-    readFreezeState({ config, deployment, capability })
+    readFreezeState({ config, deployment, capability, publicClients })
       .then(state => {
         if (!active) return;
         if (state.active) setStep({ status: "frozen", until: state.frozenUntil });
         else if (!state.recoveryConfigured) setStep({ status: "unavailable", message: "This account has no active guardian recovery, so it cannot be frozen." });
         else setStep({ status: "signing" });
       })
-      .catch(issue => { if (active) setStep({ status: "unavailable", message: issue instanceof Error ? issue.message : "Account state could not be read." }); });
+      .catch(issue => { if (active) setStep({ status: "unavailable", message: safeUserMessage(issue, "Account state could not be read.", "confirmation") }); });
     return () => { active = false; };
-  }, [config, deployment, capability]);
+  }, [config, deployment, capability, publicClients]);
 
   const authorize = async () => {
     setError("");
     setStep({ status: "verifying" });
     try {
-      const challenge = await prepareGuardianFreezeChallenge({ config, deployment, capability });
+      const challenge = await prepareGuardianFreezeChallenge({ config, deployment, capability, publicClients });
       const signature = await signFreezeDigestWithPasskey({
         capability,
         account: guardianAccount,
@@ -55,11 +59,11 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
       });
       // Re-read and verify after the passkey ceremony. A changed config or
       // nonce invalidates the assertion instead of submitting stale authority.
-      const prepared = await prepareGuardianFreeze({ config, deployment, capability, signature });
+      const prepared = await prepareGuardianFreeze({ config, deployment, capability, signature, publicClients });
       setStep({ status: "ready", prepared });
       notifications.notify({ status: "success", title: "Freeze authorised", detail: "Your passkey approved the exact live freeze request." });
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "The freeze could not be prepared.");
+      setError(safeUserMessage(issue, "The freeze could not be prepared.", "preparation"));
       setStep({ status: "signing" });
     }
   };
@@ -69,8 +73,7 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
     catch { notifications.notify({ status: "error", title: "Copy unavailable", detail: "Select the value and copy it manually." }); }
   };
 
-  return <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-label="Emergency freeze" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="review-sheet">
+  return <Dialog label="Emergency freeze" busy={step.status === "verifying"} onClose={onClose}>
       <div className="sheet-handle" aria-hidden="true" />
       <div className="section-heading"><div><p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL} · {shorten(capability.account)}</p><h2>Emergency freeze</h2></div></div>
 
@@ -123,6 +126,5 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
         <pre className="code-block breakable">{step.prepared.submit.data}</pre>
         <div className="sheet-actions"><span /><button className="secondary" onClick={onClose}>Done</button></div>
       </>}
-    </div>
-  </div>;
+  </Dialog>;
 }

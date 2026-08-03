@@ -1,4 +1,4 @@
-# 0015: Recovery artifacts, random salts, and local sessions
+# 0017: Recovery artifacts, random salts, and local sessions
 
 - Status: Accepted
 - Date: 2026-07-28

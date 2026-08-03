@@ -182,6 +182,15 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     }
 
     function _spendAmount(ExecutionLib.Execution memory item) internal pure returns (uint256) {
+        // A token-shaped call with attached ETH moves both assets. Metering only
+        // the token amount would let the native value through completely: the
+        // policy consulted here is keyed by the token selector, so a native policy
+        // on the same target -- keyed by the empty selector -- is never read. Fail
+        // closed with an unbounded spend, matching VaultHook's classification.
+        // This also gates `isLowRisk`, and therefore validator direct-execution
+        // authority, so a signer bounded to a small token allowance cannot attach
+        // arbitrary ETH and still be classified low risk.
+        if (ERC20CallLib.isMixedValueTokenCall(item.callData, item.value)) return type(uint256).max;
         if (!ERC20CallLib.isTokenSelector(ERC20CallLib.selector(item.callData))) return item.value;
         (bool parsed,,, uint256 amount) = ERC20CallLib.decodeTokenCall(item.callData);
         // Malformed token calldata meters as an unbounded spend so it can never

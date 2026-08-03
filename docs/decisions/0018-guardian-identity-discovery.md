@@ -1,4 +1,4 @@
-# ADR 0016: Guardian identity discovery
+# ADR 0018: Guardian identity discovery
 
 ## Status
 

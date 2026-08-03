@@ -29,11 +29,7 @@ contract DeploySepoliaRecoveryProvisioner is Script {
         vm.startBroadcast(deployerKey);
         factory = new P256RecoveryValidatorFactory(fallbackVerifier);
         emit SepoliaRecoveryProvisionerDeployment(
-            msg.sender,
-            existingValidator,
-            address(factory),
-            fallbackVerifier,
-            factory.validatorInitCodeHash()
+            msg.sender, existingValidator, address(factory), fallbackVerifier, factory.validatorInitCodeHash()
         );
         vm.stopBroadcast();
     }

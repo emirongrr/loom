@@ -38,6 +38,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   const { config } = useNetwork();
   const services = useAppServices();
   const notifications = useNotifications();
+  const { runtime, pendingOperations, publicClients } = services;
   const roster = useMemo(() => createBrowserGuardianRoster(), []);
 
   const [committed, setCommitted] = useState<readonly RosterEntry[]>([]);
@@ -71,11 +72,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     if (!pending || !deployment?.recoveryModule) { setStatus(null); return; }
     let active = true;
     setStatusError("");
-    readPendingGuardianChange({ config, account, deployment, pending })
+    readPendingGuardianChange({ config, account, deployment, pending, publicClients })
       .then(result => { if (active) setStatus(result); })
-      .catch(issue => { if (active) setStatusError(issue instanceof Error ? issue.message : "The scheduled change could not be read."); });
+      .catch(issue => { if (active) setStatusError(safeUserMessage(issue, "The scheduled change could not be read.", "confirmation")); });
     return () => { active = false; };
-  }, [config, account, deployment, pending, reloads]);
+  }, [config, account, deployment, pending, publicClients, reloads]);
 
   useEffect(() => {
     if (!status?.found || status.ready) return;
@@ -87,18 +88,24 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   // — exists only on chain. Discover it there so it is never silently invisible.
   const [onChainOperations, setOnChainOperations] = useState<readonly ScheduledOperation[]>([]);
   const [chainNow, setChainNow] = useState(0n);
+  const [operationDiscoveryIncomplete, setOperationDiscoveryIncomplete] = useState(false);
 
   useEffect(() => {
     let active = true;
-    readScheduledOperations({ config, account: account.account })
+    readScheduledOperations({ config, account: account.account, publicClients })
       .then(result => {
         if (!active) return;
         setOnChainOperations(result.operations);
         setChainNow(result.chainTimestamp);
+        setOperationDiscoveryIncomplete(result.discoveryUnavailable);
       })
-      .catch(() => { if (active) setOnChainOperations([]); });
+      .catch(() => {
+        if (!active) return;
+        setOnChainOperations([]);
+        setOperationDiscoveryIncomplete(true);
+      });
     return () => { active = false; };
-  }, [config, account.account, reloads]);
+  }, [config, account.account, publicClients, reloads]);
 
   // Anything the local record already explains is not reported a second time.
   const unexplained = onChainOperations.filter(operation => operation.operationId !== status?.prepared.operationId);
@@ -156,7 +163,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   const planning = useMemo<{ plan: GuardianChangePlan | null; error: string }>(() => {
     if (draft.length === 0) return { plan: null, error: "" };
     try { return { plan: planGuardianChange({ current: committed, next: draft, threshold, ...(onChain ? { onChain } : {}) }), error: "" }; }
-    catch (issue) { return { plan: null, error: issue instanceof Error ? issue.message : "Guardian changes could not be reviewed." }; }
+    catch (issue) { return { plan: null, error: safeUserMessage(issue, "Guardian changes could not be reviewed.", "validation") }; }
   }, [committed, draft, threshold, onChain]);
   const plan = planning.plan;
 
@@ -165,11 +172,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     if (!verifiers) { setError("This deployment does not publish guardian verifiers."); return; }
     setBusy(true);
     try {
-      const chainReader = createLoomGuardianChainReader(config, deployment!);
+      const chainReader = createLoomGuardianChainReader(config, deployment!, publicClients);
       const detected = await detectGuardianAddress(value, chainReader);
       const verifier = detected.kind === "loom" ? verifiers.p256 : detected.kind === "ecdsa" ? verifiers.ecdsa : verifiers.erc1271;
       if (!verifier) throw new Error("This deployment cannot verify this guardian address type.");
-      const verifierCodeHash = await readVerifierCodeHash(config, verifier);
+      const verifierCodeHash = await readVerifierCodeHash(config, verifier, publicClients);
       const descriptor = detected.kind === "loom"
         ? await resolveLoomP256Guardian({ value, deployment: deployment!, verifierCodeHash, reader: chainReader })
         : buildGuardianDescriptor({ kind: detected.kind, value: detected.address, verifier, verifierCodeHash });
@@ -243,13 +250,13 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       // these are the values persisted and scheduled on chain.
       const salted = withFreshSalts(draft);
       const finalPlan = planGuardianChange({ current: committed, next: salted, threshold });
-      const client = createAccountGuardianClient({ config, chainId: account.chainId, account: account.account, recoveryManager: deployment.recoveryModule });
+      const client = createAccountGuardianClient({ config, chainId: account.chainId, account: account.account, recoveryManager: deployment.recoveryModule, publicClients });
       const prepared = await client.prepareGuardianConfiguration({ set: finalPlan.set, delaySeconds: MIN_DELAY_SECONDS });
 
       const result = await submitAccountCalls({
         config, account, deployment,
         calls: [{ target: prepared.scheduleCall.target as Address, value: 0n, data: prepared.scheduleCall.data as Hex }],
-        pendingOperations: services.pendingOperations
+        runtime, pendingOperations, publicClients
       });
       // Stored as pending, not committed: until the delay elapses and the change
       // executes, the guardian set that can actually recover this account is
@@ -279,8 +286,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setBusy(true); setError("");
     const toast = notifications.notify({ status: "pending", title: "Applying guardian change" });
     try {
-      await services.runtime.verify(config, deployment);
-      const result = await executePendingGuardianChange({ config, account, deployment, prepared: status.prepared, pendingOperations: services.pendingOperations });
+      const result = await executePendingGuardianChange({ config, account, deployment, prepared: status.prepared, runtime, pendingOperations, publicClients });
       // Only now is the new set the one that can recover the account.
       await roster.write(account.id, { entries: pending.entries, version: Date.now(), pending: null });
       notifications.update(toast, {
@@ -302,8 +308,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setBusy(true); setError("");
     const toast = notifications.notify({ status: "pending", title: "Cancelling guardian change" });
     try {
-      await services.runtime.verify(config, deployment);
-      const result = await cancelPendingGuardianChange({ config, account, deployment, prepared: status.prepared, pendingOperations: services.pendingOperations });
+      const result = await cancelPendingGuardianChange({ config, account, deployment, prepared: status.prepared, runtime, pendingOperations, publicClients });
       await roster.write(account.id, { entries: committed, version: Date.now(), pending: null });
       notifications.update(toast, {
         status: "success", title: "Guardian change cancelled", detail: "Your existing guardians are unchanged.",
@@ -380,6 +385,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         that scheduled it to apply or cancel it, or schedule the change again from here once it has lapsed.
       </p>
     </div>}
+
+    {operationDiscoveryIncomplete && <p className="callout warning">
+      Scheduled-change discovery was incomplete. Verified operations remain visible, but this device cannot prove that the list is exhaustive. Try another RPC before relying on the absence of a change.
+    </p>}
 
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
       status={protection}

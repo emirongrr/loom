@@ -10,6 +10,7 @@ import {
 } from "@loom/sdk";
 import { AppError, normalizeAppError } from "../../domain/errors/appError";
 import {
+  operationFailureStage,
   reduceOperationState,
   type OperationEvent,
   type OperationState
@@ -18,8 +19,12 @@ import type { NetworkConfig } from "../../config/network";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
 import { signWithBrowserPasskey } from "./webauthn";
-import { validateUserOperationReceipt } from "../../services/loom/operationReceipt";
+import { confirmUserOperationReceipt } from "../../services/loom/operationReceipt";
 import type { PendingOperationStore } from "../../storage/pendingOperations";
+import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
+import { acquireAccountOperation } from "../../services/loom/operationGuard";
+import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation";
 
 export async function readAccountSafety(
   config: NetworkConfig,
@@ -48,8 +53,6 @@ export interface AccountCall {
 
 export type AccountOperationObserver = (state: OperationState) => void;
 
-const activeAccountOperations = new Set<string>();
-
 // Submit account calls through a public ERC-4337 bundler. The passkey signs the
 // canonical operation hash; the bundler carries it and cannot alter a single
 // field, so the account is bound to no particular submitter. Used for ETH,
@@ -60,9 +63,11 @@ export async function submitAccountCalls(input: {
   deployment: WalletDeployment;
   calls: readonly AccountCall[];
   onState?: AccountOperationObserver;
-  pendingOperations?: PendingOperationStore;
+  pendingOperations: PendingOperationStore;
+  runtime: RuntimeVerifier;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
-  const { config, account, deployment, calls, onState, pendingOperations } = input;
+  const { config, account, deployment, calls, onState, pendingOperations, runtime, publicClients } = input;
   let state: OperationState = { status: "idle" };
   let submittedHash: Hex | undefined;
   const emit = (event: OperationEvent) => {
@@ -80,20 +85,19 @@ export async function submitAccountCalls(input: {
     emit({ type: "FAIL", error });
     throw error;
   }
-  const operationKey = `${account.chainId}:${account.account.toLowerCase()}`;
-  if (activeAccountOperations.has(operationKey)) {
-    const error = new AppError({
-      code: "OPERATION_IN_PROGRESS",
-      userMessage: "Another operation for this wallet is already in progress.",
-      retryable: true,
-      stage: "validation"
-    });
-    emit({ type: "FAIL", error });
-    throw error;
-  }
-  activeAccountOperations.add(operationKey);
+  let release: (() => void) | undefined;
   const validator = account.kind === "recovered" ? account.validator : deployment.validator;
   try {
+    await runtime.verify(config, deployment);
+    await reconcilePendingOperations({
+      config,
+      account,
+      store: pendingOperations,
+      entryPoint: deployment.entryPoint,
+      publicClient: publicClients.forEndpoint(config.rpcUrl),
+      verificationPublicClient: publicClients.forEndpoint(config.verificationRpcUrl)
+    });
+    release = await acquireAccountOperation(account.id, pendingOperations);
     emit({ type: "PREPARE" });
     const signer = createPasskeySigner({
       credentialId: account.credentialId,
@@ -126,7 +130,7 @@ export async function submitAccountCalls(input: {
         emit({ type: "SUBMIT" });
         const sent = await baseTransport.sendUserOperation(envelope);
         submittedHash = sent.userOpHash;
-        await pendingOperations?.save({ accountId: account.id, userOperationHash: sent.userOpHash, submittedAt: Date.now() });
+        await pendingOperations.save({ accountId: account.id, userOperationHash: sent.userOpHash, submittedAt: Date.now() });
         emit({ type: "CONFIRM", userOperationHash: sent.userOpHash });
         return sent;
       }
@@ -143,15 +147,22 @@ export async function submitAccountCalls(input: {
     const result = await client.sendTransaction(
       { calls: calls.map(call => ({ target: call.target, value: call.value, data: call.data })) }
     );
-    const transactionHash = validateUserOperationReceipt(result.receipt, result.userOpHash, account.account);
-    await pendingOperations?.complete(account.id, result.userOpHash);
+    const transactionHash = await confirmUserOperationReceipt({
+      receipt: result.receipt,
+      expectedUserOperationHash: result.userOpHash,
+      expectedSender: account.account,
+      entryPoint: deployment.entryPoint,
+      publicClient: publicClients.forEndpoint(config.rpcUrl),
+      verificationPublicClient: publicClients.forEndpoint(config.verificationRpcUrl)
+    });
+    await pendingOperations.complete(account.id, result.userOpHash);
     emit({ type: "SUCCEED", userOperationHash: result.userOpHash, transactionHash });
     return { userOpHash: result.userOpHash, transactionHash };
   } catch (issue) {
-    const error = normalizeAppError(issue, submittedHash ? "confirmation" : "submission");
+    const error = normalizeAppError(issue, submittedHash ? "confirmation" : operationFailureStage(state));
     emit({ type: "FAIL", error, ...(submittedHash ? { userOperationHash: submittedHash } : {}) });
     throw error;
   } finally {
-    activeAccountOperations.delete(operationKey);
+    release?.();
   }
 }

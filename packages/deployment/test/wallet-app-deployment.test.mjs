@@ -274,6 +274,7 @@ test("app manifests bind to the canonical manifest and reject disagreement", asy
     broadcast: broadcast(),
     rpc: rpcFor(),
     entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
     probeP256: async () => ({ supported: true })
   });
 
@@ -283,6 +284,18 @@ test("app manifests bind to the canonical manifest and reject disagreement", asy
 
   const foreign = { ...app, passkeyValidator: address("other-validator") };
   assert.throws(() => bindWalletManifestToCanonical(foreign, canonical), /passkeyValidator/);
+
+  const forgedProvisioner = {
+    ...app,
+    recoveryValidatorProvisioner: {
+      ...app.recoveryValidatorProvisioner,
+      validatorRuntimeCodeHash: codehash("forged-recovery-child")
+    }
+  };
+  assert.throws(
+    () => bindWalletManifestToCanonical(forgedProvisioner, canonical),
+    /recoveryValidatorProvisioner\.validatorRuntimeCodeHash/
+  );
 });
 
 test("p256 probe accepts only a 1-for-valid, empty-for-corrupted precompile", async () => {

@@ -1,4 +1,4 @@
-# ADR-0017: Passkey wallet runtime and submission boundaries
+# ADR-0019: Passkey wallet runtime and submission boundaries
 
 ## Status
 

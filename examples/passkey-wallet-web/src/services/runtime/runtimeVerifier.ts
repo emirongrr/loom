@@ -16,20 +16,26 @@ export function createRuntimeVerifier(input: {
   const request = input.request ?? fetch;
   return Object.freeze({
     async verify(config: NetworkConfig, deployment: WalletDeployment) {
-      const cacheKey = `${config.rpcUrl}:${config.bundlerUrl}:${deploymentFingerprint(deployment)}`;
+      if (config.rpcUrl === config.verificationRpcUrl) {
+        throw configurationError("The primary and verification RPC endpoints must be independent.");
+      }
+      const cacheKey = `${config.rpcUrl}:${config.verificationRpcUrl}:${config.bundlerUrl}:${deploymentFingerprint(deployment)}`;
       if (verified.has(cacheKey)) return;
-      const client = input.publicClients.forEndpoint(config.rpcUrl);
-      const [chainId, supportedEntryPoints] = await Promise.all([
-        client.getChainId(),
+      const clients = [
+        input.publicClients.forEndpoint(config.rpcUrl),
+        input.publicClients.forEndpoint(config.verificationRpcUrl)
+      ] as const;
+      const [chainIds, supportedEntryPoints] = await Promise.all([
+        Promise.all(clients.map(client => client.getChainId())),
         readSupportedEntryPoints(request, config.bundlerUrl)
       ]);
-      if (chainId !== deployment.chainId) throw configurationError("RPC chain does not match the deployment manifest.", { expectedChainId: deployment.chainId, actualChainId: chainId });
+      if (chainIds.some(chainId => chainId !== deployment.chainId)) throw configurationError("RPC chain does not match the deployment manifest.", { expectedChainId: deployment.chainId, primaryChainId: chainIds[0]!, verificationChainId: chainIds[1]! });
       if (!supportedEntryPoints.some(value => value.toLowerCase() === deployment.entryPoint.toLowerCase())) {
         throw configurationError("The bundler does not support this deployment's EntryPoint.");
       }
       for (const [address, expectedHash, label] of runtimeCommitments(deployment)) {
-        const code = await client.getCode({ address });
-        if (!code || code === "0x" || keccak256(code).toLowerCase() !== expectedHash.toLowerCase()) {
+        const codes = await Promise.all(clients.map(client => client.getCode({ address })));
+        if (codes.some(code => !code || code === "0x" || keccak256(code).toLowerCase() !== expectedHash.toLowerCase())) {
           throw configurationError(`${label} bytecode does not match the trusted deployment profile.`);
         }
       }
@@ -68,6 +74,20 @@ function runtimeCommitments(deployment: WalletDeployment): readonly [Address, He
     [deployment.guardianVerifiers?.erc1271, deployment.runtimeCodeHashes.erc1271GuardianVerifier, "ERC-1271 guardian verifier"]
   ] as const;
   for (const [address, hash, label] of guardians) if (address && hash) values.push([address, hash, label]);
+  if (deployment.recoveryValidatorProvisioner) {
+    values.push([
+      deployment.recoveryValidatorProvisioner.address,
+      deployment.recoveryValidatorProvisioner.runtimeCodeHash,
+      "Recovery validator provisioner"
+    ]);
+    if (deployment.recoveryValidatorProvisioner.fallbackVerifierRuntimeCodeHash) {
+      values.push([
+        deployment.recoveryValidatorProvisioner.fallbackVerifier,
+        deployment.recoveryValidatorProvisioner.fallbackVerifierRuntimeCodeHash,
+        "Recovery validator fallback verifier"
+      ]);
+    }
+  }
   return values;
 }
 

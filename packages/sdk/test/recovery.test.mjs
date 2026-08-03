@@ -402,7 +402,10 @@ test("the recovery client owns account inspection, freeze verification, and prop
   const submitted = [];
   let liveConfigVersion = 9n;
   let liveRecoveryNonce = 4n;
-  let liveScheduledOperation = 0;
+  // (readyAt, expiresAt, nonce) — the shape `scheduledOperations` actually
+  // returns. Encoding through the real ABI means a single value would not even
+  // encode, which is how the drift surfaced.
+  let liveScheduledOperation = [0, 0, 0];
   let livePendingRecovery = [`0x${"00".repeat(32)}`, "0x0000000000000000000000000000000000000000", `0x${"00".repeat(32)}`, `0x${"00".repeat(32)}`, 0, 0n, 0n, 0n, 0n];
   const stateTransport = {
     async getCode() { return verifierCode; },
@@ -451,11 +454,13 @@ test("the recovery client owns account inspection, freeze verification, and prop
   assert.deepEqual(inspected.validators, [oldValidator]);
 
   const guardianConfiguration = await client.prepareGuardianConfiguration({ set: currentSet });
-  liveScheduledOperation = 1_900_000_100;
+  liveScheduledOperation = [1_900_000_100, 1_900_000_100 + 30 * 24 * 60 * 60, 0];
   const scheduled = await client.readPendingGuardianConfiguration(guardianConfiguration);
   assert.equal(scheduled.readyAt, 1_900_000_100n);
+  assert.equal(scheduled.expiresAt, 1_900_000_100n + 2_592_000n);
+  assert.equal(scheduled.expired, false);
   assert.equal(typeof scheduled.chainTimestamp, "bigint");
-  liveScheduledOperation = 0;
+  liveScheduledOperation = [0, 0, 0];
 
   const freeze = await client.prepareFreeze(invite);
   assert.match(freeze.review.summary, /Freeze ordinary/);

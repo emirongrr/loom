@@ -16,6 +16,10 @@
 - A session signer using a revoked, expired, future, or altered permission.
 - A compromised low-risk key changing session permissions immediately or
   sending policy-controlled ERC-20 calls to an unapproved counterparty.
+- A caller escaping native-value limits by shaping calldata as an ERC-20 call.
+  Every enforcement layer classifies a token selector carrying `msg.value` as an
+  unbounded spend through one shared classifier, so it can satisfy no limit and
+  is not classified low risk.
 - Guardians gaining general UserOperation or ERC-1271 signing authority.
 - Hidden, immediate, replayed, expired, or stale-config validator recovery.
 - A recovery module transferring assets or invoking arbitrary account calls.
@@ -33,7 +37,10 @@
   and hooks without it.
 - External callers initializing an EIP-7702 delegated EOA before the user. The
   delegated initializer requires a self-call from the EOA and cannot run on
-  constructor-initialized accounts.
+  constructor-initialized accounts, and the proxy bootstrap initializer is
+  restricted to the proxy-construction context, so it cannot reach a delegated
+  EOA either. Both initializers are covered by negative properties that assert
+  the exact rejection and that no configuration was installed.
 - A wallet client, frontend, or bundler disappearing after a user has scheduled
   a delayed exit; any publisher can execute the exact committed migration once
   ready.
@@ -83,6 +90,12 @@
   `transferFrom`, and `approve` calldata and can bind their recipient or
   spender to one address. Rich allowlists and non-standard token methods
   require a separately audited policy version.
+- `PolicyHook` policies are keyed by `(target, selector)`, so a native-value
+  policy constrains only calls with empty calldata. It is not a cap on all ETH
+  leaving the account toward a target; `VaultHook` is the deny-by-default
+  per-asset control. A `(target, selector)` pair with no configured policy is
+  not metered by `PolicyHook` at all. See
+  `docs/design/permissions.md` for the exact accounting boundary.
 - Hook callbacks are fail-closed. This prevents policy bypass but makes hook
   availability part of account availability during the removal timelock.
 - Timelocked execution still passes through installed hooks. The only hook
@@ -111,8 +124,13 @@
   reject shimmed-validator operations unless staking or bundler policy allows
   them; this is a liveness concern only, and `executeDirect` is unaffected.
 - Migration is blocked while frozen. A guardian freeze can delay but not
-  permanently veto a migration because freeze duration is shorter than the
-  configuration delay and cancellation remains available while frozen.
+  permanently veto a migration: each guardian leaf may freeze only once per
+  configuration version, so the window cannot be renewed at will, and a migration
+  stays executable until its own `expiresAt`. The freeze duration exceeds
+  `MIN_CONFIG_DELAY`, so a migration whose execution window is shorter than
+  `FREEZE_DURATION` can be pushed past its expiry by a freeze taken at the wrong
+  moment; choose an execution window longer than `FREEZE_DURATION`. Guardian
+  cancellation also remains available while frozen.
 - Module initialization performs an external call. Constructor initialization
   runs before account runtime code exists; scheduled installation runs under
   the account execution reentrancy guard. Every module init path still belongs
@@ -123,12 +141,16 @@
   independent audit, target-network profile evidence, finality and reorg
   assumptions, and live rehearsal under
   `docs/operations/keystore-proof-profile.md`.
-- The OP Stack L2 keystore verifier roots its trust in Ethereum L1 state read
-  through the `L1Block` predeploy's `stateRoot()` plus a caller-supplied
-  EIP-1186 proof, with no bridge, oracle, messaging layer, or Loom-operated
-  service in the trust path. Under that design the OP Stack sequencer is a
-  liveness dependency for state-root currency, not a safety dependency: a
-  withheld or stale `L1Block` root can only delay keystore sync, and
+- The OP Stack L2 keystore verifier roots its trust in Ethereum L1 state proven
+  against the `L1Block` predeploy's `hash()`. The predeploy publishes no state
+  root, so the caller supplies the RLP L1 block header, the verifier requires
+  `keccak256(header)` to equal the committed block hash, and reads the state root
+  from the header. The header is untrusted calldata; the hash binding is the
+  entire basis for trusting the root. With the caller-supplied EIP-1186 proof
+  there is no bridge, oracle, messaging layer, or Loom-operated service in the
+  trust path. Under that design the OP Stack sequencer is a liveness dependency
+  for L1-attribute currency, not a safety dependency: a withheld or stale
+  `L1Block` hash can only delay keystore sync, and
   `KeystoreConfig.version` monotonicity plus the `KeystoreSyncRecoveryModule`
   cancellation window prevent a stale root from validating a config the user did
   not author. Until the verifier is audited and rehearsed per target chain, no

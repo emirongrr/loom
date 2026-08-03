@@ -1,6 +1,7 @@
 import type { Address, Hex } from "@loom/core";
-import { createPublicClient, http, type PublicClient } from "viem";
+import type { PublicClient } from "viem";
 import type { NetworkConfig } from "../../config/network";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 
 // A scheduled operation is stored under a hash of its contents. Candidate ids
 // therefore come from the account's own logs, while current liveness and timing
@@ -45,7 +46,7 @@ export interface ScheduledOperation {
 
 export interface ScheduledOperationsResult {
   readonly operations: readonly ScheduledOperation[];
-  /** True when discovery could not run; "none found" would be a false claim. */
+  /** True when discovery could not complete; "none found" would be a false claim. */
   readonly discoveryUnavailable: boolean;
   readonly chainTimestamp: bigint;
   readonly chainBlockNumber?: bigint;
@@ -60,31 +61,39 @@ export interface ScheduledOperationsResult {
 export async function readScheduledOperations(input: {
   config: NetworkConfig;
   account: Address;
+  publicClients: PublicClientRegistry;
 }): Promise<ScheduledOperationsResult> {
-  const client = createPublicClient({ transport: http(input.config.rpcUrl) });
+  const client = input.publicClients.forEndpoint(input.config.rpcUrl);
   const block = await client.getBlock().catch(() => null);
   if (block?.number === undefined || block.number === null) {
     return { operations: Object.freeze([]), discoveryUnavailable: true, chainTimestamp: 0n };
   }
 
-  const evidence = await readScheduleEvidence(client, input.config, input.account, block.number).catch(() => null);
-  if (evidence === null) {
+  const evidenceResult = await readScheduleEvidence(client, input.config, input.account, block.number).catch(() => null);
+  if (evidenceResult === null) {
     return { operations: Object.freeze([]), discoveryUnavailable: true, chainTimestamp: block.timestamp, chainBlockNumber: block.number };
   }
 
   const candidates = new Map<Hex, ScheduleEvidence[]>();
-  for (const item of evidence) candidates.set(item.operationId, [...(candidates.get(item.operationId) ?? []), item]);
+  for (const item of evidenceResult.evidence) candidates.set(item.operationId, [...(candidates.get(item.operationId) ?? []), item]);
 
   const operations: ScheduledOperation[] = [];
+  let complete = evidenceResult.complete;
   for (const [operationId, candidatesForId] of candidates) {
-    const readyAt = await client.readContract({
-      address: input.account,
-      abi: SCHEDULED_OPERATIONS_ABI,
-      functionName: "scheduledOperations",
-      args: [operationId],
-      blockNumber: block.number
-    }).catch(() => 0n);
-    const value = BigInt(readyAt as bigint | number);
+    let readyAt: bigint;
+    try {
+      readyAt = BigInt(await client.readContract({
+        address: input.account,
+        abi: SCHEDULED_OPERATIONS_ABI,
+        functionName: "scheduledOperations",
+        args: [operationId],
+        blockNumber: block.number
+      }));
+    } catch {
+      complete = false;
+      continue;
+    }
+    const value = readyAt;
     if (value === 0n) continue;
 
     const matching = candidatesForId
@@ -106,7 +115,7 @@ export async function readScheduledOperations(input: {
 
   return {
     operations: Object.freeze(operations.sort((a, b) => (a.readyAt < b.readyAt ? -1 : a.readyAt > b.readyAt ? 1 : 0))),
-    discoveryUnavailable: false,
+    discoveryUnavailable: !complete,
     chainTimestamp: block.timestamp,
     chainBlockNumber: block.number
   };
@@ -117,10 +126,10 @@ async function readScheduleEvidence(
   config: NetworkConfig,
   account: Address,
   toBlock: bigint
-): Promise<readonly ScheduleEvidence[]> {
+): Promise<{ readonly evidence: readonly ScheduleEvidence[]; readonly complete: boolean }> {
   try {
     const logs = await client.getLogs({ address: account, event: OPERATION_SCHEDULED_EVENT, fromBlock: 0n, toBlock, strict: true });
-    return logs.flatMap(log => {
+    return { evidence: logs.flatMap(log => {
       if (!log.args.operationId || log.args.readyAt === undefined || !log.transactionHash || log.blockNumber === null) return [];
       return [{
         operationId: log.args.operationId,
@@ -129,9 +138,12 @@ async function readScheduleEvidence(
         blockNumber: log.blockNumber,
         logIndex: log.logIndex ?? 0
       }];
-    });
+    }), complete: true };
   } catch {
-    return readReceiptEvidence(client, config, account);
+    // Explorer APIs are bounded discovery hints, not exhaustive chain state.
+    // Receipts still prove every returned item, but absence is not proof that
+    // no other scheduled operation exists.
+    return { evidence: await readReceiptEvidence(client, config, account), complete: false };
   }
 }
 

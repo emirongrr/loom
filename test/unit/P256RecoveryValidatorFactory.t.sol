@@ -3,6 +3,7 @@ pragma solidity 0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {P256RecoveryValidatorFactory} from "../../src/validators/P256RecoveryValidatorFactory.sol";
+import {P256RecoveryValidator} from "../../src/validators/P256RecoveryValidator.sol";
 import {P256Validator} from "../../src/validators/P256Validator.sol";
 import {OZP256Verifier} from "../mocks/OZP256Verifier.sol";
 
@@ -20,7 +21,24 @@ contract P256RecoveryValidatorFactoryTest is Test {
         require(deployed == predicted, "unexpected recovery validator address");
         require(deployed.code.length != 0, "recovery validator has no code");
         require(P256Validator(deployed).fallbackVerifier() == address(verifier), "fallback verifier changed");
+        require(P256RecoveryValidator(deployed).recoveryAccount() == ACCOUNT, "recovery account not reserved");
+        require(
+            P256RecoveryValidator(deployed).recoveryInitDataHash() == INIT_DATA_HASH,
+            "recovery initializer not reserved"
+        );
         require(factory.deploy(ACCOUNT, 7, INIT_DATA_HASH) == deployed, "repeat deployment was not idempotent");
+    }
+
+    function testOnlyFactoryCanReserveTheRecoveryIntent() public {
+        P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
+        P256RecoveryValidator validator = P256RecoveryValidator(factory.deploy(ACCOUNT, 7, INIT_DATA_HASH));
+
+        (bool reservedAgain,) = address(validator)
+            .call(abi.encodeCall(P256RecoveryValidator.reserveRecoveryIntent, (ACCOUNT, INIT_DATA_HASH)));
+
+        require(!reservedAgain, "external caller changed the recovery reservation");
+        require(validator.recoveryAccount() == ACCOUNT, "failed call changed recovery account");
+        require(validator.recoveryInitDataHash() == INIT_DATA_HASH, "failed call changed initializer hash");
     }
 
     function testAddressBindsAccountNonceAndInitializer() public {
@@ -53,15 +71,12 @@ contract P256RecoveryValidatorFactoryTest is Test {
 
     function testRejectsUnboundDeploymentInputsAndInvalidFallback() public {
         P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
-        (bool zeroAccount,) = address(factory).call(
-            abi.encodeCall(P256RecoveryValidatorFactory.deploy, (address(0), 0, INIT_DATA_HASH))
-        );
-        (bool zeroInitializer,) = address(factory).call(
-            abi.encodeCall(P256RecoveryValidatorFactory.deploy, (ACCOUNT, 0, bytes32(0)))
-        );
-        (bool invalidFallback,) = address(this).call(
-            abi.encodeWithSelector(this.deployFactory.selector, address(0xDEAD))
-        );
+        (bool zeroAccount,) =
+            address(factory).call(abi.encodeCall(P256RecoveryValidatorFactory.deploy, (address(0), 0, INIT_DATA_HASH)));
+        (bool zeroInitializer,) =
+            address(factory).call(abi.encodeCall(P256RecoveryValidatorFactory.deploy, (ACCOUNT, 0, bytes32(0))));
+        (bool invalidFallback,) =
+            address(this).call(abi.encodeWithSelector(this.deployFactory.selector, address(0xDEAD)));
 
         require(!zeroAccount, "zero account accepted");
         require(!zeroInitializer, "zero initializer accepted");
