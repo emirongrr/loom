@@ -129,7 +129,7 @@ function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => vo
     case "activity": return <ActivityPage account={account} />;
     case "apps": return <AppsPage account={account} />;
     case "security": return <SecurityPage account={account} onGuardian={() => navigate("guardian")} />;
-    case "guardian": return <GuardianWorkspace />;
+    case "guardian": return <GuardianWorkspace account={account} />;
     case "developer": return <DeveloperSettings />;
   }
 }

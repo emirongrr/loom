@@ -26,7 +26,7 @@ export interface WalletDeployment {
     readonly runtimeCodeHash: Hex;
     readonly validatorRuntimeCodeHash: Hex;
     readonly fallbackVerifier: Address;
-    readonly fallbackVerifierRuntimeCodeHash: Hex;
+    readonly fallbackVerifierRuntimeCodeHash?: Hex;
   };
 }
 
@@ -95,13 +95,15 @@ function parseRecoveryValidatorProvisioner(value: unknown): WalletDeployment["re
   if (!bytes32(record.runtimeCodeHash)) throw new Error("deployment recovery validator provisioner code hash is invalid");
   if (!bytes32(record.validatorRuntimeCodeHash)) throw new Error("deployment recovery validator code hash is invalid");
   if (!address(record.fallbackVerifier)) throw new Error("deployment recovery validator fallback verifier is invalid");
-  if (!bytes32(record.fallbackVerifierRuntimeCodeHash)) throw new Error("deployment recovery validator fallback verifier code hash is invalid");
+  const hasFallback = String(record.fallbackVerifier).toLowerCase() !== "0x0000000000000000000000000000000000000000";
+  if (hasFallback && !bytes32(record.fallbackVerifierRuntimeCodeHash)) throw new Error("deployment recovery validator fallback verifier code hash is invalid");
+  if (!hasFallback && record.fallbackVerifierRuntimeCodeHash !== undefined) throw new Error("deployment recovery validator has no fallback verifier to hash");
   return Object.freeze({
     address: record.address as Address,
     runtimeCodeHash: record.runtimeCodeHash as Hex,
     validatorRuntimeCodeHash: record.validatorRuntimeCodeHash as Hex,
     fallbackVerifier: record.fallbackVerifier as Address,
-    fallbackVerifierRuntimeCodeHash: record.fallbackVerifierRuntimeCodeHash as Hex
+    ...(hasFallback ? { fallbackVerifierRuntimeCodeHash: record.fallbackVerifierRuntimeCodeHash as Hex } : {})
   });
 }
 
