@@ -39,21 +39,21 @@ export function buildGuardianDescriptor(input: {
 }): GuardianDescriptor {
   const trimmed = input.value.trim();
   if (!isAddress(trimmed)) {
-    throw new Error(input.kind === "ecdsa"
-      ? "Enter the guardian's Ethereum address."
-      : "Enter the guardian contract's address.");
+    throw new Error(input.kind === "erc1271"
+      ? "Enter the guardian contract's address."
+      : "Enter the guardian's Ethereum address.");
   }
   const account = getAddress(trimmed);
   return input.kind === "ecdsa"
     ? { kind: "ecdsa", address: account, verifier: input.verifier, verifierCodeHash: input.verifierCodeHash }
-    : { kind: "erc1271", account, verifier: input.verifier, verifierCodeHash: input.verifierCodeHash };
+    : { kind: input.kind, account, verifier: input.verifier, verifierCodeHash: input.verifierCodeHash };
 }
 
 /** The authority a descriptor represents, used to reject the same guardian twice. */
 export function guardianAuthority(descriptor: GuardianDescriptor): string {
   switch (descriptor.kind) {
-    case "ecdsa": return `ecdsa:${descriptor.address.toLowerCase()}`;
-    case "erc1271": return `erc1271:${descriptor.account.toLowerCase()}`;
+    case "ecdsa": return `address:${descriptor.address.toLowerCase()}`;
+    case "erc1271": return `address:${descriptor.account.toLowerCase()}`;
     default: return `p256:${descriptor.publicKey.x.toLowerCase()}:${descriptor.publicKey.y.toLowerCase()}`;
   }
 }
@@ -117,7 +117,7 @@ export function planGuardianChange(input: {
   const set = createGuardianSet({
     guardians: next.map(entry => entry.descriptor),
     threshold,
-    ...(input.randomBytes ? { randomBytes: input.randomBytes } : {})
+    randomBytes: input.randomBytes ?? (length => crypto.getRandomValues(new Uint8Array(length)))
   });
 
   const currentAuthorities = new Set(input.current.map(entry => guardianAuthority(entry.descriptor)));

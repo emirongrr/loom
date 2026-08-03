@@ -6,6 +6,7 @@ import { readAccountSafety } from "../wallet/accountClient";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import { GuardianManager } from "./GuardianManager";
 import type { AccountHandle } from "../../types";
+import { safeUserMessage } from "../../domain/errors/appError";
 
 type SafetyView =
   | { status: "loading" }
@@ -24,7 +25,7 @@ export function SecurityPage({ account, onGuardian }: { readonly account: Accoun
     setSafety({ status: "loading" });
     readAccountSafety(config, account)
       .then(state => { if (active) setSafety({ status: "loaded", state }); })
-      .catch(error => { if (active) setSafety({ status: "error", message: error instanceof Error ? error.message : "State could not be read" }); });
+      .catch(error => { if (active) setSafety({ status: "error", message: safeUserMessage(error, "State could not be read.", "confirmation") }); });
     return () => { active = false; };
   }, [config, account, reloads]);
 
@@ -44,7 +45,7 @@ export function SecurityPage({ account, onGuardian }: { readonly account: Accoun
     <GuardianManager
       account={account}
       deployment={deployment}
-      onChain={chain ? { root: chain.config.guardianRoot, threshold: chain.config.guardianThreshold, recoveryConfigured: chain.recoveryConfigured } : null}
+      onChain={chain ? { root: chain.config.guardianRoot, threshold: chain.config.guardianThreshold, recoveryConfigured: chain.recoveryConfigured, configVersion: chain.config.configVersion } : null}
       onChanged={refresh}
     />
 

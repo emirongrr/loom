@@ -80,11 +80,13 @@ function runtimeCommitments(deployment: WalletDeployment): readonly [Address, He
       deployment.recoveryValidatorProvisioner.runtimeCodeHash,
       "Recovery validator provisioner"
     ]);
-    values.push([
-      deployment.recoveryValidatorProvisioner.fallbackVerifier,
-      deployment.recoveryValidatorProvisioner.fallbackVerifierRuntimeCodeHash,
-      "Recovery validator fallback verifier"
-    ]);
+    if (deployment.recoveryValidatorProvisioner.fallbackVerifierRuntimeCodeHash) {
+      values.push([
+        deployment.recoveryValidatorProvisioner.fallbackVerifier,
+        deployment.recoveryValidatorProvisioner.fallbackVerifierRuntimeCodeHash,
+        "Recovery validator fallback verifier"
+      ]);
+    }
   }
   return values;
 }
