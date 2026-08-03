@@ -38,12 +38,13 @@ contract VaultHook is ILoomHook {
         uint48 readyAt;
         uint48 expiresAt;
         uint64 configVersion;
+        uint64 nonce;
     }
 
     uint48 public constant MAX_WITHDRAWAL_WINDOW = 30 days;
     bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant CANCEL_WITHDRAWAL_TYPEHASH =
-        keccak256("CancelVaultWithdrawal(address account,bytes32 withdrawalId,uint64 configVersion)");
+        keccak256("CancelVaultWithdrawal(address account,bytes32 withdrawalId,uint64 configVersion,uint64 nonce)");
 
     bytes4 private constant EXECUTE = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant EXECUTE_SCHEDULED = bytes4(keccak256("executeScheduled(address,uint256,bytes)"));
@@ -52,12 +53,36 @@ contract VaultHook is ILoomHook {
 
     mapping(address account => mapping(address asset => VaultPolicy)) public policies;
     mapping(address account => mapping(address asset => Spend)) public spending;
+    /// @notice Pending withdrawals, and the instance counter for each slot.
+    /// @dev `withdrawalId` identifies a call shape at a configuration version, so
+    /// the same shape scheduled again reuses this slot. Without a counter, a
+    /// guardian cancellation signature stays valid for every future occupant of
+    /// that slot: cancel once, and the revealed approvals can be replayed to kill
+    /// each re-scheduled withdrawal indefinitely without any live guardian.
+    ///
+    /// `nonce` advances whenever the slot is consumed -- cancelled or executed --
+    /// so an approval authorizes exactly the one instance it was signed for.
+    /// Consumption clears `readyAt` rather than deleting the entry, which keeps the
+    /// counter alive in the slot it belongs to and costs one warm write instead of
+    /// a second cold mapping. `readyAt == 0` remains the "not pending" test.
+    ///
+    /// The counter is per slot rather than per account so cancelling one withdrawal
+    /// does not change any other withdrawal's identity. `RecoveryManager` can use a
+    /// single per-account nonce because an account has at most one pending
+    /// recovery; an account may hold many pending withdrawals, and
+    /// `_checkExecution` recomputes the identifier at execution time, so a
+    /// per-account counter would silently make unrelated withdrawals unexecutable.
     mapping(address account => mapping(bytes32 withdrawalId => PendingWithdrawal)) public pendingWithdrawals;
 
     event VaultPolicySet(address indexed account, address indexed asset, VaultPolicy policy);
     event VaultPolicyRemoved(address indexed account, address indexed asset);
     event VaultWithdrawalScheduled(
-        address indexed account, bytes32 indexed withdrawalId, address indexed asset, uint48 readyAt, uint48 expiresAt
+        address indexed account,
+        bytes32 indexed withdrawalId,
+        address indexed asset,
+        uint48 readyAt,
+        uint48 expiresAt,
+        uint64 nonce
     );
     event VaultWithdrawalCancelled(address indexed account, bytes32 indexed withdrawalId);
     event VaultWithdrawalExecuted(address indexed account, bytes32 indexed withdrawalId);
@@ -100,10 +125,15 @@ contract VaultHook is ILoomHook {
         // forge-lint: disable-next-line(block-timestamp)
         uint48 readyAt = uint48(block.timestamp) + policy.delay;
         uint48 expiresAt = readyAt + executionWindow;
+        // The slot's counter survives consumption, so this is the next instance.
+        uint64 nonce = pendingWithdrawals[msg.sender][withdrawalId].nonce;
         pendingWithdrawals[msg.sender][withdrawalId] = PendingWithdrawal({
-            readyAt: readyAt, expiresAt: expiresAt, configVersion: ILoomAccount(msg.sender).configVersion()
+            readyAt: readyAt,
+            expiresAt: expiresAt,
+            configVersion: ILoomAccount(msg.sender).configVersion(),
+            nonce: nonce
         });
-        emit VaultWithdrawalScheduled(msg.sender, withdrawalId, asset, readyAt, expiresAt);
+        emit VaultWithdrawalScheduled(msg.sender, withdrawalId, asset, readyAt, expiresAt, nonce);
     }
 
     function cancelVaultWithdrawal(bytes32 withdrawalId) external {
@@ -117,7 +147,9 @@ contract VaultHook is ILoomHook {
     ) external {
         PendingWithdrawal memory pending = pendingWithdrawals[account][withdrawalId];
         if (pending.readyAt == 0) revert WithdrawalNotPending();
-        bytes32 digest = cancelWithdrawalDigest(account, withdrawalId, pending.configVersion);
+        // Binding the pending instance's nonce is what stops a revealed approval
+        // from being replayed against a later withdrawal that reuses this slot.
+        bytes32 digest = cancelWithdrawalDigest(account, withdrawalId, pending.configVersion, pending.nonce);
         ILoomAccount loom = ILoomAccount(account);
         if (!GuardianVerificationLib.approved(loom.guardianRoot(), loom.guardianThreshold(), digest, guardianApprovals))
         {
@@ -126,12 +158,13 @@ contract VaultHook is ILoomHook {
         _cancel(account, withdrawalId);
     }
 
-    function cancelWithdrawalDigest(address account, bytes32 withdrawalId, uint64 configVersion)
+    function cancelWithdrawalDigest(address account, bytes32 withdrawalId, uint64 configVersion, uint64 nonce)
         public
         view
         returns (bytes32)
     {
-        bytes32 structHash = keccak256(abi.encode(CANCEL_WITHDRAWAL_TYPEHASH, account, withdrawalId, configVersion));
+        bytes32 structHash =
+            keccak256(abi.encode(CANCEL_WITHDRAWAL_TYPEHASH, account, withdrawalId, configVersion, nonce));
         return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
@@ -200,7 +233,10 @@ contract VaultHook is ILoomHook {
         if (block.timestamp < pending.readyAt) revert WithdrawalNotReady();
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp > pending.expiresAt) revert WithdrawalExpired();
-        delete pendingWithdrawals[account][withdrawalId];
+        // Execution consumes the instance for the same reason cancellation does:
+        // otherwise an approval signed for the executed withdrawal would still
+        // authorize cancelling an identical one scheduled afterwards.
+        _consume(account, withdrawalId, pending.nonce);
         emit VaultWithdrawalExecuted(account, withdrawalId);
     }
 
@@ -228,7 +264,7 @@ contract VaultHook is ILoomHook {
         if (execution.value != 0) {
             if (
                 policies[account][execution.target].enabled
-                    && ERC20CallLib.isTokenSelector(ERC20CallLib.selector(execution.callData))
+                    && ERC20CallLib.isMixedValueTokenCall(execution.callData, execution.value)
             ) {
                 // Attaching ETH to a token-shaped call on a protected token must
                 // not reclassify the spend as plain ETH: some tokens accept value
@@ -257,9 +293,18 @@ contract VaultHook is ILoomHook {
     }
 
     function _cancel(address account, bytes32 withdrawalId) internal {
-        if (pendingWithdrawals[account][withdrawalId].readyAt == 0) revert WithdrawalNotPending();
-        delete pendingWithdrawals[account][withdrawalId];
+        PendingWithdrawal memory pending = pendingWithdrawals[account][withdrawalId];
+        if (pending.readyAt == 0) revert WithdrawalNotPending();
+        _consume(account, withdrawalId, pending.nonce);
         emit VaultWithdrawalCancelled(account, withdrawalId);
+    }
+
+    /// @dev Clears the pending withdrawal and advances the slot's instance
+    /// counter, so any approval signed for it -- including the one a guardian
+    /// cancellation just revealed on chain -- cannot authorize the next occupant.
+    function _consume(address account, bytes32 withdrawalId, uint64 nonce) internal {
+        pendingWithdrawals[account][withdrawalId] =
+            PendingWithdrawal({readyAt: 0, expiresAt: 0, configVersion: 0, nonce: nonce + 1});
     }
 
     function _domainSeparator() internal view returns (bytes32) {

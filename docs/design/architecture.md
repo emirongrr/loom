@@ -37,8 +37,10 @@ The same account runtime can also be used as an EIP-7702 delegation target for
 EOAs that need to preserve an existing address. A delegated EOA must perform a
 self-call to `initializeDelegatedAccount(...)` with an explicitly selected
 EntryPoint before it has Loom authority. Constructor-deployed accounts cannot
-use this initializer because their `configVersion` is already non-zero. EIP-7702
-behavior is documented in `docs/design/eip-7702.md`.
+use this initializer because their `configVersion` is already non-zero, and the
+proxy bootstrap initializer `initialize` cannot reach a delegated EOA because it
+is restricted to the proxy-construction context. EIP-7702 behavior is documented
+in `docs/design/eip-7702.md`.
 
 The account also exposes a delayed sovereign migration state machine. A user
 can schedule an exact atomic batch that moves assets or authority toward a
@@ -75,7 +77,11 @@ will invoke the validator only when it is installed.
   per-call and per-UserOperation amount limits, time range, call count, use
   count, and one explicitly selected paymaster. Every item in an atomic batch
   must satisfy the same permission. Grants are timelocked and revocation is
-  immediate.
+  immediate. The account itself and its installed modules are not valid
+  permission targets, because the arguments of a permitted selector there would
+  be account authority rather than a spending capability. Calldata arguments are
+  otherwise unconstrained; `docs/design/permissions.md` states what that does
+  and does not bound.
 - `ECDSAValidator` exists for testing, migration, and hardware-wallet
   integrations. It is not the preferred primary validator.
 
@@ -117,10 +123,22 @@ three-day delay and seven-day execution window, supports account or guardian
 cancellation, and atomically replaces the complete committed validator set
 and guardian root through the account's narrow recovery entry point. Guardian
 leaves bind salted key commitments to immutable verifier code hashes. The
-manager has no arbitrary execution authority. Loom includes guardian verifiers
-for ECDSA address commitments, WebAuthn P-256 passkeys, and ERC-1271 contract
-wallets such as multisigs.
+manager has no arbitrary execution authority. Wallets classify guardian
+addresses during setup and pin the separate ECDSA, ERC-1271, or WebAuthn P-256
+verifier and its runtime code hash into each guardian leaf; contracts never
+infer or change a guardian type at approval time.
+Threshold verification rejects repeated key commitments even when different
+salts or verifier paths are used.
 Recovery behavior is documented in `docs/design/recovery.md`.
+
+`P256RecoveryValidatorFactory` permissionlessly provisions a fresh P-256
+validator for recovery. Its CREATE2 salt binds the account, current recovery
+nonce, and initialization-data hash. The factory is immutable and has no owner;
+deploying a child grants no authority because the validator is initialized only
+during the delayed, guardian-approved recovery execution. Deployment manifests
+pin both factory and child runtime code hashes plus the immutable fallback
+verifier, so wallets can derive and independently verify the exact validator
+before requesting approvals.
 
 ## Graded access
 

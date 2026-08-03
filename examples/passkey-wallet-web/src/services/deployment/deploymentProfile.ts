@@ -26,6 +26,7 @@ export interface WalletDeployment {
     readonly runtimeCodeHash: Hex;
     readonly validatorRuntimeCodeHash: Hex;
     readonly fallbackVerifier: Address;
+    readonly fallbackVerifierRuntimeCodeHash?: Hex;
   };
 }
 
@@ -47,7 +48,12 @@ export function validateDeployment(value: unknown): WalletDeployment {
   }
   if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("deployment proxy creation code is invalid");
   if (record.recoveryModule !== undefined && !address(record.recoveryModule)) throw new Error("deployment recovery module is invalid");
+  const runtimeCodeHashes = parseRuntimeCodeHashes(record.runtimeCodeHashes);
   const verifiers = parseGuardianVerifiers(record.guardianVerifiers);
+  requirePair("recoveryModule", record.recoveryModule, runtimeCodeHashes.recoveryModule);
+  requirePair("ecdsa guardian verifier", verifiers?.ecdsa, runtimeCodeHashes.ecdsaGuardianVerifier);
+  requirePair("p256 guardian verifier", verifiers?.p256, runtimeCodeHashes.p256GuardianVerifier);
+  requirePair("erc1271 guardian verifier", verifiers?.erc1271, runtimeCodeHashes.erc1271GuardianVerifier);
   const recoveryValidatorProvisioner = parseRecoveryValidatorProvisioner(record.recoveryValidatorProvisioner);
   return Object.freeze({
     chainId: Number(record.chainId),
@@ -57,7 +63,7 @@ export function validateDeployment(value: unknown): WalletDeployment {
     validator: record.validator as Address,
     policyHook: record.policyHook as Address,
     proxyCreationCode: record.proxyCreationCode as Hex,
-    runtimeCodeHashes: parseRuntimeCodeHashes(record.runtimeCodeHashes),
+    runtimeCodeHashes,
     ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address }),
     ...(verifiers ? { guardianVerifiers: verifiers } : {}),
     ...(recoveryValidatorProvisioner ? { recoveryValidatorProvisioner } : {})
@@ -89,11 +95,15 @@ function parseRecoveryValidatorProvisioner(value: unknown): WalletDeployment["re
   if (!bytes32(record.runtimeCodeHash)) throw new Error("deployment recovery validator provisioner code hash is invalid");
   if (!bytes32(record.validatorRuntimeCodeHash)) throw new Error("deployment recovery validator code hash is invalid");
   if (!address(record.fallbackVerifier)) throw new Error("deployment recovery validator fallback verifier is invalid");
+  const hasFallback = String(record.fallbackVerifier).toLowerCase() !== "0x0000000000000000000000000000000000000000";
+  if (hasFallback && !bytes32(record.fallbackVerifierRuntimeCodeHash)) throw new Error("deployment recovery validator fallback verifier code hash is invalid");
+  if (!hasFallback && record.fallbackVerifierRuntimeCodeHash !== undefined) throw new Error("deployment recovery validator has no fallback verifier to hash");
   return Object.freeze({
     address: record.address as Address,
     runtimeCodeHash: record.runtimeCodeHash as Hex,
     validatorRuntimeCodeHash: record.validatorRuntimeCodeHash as Hex,
-    fallbackVerifier: record.fallbackVerifier as Address
+    fallbackVerifier: record.fallbackVerifier as Address,
+    ...(hasFallback ? { fallbackVerifierRuntimeCodeHash: record.fallbackVerifierRuntimeCodeHash as Hex } : {})
   });
 }
 
@@ -113,3 +123,7 @@ function parseGuardianVerifiers(value: unknown): WalletDeployment["guardianVerif
 
 function bytes32(value: unknown): boolean { return /^0x[0-9a-fA-F]{64}$/.test(String(value)); }
 function address(value: unknown): boolean { return /^0x[0-9a-fA-F]{40}$/.test(String(value)); }
+function requirePair(label: string, addressValue: unknown, hashValue: unknown): void {
+  if (addressValue !== undefined && hashValue === undefined) throw new Error(`deployment ${label} runtime code hash is required`);
+  if (addressValue === undefined && hashValue !== undefined) throw new Error(`deployment ${label} address is required`);
+}

@@ -28,7 +28,7 @@ function reader(overrides: Partial<LoomGuardianChainReader> = {}): LoomGuardianC
   return {
     isRegisteredAccount: async () => true,
     accountCode: async () => "0x01",
-    supportsERC1271: async () => "supported",
+    supportsERC1271: async () => "compatible",
     validatorCount: async () => 1n,
     validatorAt: async () => VALIDATOR,
     validatorCodeHash: async () => CODE_HASH,
@@ -52,8 +52,12 @@ test("guardian addresses are classified from chain state without a user-selected
     { kind: "ecdsa", address: ACCOUNT }
   );
   assert.deepEqual(
-    await detectGuardianAddress(ACCOUNT, reader({ isRegisteredAccount: async () => false, accountCode: async () => "0x6000", supportsERC1271: async () => "supported" })),
-    { kind: "erc1271", address: ACCOUNT }
+    await detectGuardianAddress(ACCOUNT, reader({ isRegisteredAccount: async () => false, accountCode: async () => "0x6000", supportsERC1271: async () => "compatible" })),
+    {
+      kind: "erc1271",
+      address: ACCOUNT,
+      warning: "Warning: this contract returned an ERC-1271-shaped rejection, but an invalid-signature probe cannot prove that valid signatures will work. Confirm ERC-1271 support before relying on it for recovery."
+    }
   );
 });
 

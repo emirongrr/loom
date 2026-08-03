@@ -53,6 +53,36 @@ test("updating one saved wallet preserves every other wallet", async () => {
   ]);
 });
 
+test("removing one saved wallet preserves every other wallet and can be explicitly restored", async () => {
+  const store = createBrowserAccountStore(memoryStorage());
+  await store.save(handle(1));
+  await store.save(handle(2));
+
+  assert.equal(await store.remove("wallet-1"), true);
+  assert.equal(await store.isRemoved("wallet-1"), true);
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-2"]);
+
+  await store.save(handle(1));
+  assert.equal(await store.isRemoved("wallet-1"), false);
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-1", "wallet-2"]);
+});
+
+test("removing an unknown wallet does not create a hidden account binding", async () => {
+  const store = createBrowserAccountStore(memoryStorage());
+  assert.equal(await store.remove("wallet-9"), false);
+  assert.equal(await store.isRemoved("wallet-9"), false);
+});
+
+test("a corrupt removed-wallet record cannot hide healthy wallets", async () => {
+  const storage = memoryStorage();
+  const store = createBrowserAccountStore(storage);
+  await store.save(handle(1));
+  storage.setItem("loom.wallet.accounts.removed.v1", "not-json");
+
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-1"]);
+  assert.equal(await store.isRemoved("wallet-1"), false);
+});
+
 test("successful recovery links the new passkey to the existing saved wallet identity", async () => {
   const store = createBrowserAccountStore(memoryStorage());
   const existing = { ...handle(1), id: "legacy-wallet-record", label: "My daily wallet" };

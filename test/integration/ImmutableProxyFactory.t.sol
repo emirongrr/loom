@@ -8,6 +8,7 @@ import {LoomAccountProxy} from "../../src/LoomAccountProxy.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
+import {InitializerReentrantModule} from "../mocks/InitializerReentrantModule.sol";
 import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
@@ -63,7 +64,7 @@ contract ImmutableProxyFactoryTest {
         LoomAccount account = _createAccount("proxy-reinit");
         LoomAccount.ModuleInit[] memory modules = _modules(validator);
 
-        (bool reinitialized,) = address(account)
+        (bool reinitialized, bytes memory revertData) = address(account)
             .call(
                 abi.encodeCall(
                     LoomAccount.initialize,
@@ -71,6 +72,16 @@ contract ImmutableProxyFactoryTest {
                 )
             );
         require(!reinitialized, "proxy reinitialized");
+        // A deployed proxy has code, so the bootstrap initializer is rejected by the
+        // initialization-context guard before the one-shot check is reached. Assert
+        // the exact error so this cannot pass for an unrelated reason.
+        require(
+            keccak256(revertData)
+                == keccak256(abi.encodeWithSelector(LoomAccount.InvalidInitializationContext.selector)),
+            "wrong reinitialization rejection"
+        );
+        require(account.configHash() == keccak256("config"), "rejected reinitialization changed config hash");
+        require(account.configVersion() == 1, "rejected reinitialization changed config version");
 
         (bool upgraded,) = address(account).call(abi.encodeWithSignature("upgradeTo(address)", address(0xBEEF)));
         require(!upgraded, "upgrade selector accepted");
@@ -81,6 +92,39 @@ contract ImmutableProxyFactoryTest {
 
         (bool admin,) = address(account).call(abi.encodeWithSignature("admin()"));
         require(!admin, "admin selector accepted");
+    }
+
+    /// @notice The constructor window the initialization-context guard allows is
+    /// unreachable by an external call.
+    /// @dev `initialize` permits exactly one context: an account whose code length is
+    /// still zero, which means a constructor. `_initialize` installs modules by
+    /// calling into them, so a malicious module gets to run inside that window and is
+    /// the strongest position an attacker can occupy. It gains nothing: an account
+    /// under construction has no code, so the call dispatches no runtime, returns
+    /// success with empty returndata, and changes nothing. Only the proxy
+    /// constructor's own delegatecall executes the runtime in that context, and it is
+    /// atomic with deployment. This is why the guard needs no companion check on the
+    /// runtime's own address.
+    function testExternalCallCannotReachTheConstructorInitializationWindow() public {
+        InitializerReentrantModule reentrant = new InitializerReentrantModule();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR, address(reentrant), abi.encodeCall(InitializerReentrantModule.initialize, ())
+        );
+
+        LoomAccount account =
+            new LoomAccount(address(entryPoint), keccak256("guardians"), 1, keccak256("reentry-config"), modules);
+
+        require(reentrant.reentryAttempted(), "reentrancy was never attempted");
+        // The account had no code while the module ran, which is exactly the state the
+        // guard allows -- and exactly the state that makes the call a no-op.
+        require(reentrant.accountCodeSizeDuringInstall() == 0, "account had code during construction");
+        require(reentrant.reentryCallSucceeded(), "call to a codeless address should report success");
+        require(reentrant.reentryReturnData().length == 0, "no runtime should have executed");
+        require(account.configVersion() == 1, "reentrancy changed config version");
+        require(account.configHash() == keccak256("reentry-config"), "reentrancy changed config hash");
+        require(account.guardianRoot() == keccak256("guardians"), "reentrancy changed guardian root");
+        require(account.validatorCount() == 1, "reentrancy changed validator count");
     }
 
     function testProxyBubblesExecutionRevertsAndStoresStateInProxy() public {

@@ -1,8 +1,10 @@
 import type { Hex } from "@loom/core";
+import { P256RecoveryValidatorFactoryAbi } from "@loom/core/abi";
+import { decodeFunctionData } from "viem";
 import type { NetworkConfig } from "../../config/network";
 import type { AccountHandle } from "../../types";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
-import type { submitAccountCalls, SendResult } from "../wallet/accountClient";
+import type { SendResult } from "../wallet/accountClient";
 import type { PreparedRecoveryPasskey } from "./recoveryPasskey";
 
 type RecoveryDeploymentCall = NonNullable<PreparedRecoveryPasskey["deploy"]>;
@@ -36,8 +38,14 @@ export async function publishRecoveryValidatorWithLoomWallet(input: {
   readonly recoveryAccount: string;
   readonly deployment: WalletDeployment;
   readonly deploy: RecoveryDeploymentCall;
+  readonly initDataHash: Hex;
   readonly readCode: (address: AccountHandle["account"]) => Promise<Hex | undefined>;
-  readonly submit: typeof submitAccountCalls;
+  readonly submit: (input: {
+    readonly config: NetworkConfig;
+    readonly account: AccountHandle;
+    readonly deployment: WalletDeployment;
+    readonly calls: readonly { readonly target: `0x${string}`; readonly data: Hex; readonly value: bigint }[];
+  }) => Promise<SendResult>;
 }): Promise<SendResult> {
   if (input.payer.chainId !== input.deployment.chainId) {
     throw new Error("The selected Loom wallet is on a different chain.");
@@ -48,6 +56,18 @@ export async function publishRecoveryValidatorWithLoomWallet(input: {
   if (!input.deploy.permissionless || input.deploy.value !== 0n) {
     throw new Error("Recovery validator publication must be the reviewed permissionless zero-value call.");
   }
+  const provisioner = input.deployment.recoveryValidatorProvisioner;
+  if (!provisioner || input.deploy.to.toLowerCase() !== provisioner.address.toLowerCase()) {
+    throw new Error("Recovery validator publication does not target the trusted deployment factory.");
+  }
+  let decoded: { readonly functionName: string; readonly args: readonly unknown[] };
+  try { decoded = decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: input.deploy.data }); }
+  catch { throw new Error("Recovery validator publication calldata is invalid."); }
+  if (
+    decoded.functionName !== "deploy"
+    || String(decoded.args[0]).toLowerCase() !== input.recoveryAccount.toLowerCase()
+    || String(decoded.args[2]).toLowerCase() !== input.initDataHash.toLowerCase()
+  ) throw new Error("Recovery validator publication does not match the reviewed account and passkey.");
   const code = await input.readCode(input.payer.account);
   if (!code || code === "0x") {
     throw new Error("The selected Loom wallet is not deployed on chain. Activate it before using it to pay gas.");

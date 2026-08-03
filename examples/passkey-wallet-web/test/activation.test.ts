@@ -17,7 +17,8 @@ const DEPLOYMENT = {
   runtimeCodeHashes: {
     entryPoint: `0x${"01".repeat(32)}`, factory: `0x${"02".repeat(32)}`,
     implementation: `0x${"03".repeat(32)}`, validator: `0x${"04".repeat(32)}`,
-    policyHook: `0x${"05".repeat(32)}`
+    policyHook: `0x${"05".repeat(32)}`,
+    recoveryModule: `0x${"06".repeat(32)}`
   },
   proxyCreationCode: "0x60a060405261027a80380380610014816101",
   recoveryModule: "0x245d394e4ce2f63679cd776d0af408921452caf0"

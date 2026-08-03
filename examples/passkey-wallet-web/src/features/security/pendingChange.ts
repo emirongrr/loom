@@ -8,6 +8,8 @@ import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { NetworkConfig } from "../../config/network";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
+import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 
 export interface PendingChangeStatus {
   /** False when the chain holds no such scheduled operation any more. */
@@ -42,6 +44,7 @@ export async function readPendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   pending: RosterPending;
+  publicClients: PublicClientRegistry;
 }): Promise<PendingChangeStatus> {
   const { config, account, deployment, pending } = input;
   if (!deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
@@ -52,12 +55,13 @@ export async function readPendingGuardianChange(input: {
     config,
     chainId: account.chainId,
     account: account.account,
-    recoveryManager: deployment.recoveryModule
+    recoveryManager: deployment.recoveryModule,
+    publicClients: input.publicClients
   });
   const prepared = await client.prepareGuardianConfiguration({ set, delaySeconds: MIN_DELAY_SECONDS });
   const [live, discovered] = await Promise.all([
     client.readPendingGuardianConfiguration(prepared),
-    readScheduledOperations({ config, account: account.account })
+    readScheduledOperations({ config, account: account.account, publicClients: input.publicClients })
   ]);
   const readyAt = BigInt(live.readyAt);
   const operation = discovered.operations.find(candidate =>
@@ -88,7 +92,9 @@ export async function executePendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   prepared: PreparedChange;
-  pendingOperations?: PendingOperationStore;
+  runtime: RuntimeVerifier;
+  pendingOperations: PendingOperationStore;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const call = input.prepared.executeCall;
   return submitAccountCalls({
@@ -96,7 +102,9 @@ export async function executePendingGuardianChange(input: {
     account: input.account,
     deployment: input.deployment,
     calls: [{ target: call.to as Address, value: 0n, data: call.data as Hex }],
-    ...(input.pendingOperations ? { pendingOperations: input.pendingOperations } : {})
+    runtime: input.runtime,
+    pendingOperations: input.pendingOperations,
+    publicClients: input.publicClients
   });
 }
 
@@ -106,7 +114,9 @@ export async function cancelPendingGuardianChange(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   prepared: PreparedChange;
-  pendingOperations?: PendingOperationStore;
+  runtime: RuntimeVerifier;
+  pendingOperations: PendingOperationStore;
+  publicClients: PublicClientRegistry;
 }): Promise<SendResult> {
   const call = input.prepared.cancelCall;
   return submitAccountCalls({
@@ -114,6 +124,8 @@ export async function cancelPendingGuardianChange(input: {
     account: input.account,
     deployment: input.deployment,
     calls: [{ target: call.target as Address, value: 0n, data: call.data as Hex }],
-    ...(input.pendingOperations ? { pendingOperations: input.pendingOperations } : {})
+    runtime: input.runtime,
+    pendingOperations: input.pendingOperations,
+    publicClients: input.publicClients
   });
 }

@@ -108,10 +108,10 @@ export function createRecoverySession(request: RecoveryRequestV1, now = Date.now
 }
 
 export type RecoverySessionEvent =
-  | { readonly type: "response-added"; readonly response: RecoveryResponseV1; readonly approvalsRequired: number }
+  | { readonly type: "response-added"; readonly response: RecoveryResponseV1 }
   | { readonly type: "proposal-confirmed"; readonly transactionHash: `0x${string}`; readonly readyAt: bigint; readonly expiresAt: bigint }
   | { readonly type: "chain-ready" }
-  | { readonly type: "completed"; readonly transactionHash?: `0x${string}` }
+  | { readonly type: "completed"; readonly transactionHash: `0x${string}` }
   | { readonly type: "cancelled" }
   | { readonly type: "expired" }
   | { readonly type: "blocked"; readonly blocker: RecoverySession["blocker"] };
@@ -122,11 +122,10 @@ export function transitionRecoverySession(session: RecoverySession, event: Recov
   switch (event.type) {
     case "response-added": {
       if (current.stage !== "request-created" && current.stage !== "collecting") invalidTransition(current.stage, event.type);
-      if (!Number.isInteger(event.approvalsRequired) || event.approvalsRequired < 1 || event.approvalsRequired > 32) throw new Error("approval threshold is invalid");
       const response = parseRecoveryResponse(event.response, current.request, { now: Math.floor(now / 1000) });
       if (current.responses.some(item => item.guardianLeaf === response.guardianLeaf)) throw new Error("guardian response is duplicated");
       const responses = Object.freeze([...current.responses, response]);
-      return update({ responses, stage: responses.length >= event.approvalsRequired ? "ready-to-propose" : "collecting" });
+      return update({ responses, stage: responses.length >= current.request.guardianThreshold ? "ready-to-propose" : "collecting" });
     }
     case "proposal-confirmed":
       if (current.stage !== "ready-to-propose") invalidTransition(current.stage, event.type);
@@ -137,7 +136,7 @@ export function transitionRecoverySession(session: RecoverySession, event: Recov
       return update({ stage: "ready-to-execute" });
     case "completed":
       if (current.stage !== "ready-to-execute") invalidTransition(current.stage, event.type);
-      return update({ stage: "completed", ...(event.transactionHash ? { executionTransactionHash: event.transactionHash } : {}) });
+      return update({ stage: "completed", executionTransactionHash: event.transactionHash });
     case "cancelled":
       if (["completed", "cancelled", "expired"].includes(current.stage)) invalidTransition(current.stage, event.type);
       return update({ stage: "cancelled" });
@@ -170,10 +169,20 @@ export function parseRecoverySession(value: unknown): RecoverySession {
   if (record.readyAt !== undefined && !uintString(record.readyAt)) throw new Error("recovery ready time is invalid");
   if (record.expiresAt !== undefined && !uintString(record.expiresAt)) throw new Error("recovery expiry is invalid");
   if (record.blocker !== undefined && record.blocker !== "UNSUPPORTED_RECOVERED_VALIDATOR_PATH" && record.blocker !== "CHAIN_STATE_CHANGED") throw new Error("recovery blocker is invalid");
+  const stage = record.stage as RecoverySessionStage;
+  const responseCount = responses.length;
+  if (stage === "request-created" && responseCount !== 0) throw new Error("recovery session request stage cannot contain responses");
+  if (stage === "collecting" && (responseCount < 1 || responseCount >= request.guardianThreshold)) throw new Error("recovery session collecting quorum is invalid");
+  if (stage === "ready-to-propose" && responseCount < request.guardianThreshold) throw new Error("recovery session approval quorum is invalid");
+  const hasProposalWindow = record.transactionHash !== undefined || record.readyAt !== undefined || record.expiresAt !== undefined;
+  if (hasProposalWindow && (record.transactionHash === undefined || record.readyAt === undefined || record.expiresAt === undefined)) throw new Error("recovery proposal evidence is incomplete");
+  if (record.readyAt !== undefined && record.expiresAt !== undefined && BigInt(record.expiresAt as string) <= BigInt(record.readyAt as string)) throw new Error("recovery proposal window is invalid");
+  if (["delay-active", "ready-to-execute", "completed"].includes(stage) && !hasProposalWindow) throw new Error("recovery session has no proposal evidence");
+  if (stage === "completed" && record.executionTransactionHash === undefined) throw new Error("completed recovery has no execution transaction");
   return Object.freeze({
     version: 1,
     id: request.requestId,
-    stage: record.stage as RecoverySessionStage,
+    stage,
     request,
     responses,
     createdAt,

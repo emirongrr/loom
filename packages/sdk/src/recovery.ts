@@ -641,10 +641,25 @@ export function createGuardianRecoveryClient(options: {
       return submit(account, prepared.scheduleCall.data, prepared.review, false);
     },
     async readPendingGuardianConfiguration(prepared: Awaited<ReturnType<typeof prepareGuardianConfiguration>>) {
-      const readyAt = BigInt(await accountRead("scheduledOperations", [prepared.operationId]) as bigint | number);
+      // `scheduledOperations` returns (readyAt, expiresAt, nonce): the slot
+      // carries the execution window and an instance counter, not just a
+      // readiness timestamp. `readyAt == 0` is still the "not scheduled" test.
+      const [rawReadyAt, rawExpiresAt] = await accountRead("scheduledOperations", [prepared.operationId]) as
+        readonly (bigint | number)[];
+      const readyAt = BigInt(rawReadyAt ?? 0);
+      const expiresAt = BigInt(rawExpiresAt ?? 0);
       const timestamp = state.getBlockTimestamp ? await state.getBlockTimestamp() : undefined;
       const now = timestamp === undefined ? undefined : BigInt(timestamp);
-      return deepFreeze({ pending: readyAt > 0n, operationId: prepared.operationId, readyAt, ready: now === undefined ? undefined : readyAt > 0n && now >= readyAt, chainTimestamp: now });
+      const pending = readyAt > 0n;
+      return deepFreeze({
+        pending,
+        operationId: prepared.operationId,
+        readyAt,
+        expiresAt,
+        ready: now === undefined ? undefined : pending && now >= readyAt && now <= expiresAt,
+        expired: now === undefined ? undefined : pending && now > expiresAt,
+        chainTimestamp: now
+      });
     },
     async cancelGuardianConfiguration(prepared: Awaited<ReturnType<typeof prepareGuardianConfiguration>>) {
       return submit(account, prepared.cancelCall.data, prepared.review, false);

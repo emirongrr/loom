@@ -44,6 +44,11 @@ if (subcommand === "install") {
     "LoomAccountExecutionFormal",
     "LoomAccountRecoveryFormal",
     "LoomAccountMigrationFormal",
+    // Both of these describe themselves as symbolic property tests in
+    // test/formal/README.md but were absent from this list, so they only ever
+    // ran as concrete Foundry tests.
+    "LoomVaultHookFormal",
+    "LoomKeystoreSyncFormal",
   ];
   for (const contract of contracts) {
     run(`Halmos ${contract}`, bin("halmos"), ["--contract", contract]);

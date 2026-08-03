@@ -1,8 +1,9 @@
 import type { Address, Hex } from "@loom/core";
 import { LoomAccountAbi, LoomAccountFactoryAbi, P256GuardianVerifierAbi, P256ValidatorAbi } from "@loom/core/abi";
 import type { GuardianDescriptor } from "@loom/sdk/recovery";
-import { createPublicClient, decodeFunctionResult, encodeFunctionData, getAddress, http, isAddress, keccak256, stringToHex } from "viem";
+import { decodeFunctionResult, encodeFunctionData, getAddress, isAddress, keccak256, stringToHex } from "viem";
 import type { NetworkConfig } from "../../config/network";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 
 const ZERO_BYTES32 = `0x${"00".repeat(32)}` as Hex;
@@ -22,7 +23,7 @@ const ERC1271_PROBE_DIGEST = keccak256(stringToHex("loom.guardian.erc1271.interf
 export interface LoomGuardianChainReader {
   isRegisteredAccount(account: Address): Promise<boolean>;
   accountCode(account: Address): Promise<Hex | undefined>;
-  supportsERC1271(account: Address): Promise<"supported" | "inconclusive" | "unsafe">;
+  supportsERC1271(account: Address): Promise<"compatible" | "inconclusive" | "unsafe">;
   validatorCount(account: Address): Promise<bigint>;
   validatorAt(account: Address, index: bigint): Promise<Address>;
   validatorCodeHash(validator: Address): Promise<Hex>;
@@ -61,7 +62,9 @@ export async function detectGuardianAddress(
   return Object.freeze({
     kind: "erc1271",
     address,
-    ...(support === "inconclusive" ? { warning: "Warning: this contract has code, but ERC-1271 support could not be verified from an invalid-signature probe. Confirm that the wallet documents ERC-1271 support before relying on it for recovery." } : {})
+    warning: support === "compatible"
+      ? "Warning: this contract returned an ERC-1271-shaped rejection, but an invalid-signature probe cannot prove that valid signatures will work. Confirm ERC-1271 support before relying on it for recovery."
+      : "Warning: this contract has code, but ERC-1271 support could not be verified from an invalid-signature probe. Confirm that the wallet documents ERC-1271 support before relying on it for recovery."
   });
 }
 
@@ -112,8 +115,12 @@ export async function resolveLoomP256Guardian(input: {
   return Object.freeze({ kind: "p256", publicKey, verifier, verifierCodeHash: input.verifierCodeHash });
 }
 
-export function createLoomGuardianChainReader(config: NetworkConfig, deployment: WalletDeployment): LoomGuardianChainReader {
-  const client = createPublicClient({ transport: http(config.rpcUrl) });
+export function createLoomGuardianChainReader(
+  config: NetworkConfig,
+  deployment: WalletDeployment,
+  publicClients: PublicClientRegistry
+): LoomGuardianChainReader {
+  const client = publicClients.forEndpoint(config.rpcUrl);
   return Object.freeze({
     async isRegisteredAccount(account: Address) {
       const registry = await client.readContract({ address: deployment.factory, abi: LoomAccountFactoryAbi, functionName: "registry" });
@@ -132,7 +139,7 @@ export function createLoomGuardianChainReader(config: NetworkConfig, deployment:
         const value = decodeFunctionResult({ abi: ERC1271Abi, functionName: "isValidSignature", data: result.data });
         // The probe deliberately has no valid signature. Returning the magic
         // value would describe an unsafe accept-all verifier, not support.
-        return value.toLowerCase() === ERC1271_MAGIC_VALUE ? "unsafe" : "supported";
+        return value.toLowerCase() === ERC1271_MAGIC_VALUE ? "unsafe" : "compatible";
       } catch {
         // ERC-1271 does not standardize interface discovery and some contracts
         // revert for invalid signatures. That is inconclusive, so fail closed.

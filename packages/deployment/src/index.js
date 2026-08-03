@@ -282,6 +282,16 @@ export function bindWalletManifestToCanonical(appManifest, canonicalManifest) {
   if (!recoveryFactory || !same(appManifest.recoveryValidatorFactory, recoveryFactory.address)) {
     disagreements.push("recoveryValidatorFactory");
   }
+  const appProvisioner = appManifest.recoveryValidatorProvisioner;
+  if (!appProvisioner || typeof appProvisioner !== "object" || Array.isArray(appProvisioner)) {
+    disagreements.push("recoveryValidatorProvisioner");
+  } else if (recoveryFactory) {
+    for (const field of ["address", "runtimeCodeHash", "validatorRuntimeCodeHash", "fallbackVerifier"]) {
+      if (!same(appProvisioner[field], recoveryFactory[field])) {
+        disagreements.push(`recoveryValidatorProvisioner.${field}`);
+      }
+    }
+  }
   if (disagreements.length !== 0) {
     throw new Error(`app manifest disagrees with the canonical manifest: ${disagreements.join(", ")}`);
   }

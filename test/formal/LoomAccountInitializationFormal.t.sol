@@ -59,7 +59,47 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
         check_InitializedAccountCannotBeReinitialized();
     }
 
+    /// @notice One-shot initialization: an account that already holds a
+    /// configuration rejects re-initialization even when the account itself asks.
+    /// @dev Uses `initializeDelegatedAccount` under a self-prank because that is the
+    /// only initializer an initialized account can still reach: `initialize` is
+    /// rejected earlier by the initialization-context guard, which would mask the
+    /// `configVersion != 0` check this property is about. The two guards are
+    /// asserted separately so each failure keeps exact provenance.
     function check_InitializedAccountCannotBeReinitialized() public {
+        (LoomAccount account, MockValidator validator) = _account();
+        MockValidator newValidator = new MockValidator();
+        AccountSnapshot memory beforeState = _accountSnapshot(account);
+
+        vm.prank(address(account));
+        (bool ok, bytes memory revertData) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.initializeDelegatedAccount,
+                    (
+                        address(this),
+                        keccak256("replacement-guardians"),
+                        uint8(1),
+                        keccak256("replacement-config"),
+                        _validatorModules(newValidator)
+                    )
+                )
+            );
+
+        assert(!ok);
+        _assertRevert(revertData, LoomAccount.InvalidInitialization.selector);
+        _assertAccountUnchanged(account, beforeState);
+        assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
+        assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
+    }
+
+    function test_LiveAccountRejectsProxyInitializer() public {
+        check_LiveAccountRejectsProxyInitializer();
+    }
+
+    /// @notice `initialize` exists only for the immutable-proxy constructor, so an
+    /// account that already has code must reject it regardless of configuration.
+    function check_LiveAccountRejectsProxyInitializer() public {
         (LoomAccount account, MockValidator validator) = _account();
         MockValidator newValidator = new MockValidator();
         AccountSnapshot memory beforeState = _accountSnapshot(account);
@@ -79,10 +119,58 @@ contract LoomAccountInitializationFormal is FormalAccountBase {
             );
 
         assert(!ok);
-        _assertRevert(revertData, LoomAccount.InvalidInitialization.selector);
+        _assertRevert(revertData, LoomAccount.InvalidInitializationContext.selector);
         _assertAccountUnchanged(account, beforeState);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(validator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
+    }
+
+    function test_UninitializedDelegatedAccountRejectsProxyInitializer() public {
+        check_UninitializedDelegatedAccountRejectsProxyInitializer();
+    }
+
+    /// @notice The account-takeover property, stated over the state that made the
+    /// takeover possible: Loom runtime code present, Loom storage still empty.
+    /// @dev `initializedAccountCannotBeReinitialized` and its Certora counterpart
+    /// both assumed `configVersion != 0`, so neither could observe this state. An
+    /// EIP-7702 delegated EOA reaches it as soon as the delegation is installed, and
+    /// before the initialization-context guard any third party could configure it.
+    /// Etching the runtime models the delegation's effect exactly: `address(this)`
+    /// differs from the template's own `_self`, and storage reads as all zero.
+    function check_UninitializedDelegatedAccountRejectsProxyInitializer() public {
+        (LoomAccount template, MockValidator templateValidator) = _account();
+        address delegated = address(0xD31E6A7E);
+        vm.etch(delegated, address(template).code);
+        LoomAccount account = LoomAccount(payable(delegated));
+        assert(account.configVersion() == 0);
+
+        MockValidator attackerValidator = new MockValidator();
+        (bool ok, bytes memory revertData) = delegated.call(
+            abi.encodeCall(
+                LoomAccount.initialize,
+                (
+                    address(this),
+                    keccak256("attacker-guardians"),
+                    uint8(1),
+                    keccak256("attacker-config"),
+                    _validatorModules(attackerValidator)
+                )
+            )
+        );
+
+        assert(!ok);
+        _assertRevert(revertData, LoomAccount.InvalidInitializationContext.selector);
+        assert(account.configVersion() == 0);
+        assert(account.configHash() == bytes32(0));
+        assert(account.entryPoint() == address(0));
+        assert(account.guardianRoot() == bytes32(0));
+        assert(account.guardianThreshold() == 0);
+        assert(account.validatorCount() == 0);
+        assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(attackerValidator)));
+        // The template the delegation points at is untouched.
+        assert(template.configVersion() == 1);
+        assert(template.isModuleInstalled(ModuleType.VALIDATOR, address(templateValidator)));
+        assert(!template.isModuleInstalled(ModuleType.VALIDATOR, address(attackerValidator)));
     }
 
     function test_DelegatedInitializerRejectsExternalCaller() public {

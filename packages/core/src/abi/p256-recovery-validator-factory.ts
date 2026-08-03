@@ -183,5 +183,10 @@ export const P256RecoveryValidatorFactoryAbi = [
     "type": "error",
     "name": "UnexpectedValidatorAddress",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnexpectedValidatorReservation",
+    "inputs": []
   }
 ] as const;

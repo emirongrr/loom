@@ -34,13 +34,16 @@ contract GuardianVerifierTest {
         bytes32 saltB = keccak256("salt-b");
         bytes32 leafA = keccak256(abi.encode(address(verifier), address(verifier).codehash, commitment, saltA));
         bytes32 leafB = keccak256(abi.encode(address(verifier), address(verifier).codehash, commitment, saltB));
-        bytes32 root = leafA <= leafB
-            ? keccak256(abi.encodePacked(leafA, leafB))
-            : keccak256(abi.encodePacked(leafB, leafA));
+        bytes32 root =
+            leafA <= leafB ? keccak256(abi.encodePacked(leafA, leafB)) : keccak256(abi.encodePacked(leafB, leafA));
 
         GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](2);
-        approvals[0] = _approval(address(verifier), commitment, leafA <= leafB ? saltA : saltB, signature, leafA <= leafB ? leafB : leafA);
-        approvals[1] = _approval(address(verifier), commitment, leafA <= leafB ? saltB : saltA, signature, leafA <= leafB ? leafA : leafB);
+        approvals[0] = _approval(
+            address(verifier), commitment, leafA <= leafB ? saltA : saltB, signature, leafA <= leafB ? leafB : leafA
+        );
+        approvals[1] = _approval(
+            address(verifier), commitment, leafA <= leafB ? saltB : saltA, signature, leafA <= leafB ? leafA : leafB
+        );
         require(!harness.approved(root, 2, digest, approvals), "one signer satisfied threshold twice");
     }
 

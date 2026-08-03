@@ -79,9 +79,18 @@ run("Certora program structure", process.execPath, ["tools/formal/validate-certo
 run("Certora program structure tests", process.execPath, ["--test", "tools/formal/validate-certora-program.test.mjs"]);
 run("Kontrol program structure", process.execPath, ["tools/formal/validate-kontrol-program.mjs"]);
 run("Kontrol program structure tests", process.execPath, ["--test", "tools/formal/validate-kontrol-program.test.mjs"]);
+run("Formal property mutation manifest", process.execPath, ["tools/formal/run-property-mutations.mjs", "--self-test"]);
 run("Formal program structure", process.execPath, ["tools/formal/validate-formal-program.mjs"]);
 run("Formal program structure tests", process.execPath, ["--test", "tools/formal/validate-formal-program.test.mjs"]);
+run("Toolchain pins", process.execPath, ["tools/quality/validate-toolchain-pins.mjs"]);
+run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-toolchain-pins.test.mjs"]);
+run("Dependency audit coverage", process.execPath, ["tools/quality/validate-audit-coverage.mjs"]);
+run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quality/validate-audit-coverage.test.mjs"]);
+run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);
+run("Test double inventory tests", process.execPath, ["--test", "tools/quality/validate-test-doubles.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
+run("Documented contract limits", process.execPath, ["tools/quality/validate-doc-constants.mjs"]);
+run("Documented contract limit tests", process.execPath, ["--test", "tools/quality/validate-doc-constants.test.mjs"]);
 run("Website checks", process.execPath, ["tools/site/validate-site.mjs"]);
 run("Bundler qualification evidence tests", process.execPath, [
   "--test",
@@ -141,7 +150,7 @@ run("Gas snapshot", forge, [
   "--tolerance",
   "1",
   "--no-match-contract",
-  ".*Formal|MainnetTokenCompatibilityForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
+  ".*Formal|MainnetTokenCompatibilityForkTest|OPStackL1BlockPredeployForkTest|MultiP256ValidatorTest|P256VerifierConfigTest|WebAuthnFixtureCorpusTest|WebAuthnEntryPointLifecycleIntegrationTest",
   "--no-match-path",
   "test/{formal,invariant,script}/**"
 ]);

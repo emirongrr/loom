@@ -49,11 +49,11 @@ function response(input: ReturnType<typeof request>, leafByte: string) {
 test("recovery session enforces the request, quorum, delay, and execution lifecycle", () => {
   const protocol = request();
   let session = createRecoverySession(protocol, NOW);
-  session = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "71"), approvalsRequired: 2 }, NOW + 1);
+  session = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "71") }, NOW + 1);
   assert.equal(session.stage, "collecting");
-  session = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "72"), approvalsRequired: 2 }, NOW + 2);
+  session = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "72") }, NOW + 2);
   assert.equal(session.stage, "ready-to-propose");
-  assert.throws(() => transitionRecoverySession(session, { type: "completed" }, NOW + 3), /cannot apply/u);
+  assert.throws(() => transitionRecoverySession(session, { type: "completed", transactionHash: `0x${"ef".repeat(32)}` }, NOW + 3), /cannot apply/u);
   session = transitionRecoverySession(session, { type: "proposal-confirmed", transactionHash: `0x${"ab".repeat(32)}`, readyAt: 100n, expiresAt: 200n }, NOW + 3);
   session = transitionRecoverySession(session, { type: "chain-ready" }, NOW + 4);
   session = transitionRecoverySession(session, { type: "completed", transactionHash: `0x${"cd".repeat(32)}` }, NOW + 5);
@@ -85,14 +85,23 @@ test("a response for another request and duplicate guardian responses fail close
   const other = request("93");
   const session = createRecoverySession(protocol, NOW);
   assert.throws(
-    () => transitionRecoverySession(session, { type: "response-added", response: response(other, "71"), approvalsRequired: 2 }, NOW + 1),
+    () => transitionRecoverySession(session, { type: "response-added", response: response(other, "71") }, NOW + 1),
     /does not match/u
   );
-  const collecting = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "71"), approvalsRequired: 2 }, NOW + 1);
+  const collecting = transitionRecoverySession(session, { type: "response-added", response: response(protocol, "71") }, NOW + 1);
   assert.throws(
-    () => transitionRecoverySession(collecting, { type: "response-added", response: response(protocol, "71"), approvalsRequired: 2 }, NOW + 2),
+    () => transitionRecoverySession(collecting, { type: "response-added", response: response(protocol, "71") }, NOW + 2),
     /duplicated/u
   );
+});
+
+test("session quorum and completion evidence come from the request and verified lifecycle", () => {
+  const protocol = request();
+  const collecting = transitionRecoverySession(createRecoverySession(protocol, NOW), { type: "response-added", response: response(protocol, "71") }, NOW + 1);
+  assert.equal(collecting.stage, "collecting");
+  assert.throws(() => transitionRecoverySession({ ...collecting, stage: "ready-to-propose" }, { type: "cancelled" }, NOW + 2), /approval quorum/u);
+  assert.throws(() => transitionRecoverySession({ ...collecting, stage: "delay-active" }, { type: "chain-ready" }, NOW + 2), /proposal evidence/u);
+  assert.throws(() => transitionRecoverySession({ ...collecting, stage: "completed" }, { type: "cancelled" }, NOW + 2), /proposal evidence|execution transaction/u);
 });
 
 test("device-local recovery material stays with the encrypted session but outside the portable request", () => {
