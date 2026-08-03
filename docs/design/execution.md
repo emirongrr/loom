@@ -55,7 +55,8 @@ envelope, but **every validator bundled in this repository returns false**. The
 primary ones (`ECDSAValidator`, `P256Validator`, `MultiP256Validator`) cannot
 classify a bare hash against a policy, and the session ones
 (`ExactCallSessionValidator`, `GranularSessionValidator`) authorize
-UserOperations only. `supportsInterface` reports `false` for `0x1626ba7e`
+UserOperations only. `P256RecoveryValidator` inherits the refusal from
+`P256Validator` and adds nothing to it. `supportsInterface` reports `false` for `0x1626ba7e`
 accordingly, so ERC-165 probing already tells the truth.
 
 So no configuration built only from this repository produces a valid ERC-1271
