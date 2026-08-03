@@ -1,8 +1,9 @@
 import type { Address, Hex } from "@loom/core";
 import { createRpcStateTransport } from "@loom/sdk";
-import { createGuardianRecoveryClient, type GuardianRecoveryStateTransport } from "@loom/sdk/recovery";
+import { createGuardianRecoveryClient, type GuardianRecoveryStateTransport, type GuardianSubmitTransport } from "@loom/sdk/recovery";
 import { createPublicClient, http, keccak256 } from "viem";
 import type { NetworkConfig } from "../../config/network";
+import type { WalletDeployment } from "../onboarding/accountLifecycle";
 
 export type GuardianClient = ReturnType<typeof createGuardianRecoveryClient>;
 
@@ -17,6 +18,9 @@ export function createAccountGuardianClient(input: {
   chainId: number;
   account: Address;
   recoveryManager: Address;
+  recoveryValidatorProvisioner?: WalletDeployment["recoveryValidatorProvisioner"];
+  policyHook?: Address;
+  submitTransport?: GuardianSubmitTransport;
 }): GuardianClient {
   const rpc = createRpcStateTransport({ endpoint: input.config.rpcUrl });
   const viemClient = createPublicClient({ transport: http(input.config.rpcUrl) });
@@ -36,7 +40,14 @@ export function createAccountGuardianClient(input: {
     chainId: input.chainId,
     account: input.account,
     recoveryManager: input.recoveryManager,
-    stateTransport
+    stateTransport,
+    ...(input.submitTransport ? { submitTransport: input.submitTransport } : {}),
+    ...(input.recoveryValidatorProvisioner && input.policyHook ? {
+      recoveryValidatorFactory: {
+        ...input.recoveryValidatorProvisioner,
+        allowedPolicyHooks: [input.policyHook]
+      }
+    } : {})
   });
 }
 

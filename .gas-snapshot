@@ -183,7 +183,7 @@ P256ValidatorTest:testFuzz_PublicKeyValidationMatchesOpenZeppelin(bytes32,bytes3
 P256ValidatorTest:testFuzz_WebAuthnAcceptsPermittedClientDataGrammar(uint8,bool,bool) (runs: 256, μ: 6915134, ~: 6914138)
 P256ValidatorTest:testInitializationRejectsInvalidP256CurvePoints() (gas: 2858713)
 P256ValidatorTest:testKeyRotationRequiresConfigTimelock() (gas: 6864516)
-P256ValidatorTest:testP256DirectExecutionRejectsDeniedPolicyAndWrongSignature() (gas: 7304603)
+P256ValidatorTest:testP256DirectExecutionRejectsDeniedPolicyAndWrongChallenge() (gas: 7304603)
 P256ValidatorTest:testP256DirectExecutionUsesTypedDigestAndPolicy() (gas: 7052907)
 P256ValidatorTest:testP256RejectsHashOnlyApprovalRemovedHookAndWrongModuleType() (gas: 6789737)
 P256ValidatorTest:testWebAuthnChecksChallengeOriginTypeAndFlags() (gas: 7411833)

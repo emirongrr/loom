@@ -86,6 +86,8 @@ run("Toolchain pins", process.execPath, ["tools/quality/validate-toolchain-pins.
 run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-toolchain-pins.test.mjs"]);
 run("Dependency audit coverage", process.execPath, ["tools/quality/validate-audit-coverage.mjs"]);
 run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quality/validate-audit-coverage.test.mjs"]);
+run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);
+run("Test double inventory tests", process.execPath, ["--test", "tools/quality/validate-test-doubles.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
 run("Documented contract limits", process.execPath, ["tools/quality/validate-doc-constants.mjs"]);
 run("Documented contract limit tests", process.execPath, ["--test", "tools/quality/validate-doc-constants.test.mjs"]);

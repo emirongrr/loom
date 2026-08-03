@@ -25,7 +25,7 @@ function rootOf(entries: readonly RosterEntry[], threshold: number) {
   return planGuardianChange({ current: [], next: entries, threshold }).set.root;
 }
 
-// --- salts derived from the passkey -----------------------------------------
+// --- legacy PRF-root compatibility (read-only) ------------------------------
 
 // This is what lets a lost roster be rebuilt by re-entering the guardians: the
 // same passkey yields the same salts, so the same root.
@@ -60,6 +60,15 @@ test("removing a guardian leaves the others' salts untouched", () => {
   const before = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB), entry("Carol", CAROL)], MASTER);
   const after = withDerivedSalts([entry("Alice", ALICE), entry("Carol", CAROL)], MASTER);
   assert.equal(before[0]?.descriptor.salt, after[0]?.descriptor.salt);
+});
+
+test("new guardian epochs use independent random salts even for the same roster", () => {
+  const roster = [entry("Alice", ALICE), entry("Bob", BOB)];
+  const first = withFreshSalts(roster, seeded(17));
+  const second = withFreshSalts(roster, seeded(23));
+
+  assert.notEqual(rootOf(first, 2), rootOf(second, 2));
+  assert.ok(first.every((item, index) => item.descriptor.salt !== second[index]?.descriptor.salt));
 });
 
 // --- rebuilding the root ----------------------------------------------------
@@ -106,26 +115,26 @@ test("a threshold that differs from the account's does not match", () => {
 // read only its empty local list and claimed there were no guardians.
 test("an account protected on chain is never reported as unprotected when the local list is empty", () => {
   const status = deriveGuardianStatus({
-    onChain: { root: `0x${"4f".repeat(32)}`, threshold: 2, recoveryConfigured: false },
+    onChain: { root: `0x${"4f".repeat(32)}`, threshold: 2, recoveryConfigured: false, configVersion: 1n },
     entries: []
   });
   assert.deepEqual(status, { kind: "list-missing", threshold: 2 });
 });
 
 test("an account with no guardian root is unprotected", () => {
-  assert.deepEqual(deriveGuardianStatus({ onChain: { root: ZERO_ROOT, threshold: 0, recoveryConfigured: false }, entries: [] }), { kind: "unprotected" });
+  assert.deepEqual(deriveGuardianStatus({ onChain: { root: ZERO_ROOT, threshold: 0, recoveryConfigured: false, configVersion: 1n }, entries: [] }), { kind: "unprotected" });
   assert.deepEqual(deriveGuardianStatus({ onChain: null, entries: [] }), { kind: "unprotected" });
 });
 
 test("a local list that rebuilds the root is in sync", () => {
   const entries = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
-  const status = deriveGuardianStatus({ onChain: { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true }, entries });
+  const status = deriveGuardianStatus({ onChain: { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true, configVersion: 1n }, entries });
   assert.deepEqual(status, { kind: "in-sync", threshold: 2 });
 });
 
 test("a stale local list is reported as a mismatch, not as the truth", () => {
   const stale = withDerivedSalts([entry("Alice", ALICE)], MASTER);
-  const status = deriveGuardianStatus({ onChain: { root: `0x${"99".repeat(32)}`, threshold: 2, recoveryConfigured: true }, entries: stale });
+  const status = deriveGuardianStatus({ onChain: { root: `0x${"99".repeat(32)}`, threshold: 2, recoveryConfigured: true, configVersion: 1n }, entries: stale });
   assert.deepEqual(status, { kind: "list-mismatch", threshold: 2 });
 });
 
@@ -133,7 +142,7 @@ test("a stale local list is reported as a mismatch, not as the truth", () => {
 
 test("a backup round-trips and is accepted for its own account", () => {
   const entries = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(3));
-  const onChain = { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true };
+  const onChain = { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true, configVersion: 1n };
   const backup = parseRosterBackup(JSON.parse(JSON.stringify(createRosterBackup({ account: ACCOUNT, chainId: 11155111, threshold: 2, entries }))));
 
   assert.deepEqual(verifyRosterBackup({ backup, account: ACCOUNT, chainId: 11155111, onChain }), { ok: true });
@@ -141,7 +150,7 @@ test("a backup round-trips and is accepted for its own account", () => {
 
 test("a backup for another account, chain, or threshold is refused", () => {
   const entries = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(4));
-  const onChain = { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true };
+  const onChain = { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true, configVersion: 1n };
   const backup = createRosterBackup({ account: ACCOUNT, chainId: 11155111, threshold: 2, entries });
 
   assert.equal(verifyRosterBackup({ backup, account: ALICE, chainId: 11155111, onChain }).ok, false);
@@ -155,7 +164,7 @@ test("a backup whose guardians do not rebuild the account's root is refused", ()
   const backup = createRosterBackup({ account: ACCOUNT, chainId: 11155111, threshold: 2, entries });
   const verdict = verifyRosterBackup({
     backup, account: ACCOUNT, chainId: 11155111,
-    onChain: { root: `0x${"11".repeat(32)}`, threshold: 2, recoveryConfigured: true }
+    onChain: { root: `0x${"11".repeat(32)}`, threshold: 2, recoveryConfigured: true, configVersion: 1n }
   });
 
   assert.equal(verdict.ok, false);

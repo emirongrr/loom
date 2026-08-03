@@ -26,7 +26,7 @@ function saltsFrom(seed: number): (length: number) => Uint8Array {
 test("a guardian address is checksummed and typed", () => {
   const descriptor = buildGuardianDescriptor({ kind: "ecdsa", value: BOB.toLowerCase(), verifier: VERIFIER, verifierCodeHash: CODE_HASH });
   assert.equal(descriptor.kind, "ecdsa");
-  assert.equal(guardianAuthority(descriptor), `ecdsa:${BOB.toLowerCase()}`);
+  assert.equal(guardianAuthority(descriptor), `address:${BOB.toLowerCase()}`);
 });
 
 test("anything that is not an address is refused before it reaches the set", () => {
@@ -44,9 +44,12 @@ test("the same guardian cannot be added twice, in any letter case", () => {
   );
 });
 
-test("the same address as a different guardian kind is a different authority", () => {
+test("the same address cannot count twice through different guardian verifier paths", () => {
   const roster = [entry("Alice", ALICE)];
-  assert.doesNotThrow(() => assertAddable(roster, buildGuardianDescriptor({ kind: "erc1271", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH })));
+  assert.throws(
+    () => assertAddable(roster, buildGuardianDescriptor({ kind: "erc1271", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH })),
+    /already in this list/
+  );
 });
 
 test("adding a guardian is reported as an addition and rotates the root", () => {
@@ -60,6 +63,16 @@ test("adding a guardian is reported as an addition and rotates the root", () => 
   assert.equal(plan.kept.length, 2);
   assert.equal(plan.set.guardians.length, 3);
   assert.notEqual(plan.set.root, before.set.root);
+});
+
+test("an unsalted draft guardian can be reviewed before the final epoch is committed", () => {
+  const draft = [entry("eoa", ALICE), entry("smart2", BOB, "erc1271"), entry("smart", CAROL, "erc1271")];
+  const plan = planGuardianChange({ current: [], next: draft, threshold: 2 });
+
+  assert.equal(plan.threshold, 2);
+  assert.equal(plan.added.length, 3);
+  assert.equal(plan.set.guardians.length, 3);
+  assert.equal(new Set(plan.set.guardians.map(guardian => guardian.salt)).size, 3);
 });
 
 test("removing a guardian is reported and drops them from the committed set", () => {

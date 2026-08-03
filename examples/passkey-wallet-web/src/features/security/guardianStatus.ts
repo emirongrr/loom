@@ -8,6 +8,8 @@ export interface OnChainGuardians {
   readonly threshold: number;
   /** Whether the recovery module is installed, so guardians can actually act. */
   readonly recoveryConfigured: boolean;
+  /** Binds guardian capabilities to this exact account configuration. */
+  readonly configVersion: bigint;
 }
 
 export type GuardianStatus =
