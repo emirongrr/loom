@@ -4,6 +4,7 @@ import { LoomAccountAbi } from "@loom/core/abi";
 import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import type { NetworkConfig } from "../../config/network";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 
 export interface FreezePreparation {
@@ -13,6 +14,25 @@ export interface FreezePreparation {
   readonly summary: string;
   readonly warnings: readonly string[];
   readonly submit: { readonly to: Address; readonly data: Hex };
+}
+
+/** Re-read live authority and return the exact digest the guardian must approve. */
+export async function prepareGuardianFreezeChallenge(input: {
+  config: NetworkConfig;
+  deployment: WalletDeployment;
+  capability: GuardianInviteV1;
+  publicClients: PublicClientRegistry;
+}): Promise<{ readonly digest: Hex }> {
+  if (!input.deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
+  const client = createAccountGuardianClient({
+    config: input.config,
+    chainId: input.capability.chainId,
+    account: input.capability.account,
+    recoveryManager: input.deployment.recoveryModule,
+    publicClients: input.publicClients
+  });
+  const prepared = await client.prepareFreeze(input.capability);
+  return Object.freeze({ digest: prepared.digest });
 }
 
 /**
@@ -33,6 +53,7 @@ export async function prepareGuardianFreeze(input: {
   deployment: WalletDeployment;
   capability: GuardianInviteV1;
   signature: Hex;
+  publicClients: PublicClientRegistry;
 }): Promise<FreezePreparation> {
   const { config, deployment, capability, signature } = input;
   if (!deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
@@ -41,7 +62,8 @@ export async function prepareGuardianFreeze(input: {
     config,
     chainId: capability.chainId,
     account: capability.account,
-    recoveryManager: deployment.recoveryModule
+    recoveryManager: deployment.recoveryModule,
+    publicClients: input.publicClients
   });
 
   const prepared = await client.prepareFreeze(capability);
@@ -77,15 +99,19 @@ export async function readFreezeState(input: {
   config: NetworkConfig;
   deployment: WalletDeployment;
   capability: GuardianInviteV1;
+  publicClients: PublicClientRegistry;
 }): Promise<{ frozenUntil: bigint; active: boolean; recoveryConfigured: boolean }> {
   if (!input.deployment.recoveryModule) throw new Error("This deployment publishes no recovery module.");
   const client = createAccountGuardianClient({
     config: input.config,
     chainId: input.capability.chainId,
     account: input.capability.account,
-    recoveryManager: input.deployment.recoveryModule
+    recoveryManager: input.deployment.recoveryModule,
+    publicClients: input.publicClients
   });
-  const state = await client.inspectAccount();
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  return { frozenUntil: state.frozenUntil, active: state.frozenUntil > now, recoveryConfigured: state.recoveryConfigured };
+  const [state, block] = await Promise.all([
+    client.inspectAccount(),
+    input.publicClients.forEndpoint(input.config.rpcUrl).getBlock()
+  ]);
+  return { frozenUntil: state.frozenUntil, active: state.frozenUntil > block.timestamp, recoveryConfigured: state.recoveryConfigured };
 }
