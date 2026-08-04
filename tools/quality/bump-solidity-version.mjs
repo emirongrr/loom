@@ -29,6 +29,25 @@ import { validateToolchainPins } from "./validate-toolchain-pins.mjs";
 
 const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+$/u;
 
+/// Escapes every regular-expression metacharacter, not just the dot a version
+/// string happens to contain. Versions are validated before they reach here, so
+/// this is belt and braces - but a half-escape stays correct only until someone
+/// widens what counts as a version.
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/// Files that name versions in order to *test* version handling. Their fixtures
+/// are hermetic on purpose - the pin gate's test needs two versions that
+/// disagree, and this sweep's own test needs a before and an after - so
+/// rewriting them turns a deliberate contrast into a broken assertion. They are
+/// not pin sites, and `toolchain:check` reads none of them.
+const SELF_MANAGED = new Set([
+  "tools/quality/bump-solidity-version.mjs",
+  "tools/quality/bump-solidity-version.test.mjs",
+  "tools/quality/validate-toolchain-pins.test.mjs"
+]);
+
 /// The files a bump is allowed to touch, and the only ones the summary counts.
 /// Derived from git rather than a directory walk so build output, caches, and
 /// vendored dependencies can never be rewritten.
@@ -78,7 +97,7 @@ function replacements({ from, to, fromCommit, toCommit, fromChecksum, toChecksum
       // a caret that resolves to the pin, and changing that is not this script's
       // decision to make.
       name: "npm solc dependency",
-      pattern: new RegExp(`("solc":\\s*"[\\^~]?)${from.replace(/\./gu, "\\.")}"`, "gu"),
+      pattern: new RegExp(`("solc":\\s*"[\\^~]?)${escapeRegExp(from)}"`, "gu"),
       to: `$1${to}"`
     },
     { name: "documented version", from: `\`${from}\``, to: `\`${to}\`` }
@@ -88,7 +107,7 @@ function replacements({ from, to, fromCommit, toCommit, fromChecksum, toChecksum
     // `solc-linux-amd64-v...` in the workflow and bare in the validators.
     rules.push({
       name: "solc build identifier",
-      pattern: new RegExp(`v${from.replace(/\./gu, "\\.")}\\+commit\\.${fromCommit}`, "gu"),
+      pattern: new RegExp(`v${escapeRegExp(from)}\\+commit\\.${fromCommit}`, "gu"),
       to: `v${to}+commit.${toCommit}`
     });
   }
@@ -132,6 +151,7 @@ export function bumpSolidityVersion({
     // one version and claims another. `npm install --package-lock-only`
     // regenerates them, and the closing message says so.
     if (relative.endsWith("package-lock.json")) continue;
+    if (SELF_MANAGED.has(relative)) continue;
 
     const path = join(base, relative.split("/").join(sep));
     let source;
@@ -196,6 +216,7 @@ async function main() {
 
   const from = readFileSync(join(base, "foundry.toml"), "utf8").match(/^solc_version\s*=\s*"([^"]+)"/mu)?.[1];
   if (from === undefined) throw new Error("foundry.toml has no solc_version pin to move from");
+  if (!VERSION_PATTERN.test(from)) throw new Error(`foundry.toml pins "${from}", which is not an x.y.z version`);
   if (from === to) {
     console.log(`solc is already pinned at ${to}; nothing to do`);
     return;
@@ -205,7 +226,7 @@ async function main() {
   const fromChecksum = currentBinaryChecksum(base, files);
   const fromCommit = files
     .map(relative => readFileSync(join(base, relative.split("/").join(sep)), "utf8"))
-    .map(source => source.match(new RegExp(`v${from.replace(/\./gu, "\\.")}\\+commit\\.([0-9a-f]+)`, "u"))?.[1])
+    .map(source => source.match(new RegExp(`v${escapeRegExp(from)}\\+commit\\.([0-9a-f]+)`, "u"))?.[1])
     .find(commit => commit !== undefined);
 
   const overrideCommit = readArgument("commit");

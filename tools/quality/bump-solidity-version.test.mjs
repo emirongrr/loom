@@ -136,7 +136,7 @@ test("a mention outside the known pin shapes is reported, not rewritten", () => 
   // either would quietly destroy the thing it exists to say.
   const files = {
     ...repository(),
-    "tools/quality/validate-toolchain-pins.test.mjs": 'validateToolchainPins(fixture({ packageSolc: "0.8.35" }));\n',
+    "tools/evidence/pin-contrast.test.mjs": 'validateToolchainPins(fixture({ packageSolc: "0.8.35" }));\n',
     "docs/decisions/0012-release-nightly-evidence.md": "The 2026-05 release was built with Solidity 0.8.35.\n"
   };
   const base = fixture(files);
@@ -145,12 +145,12 @@ test("a mention outside the known pin shapes is reported, not rewritten", () => 
 
   assert.deepEqual(
     remaining.map(entry => entry.relative).sort(),
-    ["docs/decisions/0012-release-nightly-evidence.md", "tools/quality/validate-toolchain-pins.test.mjs"]
+    ["docs/decisions/0012-release-nightly-evidence.md", "tools/evidence/pin-contrast.test.mjs"]
   );
   assert.equal(remaining.every(entry => entry.gateRelevant === false), true);
   assert.equal(remaining.every(entry => entry.partial === false), true);
   assert.equal(
-    read(base, "tools/quality/validate-toolchain-pins.test.mjs").includes('packageSolc: "0.8.35"'),
+    read(base, "tools/evidence/pin-contrast.test.mjs").includes('packageSolc: "0.8.35"'),
     true
   );
   assert.equal(read(base, "docs/decisions/0012-release-nightly-evidence.md").includes("0.8.35"), true);
@@ -163,7 +163,7 @@ test("a file rewritten in part is separated from one left alone", () => {
   // rather than a leftover, so it has to be reported as its own category.
   const files = {
     ...repository(),
-    "tools/quality/validate-toolchain-pins.test.mjs": [
+    "tools/evidence/pin-contrast.test.mjs": [
       'fixture({ packageSolc: "0.8.35" });',
       '"      - run: solc-select install 0.8.35"',
       ""
@@ -174,7 +174,7 @@ test("a file rewritten in part is separated from one left alone", () => {
   const { remaining } = bump(base, Object.keys(files));
 
   assert.deepEqual(remaining, [
-    { relative: "tools/quality/validate-toolchain-pins.test.mjs", gateRelevant: false, partial: true }
+    { relative: "tools/evidence/pin-contrast.test.mjs", gateRelevant: false, partial: true }
   ]);
 });
 
@@ -188,6 +188,26 @@ test("a pin site the sweep could not move is flagged as gate-relevant", () => {
   const { remaining } = bump(base, Object.keys(files));
 
   assert.deepEqual(remaining, [{ relative: "foundry.toml", gateRelevant: true, partial: false }]);
+});
+
+test("the toolchain tooling's own fixtures are left alone", () => {
+  // These files name versions in order to test version handling: the pin gate's
+  // fixture needs two that disagree, and this sweep's own test needs a before
+  // and an after. Rewriting them collapses the contrast they exist to draw,
+  // which is how a green sweep can leave a test asserting nothing.
+  const files = {
+    ...repository(),
+    "tools/quality/validate-toolchain-pins.test.mjs": 'fixture({ packageSolc: "0.8.35" });\n',
+    "tools/quality/bump-solidity-version.test.mjs": 'const OLD_VERSION = "0.8.35";\n'
+  };
+  const base = fixture(files);
+
+  const { changed, remaining } = bump(base, Object.keys(files));
+
+  assert.equal(read(base, "tools/quality/validate-toolchain-pins.test.mjs").includes("0.8.35"), true);
+  assert.equal(read(base, "tools/quality/bump-solidity-version.test.mjs").includes("0.8.35"), true);
+  assert.equal(changed.some(entry => entry.relative.startsWith("tools/quality/")), false);
+  assert.deepEqual(remaining, []);
 });
 
 test("lockfiles are left for npm to regenerate", () => {
@@ -210,6 +230,19 @@ test("a caret range keeps its prefix", () => {
   bump(base, Object.keys(files));
 
   assert.equal(read(base, "package.json").includes('"solc": "^0.8.36"'), true);
+});
+
+test("the version is matched literally, never as a pattern", () => {
+  // Several rules build a RegExp around the version. If its dots stayed
+  // wildcards, `"solc": "0x8x35"` would be rewritten as though it were the pin.
+  const base = fixture({
+    "foundry.toml": '[profile.default]\nsolc_version = "0.8.35"\n',
+    "package.json": '{\n  "devDependencies": {\n    "solc": "0x8x35"\n  }\n}\n'
+  });
+
+  bump(base, ["foundry.toml", "package.json"]);
+
+  assert.equal(read(base, "package.json").includes('"solc": "0x8x35"'), true);
 });
 
 test("a file that merely discusses Solidity is untouched", () => {
