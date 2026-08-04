@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {P256VerifierConfig, P256VerifierMode, P256VerifierSelection} from "../../script/P256VerifierConfig.sol";
 

@@ -60,7 +60,7 @@ assertIncludes(
 );
 assertIncludes(".github/workflows/certora.yml", "npm run certora:program:check", "certora workflow must run readiness validation");
 assertIncludes(".github/workflows/certora.yml", "--compilation_steps_only", "certora workflow must run compile-only on PRs");
-assertIncludes(".github/workflows/certora.yml", "solc-select install 0.8.35", "certora workflow must pin Solidity compiler install");
+assertIncludes(".github/workflows/certora.yml", "solc-select install 0.8.36", "certora workflow must pin Solidity compiler install");
 
 const certoraWorkflow = read(".github/workflows/certora.yml");
 assert(certoraWorkflow.includes("persist-credentials: false"), "certora workflow checkout must not persist credentials");

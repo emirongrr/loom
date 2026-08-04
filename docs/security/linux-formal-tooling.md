@@ -19,7 +19,7 @@ bash tools/formal/setup-linux-provers.sh
 
 The setup script installs:
 
-- native solc `0.8.35`, verified against its published SHA-256;
+- native solc `0.8.36`, verified against its published SHA-256;
 - pinned Certora CLI from `formal/certora/requirements.txt`;
 - Runtime Verification KUP and Kontrol.
 

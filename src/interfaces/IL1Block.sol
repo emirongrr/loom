@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Minimal interface for the OP Stack `L1Block` predeploy
 /// (canonical address `0x4200000000000000000000000000000000000015`). The

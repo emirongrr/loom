@@ -12,7 +12,7 @@ remappings = [
     "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
     "@optimism-trie/=lib/optimism-trie/"
 ]
-solc_version = "0.8.35"
+solc_version = "0.8.36"
 optimizer = true
 optimizer_runs = 200
 via_ir = true

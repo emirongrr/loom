@@ -77,7 +77,7 @@ and live-chain verification flow.
 Current pinned toolchain and contract dependencies:
 
 - Foundry `v1.7.1`
-- Solidity `0.8.35`
+- Solidity `0.8.36`
 - account-abstraction `0.9.0`
 - OpenZeppelin Contracts `5.1.0`
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {IERC7579Module} from "../interfaces/IERC7579Module.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";

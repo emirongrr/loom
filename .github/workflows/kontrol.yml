@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 180
     env:
       KONTROL_IMAGE: runtimeverificationinc/kontrol:ubuntu-jammy-1.0.255@sha256:858f004144d61b005997f56bb8b7cd15673850286c96e0e5ec0502d9c9a9e204
-      SOLC_BINARY: solc-linux-amd64-v0.8.35+commit.47b9dedd
-      SOLC_SHA256: fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4
+      SOLC_BINARY: solc-linux-amd64-v0.8.36+commit.8a079791
+      SOLC_SHA256: c8d35afdddc3cd2743ee88b8f25e0fecd16e2bdd5f2120f37e52cd9cc45ae0e6
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Standard ERC-7579 hook module surface, as implemented by third-party
 /// modules. Loom does not implement this interface on its account;

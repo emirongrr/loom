@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Shared EIP-712 domain plumbing for every Loom contract that signs
 /// or verifies typed data.

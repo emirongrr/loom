@@ -55,8 +55,8 @@ jobs:
       - name: Install Solidity compiler
         run: |
           python -m pip install solc-select
-          solc-select install 0.8.35
-          solc-select use 0.8.35
+          solc-select install 0.8.36
+          solc-select use 0.8.36
       - name: Compile Certora target
         run: certoraRun ${{ matrix.conf }} --compilation_steps_only --solc "$(command -v solc)"
 
@@ -103,8 +103,8 @@ jobs:
           set -o pipefail
           {
             python -m pip install solc-select
-            solc-select install 0.8.35
-            solc-select use 0.8.35
+            solc-select install 0.8.36
+            solc-select use 0.8.36
           } 2>&1 | tee artifacts/certora-prover/install-solc.log
       - name: Record prover versions
         if: env.CERTORAKEY != ''

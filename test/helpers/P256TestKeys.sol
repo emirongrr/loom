@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 library P256TestKeys {
     function x(uint256 index) internal pure returns (bytes32 value) {

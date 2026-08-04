@@ -25,9 +25,9 @@ sudo apt-get install -y \
 # One pin, three uses. `toolchain:check` compares SOLC_VERSION against
 # foundry.toml, the npm dependency, and every workflow invocation, so this file
 # cannot drift to a second compiler on its own.
-SOLC_VERSION=0.8.35
-SOLC_BINARY=solc-linux-amd64-v0.8.35+commit.47b9dedd
-SOLC_SHA256=fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4
+SOLC_VERSION=0.8.36
+SOLC_BINARY=solc-linux-amd64-v0.8.36+commit.8a079791
+SOLC_SHA256=c8d35afdddc3cd2743ee88b8f25e0fecd16e2bdd5f2120f37e52cd9cc45ae0e6
 
 if ! command -v solc >/dev/null 2>&1; then
   echo "==> Installing solc $SOLC_VERSION"

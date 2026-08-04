@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {ERC1271GuardianVerifier} from "../../src/recovery/ERC1271GuardianVerifier.sol";
 import {P256GuardianVerifier} from "../../src/recovery/P256GuardianVerifier.sol";

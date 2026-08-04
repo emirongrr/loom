@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {EntryPointSimulations} from "account-abstraction/core/EntryPointSimulations.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
