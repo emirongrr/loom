@@ -119,6 +119,10 @@ Accounts that do not install the synchronization module do not add this path.
 Source review is not enough if deployed bytecode cannot be tied to it. The
 current repository build paths pin Solidity `0.8.35`: Foundry configuration,
 the npm `solc` dependency, Certora setup, and Kontrol setup must remain aligned.
+`npm run toolchain:check` fails when they are not, and `npm run toolchain:bump
+<version>` moves all of them at once, deriving the Kontrol binary name and its
+SHA-256 from the published binary rather than from a hand-copied string. It
+names anything it could not account for instead of guessing.
 Changing the compiler, optimizer, EVM target, linked libraries, constructor
 arguments, or deployment manifest changes the produced authority-bearing code
 and requires fresh evidence.

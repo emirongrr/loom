@@ -6,12 +6,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
 import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
+import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
 
 const { keccak_256 } = sha3;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const DEFAULT_BUILD = Object.freeze({
-  solcVersion: "0.8.35",
   foundryVersion: "1.7.1",
   viaIR: true,
   optimizer: Object.freeze({ enabled: true, runs: 200 }),
@@ -42,6 +42,9 @@ export async function buildDeploymentManifest(config, options = {}) {
     version: 1,
     network: cloneJson(config.network),
     build: {
+      // Read from foundry.toml rather than repeated here, so a compiler bump
+      // cannot leave the manifest describing a build nothing produces.
+      solcVersion: pinnedSolidityVersion(repoRoot),
       ...DEFAULT_BUILD,
       ...cloneJson(config.build),
       optimizer: {

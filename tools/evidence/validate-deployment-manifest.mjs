@@ -4,6 +4,7 @@ import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
+import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
 
 const { keccak_256 } = sha3;
 
@@ -23,7 +24,7 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   const repoRoot = options.root ?? root;
   assertTopLevel(manifest);
   assertNetwork(manifest.network);
-  assertBuild(manifest.build);
+  assertBuild(manifest.build, repoRoot);
   assertReproducibility(manifest.reproducibility, repoRoot);
   assertDeployments(manifest.deployments, repoRoot);
   assertAttestations(manifest.attestations);
@@ -207,9 +208,12 @@ function assertFinality(finality) {
   }
 }
 
-function assertBuild(build) {
+function assertBuild(build, repoRoot) {
   if (!build || typeof build !== "object") throw new Error("build must be an object");
-  if (build.solcVersion !== "0.8.35") throw new Error("build.solcVersion must be 0.8.35");
+  const solcVersion = pinnedSolidityVersion(repoRoot);
+  if (build.solcVersion !== solcVersion) {
+    throw new Error(`build.solcVersion must be ${solcVersion}`);
+  }
   if (build.foundryVersion !== "1.7.1") throw new Error("build.foundryVersion must be 1.7.1");
   if (build.viaIR !== true) throw new Error("build.viaIR must be true");
   if (build.optimizer?.enabled !== true || build.optimizer?.runs !== 200) {

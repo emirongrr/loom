@@ -47,6 +47,8 @@
     "deps:audit": "node --test tools/quality/dependency-audit-policy.test.mjs && node tools/quality/validate-audit-coverage.mjs && node tools/quality/audit-dependencies.mjs",
     "docs:check": "node tools/quality/validate-doc-links.mjs",
     "toolchain:check": "node tools/quality/validate-toolchain-pins.mjs",
+    "toolchain:bump": "node tools/quality/bump-solidity-version.mjs",
+    "toolchain:bump:test": "node --test tools/quality/bump-solidity-version.test.mjs",
     "toolchain:test": "node --test tools/quality/validate-toolchain-pins.test.mjs",
     "docs:constants:check": "node tools/quality/validate-doc-constants.mjs",
     "docs:constants:test": "node --test tools/quality/validate-doc-constants.test.mjs",
