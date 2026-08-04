@@ -84,6 +84,7 @@ run("Formal program structure", process.execPath, ["tools/formal/validate-formal
 run("Formal program structure tests", process.execPath, ["--test", "tools/formal/validate-formal-program.test.mjs"]);
 run("Toolchain pins", process.execPath, ["tools/quality/validate-toolchain-pins.mjs"]);
 run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-toolchain-pins.test.mjs"]);
+run("Compiler bump sweep tests", process.execPath, ["--test", "tools/quality/bump-solidity-version.test.mjs"]);
 run("Dependency audit coverage", process.execPath, ["tools/quality/validate-audit-coverage.mjs"]);
 run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quality/validate-audit-coverage.test.mjs"]);
 run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);

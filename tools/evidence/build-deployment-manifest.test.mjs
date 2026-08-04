@@ -8,6 +8,14 @@ import { buildDeploymentManifest } from "./build-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
 
+/// Deliberately not the version this repository pins. The manifest tools read
+/// the compiler out of `foundry.toml`, so a fixture that used the real pin
+/// would still pass if they went back to hard-coding one.
+const FIXTURE_SOLC_VERSION = "1.2.3";
+const FIXTURE_FOUNDRY_TOML = `[profile.default]
+solc_version = "${FIXTURE_SOLC_VERSION}"
+`;
+
 test("the builder embeds a hash-bound canonical projection of the evidence", async () => {
   const root = await fixtureRoot();
   const manifest = await buildDeploymentManifest(configFor(root), { root });
@@ -34,7 +42,7 @@ test("deployment manifest builder computes artifact and reproducibility hashes",
   assert.equal(manifest.deployments[0].initCodeHash, hashHex("0x60016002"));
   assert.equal(manifest.deployments[0].runtimeCodeHash, hashHex("0x6001"));
   assert.deepEqual(manifest.reproducibility.files, [
-    { path: "foundry.toml", hash: hashText("[profile.default]\nsolc = \"0.8.35\"\n") },
+    { path: "foundry.toml", hash: hashText(FIXTURE_FOUNDRY_TOML) },
     { path: "package-lock.json", hash: hashText("{\"lockfileVersion\":3}\n") }
   ]);
 });
@@ -73,7 +81,7 @@ async function fixtureRoot() {
     bytecode: { object: "0x60016002" },
     deployedBytecode: { object: "0x6001" }
   }));
-  await writeFile(join(root, "foundry.toml"), "[profile.default]\nsolc = \"0.8.35\"\n");
+  await writeFile(join(root, "foundry.toml"), FIXTURE_FOUNDRY_TOML);
   await writeFile(join(root, "package-lock.json"), "{\"lockfileVersion\":3}\n");
   return root;
 }

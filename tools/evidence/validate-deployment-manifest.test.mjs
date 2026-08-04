@@ -9,6 +9,14 @@ import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
 
+/// Deliberately not the version this repository pins. The manifest tools read
+/// the compiler out of `foundry.toml`, so a fixture that used the real pin
+/// would still pass if they went back to hard-coding one.
+const FIXTURE_SOLC_VERSION = "1.2.3";
+const FIXTURE_FOUNDRY_TOML = `[profile.default]
+solc_version = "${FIXTURE_SOLC_VERSION}"
+`;
+
 test("deployment manifest accepts verified artifact hashes and release checks", async () => {
   const root = await fixtureRoot();
   const manifest = manifestFor(root);
@@ -222,7 +230,7 @@ async function fixtureRoot() {
     deployedBytecode: { object: "0x6001" }
   };
   await writeFile(join(artifactDir, "Example.json"), JSON.stringify(artifact, null, 2));
-  await writeFile(join(root, "foundry.toml"), "[profile.default]\nsolc = \"0.8.35\"\n");
+  await writeFile(join(root, "foundry.toml"), FIXTURE_FOUNDRY_TOML);
   await writeFile(join(root, "package-lock.json"), "{\"lockfileVersion\":3}\n");
   return root;
 }
@@ -253,7 +261,7 @@ function manifestFor(root) {
     build: {
       gitCommit: "0123456789abcdef",
       sourceArchiveHash: bytes32("source"),
-      solcVersion: "0.8.35",
+      solcVersion: FIXTURE_SOLC_VERSION,
       foundryVersion: "1.7.1",
       viaIR: true,
       optimizer: { enabled: true, runs: 200 },
@@ -271,7 +279,7 @@ function manifestFor(root) {
         }
       ],
       files: [
-        { path: "foundry.toml", hash: hashText("[profile.default]\nsolc = \"0.8.35\"\n") },
+        { path: "foundry.toml", hash: hashText(FIXTURE_FOUNDRY_TOML) },
         { path: "package-lock.json", hash: hashText("{\"lockfileVersion\":3}\n") }
       ]
     },
