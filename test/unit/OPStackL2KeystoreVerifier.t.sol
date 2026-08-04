@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {OPStackL2KeystoreVerifier} from "../../src/keystore/OPStackL2KeystoreVerifier.sol";
 import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";

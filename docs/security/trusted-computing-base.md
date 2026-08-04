@@ -117,7 +117,7 @@ Accounts that do not install the synchronization module do not add this path.
 ## Build and deployment TCB
 
 Source review is not enough if deployed bytecode cannot be tied to it. The
-current repository build paths pin Solidity `0.8.35`: Foundry configuration,
+current repository build paths pin Solidity `0.8.36`: Foundry configuration,
 the npm `solc` dependency, Certora setup, and Kontrol setup must remain aligned.
 `npm run toolchain:check` fails when they are not, and `npm run toolchain:bump
 <version>` moves all of them at once, deriving the Kontrol binary name and its

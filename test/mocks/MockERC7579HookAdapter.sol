@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {ERC7579ModuleAdapter} from "../../src/adapters/ERC7579ModuleAdapter.sol";
 import {ILoomHook} from "../../src/interfaces/ILoomHook.sol";

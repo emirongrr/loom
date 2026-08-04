@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {ILoomDirectValidator} from "../../src/interfaces/ILoomDirectValidator.sol";
 import {ILoomValidator} from "../../src/interfaces/ILoomValidator.sol";

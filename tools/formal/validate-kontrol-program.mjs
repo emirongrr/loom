@@ -75,8 +75,8 @@ assert(
   "Kontrol proof build must archive verbose output and skip the unused LLVM runtime",
 );
 assert(
-  workflow.includes("solc-linux-amd64-v0.8.35+commit.47b9dedd") &&
-    workflow.includes("fa8ac9a32d301ad023a36ee5a29f8e291fe3200c60244e43c142539e82a617f4"),
+  workflow.includes("solc-linux-amd64-v0.8.36+commit.8a079791") &&
+    workflow.includes("c8d35afdddc3cd2743ee88b8f25e0fecd16e2bdd5f2120f37e52cd9cc45ae0e6"),
   "Kontrol workflow must pin the Solidity compiler binary and checksum",
 );
 assert(workflow.includes("sha256sum --check -"), "Kontrol workflow must verify the Solidity compiler checksum");

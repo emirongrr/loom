@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {EthereumL1KeystoreVerifier} from "../../src/keystore/EthereumL1KeystoreVerifier.sol";
 import {LoomKeystore} from "../../src/keystore/LoomKeystore.sol";

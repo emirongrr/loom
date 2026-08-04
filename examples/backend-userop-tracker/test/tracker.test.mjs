@@ -5,7 +5,7 @@ import { EntryPointAbi, LoomAccountFactoryAbi } from "@loom/core";
 import { createTracker, createMemoryStore, evaluateSponsorship } from "../src/tracker.mjs";
 
 const chainId = 31337;
-const entryPoint = "0x433709e09c7750b04c222fb46e0f27642f41f0b7";
+const entryPoint = "0x43370948ada4bee98369c7a50209b283d6aac061";
 const factory = "0x610178da211fef7d417bc0e6fed39f05609ad788";
 const sender = "0x1111111111111111111111111111111111111111";
 

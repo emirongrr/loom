@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {IP256Verifier} from "../interfaces/IP256Verifier.sol";
 import {Base64Url} from "./Base64Url.sol";

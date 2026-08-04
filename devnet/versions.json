@@ -4,10 +4,10 @@
   "foundry": "1.7.1",
   "alto": "0.0.20",
   "entryPoint": {
-    "comment": "repo-pinned ERC-4337 v0.9, CREATE2-deployed at a 0x433709-prefixed vanity address because bundlers detect the EntryPoint version from the address prefix; re-mine the salt (tools/e2e docs) if the creation code hash changes",
-    "salt": "0x0000000000000000000000000000000000000000000000000000000000f892d7",
-    "address": "0x433709e09c7750b04c222fb46e0f27642f41f0b7",
-    "creationCodeHash": "0x98985119c163935f4a1d667a35338b4d2e155e667bad47aed2dfc112fd5ae340"
+    "comment": "repo-pinned ERC-4337 v0.9, CREATE2-deployed at a 0x433709-prefixed vanity address because bundlers detect the EntryPoint version from the address prefix; re-mine the salt with `node tools/e2e/mine-entrypoint-salt.mjs --write` if the creation code hash changes",
+    "salt": "0x000000000000000000000000000000000000000000000000000000000116d39e",
+    "address": "0x43370948ada4bee98369c7a50209b283d6aac061",
+    "creationCodeHash": "0xd1240dacb83626ff51f9b2405310ea65abf00d7e2b13cffa9435b9b00887d15d"
   },
   "ports": {
     "rpc": 8545,

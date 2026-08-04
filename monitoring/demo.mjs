@@ -15,7 +15,7 @@ import { createDashboardMetrics } from "./src/metrics.mjs";
 import { createIndexer } from "./src/indexer.mjs";
 import { renderPrometheus } from "./src/prometheus.mjs";
 
-const entryPoint = "0x433709e09c7750b04c222fb46e0f27642f41f0b7";
+const entryPoint = "0x43370948ada4bee98369c7a50209b283d6aac061";
 const factory = "0x610178da211fef7d417bc0e6fed39f05609ad788";
 const account = "0x2222222222222222222222222222222222222222";
 
