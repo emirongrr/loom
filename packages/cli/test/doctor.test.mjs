@@ -9,7 +9,7 @@ import { runDoctor, redactUrl } from "../src/doctor.mjs";
 // is the end-to-end proof (tools/e2e/bundler-devnet.mjs).
 
 const bin = fileURLToPath(new URL("../bin/loom.mjs", import.meta.url));
-const entryPoint = "0x433709e09c7750b04c222fb46e0f27642f41f0b7";
+const entryPoint = "0x43370948ada4bee98369c7a50209b283d6aac061";
 const senderCreator = "0x1234567890123456789012345678901234567890";
 
 // A fake execution RPC: chain id, EntryPoint.senderCreator(), code presence,
