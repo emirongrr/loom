@@ -126,6 +126,64 @@ contract ExecutionEnvironmentParityTest {
         require(target.value() == 7, "the registered environment could not execute");
     }
 
+    /// The direct-execution digest has to name the exact call it authorizes, or
+    /// an engine could validate one operation and submit another. Each field is
+    /// varied on its own so a digest that silently stopped covering one of them
+    /// fails here rather than in review.
+    function testDirectExecutionDigestBindsEveryFieldItClaimsTo() public view {
+        bytes32 single = account.SINGLE_EXECUTION_MODE();
+        bytes memory call = _singleCall();
+        bytes32 base = account.directExecutionDigest(address(validator), single, call, 0, type(uint48).max);
+
+        require(
+            base != account.directExecutionDigest(address(revertingValidator), single, call, 0, type(uint48).max),
+            "digest ignores the validator"
+        );
+        require(
+            base
+                != account.directExecutionDigest(
+                    address(validator), account.BATCH_EXECUTION_MODE(), call, 0, type(uint48).max
+                ),
+            "digest ignores the execution mode"
+        );
+        require(
+            base
+                != account.directExecutionDigest(
+                    address(validator),
+                    single,
+                    abi.encode(ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (8)))),
+                    0,
+                    type(uint48).max
+                ),
+            "digest ignores the execution calldata"
+        );
+        require(
+            base != account.directExecutionDigest(address(validator), single, call, 1, type(uint48).max),
+            "digest ignores the nonce"
+        );
+        require(
+            base != account.directExecutionDigest(address(validator), single, call, 0, type(uint48).max - 1),
+            "digest ignores the expiry"
+        );
+    }
+
+    /// The digest is account-scoped through the EIP-712 domain, so the same
+    /// authorization cannot be relayed against a different Loom account.
+    function testDirectExecutionDigestIsBoundToThisAccount() public {
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        LoomAccount other = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
+
+        bytes32 single = account.SINGLE_EXECUTION_MODE();
+        bytes memory call = _singleCall();
+
+        require(
+            account.directExecutionDigest(address(validator), single, call, 0, type(uint48).max)
+                != other.directExecutionDigest(address(validator), single, call, 0, type(uint48).max),
+            "two accounts share a direct-execution authorization"
+        );
+    }
+
     /// Execution-mode support is decided below the boundary, so both paths
     /// refuse an unsupported mode for the same reason rather than each
     /// re-deciding it.

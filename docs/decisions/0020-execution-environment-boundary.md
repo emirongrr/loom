@@ -91,6 +91,46 @@ decision 0004.
 adding an environment touches one predicate rather than a condition spread
 across call sites.
 
+### Signing domains, and what the two current transports actually bind
+
+A second environment must not be able to replay an authorization made for the
+first. The requirement is that every engine signs in a distinct domain and binds
+the call it authorizes.
+
+An explicit `engineId` field in the signed struct was considered and rejected as
+ceremony. The account computes the digest from its own constant, not from a
+value an engine supplies, so an `engineId` constant and a distinct typehash
+string produce exactly the same separation. Adding the field would make the
+signed data more self-describing and buy no security property. The rule is
+therefore stated as a requirement on new engines rather than encoded as a field:
+
+- a new engine defines its own typehash, and must not reuse another engine's;
+- its digest binds the account, chain, mode, execution-calldata hash, a nonce
+  under that engine's control, and an expiry;
+- reusing `ILoomDirectValidator` is allowed, reusing `DIRECT_EXECUTION_TYPEHASH`
+  is not. That interface is the natural one for "validate this exact account
+  call", so a second engine copying the struct is the concrete replay this rule
+  prevents.
+
+The two transports that exist today already satisfy this, and they are not
+symmetric. `directExecutionDigest` (`src/LoomAccount.sol`) binds
+`configVersion`, so any configuration change voids a pending direct signature.
+The ERC-4337 path binds nothing of the sort: `userOpHash` covers the
+EntryPoint's own fields, and neither the account nor `P256Validator` or
+`ECDSAValidator` adds `configVersion`. A UserOperation signed before an
+unrelated hook install stays valid after it.
+
+That difference is defensible and is recorded rather than removed. The 4337 path
+is already single-use through the EntryPoint's two-dimensional nonce, a recovery
+that replaces the validator set makes the operation fail the installed-module
+check, and hooks are read at execution time so a newly installed policy still
+applies. Binding `configVersion` there would void every in-flight bundled
+operation on every configuration change, which is a liveness cost paid for a
+guarantee the other three mechanisms already provide.
+
+A third engine must state which of the two it follows. "It is like the other
+one" is not an answer when the two differ.
+
 ### What a protocol-level environment would need
 
 The extension procedure above was written against the shape ERC-4337 has: a
