@@ -18,6 +18,19 @@ not a conformant ERC-7579 account: its
 single-call encoding and module interfaces are intentionally narrower and are
 not plug-and-play compatible with standard ERC-7579 modules. Only validator
 and hook modules plus one narrowly scoped recovery module are supported.
+
+ERC-4337 is the account's transport, not its authority model. Every environment
+that can make the account act converges on one internal boundary,
+`_validateAuthority(operationHash, nonce, signatureEnvelope, callData,
+paymaster)`, which decodes the signature envelope, requires the named validator
+to be installed, and delegates the decision to it. `validateUserOp` sits above
+that line and does nothing but decode `PackedUserOperation` and pay the
+EntryPoint prefund; it must stay on the account because the EntryPoint calls the
+sender at a fixed selector. `_isExecutionEnvironment` is the single predicate
+deciding which external callers count as an environment. A second standard is
+added by writing its own entry function, its own write-once caller slot, and one
+disjunct in that predicate — nothing below the boundary changes. See
+[`docs/decisions/0020-execution-environment-boundary.md`](../decisions/0020-execution-environment-boundary.md).
 Executor, fallback, and delegatecall execution modes are deliberately
 rejected.
 
