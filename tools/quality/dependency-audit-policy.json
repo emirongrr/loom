@@ -1,4 +1,52 @@
 {
   "version": 1,
-  "exceptions": []
+  "exceptions": [
+    {
+      "target": "mobile privacy wallet example",
+      "profile": "exact-advisory-graph-v1",
+      "expiresAt": "2026-08-23T00:00:00Z",
+      "reason": "The unpatched image-size parsers are reachable only through Metro's local build pipeline. Application-owned runtime modules do not import Metro or image-size, and remote wallet input cannot supply build assets.",
+      "isolationTest": "examples/mobile-privacy-wallet/test/dependency-audit-isolation.test.mjs",
+      "advisories": [
+        {
+          "package": "image-size",
+          "advisory": "GHSA-w3rx-r6r6-pgpr",
+          "source": 1138808,
+          "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr"
+        },
+        {
+          "package": "image-size",
+          "advisory": "GHSA-5p2g-fcmc-qvqq",
+          "source": 1138809,
+          "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq"
+        }
+      ],
+      "packages": {
+        "@expo/cli": { "path": "node_modules/expo/node_modules/@expo/cli", "version": "57.0.6" },
+        "@expo/metro": { "path": "node_modules/@expo/metro", "version": "56.0.0" },
+        "@expo/metro-config": { "path": "node_modules/@expo/metro-config", "version": "57.0.3" },
+        "@react-native/community-cli-plugin": { "path": "node_modules/@react-native/community-cli-plugin", "version": "0.86.0" },
+        "@react-native/virtualized-lists": { "path": "node_modules/@react-native/virtualized-lists", "version": "0.86.0" },
+        "expo": { "path": "node_modules/expo", "version": "57.0.4" },
+        "image-size": { "path": "node_modules/image-size", "version": "1.2.1" },
+        "metro": { "path": "node_modules/metro", "version": "0.84.4" },
+        "metro-config": { "path": "node_modules/metro-config", "version": "0.84.4" },
+        "metro-transform-worker": { "path": "node_modules/metro-transform-worker", "version": "0.84.4" },
+        "react-native": { "path": "node_modules/react-native", "version": "0.86.0" }
+      },
+      "via": {
+        "@expo/cli": ["@expo/metro", "@expo/metro-config"],
+        "@expo/metro": ["metro", "metro-config", "metro-transform-worker"],
+        "@expo/metro-config": ["@expo/metro"],
+        "@react-native/community-cli-plugin": ["metro", "metro-config"],
+        "@react-native/virtualized-lists": ["react-native"],
+        "expo": ["@expo/cli", "@expo/metro", "@expo/metro-config"],
+        "image-size": [],
+        "metro": ["image-size", "metro-config", "metro-transform-worker"],
+        "metro-config": ["metro"],
+        "metro-transform-worker": ["metro"],
+        "react-native": ["@react-native/community-cli-plugin", "@react-native/virtualized-lists"]
+      }
+    }
+  ]
 }

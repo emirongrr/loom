@@ -185,15 +185,17 @@ Security claims are valid only under the assumptions listed here and in
     rehearsals, dependency review, updated audit scope, and tests proving the
     ECDSA-compatible signature path and post-quantum signature path are both
     required where the account profile claims hybrid security.
-16. Kohaku SDK dependency review includes pinned local overrides and one
-    time-bounded exception for `GHSA-mh99-v99m-4gvg`. The exception validates
-    the exact locked dependency graph and expires on 2026-08-08. Its isolation
-    test fails if wallet runtime proof imports or attacker-controlled EJS
-    rendering load the vulnerable CLI-only path. Production SDK release must
-    remove the exception through a compatible upstream release and revalidate
-    all overrides against untrusted wallet input and network-facing runtime
-    paths.
-17. Immutable proxy deployment is implemented but unaudited. Production release
+16. The former Kohaku SDK exception for `GHSA-mh99-v99m-4gvg` was removed after
+    compatible upstream releases cleared that dependency graph.
+17. Expo's Metro build pipeline still resolves `image-size`, whose latest
+    release has no fix for `GHSA-w3rx-r6r6-pgpr` or
+    `GHSA-5p2g-fcmc-qvqq`. A fail-closed exception pins the complete audit
+    graph and expires on 2026-08-23. Its isolation test requires `image-size`
+    to remain reachable only through Metro and rejects application-runtime
+    imports of Metro or the parser. Remove the exception as soon as a
+    compatible upstream release exists; remote wallet input must never become
+    build-asset input.
+18. Immutable proxy deployment is implemented but unaudited. Production release
     requires independent review of proxy initialization, storage layout,
     implementation codehash binding, registry non-authority, deployment
     manifests, gas tradeoffs, and migration guidance.
