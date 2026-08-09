@@ -116,7 +116,12 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint256 public constant MAX_REVERT_DATA_LENGTH = 2_048;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
-    uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
+    /// @dev `freeze` verifies a guardian proof itself rather than through
+    /// `GuardianVerificationLib.approved`, which is the only guardian path that
+    /// does. Taking the bound from the library rather than restating the literal
+    /// keeps the two from drifting: a proof length the library rejects for a
+    /// recovery approval must not be accepted for a freeze.
+    uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = GuardianVerificationLib.MAX_PROOF_LENGTH;
     bytes32 public constant SINGLE_EXECUTION_MODE = ExecutionLib.SINGLE_EXECUTION_MODE;
     bytes32 public constant BATCH_EXECUTION_MODE = ExecutionLib.BATCH_EXECUTION_MODE;
     bytes4 public constant ERC1271_MAGIC_VALUE = 0x1626ba7e;
