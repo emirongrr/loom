@@ -5,8 +5,8 @@ export function assertAllowedAuditReport({ report, lockfile, exception, root, no
   if (!report || report.auditReportVersion !== 2 || !report.vulnerabilities) {
     throw new Error("unsupported npm audit report");
   }
-  if (!exception || exception.target !== "privacy SDK") {
-    throw new Error("missing privacy SDK audit exception");
+  if (!exception) {
+    throw new Error("missing dependency audit exception");
   }
 
   const expiry = new Date(exception.expiresAt);
@@ -15,6 +15,13 @@ export function assertAllowedAuditReport({ report, lockfile, exception, root, no
   }
   if (!exception.isolationTest || !existsSync(join(root, exception.isolationTest))) {
     throw new Error("dependency audit isolation test is missing");
+  }
+
+  if (exception.profile === "exact-advisory-graph-v1") {
+    return assertExactAdvisoryGraph({ report, lockfile, exception });
+  }
+  if (exception.target !== "privacy SDK") {
+    throw new Error("unsupported dependency audit exception profile");
   }
 
   const expectedPackages = Object.keys(exception.packages).sort();
@@ -58,6 +65,53 @@ export function assertAllowedAuditReport({ report, lockfile, exception, root, no
   }
 
   return Object.freeze({ advisory: exception.advisory, expiresAt: exception.expiresAt });
+}
+
+function assertExactAdvisoryGraph({ report, lockfile, exception }) {
+  const expectedPackages = Object.keys(exception.packages).sort();
+  const actualPackages = Object.keys(report.vulnerabilities).sort();
+  assertSameList(actualPackages, expectedPackages, "audit package set changed");
+
+  const actualAdvisories = [];
+  for (const [name, expected] of Object.entries(exception.packages)) {
+    const finding = report.vulnerabilities[name];
+    const actualVia = finding?.via?.filter(item => typeof item === "string").sort() ?? [];
+    const expectedVia = [...(exception.via[name] ?? [])].sort();
+    assertSameList(actualVia, expectedVia, `audit path changed for ${name}`);
+    assertSameList([...(finding?.nodes ?? [])].sort(), [expected.path], `audit node changed for ${name}`);
+
+    const locked = lockfile.packages?.[expected.path]?.version;
+    if (locked !== expected.version) {
+      throw new Error(`locked ${name} version changed: expected ${expected.version}, received ${locked ?? "missing"}`);
+    }
+
+    for (const advisory of finding?.via?.filter(item => typeof item === "object") ?? []) {
+      actualAdvisories.push(`${name}:${advisory.source}:${advisory.url}`);
+    }
+  }
+
+  const expectedAdvisories = exception.advisories.map(item => {
+    if (!item.url.endsWith(item.advisory)) throw new Error("configured audit advisory identity is invalid");
+    return `${item.package}:${item.source}:${item.url}`;
+  });
+  assertSameList(actualAdvisories.sort(), expectedAdvisories.sort(), "audit advisory identity changed");
+
+  const counts = report.metadata?.vulnerabilities;
+  if (
+    counts?.total !== expectedPackages.length ||
+    counts.high !== expectedPackages.length ||
+    counts.info !== 0 ||
+    counts.low !== 0 ||
+    counts.moderate !== 0 ||
+    counts.critical !== 0
+  ) {
+    throw new Error("audit severity counts changed");
+  }
+
+  return Object.freeze({
+    advisory: exception.advisories.map(item => item.advisory).join(", "),
+    expiresAt: exception.expiresAt
+  });
 }
 
 function assertSameList(actual, expected, message) {

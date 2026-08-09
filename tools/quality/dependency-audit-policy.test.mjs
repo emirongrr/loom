@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { assertAllowedAuditReport } from "./dependency-audit-policy.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
+const beforeExpiry = new Date("2026-07-25T00:00:00Z");
 
 // The fixture is declared here rather than read from
 // `dependency-audit-policy.json`. Taking `policy.exceptions[0]` made the suite
@@ -49,7 +50,7 @@ test("accepts only the reviewed privacy dependency chain before expiry", () => {
     lockfile: lockfile(),
     exception,
     root,
-    now: new Date("2026-07-25T00:00:00Z")
+    now: beforeExpiry
   });
 
   assert.deepEqual(accepted, {
@@ -63,7 +64,7 @@ test("rejects an unknown advisory or dependency path", () => {
   report.vulnerabilities["brace-expansion"].via[0].source = 9999999;
 
   assert.throws(
-    () => assertAllowedAuditReport({ report, lockfile: lockfile(), exception, root }),
+    () => assertAllowedAuditReport({ report, lockfile: lockfile(), exception, root, now: beforeExpiry }),
     /advisory identity changed/
   );
 });
@@ -73,7 +74,7 @@ test("rejects lockfile drift", () => {
   lock.packages["node_modules/minimatch"].version = "10.2.5";
 
   assert.throws(
-    () => assertAllowedAuditReport({ report: auditReport(), lockfile: lock, exception, root }),
+    () => assertAllowedAuditReport({ report: auditReport(), lockfile: lock, exception, root, now: beforeExpiry }),
     /locked minimatch version changed/
   );
 });
@@ -89,6 +90,42 @@ test("rejects the reviewed advisory at expiry", () => {
         now: new Date("2026-08-08T00:00:00Z")
       }),
     /exception expired/
+  );
+});
+
+test("accepts an exact multi-advisory graph and rejects graph drift", () => {
+  const exactException = {
+    target: "mobile privacy wallet example",
+    profile: "exact-advisory-graph-v1",
+    expiresAt: "2026-08-23T00:00:00Z",
+    isolationTest: "packages/privacy/test/dependency-audit-isolation.test.mjs",
+    advisories: [
+      { package: "leaf", advisory: "GHSA-aaaa-bbbb-cccc", source: 1, url: "https://github.com/advisories/GHSA-aaaa-bbbb-cccc" },
+      { package: "leaf", advisory: "GHSA-dddd-eeee-ffff", source: 2, url: "https://github.com/advisories/GHSA-dddd-eeee-ffff" }
+    ],
+    packages: {
+      leaf: { path: "node_modules/leaf", version: "1.0.0" },
+      parent: { path: "node_modules/parent", version: "2.0.0" }
+    },
+    via: { leaf: [], parent: ["leaf"] }
+  };
+  const report = exactAuditReport();
+  const exactLockfile = {
+    packages: {
+      "node_modules/leaf": { version: "1.0.0" },
+      "node_modules/parent": { version: "2.0.0" }
+    }
+  };
+
+  assert.deepEqual(
+    assertAllowedAuditReport({ report, lockfile: exactLockfile, exception: exactException, root, now: beforeExpiry }),
+    { advisory: "GHSA-aaaa-bbbb-cccc, GHSA-dddd-eeee-ffff", expiresAt: "2026-08-23T00:00:00Z" }
+  );
+
+  report.vulnerabilities.leaf.via[0].source = 999;
+  assert.throws(
+    () => assertAllowedAuditReport({ report, lockfile: exactLockfile, exception: exactException, root, now: beforeExpiry }),
+    /audit advisory identity changed/
   );
 });
 
@@ -133,5 +170,24 @@ function lockfile() {
     packages: Object.fromEntries(
       Object.entries(exception.packages).map(([name, version]) => [`node_modules/${name}`, { version }])
     )
+  };
+}
+
+function exactAuditReport() {
+  return {
+    auditReportVersion: 2,
+    vulnerabilities: {
+      leaf: {
+        via: [
+          { source: 1, url: "https://github.com/advisories/GHSA-aaaa-bbbb-cccc" },
+          { source: 2, url: "https://github.com/advisories/GHSA-dddd-eeee-ffff" }
+        ],
+        nodes: ["node_modules/leaf"]
+      },
+      parent: { via: ["leaf"], nodes: ["node_modules/parent"] }
+    },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 0, high: 2, critical: 0, total: 2 }
+    }
   };
 }

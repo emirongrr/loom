@@ -37,7 +37,8 @@ export const targets = [
   { name: "CLI", args: ["--prefix", "packages/cli", "audit", "--audit-level=low"] },
   {
     name: "mobile privacy wallet example",
-    args: ["--prefix", "examples/mobile-privacy-wallet", "audit", "--audit-level=low"]
+    args: ["--prefix", "examples/mobile-privacy-wallet", "audit", "--audit-level=low", "--json"],
+    lockfile: "examples/mobile-privacy-wallet/package-lock.json"
   }
 ];
 
