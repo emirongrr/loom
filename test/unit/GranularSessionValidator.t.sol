@@ -170,6 +170,46 @@ contract GranularSessionValidatorTest {
         require(!invalid, "mismatched token and target accepted");
     }
 
+    /// A permission whose selector is `transfer`, `transferFrom`, or `approve`
+    /// must name the token. Left unset, the grant reads as a native spend limit
+    /// while `_allowsExecution` meters `execution.value` and never decodes the
+    /// calldata, so the session key could move the token without bound.
+    function testTokenSelectorPermissionMustNameTheToken() public {
+        bytes32 permissionId = keccak256("token-selector-without-token");
+        GranularSessionValidator.Permission memory permission = _tokenPermission(address(0), 60, 100, 2, 3);
+        permission.token = address(0);
+        permission.counterparty = address(0);
+
+        bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
+        _schedule(grant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool accepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, grant)));
+        require(!accepted, "token selector without token accepted");
+
+        // The unbounded transfer the accepted grant would have authorized.
+        require(
+            _validate(permissionId, _singleTokenCall(recipient, type(uint256).max), address(0), 0)
+                == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "unbounded token transfer authorized"
+        );
+
+        // The mirror direction, already enforced: a permission that names a
+        // token must carry a token selector.
+        bytes32 nativeId = keccak256("native-selector-with-token");
+        GranularSessionValidator.Permission memory nativePermission = _tokenPermission(address(0), 60, 100, 2, 3);
+        nativePermission.selector = MockTarget.setValue.selector;
+        nativePermission.counterparty = address(0);
+        bytes memory nativeGrant =
+            abi.encodeCall(GranularSessionValidator.grantPermission, (nativeId, nativePermission));
+        _schedule(nativeGrant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool nativeAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, nativeGrant)));
+        require(!nativeAccepted, "token without token selector accepted");
+        require(validator.permissionCount(address(account)) == 0, "rejected grants mutated enumeration");
+    }
+
     function testBatchGrantPermissionsRequiresTimelockAndIsAtomic() public {
         bytes32[] memory permissionIds = new bytes32[](2);
         permissionIds[0] = keccak256("batch-grant-a");
