@@ -130,6 +130,15 @@ const mutants = [
     testName: "testSessionPermissionCannotTargetTheAccountItself",
   },
   {
+    id: "session-token-selector-agreement",
+    category: "authority",
+    source: "src/validators/GranularSessionValidator.sol",
+    search: "|| ERC20CallLib.isTokenSelector(permission.selector) != (permission.token != address(0))",
+    replacement: "|| (permission.token != address(0) && !ERC20CallLib.isTokenSelector(permission.selector))",
+    testPath: "test/unit/GranularSessionValidator.t.sol",
+    testName: "testTokenSelectorPermissionMustNameTheToken",
+  },
+  {
     id: "session-module-target",
     category: "authority",
     source: "src/validators/GranularSessionValidator.sol",
