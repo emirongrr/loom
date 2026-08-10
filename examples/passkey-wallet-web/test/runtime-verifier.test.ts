@@ -127,3 +127,34 @@ test("a zero fallback verifier means no fallback authority or bytecode commitmen
     recoveryValidatorProvisioner: { ...provisioner, fallbackVerifierRuntimeCodeHash: HASH }
   }), /no fallback verifier/u);
 });
+
+test("each distinct address is fetched once per endpoint, not once per commitment", async () => {
+  // The fixture manifest names one address for factory, implementation,
+  // validator and policy hook, which is exactly the shape that used to pay for
+  // the same bytecode four times per endpoint.
+  const requested: string[] = [];
+  const client = {
+    getChainId: async () => deployment.chainId,
+    getCode: async ({ address }: { address: Address }) => { requested.push(address.toLowerCase()); return CODE; }
+  };
+  const request = (async () => new Response(JSON.stringify({ result: [ENTRY_POINT] }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  })) as typeof fetch;
+  const runtime = createRuntimeVerifier({ publicClients: { forEndpoint: () => client as never }, request });
+
+  await runtime.verify(config, deployment);
+
+  const distinct = new Set(requested);
+  assert.deepEqual([...distinct].sort(), [ENTRY_POINT.toLowerCase(), ADDRESS.toLowerCase()].sort());
+  // Two endpoints share this stub client, so one call per address per endpoint.
+  assert.equal(requested.length, distinct.size * 2, "an address was fetched more than once per endpoint");
+});
+
+test("the first mismatching commitment is still the one reported", async () => {
+  const broken = { ...deployment, runtimeCodeHashes: { ...deployment.runtimeCodeHashes, factory: keccak256("0xdead"), policyHook: keccak256("0xbeef") } } as const;
+  await assert.rejects(
+    verifier().verify(config, broken),
+    (error: unknown) => error instanceof AppError && error.userMessage.startsWith("Account factory")
+  );
+});
