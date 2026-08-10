@@ -254,3 +254,36 @@ void test("bundler profiles can be added, switched, and removed, and activating 
   assert.deepEqual(afterRemoveLast, []);
   assert.deepEqual(await loadBundlerProfiles(store), []);
 });
+
+void test("the secure store size limit is measured in bytes", async () => {
+  const { backend } = memoryBackend();
+  const store = createSecureLocalStore({ backend });
+
+  // 16 KiB of code units that encode to 48 KiB of UTF-8. Counting `length`
+  // accepted this; counting bytes does not.
+  await assert.rejects(
+    store.set("loom.guardianBackup.encrypted", "\u00e7".repeat(8 * 1024 + 1).padEnd(16 * 1024, "a")),
+    MobileWalletConfigurationError
+  );
+  await store.set("loom.guardianBackup.encrypted", "a".repeat(16 * 1024));
+});
+
+void test("the configuration check count is derived from the checks", async () => {
+  const { CONFIGURATION_CHECK_COUNT, configurationReadiness } = await import("../src/config/environment");
+  const empty = {
+    rpId: "",
+    origin: "",
+    network: { chainId: 0, l1ChainId: 0 },
+    verifiedState: { mode: "disabled" as const, helios: {} },
+    deployment: { p256VerifierMode: "not-configured" as const },
+    privacy: { releaseGate: { id: "x", title: "x", status: "blocked" as const, summary: "x" } }
+  };
+
+  // Every check reports on a wholly unset configuration, so the count the home
+  // screen renders as a denominator cannot drift from the checks themselves.
+  assert.equal(
+    configurationReadiness(empty as never).length,
+    CONFIGURATION_CHECK_COUNT,
+    "the denominator must equal the number of checks"
+  );
+});
