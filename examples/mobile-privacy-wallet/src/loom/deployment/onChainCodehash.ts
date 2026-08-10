@@ -17,11 +17,21 @@ import type { DeploymentManifest } from "./manifest";
 
 const ACCOUNT_IMPLEMENTATION_SELECTOR = ("0x" + keccak_256("accountImplementation()").slice(0, 8)) as Hex;
 
-function codehash(bytecode: Hex): Hex {
-  return ("0x" + keccak_256(hexToBytes(bytecode))) as Hex;
+function codehash(bytecode: Hex): Hex | undefined {
+  const bytes = hexToBytes(bytecode);
+  return bytes && (("0x" + keccak_256(bytes)) as Hex);
 }
 
-function hexToBytes(value: Hex): Uint8Array {
+// The bytecode arrives from an RPC the wallet does not trust, so its shape is
+// checked before it is interpreted. Unvalidated, a non-hex digit became a zero
+// byte and hashed to something plausible, and an odd number of digits reached
+// `new Uint8Array(n / 2)` with a fraction -- a RangeError thrown out of the
+// verification loop instead of the blocked gate the caller expects. A malformed
+// answer is a failure to confirm, which is what this module reports.
+function hexToBytes(value: Hex): Uint8Array | undefined {
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(value)) {
+    return undefined;
+  }
   const clean = value.slice(2);
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i += 1) {
@@ -75,6 +85,14 @@ async function verifyRoleCodehash(input: {
   }
 
   const actual = codehash(bytecode);
+  if (!actual) {
+    return {
+      id: `deployment.onchain.${role}.malformed-bytecode`,
+      title: "On-chain code hash not confirmed",
+      status: "blocked",
+      summary: `The bytecode returned for the ${role} address was not valid hex; it cannot be confirmed.`
+    };
+  }
   if (actual.toLowerCase() !== expected.toLowerCase()) {
     return {
       id: `deployment.onchain.${role}.mismatch`,

@@ -630,3 +630,28 @@ void test("no deployment value can be missing without blocking before the authen
   assert.equal(result.status, "blocked");
   assert.equal(touched, false, "entryPoint must block before a credential is created");
 });
+void test("malformed bytecode is a failure to confirm, not a thrown error", async () => {
+  const { verifyManifestCodehashesOnChain } = await import("../src/loom/deployment/onChainCodehash");
+  const { parseDeploymentManifest } = await import("../src/loom/deployment/manifest");
+  const manifest = parseDeploymentManifest({
+    chainId: 11155111,
+    entryPoint: ENTRY_POINT,
+    accountFactory: FACTORY,
+    passkeyValidator: VALIDATOR,
+    p256VerifierMode: "native-precompile",
+    codehashes: { entryPoint: "0x" + "ab".repeat(32), accountFactory: "0x" + "cd".repeat(32) }
+  });
+
+  for (const malformed of ["0xabc", "0xzz"]) {
+    const gates = await verifyManifestCodehashesOnChain(manifest, {
+      async getCode() {
+        return malformed as Hex;
+      }
+    } as never);
+    assert.ok(gates.length > 0, `${malformed} must block rather than confirm`);
+    assert.ok(
+      gates.some(gate => gate.id.endsWith("malformed-bytecode") && gate.status === "blocked"),
+      `${malformed} must be reported as unconfirmable bytecode`
+    );
+  }
+});
