@@ -221,7 +221,7 @@ Relays transport already-authorized operations. They can censor, delay, observe 
 
 ## Production checklist
 
-- Serve the static build over HTTPS with `default-src 'self'`, no inline executable script, no remote scripts, `object-src 'none'`, `base-uri 'none'`, and restrictive connect/frame policies.
+- Serve the static build over HTTPS. The build now ships its own Content-Security-Policy in a `meta` tag — `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `object-src 'none'`, `base-uri 'none'` — so the policy travels with the page instead of depending on host configuration. Send it as a real header too, and add `frame-ancestors 'none'`, which browsers ignore in a `meta` tag; `vite preview` already serves both.
 - Pin and verify chain ID, RP ID/origin, deployment addresses, runtime code hashes, and supported verifier family.
 - Require WebAuthn user verification; handle rejection and credential loss explicitly.
 - Use independent RPC checks for high-value state and revalidate balances/nonces after reorgs.
