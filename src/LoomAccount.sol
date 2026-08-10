@@ -287,18 +287,19 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     // --- Caller authorization ---
-    /// @dev The one predicate that answers "is this caller an execution
-    /// environment this account accepts". A second environment adds a disjunct
-    /// here and its own write-once address slot, rather than a mutable set of
-    /// trusted callers: a set raises the question of who may add to it, and
-    /// every answer is either new authority surface or a fixed list with extra
-    /// steps. See docs/decisions/0020-execution-environment-boundary.md.
+    /// @dev The one predicate that answers "may this caller use the shared
+    /// execution surface". It deliberately does not authorize an
+    /// environment-specific validation or settlement entry point: each such
+    /// function must authenticate its exact transport caller. Otherwise a new
+    /// environment added here could call ERC-4337's `validateUserOp` and collect
+    /// its EntryPoint-only prefund. See
+    /// docs/decisions/0020-execution-environment-boundary.md.
     function _isExecutionEnvironment(address caller) internal view returns (bool) {
         return caller == entryPoint;
     }
 
     modifier onlyEntryPoint() {
-        if (!_isExecutionEnvironment(msg.sender)) revert OnlyEntryPoint();
+        if (msg.sender != entryPoint) revert OnlyEntryPoint();
         _;
     }
 

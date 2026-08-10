@@ -11,10 +11,13 @@ const forge = existsSync(localForge) ? localForge : "forge";
 
 const mutants = [
   {
+    // This check must remain EntryPoint-specific. Reusing the generic
+    // execution-environment predicate would let a future environment invoke
+    // ERC-4337 validation and receive `missingAccountFunds` settlement.
     id: "account-entrypoint-caller",
     category: "authority",
     source: "src/LoomAccount.sol",
-    search: "if (!_isExecutionEnvironment(msg.sender)) revert OnlyEntryPoint();",
+    search: "if (msg.sender != entryPoint) revert OnlyEntryPoint();",
     replacement: "if (false) revert OnlyEntryPoint();",
     testPath: "test/unit/LoomAccount.t.sol",
     testName: "testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund",

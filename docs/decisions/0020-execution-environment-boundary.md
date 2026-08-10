@@ -72,7 +72,13 @@ load-bearing:
 The prefund transfer stays in `validateUserOp` and is deliberately not a
 parameter of the boundary. Paying the EntryPoint is settlement, not
 authorization, and a second environment's adapter should not have to pass a
-meaningless zero for it.
+meaningless zero for it. For the same reason, `onlyEntryPoint` remains an exact
+`msg.sender == entryPoint` check rather than consulting
+`_isExecutionEnvironment`: a caller authorized to use generic execution must
+not thereby gain access to ERC-4337 settlement. `validateUserOp` attempts the
+prefund transfer even when validation returns a failure code, as ERC-4337
+requires, so widening that caller check would let a newly added environment
+request account ETH through `missingAccountFunds` without a valid signature.
 
 ### One privileged caller per environment, not a registry
 
@@ -89,7 +95,9 @@ decision 0004.
 
 `execute`'s caller check becomes `_isExecutionEnvironment(msg.sender)`, so that
 adding an environment touches one predicate rather than a condition spread
-across call sites.
+across shared execution call sites. Environment-specific validation and
+settlement functions are deliberately excluded from that predicate and keep
+their own exact caller checks.
 
 ### Signing domains, and what the two current transports actually bind
 
@@ -191,7 +199,10 @@ The extension procedure is a process guarantee instead:
 2. Add that standard's privileged caller: a write-once slot if it is a deployed
    contract, a `constant` if it is a protocol address. See the next section for
    why the distinction matters.
-3. Add one disjunct to `_isExecutionEnvironment`.
+3. Add one disjunct to `_isExecutionEnvironment` for access to the shared
+   `execute` surface. Do not reuse that predicate for this environment's or any
+   other environment's validation or settlement entry point; each authenticates
+   its exact caller independently.
 4. Change nothing else. `_executeAuthorized` and everything below it — freeze,
    hooks, guardians, migration, scheduled calls — stays untouched.
 
@@ -218,16 +229,18 @@ environment is additive.
 
 Measured, not predicted, and it costs more than the shape suggests. The runtime
 grows 23 bytes, from 23,733 to 23,756, leaving 820 bytes of EIP-170 margin.
-Account deployment costs about 4,600 gas more — 148 of 302 snapshot entries
+Account deployment costs about 4,600 gas more — 148 of 303 existing snapshot entries
 rise, all of them account-deploying tests, by a median of 4,620, which is 23
 bytes at 200 gas per byte.
 
-The cost is entirely in the two helpers having more than one caller.
-`_validateAuthority` itself is free: one caller, so the optimizer inlines it.
-`_isExecutionEnvironment` is reachable from `onlyEntryPoint` and `execute`, and
-`_resolveInstalledValidator` from `_validateAuthority` and `isValidSignature`,
-so neither inlines. The second of those also shows in runtime: the ERC-1271 and
-malformed-envelope path costs about 1,082 gas more, a 1.57% move on
+The cost is concentrated in shared authorization helpers.
+`_validateAuthority` itself has one caller, so the optimizer inlines it.
+`_isExecutionEnvironment` currently has one caller (`execute`) and also inlines;
+it remains separate source structure so a future environment changes one
+execution predicate without widening an environment-specific validation path.
+`_resolveInstalledValidator` is called by `_validateAuthority` and
+`isValidSignature`, so it does not inline. That shows in runtime: the ERC-1271
+and malformed-envelope path costs about 1,082 gas more, a 1.57% move on
 `ECDSASignatureBoundaryTest`, which is the largest change anywhere and the only
 one above the 1% snapshot tolerance.
 

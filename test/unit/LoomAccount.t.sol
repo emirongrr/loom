@@ -140,6 +140,9 @@ contract LoomAccountTest {
     }
 
     function testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund() public {
+        // Generic execution-environment authorization must never widen this
+        // EntryPoint-specific settlement surface. The critical mutation guard
+        // pins the exact caller check to this balance-preservation assertion.
         MockEntryPoint foreignEntryPoint = new MockEntryPoint();
         LoomAccount foreignAccount = new LoomAccount(
             address(foreignEntryPoint), keccak256("guardians"), 1, keccak256("config"), _modules(validator)

@@ -26,10 +26,13 @@ paymaster)`, which decodes the signature envelope, requires the named validator
 to be installed, and delegates the decision to it. `validateUserOp` sits above
 that line and does nothing but decode `PackedUserOperation` and pay the
 EntryPoint prefund; it must stay on the account because the EntryPoint calls the
-sender at a fixed selector. `_isExecutionEnvironment` is the single predicate
-deciding which external callers count as an environment. A second standard is
-added by writing its own entry function, its own write-once caller slot, and one
-disjunct in that predicate — nothing below the boundary changes. See
+sender at a fixed selector. Environment-specific validation and settlement
+entry points authenticate their exact transport callers: generic execution
+authorization never grants access to ERC-4337's prefund path.
+`_isExecutionEnvironment` decides only who may call the shared `execute`
+surface. A second standard is added by writing its own entry function, its own
+write-once caller slot or protocol constant, and one execution-predicate
+disjunct — nothing below the boundary changes. See
 [`docs/decisions/0020-execution-environment-boundary.md`](../decisions/0020-execution-environment-boundary.md).
 Executor, fallback, and delegatecall execution modes are deliberately
 rejected.
