@@ -25,8 +25,14 @@ export function assertEndpointUrl(value: string, label: string): string {
       throw new MobileWalletConfigurationError(`${label} is not a valid URL.`);
     }
   })();
-  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-    throw new MobileWalletConfigurationError(`${label} must be https or localhost.`);
+  // The intent is "https anywhere, or http on the loopback host". The previous
+  // form said something looser: it only rejected when the protocol was not https
+  // AND the host was not loopback, so any scheme was accepted as long as the host
+  // was localhost -- `ftp://localhost`, and anything else a URL parser accepts.
+  // Loopback relaxes the transport requirement, not the scheme.
+  const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  if (!(parsed.protocol === "https:" || (parsed.protocol === "http:" && loopback))) {
+    throw new MobileWalletConfigurationError(`${label} must be https, or http on localhost.`);
   }
   return trimmed;
 }
