@@ -11,6 +11,9 @@ const forge = existsSync(localForge) ? localForge : "forge";
 
 const mutants = [
   {
+    // This check must remain EntryPoint-specific. Reusing the generic
+    // execution-environment predicate would let a future environment invoke
+    // ERC-4337 validation and receive `missingAccountFunds` settlement.
     id: "account-entrypoint-caller",
     category: "authority",
     source: "src/LoomAccount.sol",
@@ -18,6 +21,20 @@ const mutants = [
     replacement: "if (false) revert OnlyEntryPoint();",
     testPath: "test/unit/LoomAccount.t.sol",
     testName: "testValidateUserOpRejectsNonEntryPointCallerAndPreservesPrefund",
+  },
+  {
+    // Naming a validator is one step shared by every authorization path -- the
+    // ERC-4337 boundary and ERC-1271 both resolve through this helper, so that
+    // a second execution environment cannot forget the installed check and the
+    // signature path cannot drift from the validation path. This mutant is what
+    // proves the check is load-bearing where it now lives.
+    id: "account-validator-installed",
+    category: "authority",
+    source: "src/LoomAccount.sol",
+    search: "if (!decoded || !_modules[ModuleType.VALIDATOR][candidate]) return (false, address(0), bytes(\"\"));",
+    replacement: "if (false) return (false, address(0), bytes(\"\"));",
+    testPath: "test/integration/ExecutionEnvironmentParity.t.sol",
+    testName: "testUninstalledValidatorIsRejectedByEveryEnvironment",
   },
   {
     id: "account-initialization-context",

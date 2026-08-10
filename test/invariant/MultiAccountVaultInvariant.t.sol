@@ -267,8 +267,24 @@ contract MultiAccountVaultHandler {
         );
     }
 
+    /// @dev Bounded by the account's token balance as well as the vault
+    /// allowance. The allowance refreshes every period and `advanceVaultPeriod`
+    /// can be called without limit, so spending capacity is unbounded over time
+    /// while the account's balance is a fixed `INITIAL_TOKEN_BALANCE`. Bounding
+    /// only by the allowance therefore made this handler certain to fail on a
+    /// long enough sequence: once cumulative spends passed the balance,
+    /// `MockERC20.transfer` underflow-reverted, `_successfulSpend` returned
+    /// false, and `violated` latched. The `ci` profile (depth 50) reached that
+    /// point; the default profile (depth 32) usually did not, so it read as an
+    /// intermittent failure rather than a modelling gap.
+    ///
+    /// This bounds the fuzzer to the domain the handler models, the same way the
+    /// allowance already did. It weakens nothing: every spend the handler still
+    /// produces is asserted exactly as before.
     function _boundedSpend(LoomAccount account, uint128 seed) internal view returns (uint256) {
         uint256 remaining = _remaining(account);
+        uint256 balance = token.balanceOf(address(account));
+        if (balance < remaining) remaining = balance;
         return remaining == 0 ? 0 : (uint256(seed) % remaining) + 1;
     }
 
