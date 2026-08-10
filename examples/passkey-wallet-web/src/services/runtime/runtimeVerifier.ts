@@ -16,6 +16,10 @@ export function createRuntimeVerifier(input: {
   const request = input.request ?? fetch;
   return Object.freeze({
     async verify(config: NetworkConfig, deployment: WalletDeployment) {
+      // A URL comparison, and only that. Two different URLs can front the same
+      // provider, in which case corroboration proves less than it appears to;
+      // the wallet cannot tell, and says so here rather than implying the two
+      // endpoints are known to be operated separately.
       if (config.rpcUrl === config.verificationRpcUrl) {
         throw configurationError("The primary and verification RPC endpoints must be independent.");
       }
@@ -33,9 +37,27 @@ export function createRuntimeVerifier(input: {
       if (!supportedEntryPoints.some(value => value.toLowerCase() === deployment.entryPoint.toLowerCase())) {
         throw configurationError("The bundler does not support this deployment's EntryPoint.");
       }
-      for (const [address, expectedHash, label] of runtimeCommitments(deployment)) {
-        const codes = await Promise.all(clients.map(client => client.getCode({ address })));
-        if (codes.some(code => !code || code === "0x" || keccak256(code).toLowerCase() !== expectedHash.toLowerCase())) {
+      // One request per distinct address per endpoint, all in flight together.
+      // This was a round trip per commitment per endpoint, awaited in sequence:
+      // a manifest can name eleven commitments, so twenty-two serial requests
+      // stood between opening the wallet and seeing anything, and an address
+      // named twice was fetched twice.
+      const commitments = runtimeCommitments(deployment);
+      const codeByAddress = new Map(await Promise.all(
+        [...new Set(commitments.map(([address]) => address.toLowerCase()))]
+          .map(async address => [
+            address,
+            await Promise.all(clients.map(client => client.getCode({ address: address as Address })))
+          ] as const)
+      ));
+      // Checked in commitment order, so the first mismatch reported is the same
+      // one the sequential version reported.
+      for (const [address, expectedHash, label] of commitments) {
+        const codes = codeByAddress.get(address.toLowerCase()) ?? [];
+        if (
+          codes.length === 0
+          || codes.some(code => !code || code === "0x" || keccak256(code).toLowerCase() !== expectedHash.toLowerCase())
+        ) {
           throw configurationError(`${label} bytecode does not match the trusted deployment profile.`);
         }
       }
