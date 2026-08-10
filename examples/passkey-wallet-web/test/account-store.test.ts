@@ -83,6 +83,68 @@ test("a corrupt removed-wallet record cannot hide healthy wallets", async () => 
   assert.equal(await store.isRemoved("wallet-1"), false);
 });
 
+test("a corrupt saved-wallet record cannot hide healthy wallets", async () => {
+  const storage = memoryStorage();
+  const store = createBrowserAccountStore(storage);
+  await store.save(handle(1));
+  await store.save(handle(2));
+  const stored = JSON.parse(storage.getItem("loom.wallet.accounts.v1") as string) as unknown[];
+  storage.setItem("loom.wallet.accounts.v1", JSON.stringify([stored[0], { version: 1, kind: "derived", id: "damaged" }, stored[1]]));
+
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-2", "wallet-1"]);
+  const snapshot = await store.inspect();
+  assert.equal(snapshot.issues.length, 1, "the unreadable record is reported, not hidden");
+  assert.equal(snapshot.issues[0]?.index, 1);
+});
+
+test("an unreadable saved-wallet record survives later writes", async () => {
+  // It may be a record written by a newer build of this wallet, which is
+  // unreadable here and perfectly valid there. Dropping it on the next save
+  // would turn a version skew into data loss.
+  const storage = memoryStorage();
+  const store = createBrowserAccountStore(storage);
+  await store.save(handle(1));
+  const future = { version: 2, kind: "derived", id: "written-by-a-newer-build" };
+  const stored = JSON.parse(storage.getItem("loom.wallet.accounts.v1") as string) as unknown[];
+  storage.setItem("loom.wallet.accounts.v1", JSON.stringify([...stored, future]));
+
+  await store.save(handle(2));
+  await store.remove("wallet-1");
+
+  const remaining = JSON.parse(storage.getItem("loom.wallet.accounts.v1") as string) as unknown[];
+  assert.deepEqual(remaining.filter(item => (item as { version?: number }).version === 2), [future]);
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-2"]);
+});
+
+test("records beyond the saved-wallet limit survive an attempted update", async () => {
+  const storage = memoryStorage();
+  const store = createBrowserAccountStore(storage);
+  const records = [handle(1), ...Array.from({ length: 256 }, (_, index) => ({
+    version: 2,
+    kind: "derived",
+    id: `future-wallet-${index}`
+  }))];
+  const original = JSON.stringify(records);
+  storage.setItem("loom.wallet.accounts.v1", original);
+  storage.setItem("loom.wallet.accounts.removed.v1", JSON.stringify(["wallet-1"]));
+
+  await assert.rejects(store.save({ ...handle(1), label: "Updated wallet" }), /saved account limit of 256 reached/);
+  assert.equal(storage.getItem("loom.wallet.accounts.v1"), original);
+  assert.equal(await store.isRemoved("wallet-1"), true, "a rejected update must not clear the removal marker");
+});
+
+test("an unreadable saved-wallet list reports itself instead of refusing to work", async () => {
+  const storage = memoryStorage();
+  const store = createBrowserAccountStore(storage);
+  storage.setItem("loom.wallet.accounts.v1", "not-json");
+
+  const snapshot = await store.inspect();
+  assert.deepEqual(snapshot.accounts, []);
+  assert.equal(snapshot.issues.length, 1);
+  await store.save(handle(1));
+  assert.deepEqual((await store.list()).map(item => item.id), ["wallet-1"]);
+});
+
 test("successful recovery links the new passkey to the existing saved wallet identity", async () => {
   const store = createBrowserAccountStore(memoryStorage());
   const existing = { ...handle(1), id: "legacy-wallet-record", label: "My daily wallet" };

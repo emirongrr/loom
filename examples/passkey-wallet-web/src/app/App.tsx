@@ -34,17 +34,25 @@ export function App() {
   useEffect(() => {
     void (async () => {
       try {
-        let saved = await services.accounts.list();
+        let saved = await services.accounts.inspect();
         try {
           const legacyAccounts = await migrateLegacyAccountHandles(window.localStorage, { rpId: location.hostname, origin: location.origin });
           for (const legacy of [...legacyAccounts].reverse()) {
-            if (!saved.some(account => account.id === legacy.id) && !(await services.accounts.isRemoved(legacy.id))) {
+            if (!saved.accounts.some(account => account.id === legacy.id) && !(await services.accounts.isRemoved(legacy.id))) {
               await services.accounts.save(legacy);
             }
           }
-          saved = await services.accounts.list();
+          saved = await services.accounts.inspect();
         } catch { /* Legacy data stays untouched and is never surfaced as a separate onboarding flow. */ }
-        setAccounts(saved);
+        setAccounts(saved.accounts);
+        // A record this build cannot read is skipped rather than allowed to hide
+        // the healthy ones, so say that it happened. Silently showing fewer
+        // wallets than the user saved is the failure this avoids.
+        if (saved.issues.length > 0) {
+          setMessage(
+            `${saved.issues.length} saved wallet ${saved.issues.length === 1 ? "record was" : "records were"} not readable and ${saved.issues.length === 1 ? "is" : "are"} not listed. Nothing was deleted.`
+          );
+        }
       } catch (error) {
         setMessage(safeUserMessage(error, "Saved wallets could not be read.", "storage"));
       } finally { setAccountsLoaded(true); }

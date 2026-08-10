@@ -1,7 +1,20 @@
 import type { AccountHandle } from "../types";
 
+export interface AccountStoreIssue {
+  /** Position in the stored collection, so a report can name which entry. */
+  readonly index: number;
+  readonly message: string;
+}
+
+export interface AccountStoreSnapshot {
+  readonly accounts: readonly AccountHandle[];
+  readonly issues: readonly AccountStoreIssue[];
+}
+
 export interface AccountStore {
   list(): Promise<readonly AccountHandle[]>;
+  /** `list` plus what could not be read, for a screen that should say so. */
+  inspect(): Promise<AccountStoreSnapshot>;
   save(handle: AccountHandle): Promise<void>;
   remove(accountId: string): Promise<boolean>;
   isRemoved(accountId: string): Promise<boolean>;
@@ -12,13 +25,65 @@ const KEY = "loom.wallet.accounts.v1";
 const REMOVED_KEY = "loom.wallet.accounts.removed.v1";
 const MAX_ACCOUNTS = 256;
 
+interface StoredAccounts {
+  readonly handles: AccountHandle[];
+  /** Entries this build could not parse, kept verbatim so a write preserves them. */
+  readonly unreadable: unknown[];
+  readonly issues: AccountStoreIssue[];
+}
+
 export function createBrowserAccountStore(storage: Storage = window.localStorage): AccountStore {
-  const read = (): AccountHandle[] => {
+  // One unreadable entry used to reject the whole read, so a single damaged --
+  // or simply newer -- record hid every healthy wallet the user had. The sibling
+  // removed-wallet list already refuses to behave that way, and so does the
+  // guardian vault, which reports what it could not decrypt alongside what it
+  // could. This is that shape.
+  //
+  // Unreadable entries are carried through writes rather than dropped. A record
+  // written by a later version of this wallet is unreadable here and perfectly
+  // valid there; deleting it on the next save would turn a version skew into
+  // data loss.
+  const read = (): StoredAccounts => {
     const text = storage.getItem(KEY);
-    if (!text) return [];
-    const value: unknown = JSON.parse(text);
-    if (!Array.isArray(value) || value.length > MAX_ACCOUNTS) throw new Error("invalid saved account collection");
-    return value.map(parseAccountHandle);
+    if (!text) return { handles: [], unreadable: [], issues: [] };
+    let value: unknown;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      // The whole blob is unrecoverable, so there are no individual entries to
+      // preserve. Report it and start clean rather than refusing to work.
+      return { handles: [], unreadable: [], issues: [{ index: -1, message: "saved wallet list is not readable" }] };
+    }
+    if (!Array.isArray(value)) {
+      return { handles: [], unreadable: [], issues: [{ index: -1, message: "saved wallet list is not a collection" }] };
+    }
+    const handles: AccountHandle[] = [];
+    const unreadable: unknown[] = [];
+    const issues: AccountStoreIssue[] = [];
+    for (const [index, entry] of value.slice(0, MAX_ACCOUNTS).entries()) {
+      try {
+        handles.push(parseAccountHandle(entry));
+      } catch (error) {
+        unreadable.push(entry);
+        issues.push({ index, message: error instanceof Error ? error.message : "unreadable saved wallet" });
+      }
+    }
+    if (value.length > MAX_ACCOUNTS) {
+      // Do not parse beyond the bounded collection, but keep every tail entry
+      // in the write-preservation set. Otherwise updating a valid handle could
+      // silently truncate a newer or damaged oversized collection.
+      for (let index = MAX_ACCOUNTS; index < value.length; index += 1) {
+        unreadable.push(value[index]);
+      }
+      issues.push({ index: MAX_ACCOUNTS, message: `saved wallet list exceeds ${MAX_ACCOUNTS} entries` });
+    }
+    return { handles, unreadable, issues };
+  };
+  const write = (handles: readonly AccountHandle[], unreadable: readonly unknown[]) => {
+    if (handles.length + unreadable.length > MAX_ACCOUNTS) {
+      throw new Error(`saved account limit of ${MAX_ACCOUNTS} reached; export an existing handle before adding another`);
+    }
+    storage.setItem(KEY, JSON.stringify([...handles, ...unreadable]));
   };
   const readRemoved = (): string[] => {
     const text = storage.getItem(REMOVED_KEY);
@@ -30,25 +95,35 @@ export function createBrowserAccountStore(storage: Storage = window.localStorage
     } catch { return []; }
   };
   const writeRemoved = (values: readonly string[]) => storage.setItem(REMOVED_KEY, JSON.stringify([...new Set(values)].slice(0, MAX_ACCOUNTS)));
+  const visible = (): AccountStoreSnapshot => {
+    const stored = read();
+    const removed = new Set(readRemoved());
+    return Object.freeze({
+      accounts: Object.freeze(stored.handles.filter(item => !removed.has(item.id))),
+      issues: Object.freeze(stored.issues)
+    });
+  };
   return Object.freeze({
     async list() {
-      const removed = new Set(readRemoved());
-      return Object.freeze(read().filter(item => !removed.has(item.id)));
+      return visible().accounts;
+    },
+    async inspect() {
+      return visible();
     },
     async save(handle: AccountHandle) {
       const parsed = parseAccountHandle(handle);
+      const stored = read();
+      write([parsed, ...stored.handles.filter(item => item.id !== parsed.id)], stored.unreadable);
+      // Clear the tombstone only after the account write succeeds. Validation,
+      // quota, or storage failures must not partially unhide a removed wallet.
       writeRemoved(readRemoved().filter(id => id !== parsed.id));
-      const records = read().filter(item => item.id !== parsed.id);
-      records.unshift(parsed);
-      if (records.length > MAX_ACCOUNTS) throw new Error(`saved account limit of ${MAX_ACCOUNTS} reached; export an existing handle before adding another`);
-      storage.setItem(KEY, JSON.stringify(records));
     },
     async remove(accountId: string) {
       if (!validAccountId(accountId)) return false;
-      const records = read();
-      if (!records.some(item => item.id === accountId)) return false;
+      const stored = read();
+      if (!stored.handles.some(item => item.id === accountId)) return false;
       writeRemoved([...readRemoved(), accountId]);
-      storage.setItem(KEY, JSON.stringify(records.filter(item => item.id !== accountId)));
+      write(stored.handles.filter(item => item.id !== accountId), stored.unreadable);
       return true;
     },
     async isRemoved(accountId: string) {
@@ -57,15 +132,12 @@ export function createBrowserAccountStore(storage: Storage = window.localStorage
     async linkRecovered(handle: Extract<AccountHandle, { readonly kind: "recovered" }>) {
       const parsed = parseAccountHandle(handle);
       if (parsed.kind !== "recovered") throw new Error("only a recovered account handle can replace a saved passkey");
-      const current = read();
-      const previous = current.find(item => sameAccount(item, parsed));
+      const stored = read();
+      const previous = stored.handles.find(item => sameAccount(item, parsed));
       const linked = parseAccountHandle(previous
         ? { ...parsed, id: previous.id, label: previous.label }
         : parsed);
-      const records = current.filter(item => !sameAccount(item, parsed));
-      records.unshift(linked);
-      if (records.length > MAX_ACCOUNTS) throw new Error(`saved account limit of ${MAX_ACCOUNTS} reached; export an existing handle before adding another`);
-      storage.setItem(KEY, JSON.stringify(records));
+      write([linked, ...stored.handles.filter(item => !sameAccount(item, parsed))], stored.unreadable);
       return linked;
     }
   });
