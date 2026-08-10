@@ -237,6 +237,33 @@ contract MultiP256ValidatorTest {
         require(validator.policyHooks(address(account)) == address(replacement), "policy hook not updated");
     }
 
+    function testPolicyHookRebindRequiresConfigurationContextAndInstalledHook() public {
+        MockPolicyHook absent = new MockPolicyHook();
+        bytes memory absentRebind = abi.encodeCall(MultiP256Validator.rebindPolicyHook, (address(absent)));
+        ExecutionLib.Execution memory direct = ExecutionLib.Execution(address(validator), 0, absentRebind);
+        (bool unscheduled,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(direct))));
+        require(!unscheduled, "untimelocked rebind accepted");
+
+        bytes memory zeroRebind = abi.encodeCall(MultiP256Validator.rebindPolicyHook, (address(0)));
+        _schedule(account, address(validator), zeroRebind);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool zeroAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, zeroRebind)));
+        require(!zeroAccepted, "zero hook rebound");
+
+        _schedule(account, address(validator), absentRebind);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool absentAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, absentRebind)));
+        require(!absentAccepted, "uninstalled hook rebound");
+
+        bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(absent), ""));
+        _scheduleAndExecute(address(account), install);
+        _scheduleAndExecute(address(validator), absentRebind);
+        require(validator.policyHookFor(address(account)) == address(absent), "scheduled rebind failed");
+    }
+
     function testMfaDirectExecutionRequiresThreshold() public {
         MockTarget target = new MockTarget();
         bytes32 mode = account.SINGLE_EXECUTION_MODE();
