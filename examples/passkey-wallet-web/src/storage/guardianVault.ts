@@ -1,5 +1,6 @@
 import { validateGuardianInvite, validatePersistedGuardianInvite, type GuardianInviteV1 } from "@loom/sdk/recovery";
 import type { AccountHandle } from "../types.ts";
+import { resolveDeviceKey } from "./deviceKey.ts";
 import { assertGuardianCapabilityMatchesAccount, guardianVaultRecordsForAccount } from "./guardianVaultScope.ts";
 
 export interface GuardianVaultRecord {
@@ -163,12 +164,12 @@ async function openVault(name: string): Promise<IDBDatabase> {
   });
 }
 
-async function vaultKey(db: IDBDatabase): Promise<CryptoKey> {
-  const existing = await request<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key"));
-  if (existing) return existing;
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  await transactionDone(db, "keys", "readwrite", store => store.add(key, "device-key"));
-  return key;
+function vaultKey(db: IDBDatabase): Promise<CryptoKey> {
+  return resolveDeviceKey({
+    read: () => request<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key")),
+    create: () => crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]),
+    add: key => transactionDone(db, "keys", "readwrite", store => store.add(key, "device-key"))
+  });
 }
 
 async function encryptRecord(key: CryptoKey, record: GuardianVaultRecord, recordKey: string): Promise<StoredEnvelope> {
