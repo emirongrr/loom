@@ -4,8 +4,7 @@ import type {
   MobileWalletConfiguration,
   P256VerifierMode,
   ReleaseGate,
-  VerifiedStateMode,
-  WalletEnvironment
+  VerifiedStateMode
 } from "../types/wallet";
 import { blockedGate } from "../platform/errors";
 
@@ -28,13 +27,6 @@ function optionalNumber(value: string | undefined): number | undefined {
     throw new Error(`Expected positive integer, received ${value}`);
   }
   return parsed;
-}
-
-function walletEnvironment(value: string | undefined): WalletEnvironment {
-  if (value === "production" || value === "testnet" || value === "development") {
-    return value;
-  }
-  return "development";
 }
 
 function verifiedStateMode(value: string | undefined): VerifiedStateMode {
@@ -68,7 +60,6 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 0;
 
   return {
-    environment: walletEnvironment(process.env.LOOM_WALLET_ENV),
     rpId: process.env.EXPO_PUBLIC_LOOM_RP_ID ?? "",
     origin: process.env.EXPO_PUBLIC_LOOM_ORIGIN ?? "",
     network: {
