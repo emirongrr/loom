@@ -259,11 +259,40 @@ removal path (`scheduleCall` targeting the hook, gated by `MIN_CONFIG_DELAY`)
 clears. `evictHookWithGuardians` gives the guardian threshold (never a single
 guardian) an immediate alternative: reaching threshold consensus to *remove*
 one hook is itself the security bar, the same way `cancelMigrationWithGuardians`
-needs no additional delay. The function can only uninstall a hook - it cannot
-install one, move funds, or change guardian or validator configuration - and
-works the same way during an active freeze as `cancelMigrationWithGuardians`
-does, since it draws on guardian-threshold authority rather than the
-self-call/freeze-gated `execute()` path.
+needs no additional delay. It works the same way during an active freeze as
+`cancelMigrationWithGuardians` does, since it draws on guardian-threshold
+authority rather than the self-call/freeze-gated `execute()` path.
+
+The call takes a `replacement`. Passing the zero address uninstalls the hook and
+is refused when any installed validator declares a dependency on it, because
+removing it would leave that validator unable to authorize anything and no path
+to repair it. Passing an address installs that hook, enters the
+scheduled-configuration context, removes the old hook, and rebinds every dependent
+validator onto the replacement. The transaction is atomic, so a failed rebind
+restores the entire prior state. Decision 0005 records why the uninstall-only
+version was unsafe.
+
+**This is the one place the guardian threshold installs a module, and it is an
+authorization surface, not just an availability one.** `isLowRisk` on the policy
+hook is the only gate `validateDirectExecution` consults in all three primary
+validators, so the replacement the guardians name decides what direct execution
+is permitted. Three things bound it, and they should be read together:
+
+- The guardian threshold can already replace the complete validator set through
+  `recoverConfiguration`, so this is not a new *category* of authority. The
+  delta is timing: recovery is visible for three days before it applies, and
+  this is immediate.
+- The function installs exactly the one hook named in the signed digest. It
+  cannot move funds, change the guardian configuration, or add or remove a
+  validator.
+- Rebinding is reachable only in the existing scheduled-configuration context.
+  Guardian eviction raises that flag only around its atomic remove-and-rebind
+  section. Outside those contexts it would be an untimelocked way to point a
+  validator at a permissive hook.
+
+An account owner who is unwilling to grant the guardian set that immediate lever
+should keep the guardian threshold high enough that reaching it is equivalent to
+consenting to recovery.
 
 ### Why this pattern stops at hooks
 

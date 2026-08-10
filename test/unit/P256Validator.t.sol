@@ -8,6 +8,7 @@ import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
 import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
+import {UninstalledHookAccount} from "../mocks/UninstalledHookAccount.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {MockPolicyHook} from "../mocks/MockPolicyHook.sol";
 import {DenyPolicyHook} from "../mocks/DenyPolicyHook.sol";
@@ -401,16 +402,23 @@ contract P256ValidatorTest {
         require(validator.isModuleType(ModuleType.VALIDATOR), "validator module type rejected");
         require(!validator.isModuleType(ModuleType.HOOK), "hook module type accepted");
 
-        bytes memory uninstall =
-            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.HOOK, address(hook), bytes("")));
-        bytes memory schedule =
-            abi.encodeCall(LoomAccount.scheduleCall, (address(account), 0, uninstall, account.MIN_CONFIG_DELAY()));
-        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
-        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
-        account.executeScheduled(address(account), 0, uninstall);
+        // A real LoomAccount can no longer be driven into "validator bound to an
+        // uninstalled hook": it refuses to remove a hook an installed validator
+        // depends on. The validator's own fail-closed branch is exercised through a
+        // stub that reports the hook as absent, so it stays covered for accounts
+        // that cannot vouch for that invariant.
+        P256Validator strandedValidator = new P256Validator(address(verifier));
+        UninstalledHookAccount stub = new UninstalledHookAccount();
+        stub.initializeValidator(
+            address(strandedValidator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (P256TestKeys.x(1), P256TestKeys.y(1), keccak256("wallet.example"), keccak256(origin), address(hook))
+            )
+        );
 
         require(
-            validator.validateUserOp(address(account), hash, 0, abi.encode(signature), bytes("call"), address(0))
+            strandedValidator.validateUserOp(address(stub), hash, 0, abi.encode(signature), bytes("call"), address(0))
                 == ValidationDataLib.SIG_VALIDATION_FAILED,
             "removed hook accepted"
         );
@@ -487,11 +495,64 @@ contract P256ValidatorTest {
         );
     }
 
+    function testPolicyHookRebindRequiresConfigurationContextAndInstalledHook() public {
+        MockP256Verifier verifier = new MockP256Verifier();
+        P256Validator validator = new P256Validator(address(verifier));
+        MockPolicyHook hook = new MockPolicyHook();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[1] = LoomAccount.ModuleInit(
+            ModuleType.VALIDATOR,
+            address(validator),
+            abi.encodeCall(
+                P256Validator.initialize,
+                (
+                    P256TestKeys.x(1),
+                    P256TestKeys.y(1),
+                    keccak256("wallet.example"),
+                    keccak256("https://wallet.example"),
+                    address(hook)
+                )
+            )
+        );
+        LoomAccount account =
+            new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("rebind-config"), modules);
+
+        MockPolicyHook absent = new MockPolicyHook();
+        bytes memory absentRebind = abi.encodeCall(P256Validator.rebindPolicyHook, (address(absent)));
+        ExecutionLib.Execution memory direct = ExecutionLib.Execution(address(validator), 0, absentRebind);
+        (bool unscheduled,) =
+            address(account).call(abi.encodeCall(LoomAccount.execute, (bytes32(0), abi.encode(direct))));
+        require(!unscheduled, "untimelocked rebind accepted");
+
+        bytes memory zeroRebind = abi.encodeCall(P256Validator.rebindPolicyHook, (address(0)));
+        _schedule(account, address(validator), zeroRebind);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool zeroAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, zeroRebind)));
+        require(!zeroAccepted, "zero hook rebound");
+
+        _schedule(account, address(validator), absentRebind);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        (bool absentAccepted,) =
+            address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(validator), 0, absentRebind)));
+        require(!absentAccepted, "uninstalled hook rebound");
+
+        bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(absent), ""));
+        _scheduleAndExecute(account, address(account), install);
+        _scheduleAndExecute(account, address(validator), absentRebind);
+        require(validator.policyHookFor(address(account)) == address(absent), "scheduled rebind failed");
+    }
+
     function _scheduleAndExecute(LoomAccount account, address target, bytes memory data) internal {
-        bytes memory schedule = abi.encodeCall(LoomAccount.scheduleCall, (target, 0, data, account.MIN_CONFIG_DELAY()));
-        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        _schedule(account, target, data);
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
         account.executeScheduled(target, 0, data);
+    }
+
+    function _schedule(LoomAccount account, address target, bytes memory data) internal {
+        bytes memory schedule = abi.encodeCall(LoomAccount.scheduleCall, (target, 0, data, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
     }
 
     function _base64Url(bytes32 input) internal pure returns (bytes memory) {

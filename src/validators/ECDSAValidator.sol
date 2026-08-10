@@ -4,12 +4,13 @@ pragma solidity 0.8.36;
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
+import {ILoomPolicyBoundValidator} from "../interfaces/ILoomPolicyBoundValidator.sol";
 import {ECDSA} from "../libraries/ECDSA.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 
-contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
+contract ECDSAValidator is ILoomValidator, ILoomDirectValidator, ILoomPolicyBoundValidator {
     error AlreadyInitialized();
     error InvalidOwner();
     error ConfigTimelockRequired();
@@ -23,6 +24,11 @@ contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
 
     function initialize(address owner, address policyHook) external {
         if (owners[msg.sender] != address(0)) revert AlreadyInitialized();
+        // Only a non-zero check here. The account cannot be called back during its
+        // own construction -- it has no code yet -- so a validator cannot ask
+        // whether the hook is installed at initialization time. Initial module-set
+        // coherence remains a client/factory responsibility; validation fails
+        // closed if the hook is absent, and the account prevents its later removal.
         if (policyHook == address(0)) revert InvalidPolicyHook();
         _setOwner(msg.sender, owner);
         policyHooks[msg.sender] = policyHook;
@@ -93,5 +99,24 @@ contract ECDSAValidator is ILoomValidator, ILoomDirectValidator {
 
     function _verify(address account, bytes32 hash, bytes calldata signature) internal view returns (bool) {
         return ECDSA.recover(hash, signature) == owners[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    function policyHookFor(address account) external view returns (address) {
+        return policyHooks[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    /// @dev Gated on the account's scheduled-configuration execution flag. Guardian
+    /// hook replacement raises that same flag only around its atomic rebind section.
+    function rebindPolicyHook(address newHook) external {
+        if (
+            !ILoomAccount(msg.sender).isExecutingScheduled() || newHook == address(0)
+                || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)
+        ) {
+            revert InvalidPolicyHook();
+        }
+        policyHooks[msg.sender] = newHook;
+        emit PolicyHookSet(msg.sender, newHook);
     }
 }

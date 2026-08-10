@@ -192,9 +192,9 @@ contract MaliciousHookTest {
         RevertingHook hook = new RevertingHook();
         (LoomAccount account,,) = _accountWithHook(address(hook));
 
-        bytes32 digest = account.evictHookDigest(address(hook), account.configVersion());
+        bytes32 digest = account.evictHookDigest(address(hook), address(0), account.configVersion());
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(address(account), digest);
-        account.evictHookWithGuardians(address(hook), approvals);
+        account.evictHookWithGuardians(address(hook), address(0), approvals);
 
         require(!account.isModuleInstalled(ModuleType.HOOK, address(hook)), "hook must be evicted");
     }
@@ -331,9 +331,9 @@ contract MaliciousHookTest {
         uint64 versionBefore = account.configVersion();
         bytes32 hashBefore = account.configHash();
 
-        bytes32 digest = account.evictHookDigest(address(hook), account.configVersion());
+        bytes32 digest = account.evictHookDigest(address(hook), address(0), account.configVersion());
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(address(account), digest);
-        account.evictHookWithGuardians(address(hook), approvals);
+        account.evictHookWithGuardians(address(hook), address(0), approvals);
 
         require(account.configVersion() == versionBefore + 1, "eviction must advance configVersion exactly once");
         require(account.configHash() != hashBefore, "eviction must change configHash");
@@ -368,24 +368,24 @@ contract MaliciousHookTest {
 
         // Evict hook1 at configVersion v1.
         {
-            bytes32 digest1 = account.evictHookDigest(address(hook1), v1);
+            bytes32 digest1 = account.evictHookDigest(address(hook1), address(0), v1);
             GuardianVerificationLib.Approval[] memory a1 = _guardianApprovals(address(account), digest1);
-            account.evictHookWithGuardians(address(hook1), a1);
+            account.evictHookWithGuardians(address(hook1), address(0), a1);
         }
         require(!account.isModuleInstalled(ModuleType.HOOK, address(hook1)), "hook1 must be evicted");
         require(account.configVersion() == v1 + 1, "version must advance after hook1 eviction");
 
         // Evict hook2 at configVersion v1+1. A replay of the v1 digest must fail.
         {
-            bytes32 staleDigest = account.evictHookDigest(address(hook2), v1); // stale version
+            bytes32 staleDigest = account.evictHookDigest(address(hook2), address(0), v1); // stale version
             GuardianVerificationLib.Approval[] memory staleApprovals = _guardianApprovals(address(account), staleDigest);
             (bool staleOk,) = address(account)
-                .call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook2), staleApprovals)));
+                .call(abi.encodeCall(LoomAccount.evictHookWithGuardians, (address(hook2), address(0), staleApprovals)));
             require(!staleOk, "stale eviction digest must be rejected");
 
-            bytes32 freshDigest = account.evictHookDigest(address(hook2), account.configVersion());
+            bytes32 freshDigest = account.evictHookDigest(address(hook2), address(0), account.configVersion());
             GuardianVerificationLib.Approval[] memory freshApprovals = _guardianApprovals(address(account), freshDigest);
-            account.evictHookWithGuardians(address(hook2), freshApprovals);
+            account.evictHookWithGuardians(address(hook2), address(0), freshApprovals);
         }
         require(!account.isModuleInstalled(ModuleType.HOOK, address(hook2)), "hook2 must be evicted");
         require(account.configVersion() == v1 + 2, "version must advance after hook2 eviction");
@@ -428,9 +428,9 @@ contract MaliciousHookTest {
         require(block.timestamp < account.frozenUntil(), "account must be frozen");
 
         // Evict hook while frozen — this must succeed.
-        bytes32 evictDigest = account.evictHookDigest(address(hook), account.configVersion());
+        bytes32 evictDigest = account.evictHookDigest(address(hook), address(0), account.configVersion());
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(address(account), evictDigest);
-        account.evictHookWithGuardians(address(hook), approvals);
+        account.evictHookWithGuardians(address(hook), address(0), approvals);
 
         require(!account.isModuleInstalled(ModuleType.HOOK, address(hook)), "hook must be evicted while frozen");
     }
@@ -488,8 +488,8 @@ contract MaliciousHookTest {
         // Step 1: Evict the reverting hook (hook) at v1.
         uint64 v1 = account2.configVersion();
         {
-            bytes32 d = account2.evictHookDigest(address(hook), v1);
-            account2.evictHookWithGuardians(address(hook), _guardianApprovals(address(account2), d));
+            bytes32 d = account2.evictHookDigest(address(hook), address(0), v1);
+            account2.evictHookWithGuardians(address(hook), address(0), _guardianApprovals(address(account2), d));
         }
         // Now configVersion == v1+1; safe hook remains.
 
@@ -514,8 +514,8 @@ contract MaliciousHookTest {
 
         // Step 3: Evict the safe hook — configVersion advances again.
         {
-            bytes32 d = account2.evictHookDigest(address(safeHook), account2.configVersion());
-            account2.evictHookWithGuardians(address(safeHook), _guardianApprovals(address(account2), d));
+            bytes32 d = account2.evictHookDigest(address(safeHook), address(0), account2.configVersion());
+            account2.evictHookWithGuardians(address(safeHook), address(0), _guardianApprovals(address(account2), d));
         }
 
         // Now the old opId is stale (it was computed before the second eviction).

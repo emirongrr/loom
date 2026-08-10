@@ -102,6 +102,15 @@ const mutants = [
     testName: "testFrozenRecoveryCancellationRetiresScheduleAndRearmsGuardians",
   },
   {
+    id: "hook-dependency-guard",
+    category: "authority",
+    source: "src/LoomAccount.sol",
+    search: "if (_policyHookDependency(_validators[i]) == module) revert InvalidModule();",
+    replacement: "if (false) revert InvalidModule();",
+    testPath: "test/regression/ValidatorHookDependency.t.sol",
+    testName: "testScheduledUninstallOfADependedHookIsRefused",
+  },
+  {
     id: "recovery-config-snapshot",
     category: "stale-authority",
     source: "src/recovery/RecoveryManager.sol",

@@ -5,11 +5,12 @@ import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {ILoomDirectValidator} from "../interfaces/ILoomDirectValidator.sol";
 import {ILoomValidator} from "../interfaces/ILoomValidator.sol";
 import {IPolicyHook} from "../interfaces/IPolicyHook.sol";
+import {ILoomPolicyBoundValidator} from "../interfaces/ILoomPolicyBoundValidator.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
 import {ValidationDataLib} from "../libraries/ValidationDataLib.sol";
 import {WebAuthnP256} from "../libraries/WebAuthnP256.sol";
 
-contract MultiP256Validator is ILoomValidator, ILoomDirectValidator {
+contract MultiP256Validator is ILoomValidator, ILoomDirectValidator, ILoomPolicyBoundValidator {
     error AlreadyInitialized();
     error InvalidCredential();
     error DuplicateCredential();
@@ -48,6 +49,11 @@ contract MultiP256Validator is ILoomValidator, ILoomDirectValidator {
 
     function initialize(CredentialInit[] calldata initialCredentials, uint8 threshold, address policyHook) external {
         if (_credentialIds[msg.sender].length != 0) revert AlreadyInitialized();
+        // Only a non-zero check here. The account cannot be called back during its
+        // own construction -- it has no code yet -- so a validator cannot ask
+        // whether the hook is installed at initialization time. Initial module-set
+        // coherence remains a client/factory responsibility; validation fails
+        // closed if the hook is absent, and the account prevents its later removal.
         if (policyHook == address(0)) revert InvalidPolicyHook();
         if (
             initialCredentials.length == 0 || initialCredentials.length > MAX_CREDENTIALS || threshold == 0
@@ -190,5 +196,24 @@ contract MultiP256Validator is ILoomValidator, ILoomDirectValidator {
 
     function _requireScheduled() internal view {
         if (!ILoomAccount(msg.sender).isExecutingScheduled()) revert ConfigTimelockRequired();
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    function policyHookFor(address account) external view returns (address) {
+        return policyHooks[account];
+    }
+
+    /// @inheritdoc ILoomPolicyBoundValidator
+    /// @dev Gated on the account's scheduled-configuration execution flag. Guardian
+    /// hook replacement raises that same flag only around its atomic rebind section.
+    function rebindPolicyHook(address newHook) external {
+        if (
+            !ILoomAccount(msg.sender).isExecutingScheduled() || newHook == address(0)
+                || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)
+        ) {
+            revert InvalidPolicyHook();
+        }
+        policyHooks[msg.sender] = newHook;
+        emit PolicyHookSet(msg.sender, newHook);
     }
 }

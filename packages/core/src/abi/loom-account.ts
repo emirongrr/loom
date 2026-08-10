@@ -703,6 +703,11 @@ export const LoomAccountAbi = [
         "internalType": "address"
       },
       {
+        "name": "replacement",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "version",
         "type": "uint64",
         "internalType": "uint64"
@@ -723,6 +728,11 @@ export const LoomAccountAbi = [
     "inputs": [
       {
         "name": "hook",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "replacement",
         "type": "address",
         "internalType": "address"
       },
