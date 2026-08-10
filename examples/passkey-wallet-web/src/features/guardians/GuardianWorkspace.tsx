@@ -73,7 +73,7 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
         if (matchesOpenWallet) setRecoveryArtifact(inboundLink);
         else if (records.length > 0) setMessage("The open wallet has no accepted guardian capability for this recovery request.");
       })
-      .catch(() => setMessage("The incoming encrypted guardian link could not be opened."));
+      .catch(() => setMessage("The incoming guardian link could not be opened."));
   }, [account, inboundLink, records, services]);
   const accept = async () => {
     try {
@@ -102,13 +102,13 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
   };
   return <div className="page-stack"><header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>
     <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
-    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Encrypted link or QR payload</h2></div><span className="pill">Private</span></div>
+    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Invite link or QR payload</h2></div><span className="pill">Bearer secret</span></div>
       <label className="field"><span>Invitation</span><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" /></label>
       <button className="primary" onClick={accept} disabled={!link.trim()}>Review invitation</button>
       <details><summary>Advanced / portable file fallback</summary><p>Paste a versioned JSON capability exported from an independent wallet. It contains only your proof, never the full guardian set.</p></details>
       {message && <p className="toast" role="status">{message}</p>}
     </section>
-    {reviewableRecords.length > 0 && <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the encrypted request sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p><label className="field"><span>Recovery request or encrypted link</span><textarea rows={5} value={recoveryArtifact} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim()} onClick={() => void reviewRecovery()}>Review recovery request</button></section>}
+    {reviewableRecords.length > 0 && <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the request or bearer link sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p><label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim()} onClick={() => void reviewRecovery()}>Review recovery request</button></section>}
     {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
       {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {
