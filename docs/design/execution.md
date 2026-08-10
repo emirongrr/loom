@@ -266,9 +266,11 @@ authority rather than the self-call/freeze-gated `execute()` path.
 The call takes a `replacement`. Passing the zero address uninstalls the hook and
 is refused when any installed validator declares a dependency on it, because
 removing it would leave that validator unable to authorize anything and no path
-to repair it. Passing an address installs that hook, rebinds every dependent
-validator onto it, and only then removes the old one, atomically and in that
-order. Decision 0005 records why the uninstall-only version was unsafe.
+to repair it. Passing an address installs that hook, enters the
+scheduled-configuration context, removes the old hook, and rebinds every dependent
+validator onto the replacement. The transaction is atomic, so a failed rebind
+restores the entire prior state. Decision 0005 records why the uninstall-only
+version was unsafe.
 
 **This is the one place the guardian threshold installs a module, and it is an
 authorization surface, not just an availability one.** `isLowRisk` on the policy
@@ -283,10 +285,10 @@ is permitted. Three things bound it, and they should be read together:
 - The function installs exactly the one hook named in the signed digest. It
   cannot move funds, change the guardian configuration, or add or remove a
   validator.
-- Rebinding is reachable only while the account reports `isEvictingHook()`.
-  Outside an eviction it would be an untimelocked way to point a validator at a
-  permissive hook, which is exactly what `setPolicyHook`'s configuration delay
-  exists to prevent.
+- Rebinding is reachable only in the existing scheduled-configuration context.
+  Guardian eviction raises that flag only around its atomic remove-and-rebind
+  section. Outside those contexts it would be an untimelocked way to point a
+  validator at a permissive hook.
 
 An account owner who is unwilling to grant the guardian set that immediate lever
 should keep the guardian threshold high enough that reaching it is equivalent to

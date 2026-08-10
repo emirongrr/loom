@@ -105,9 +105,8 @@ const mutants = [
     id: "hook-dependency-guard",
     category: "authority",
     source: "src/LoomAccount.sol",
-    search:
-      "if (moduleTypeId == ModuleType.HOOK && _hasDependentValidator(module)) revert HookHasDependentValidator();",
-    replacement: "if (false) revert HookHasDependentValidator();",
+    search: "if (_policyHookDependency(_validators[i]) == module) revert InvalidModule();",
+    replacement: "if (false) revert InvalidModule();",
     testPath: "test/regression/ValidatorHookDependency.t.sol",
     testName: "testScheduledUninstallOfADependedHookIsRefused",
   },

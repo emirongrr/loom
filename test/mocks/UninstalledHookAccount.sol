@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice An account stub that records a validator's policy hook and then reports
 /// that hook as not installed.
@@ -29,10 +29,6 @@ contract UninstalledHookAccount {
     }
 
     function isExecutingScheduled() external pure returns (bool) {
-        return false;
-    }
-
-    function isEvictingHook() external pure returns (bool) {
         return false;
     }
 

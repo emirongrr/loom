@@ -33,27 +33,26 @@ self-call that only a passing validator can reach, and guardian recovery install
 validators but not hooks, so nothing could repair it. The state was terminal.
 
 The eviction now takes a `replacement`. When a validator depends on the hook a
-replacement is required, and the account installs it, rebinds every dependent
-validator onto it, and only then removes the old hook -- atomically, in that
-order. Eviction without a replacement remains available when nothing depends on
-the hook. `_uninstallModule` refuses to remove a depended-on hook on every path,
-so the ordinary scheduled-uninstall route is guarded too.
+replacement is required. The account installs it, temporarily enters the existing
+scheduled-configuration context, removes the old hook, and rebinds every dependent
+validator onto the replacement. The transaction is atomic: any failed rebind rolls
+back the removal and installation. Eviction without a replacement remains
+available when nothing depends on the hook. `_uninstallModule` refuses to remove a
+depended-on hook on every ordinary path, so scheduled uninstall is guarded too.
 
-Recovery is exempt from the coherence check that refuses to install a validator
-whose declared policy hook is absent. That check belongs on the ordinary
-timelocked path, where the owner is choosing the module set and a mismatch is a
-mistake worth refusing. On the recovery path refusing is the more dangerous
-answer: recovery is driven by the guardian threshold through an installed
-recovery module and needs no working validator, so a revert leaves the validator
-the guardians are replacing in place. A recovery that installs a validator naming
-an absent hook yields one that fails closed, and a further recovery repairs it; a
-blocked recovery cannot be repaired at all. The exemption is pinned in
-`test/regression/ValidatorHookDependency.t.sol:testRecoveryMayInstallAValidatorWhoseHookIsAbsentButOrdinaryInstallationMayNot`,
-which asserts the same validator is still refused on the ordinary path.
+Rebinding is reachable only while the account reports scheduled-configuration
+execution. Guardian eviction raises that existing flag only around the atomic
+remove-and-rebind section. Outside those contexts, rebinding would be an instant,
+untimelocked way to point a validator at a permissive hook, which
+`setPolicyHook`'s configuration delay exists to prevent.
 
-Rebinding is reachable only while the account reports `isEvictingHook()`.
-Otherwise it would be an instant, untimelocked way to re-point a validator at a
-permissive hook, which `setPolicyHook`'s configuration delay exists to prevent.
+This amendment enforces dependency coherence at removal time. It deliberately
+does not add a new construction- or installation-time coherence rule: existing
+factory, SDK, and recovery compatibility remain unchanged, and a validator naming
+an absent hook continues to fail closed. Clients should reject incoherent initial
+module sets before deployment. A broader on-chain installation rule requires a
+separate compatibility decision because recovery must remain able to replace a
+compromised validator even when the replacement configuration is incomplete.
 
 The residual this amendment accepts, stated plainly: the guardian threshold now
 chooses the contract that gates direct execution, because `isLowRisk` on the
@@ -98,8 +97,8 @@ Required controls:
   that made eviction dangerous. `test/regression/ValidatorHookDependency.t.sol`
   covers it with a real bound validator: eviction without a replacement is
   refused, eviction with one swaps atomically and leaves the account able to
-  validate, the scheduled uninstall path is refused as well, and rebinding is
-  rejected outside an eviction.
+  validate, the scheduled uninstall path is refused as well, and untimelocked
+  rebinding is rejected outside a configuration context.
 
 ## Rejected Alternatives
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 import {LoomAccount} from "../../src/LoomAccount.sol";
@@ -9,13 +9,68 @@ import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.so
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {ValidationDataLib} from "../../src/libraries/ValidationDataLib.sol";
-import {MockValidator} from "../mocks/MockValidator.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 
 interface VmDep {
     function warp(uint256) external;
     function addr(uint256 privateKey) external returns (address);
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
+}
+
+contract MalformedPolicyValidator {
+    uint256 private immutable _mode;
+    address private immutable _dependency;
+
+    constructor(uint256 mode, address dependency) {
+        _mode = mode;
+        _dependency = dependency;
+    }
+
+    function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
+        return moduleTypeId == ModuleType.VALIDATOR;
+    }
+
+    fallback() external {
+        uint256 mode = _mode;
+        address dependency = _dependency;
+        assembly {
+            switch mode
+            case 0 { revert(0, 0) }
+            case 1 {
+                mstore(0, dependency)
+                return(1, 31)
+            }
+            case 2 {
+                mstore(0, shl(160, 1))
+                return(0, 32)
+            }
+            case 3 {
+                mstore(0, dependency)
+                return(0, 64)
+            }
+            default { for {} 1 {} {} }
+        }
+    }
+}
+
+contract RevertingRebindValidator {
+    address private immutable _dependency;
+
+    constructor(address dependency) {
+        _dependency = dependency;
+    }
+
+    function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
+        return moduleTypeId == ModuleType.VALIDATOR;
+    }
+
+    function policyHookFor(address) external view returns (address) {
+        return _dependency;
+    }
+
+    function rebindPolicyHook(address) external pure {
+        revert("rebind refused");
+    }
 }
 
 /// @notice A hook a validator depends on cannot be removed out from under it.
@@ -84,8 +139,7 @@ contract ValidatorHookDependencyTest {
         validator = new ECDSAValidator();
 
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
-        // Hook first. Module initialization runs inside the account's install loop,
-        // and the validator now requires its hook to already be installed.
+        // Install the hook first so the baseline account starts coherent.
         modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
         modules[1] = LoomAccount.ModuleInit(
             ModuleType.VALIDATOR, address(validator), abi.encodeCall(ECDSAValidator.initialize, (owner, address(hook)))
@@ -96,42 +150,19 @@ contract ValidatorHookDependencyTest {
 
     function testAccountValidatesWhileTheBoundHookIsInstalled() public {
         require(account.validateUserOp(_signedUserOp(address(validator)), _opHash(), 0) == 0, "baseline validation");
-        require(account.policyHookDependency(address(validator)) == address(hook), "dependency not reported");
+        require(validator.policyHookFor(address(account)) == address(hook), "dependency not reported");
     }
 
-    /// @notice A validator cannot be installed pointing at a hook that is not there.
-    /// @dev Closes the door on an account that is incoherent from birth.
-    function testValidatorCannotInitializeAgainstAnUninstalledHook() public {
-        PolicyHook absent = new PolicyHook();
-        ECDSAValidator fresh = new ECDSAValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
-        modules[0] = LoomAccount.ModuleInit(
-            ModuleType.VALIDATOR, address(fresh), abi.encodeCall(ECDSAValidator.initialize, (owner, address(absent)))
-        );
-        (bool ok,) = address(this).call(abi.encodeCall(this.deployAccount, (modules)));
-        require(!ok, "validator initialized against an uninstalled hook");
-    }
-
-    /// @dev Recovery is deliberately exempt from the hook-coherence check. It is
-    /// the last-resort path: it is driven by the guardian threshold through an
-    /// installed recovery module and needs no working validator, so refusing it
-    /// here would leave whatever validator the guardians are replacing in place.
+    /// @dev Recovery must remain able to install a validator whose declared hook
+    /// is absent. It is the last-resort path and refusing it would leave whatever
+    /// validator the guardians are replacing in place.
     /// A recovery that installs a validator naming an absent hook produces one
     /// that fails closed, and a further recovery can repair that; a blocked
     /// recovery cannot be repaired at all.
-    ///
-    /// The exemption is bounded: the same validator and init data are still
-    /// refused on the ordinary construction path, which this asserts in the same
-    /// test so the two cannot drift apart.
-    function testRecoveryMayInstallAValidatorWhoseHookIsAbsentButOrdinaryInstallationMayNot() public {
+    function testRecoveryMayInstallAValidatorWhoseHookIsAbsent() public {
         PolicyHook absent = new PolicyHook();
         ECDSAValidator recovered = new ECDSAValidator();
         bytes memory initData = abi.encodeCall(ECDSAValidator.initialize, (owner, address(absent)));
-
-        LoomAccount.ModuleInit[] memory refused = new LoomAccount.ModuleInit[](1);
-        refused[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(recovered), initData);
-        (bool ordinary,) = address(this).call(abi.encodeCall(this.deployAccount, (refused)));
-        require(!ordinary, "ordinary installation accepted an absent hook");
 
         RecoveryModuleStub recovery = new RecoveryModuleStub();
         bytes memory install = abi.encodeCall(LoomAccount.installModule, (ModuleType.RECOVERY, address(recovery), ""));
@@ -150,10 +181,6 @@ contract ValidatorHookDependencyTest {
         require(!account.isModuleInstalled(ModuleType.HOOK, address(absent)), "absent hook was installed");
     }
 
-    function deployAccount(LoomAccount.ModuleInit[] calldata modules) external returns (LoomAccount) {
-        return new LoomAccount(address(this), guardianLeaf, 1, keccak256("other"), modules);
-    }
-
     /// @notice Guardians cannot evict a depended-on hook without naming a
     /// replacement, and the refused attempt changes nothing.
     function testEvictionWithoutReplacementIsRefusedWhenAValidatorDependsOnTheHook() public {
@@ -166,7 +193,7 @@ contract ValidatorHookDependencyTest {
             );
         require(!ok, "evicted a hook the only validator depends on");
         require(
-            keccak256(revertData) == keccak256(abi.encodeWithSelector(LoomAccount.HookHasDependentValidator.selector)),
+            keccak256(revertData) == keccak256(abi.encodeWithSelector(LoomAccount.InvalidModule.selector)),
             "wrong rejection"
         );
 
@@ -184,6 +211,7 @@ contract ValidatorHookDependencyTest {
     function testGuardiansCanSwapAStuckHookForAWorkingOneAtomically() public {
         PolicyHook replacement = new PolicyHook();
         uint64 versionBefore = account.configVersion();
+        bytes32 configBefore = account.configHash();
 
         bytes32 digest = account.evictHookDigest(address(hook), address(replacement), account.configVersion());
         account.evictHookWithGuardians(address(hook), address(replacement), _guardianApprovals(digest));
@@ -191,17 +219,41 @@ contract ValidatorHookDependencyTest {
         require(!account.isModuleInstalled(ModuleType.HOOK, address(hook)), "stuck hook not evicted");
         require(account.isModuleInstalled(ModuleType.HOOK, address(replacement)), "replacement not installed");
         require(
-            account.policyHookDependency(address(validator)) == address(replacement),
+            validator.policyHookFor(address(account)) == address(replacement),
             "validator not rebound onto the replacement"
         );
         require(account.configVersion() == versionBefore + 1, "eviction did not advance config");
-        require(!account.isEvictingHook(), "eviction flag left set");
+        require(account.configHash() == keccak256(abi.encode(configBefore, digest)), "config omitted approved eviction");
+        require(!account.isExecutingScheduled(), "configuration context left active");
 
         // The account is still usable, which is the whole point.
         require(
             account.validateUserOp(_signedUserOp(address(validator)), _opHash(), 0) == 0,
             "account unusable after a hook swap"
         );
+    }
+
+    function testGuardianSwapRollsBackWhenRebindFails() public {
+        RevertingRebindValidator refusing = new RevertingRebindValidator(address(hook));
+        _scheduleAndRun(abi.encodeCall(LoomAccount.installModule, (ModuleType.VALIDATOR, address(refusing), "")));
+        PolicyHook replacement = new PolicyHook();
+        uint64 versionBefore = account.configVersion();
+        bytes32 digest = account.evictHookDigest(address(hook), address(replacement), versionBefore);
+
+        (bool ok,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.evictHookWithGuardians,
+                    (address(hook), address(replacement), _guardianApprovals(digest))
+                )
+            );
+
+        require(!ok, "guardian swap ignored a failed rebind");
+        require(account.isModuleInstalled(ModuleType.HOOK, address(hook)), "old hook removal was not rolled back");
+        require(!account.isModuleInstalled(ModuleType.HOOK, address(replacement)), "replacement installation survived");
+        require(validator.policyHookFor(address(account)) == address(hook), "earlier rebind was not rolled back");
+        require(account.configVersion() == versionBefore, "failed swap advanced configuration");
+        require(!account.isExecutingScheduled(), "failed swap left configuration context active");
     }
 
     /// @notice Eviction without a replacement stays available when nothing depends on
@@ -231,14 +283,26 @@ contract ValidatorHookDependencyTest {
         require(account.isModuleInstalled(ModuleType.HOOK, address(hook)), "hook removed by scheduled uninstall");
     }
 
-    /// @notice Rebinding is reachable only during a guardian eviction.
-    /// @dev Otherwise it would be an instant, untimelocked way to re-point a validator
-    /// at a permissive hook, bypassing `setPolicyHook`'s configuration delay.
-    function testRebindPolicyHookIsRejectedOutsideAnEviction() public {
+    /// @notice Optional dependency discovery cannot give a malformed validator a
+    /// veto over hook removal or trick the account into decoding a dirty address.
+    function testMalformedDependencyResponsesDoNotVetoUnrelatedHookRemoval() public {
+        PolicyHook spare = new PolicyHook();
+        _scheduleAndRun(abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(spare), "")));
+
+        for (uint256 mode; mode < 5; ++mode) {
+            MalformedPolicyValidator malformed = new MalformedPolicyValidator(mode, address(spare));
+            _scheduleAndRun(abi.encodeCall(LoomAccount.installModule, (ModuleType.VALIDATOR, address(malformed), "")));
+        }
+
+        _scheduleAndRun(abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.HOOK, address(spare), "")));
+        require(!account.isModuleInstalled(ModuleType.HOOK, address(spare)), "malformed response vetoed removal");
+    }
+
+    /// @notice Rebinding is rejected outside a scheduled configuration or the
+    /// guardian eviction's atomic configuration section.
+    function testRebindPolicyHookIsRejectedOutsideAConfigurationContext() public {
         PolicyHook other = new PolicyHook();
         _scheduleAndRun(abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(other), "")));
-        require(!account.isEvictingHook(), "account should not be evicting");
-
         (bool direct,) = address(validator).call(abi.encodeCall(ECDSAValidator.rebindPolicyHook, (address(other))));
         require(!direct, "rebind accepted from an arbitrary caller");
 
@@ -256,14 +320,22 @@ contract ValidatorHookDependencyTest {
                     )
                 )
             );
-        require(!viaAccount, "rebind accepted outside an eviction");
-        require(account.policyHookDependency(address(validator)) == address(hook), "dependency changed");
+        require(!viaAccount, "untimelocked rebind accepted");
+        require(validator.policyHookFor(address(account)) == address(hook), "dependency changed");
     }
 
-    /// @notice A validator that declares no dependency is unaffected.
-    function testValidatorsWithoutAPolicyHookReportNoDependency() public {
-        MockValidator plain = new MockValidator();
-        require(account.policyHookDependency(address(plain)) == address(0), "unexpected dependency reported");
+    function testRebindPolicyHookIsAllowedThroughTheConfigurationTimelock() public {
+        PolicyHook other = new PolicyHook();
+        _scheduleAndRun(abi.encodeCall(LoomAccount.installModule, (ModuleType.HOOK, address(other), "")));
+
+        bytes memory rebind = abi.encodeCall(ECDSAValidator.rebindPolicyHook, (address(other)));
+        bytes memory schedule =
+            abi.encodeCall(LoomAccount.scheduleCall, (address(validator), 0, rebind, account.MIN_CONFIG_DELAY()));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, rebind);
+
+        require(validator.policyHookFor(address(account)) == address(other), "scheduled rebind failed");
     }
 
     // --- helpers ---

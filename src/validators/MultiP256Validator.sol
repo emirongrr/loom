@@ -51,9 +51,9 @@ contract MultiP256Validator is ILoomValidator, ILoomDirectValidator, ILoomPolicy
         if (_credentialIds[msg.sender].length != 0) revert AlreadyInitialized();
         // Only a non-zero check here. The account cannot be called back during its
         // own construction -- it has no code yet -- so a validator cannot ask
-        // whether the hook is installed at initialization time. The account
-        // enforces that coherence itself once the module set is in place; see
-        // `_assertPolicyHookCoherence`.
+        // whether the hook is installed at initialization time. Initial module-set
+        // coherence remains a client/factory responsibility; validation fails
+        // closed if the hook is absent, and the account prevents its later removal.
         if (policyHook == address(0)) revert InvalidPolicyHook();
         if (
             initialCredentials.length == 0 || initialCredentials.length > MAX_CREDENTIALS || threshold == 0
@@ -204,13 +204,13 @@ contract MultiP256Validator is ILoomValidator, ILoomDirectValidator, ILoomPolicy
     }
 
     /// @inheritdoc ILoomPolicyBoundValidator
-    /// @dev Gated on the account reporting an in-progress guardian hook eviction.
-    /// Ordinary hook changes go through `setPolicyHook` and the configuration
-    /// timelock; without this gate the account could re-point itself at a
-    /// permissive hook instantly.
+    /// @dev Gated on the account's scheduled-configuration execution flag. Guardian
+    /// hook replacement raises that same flag only around its atomic rebind section.
     function rebindPolicyHook(address newHook) external {
-        if (!ILoomAccount(msg.sender).isEvictingHook()) revert InvalidPolicyHook();
-        if (newHook == address(0) || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)) {
+        if (
+            !ILoomAccount(msg.sender).isExecutingScheduled() || newHook == address(0)
+                || !ILoomAccount(msg.sender).isModuleInstalled(ModuleType.HOOK, newHook)
+        ) {
             revert InvalidPolicyHook();
         }
         policyHooks[msg.sender] = newHook;

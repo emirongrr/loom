@@ -65,6 +65,7 @@ the assertion is that the account survives them.
 | `RevertingValidator` | validator that reverts instead of answering, so the account's fail-closed handling is reachable |
 | `PaymasterAwareValidator` | validator that binds an explicit paymaster |
 | `InitializerReentrantModule` | module that calls `initialize` back on the account while that account is still inside its own constructor |
+| `UninstalledHookAccount` | account-shaped stub that initializes a validator and then reports every hook absent, making the validator's fail-closed missing-hook branch reachable; it does not prove a real `LoomAccount` can enter that state or model Loom module lifecycle |
 | `MockTarget` | ordinary call target with observable state |
 
 ## When adding a double

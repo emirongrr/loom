@@ -47,7 +47,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error InvalidMigration();
     error OperationAlreadyScheduled();
     error OperationExpired();
-    error HookHasDependentValidator();
 
     // --- Types ---
     struct ModuleInit {
@@ -172,16 +171,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint64 public migrationNonce;
     bool private _executingScheduled;
     bool private _executionLocked;
-    /// @dev True only inside `evictHookWithGuardians`. Validators require it before
-    /// accepting `rebindPolicyHook`, so re-pointing a validator at a different hook
-    /// is possible during a guardian eviction but never as an ordinary, untimelocked
-    /// configuration change.
-    bool private _evictingHook;
-    /// @dev True only while `_initialize` is installing the initial module set.
-    /// Modules arrive as a set there, so a validator may legitimately name a hook
-    /// that appears later in the list; coherence is asserted once, at the end.
-    bool private _initializing;
-    bool private _recovering;
 
     // --- Events ---
     event ModuleInstalled(uint256 indexed moduleTypeId, address indexed module);
@@ -588,9 +577,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         for (uint256 i; i < oldValidators.length; ++i) {
             _removeValidatorForRecovery(oldValidators[i]);
         }
-        _recovering = true;
         _installModule(ModuleType.VALIDATOR, newValidator, initData);
-        _recovering = false;
         _advanceConfig(
             keccak256(
                 abi.encode(
@@ -623,11 +610,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         for (uint256 i; i < oldValidators.length; ++i) {
             _removeValidatorForRecovery(oldValidators[i]);
         }
-        _recovering = true;
         for (uint256 i; i < newValidators.length; ++i) {
             _installModule(ModuleType.VALIDATOR, newValidators[i].module, newValidators[i].initData);
         }
-        _recovering = false;
         _advanceConfig(
             keccak256(
                 abi.encode(
@@ -649,13 +634,13 @@ contract LoomAccount is IERC1271, ILoomAccount {
         // fails closed, `setPolicyHook` needs a scheduled self-call that only a
         // passing validator can reach, and recovery installs validators but not
         // hooks. Refuse instead. The guardian escape hatch is not blocked by this:
-        // `evictHookWithGuardians` rebinds dependents onto a replacement first.
-        if (moduleTypeId == ModuleType.HOOK && _hasDependentValidator(module)) revert HookHasDependentValidator();
-        _modules[moduleTypeId][module] = false;
-        if (moduleTypeId == ModuleType.VALIDATOR) --_validatorCount;
-        if (moduleTypeId == ModuleType.RECOVERY) --_recoveryModuleCount;
-        if (moduleTypeId == ModuleType.HOOK) _removeFromArray(_hooks, module);
-        if (moduleTypeId == ModuleType.VALIDATOR) _removeFromArray(_validators, module);
+        // `evictHookWithGuardians` replaces the hook and rebinds dependents atomically.
+        if (moduleTypeId == ModuleType.HOOK) {
+            for (uint256 i; i < _validators.length; ++i) {
+                if (_policyHookDependency(_validators[i]) == module) revert InvalidModule();
+            }
+        }
+        _removeModuleState(moduleTypeId, module);
         if (deInitData.length != 0) {
             (bool ok, bytes memory result) = module.call(deInitData);
             if (!ok) revert CallFailed(result);
@@ -665,10 +650,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     function _removeValidatorForRecovery(address module) internal {
         if (!_modules[ModuleType.VALIDATOR][module]) revert InvalidModule();
-        _modules[ModuleType.VALIDATOR][module] = false;
-        --_validatorCount;
-        _removeFromArray(_validators, module);
+        _removeModuleState(ModuleType.VALIDATOR, module);
         emit ModuleUninstalled(ModuleType.VALIDATOR, module);
+    }
+
+    function _removeModuleState(uint256 moduleTypeId, address module) internal {
+        _modules[moduleTypeId][module] = false;
+        if (moduleTypeId == ModuleType.VALIDATOR) {
+            --_validatorCount;
+            _removeFromArray(_validators, module);
+        } else if (moduleTypeId == ModuleType.HOOK) {
+            _removeFromArray(_hooks, module);
+        } else {
+            --_recoveryModuleCount;
+        }
     }
 
     /// @dev Removes the first occurrence of `value` from `array`, shifting the
@@ -810,10 +805,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return _executingScheduled;
     }
 
-    function isEvictingHook() external view returns (bool) {
-        return _evictingHook;
-    }
-
     /// @notice The hook `validator` requires, or zero if it declares no dependency.
     /// @dev Probed rather than required: a validator that needs no policy hook does
     /// not implement `ILoomPolicyBoundValidator`, and one that misbehaves must not be
@@ -822,11 +813,19 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// the account allows a removal the validator will then fail closed on -- the
     /// pre-existing behaviour -- while a revert would hand any module a veto over
     /// hook removal, including over the guardian escape hatch.
-    function policyHookDependency(address validator) public view returns (address) {
-        try ILoomPolicyBoundValidator(validator).policyHookFor(address(this)) returns (address hook) {
-            return hook;
-        } catch {
-            return address(0);
+    function _policyHookDependency(address validator) internal view returns (address hook) {
+        uint256 selector = 0x59874bd8; // policyHookFor(address)
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, shl(224, selector))
+            mstore(add(ptr, 4), address())
+            // A malformed optional interface must not gain an unbounded-gas veto
+            // over hook removal. Built-in mapping reads are far below this ceiling.
+            let success := staticcall(30000, validator, ptr, 36, ptr, 32)
+            if and(success, eq(returndatasize(), 32)) {
+                let result := mload(ptr)
+                if iszero(shr(160, result)) { hook := result }
+            }
         }
     }
 
@@ -879,9 +878,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         ScheduledOperation memory operation = scheduledOperations[operationId];
         if (operation.readyAt == 0) revert OperationNotScheduled();
         bytes32 digest = cancelScheduledDigest(operationId, configVersion, operation.nonce);
-        if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
-            revert InvalidModule();
-        }
+        _requireGuardianApproval(digest, guardianApprovals);
         _consumeScheduled(operationId, operation.nonce);
         emit OperationCancelled(operationId);
     }
@@ -952,9 +949,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (migration.readyAt == 0) revert MigrationNotPending();
         bytes32 migrationId = migrationIdFor(migration);
         bytes32 digest = migrationCancelDigest(migrationId, migration.configVersion, migration.nonce);
-        if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
-            revert InvalidModule();
-        }
+        _requireGuardianApproval(digest, guardianApprovals);
         _cancelMigration(migration);
     }
 
@@ -975,69 +970,59 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// the zero address to evict without one. A replacement is required when any
     /// installed validator depends on `hook`, because evicting without one would
     /// leave the account unable to authorize anything and unrecoverable.
-    /// @dev The swap is atomic and ordered: install the replacement, rebind every
-    /// dependent validator, then remove the old hook. Rebinding before removal is
-    /// what lets `_uninstallModule`'s dependency guard stay strict.
-    ///
-    /// `_evictingHook` is set for the duration so validators accept
-    /// `rebindPolicyHook` here and nowhere else. Ordinary hook changes still go
-    /// through `setPolicyHook` and the configuration timelock; this path is gated on
-    /// the guardian threshold instead, which is the same authority that can already
-    /// evict the hook outright.
+    /// @dev The swap is atomic and ordered: install the replacement, enter the
+    /// scheduled-configuration context, remove the old hook, and rebind every
+    /// dependent validator. Any failed rebind rolls the entire transaction back.
+    /// Reusing the scheduled-configuration flag keeps rebinding unavailable to
+    /// ordinary untimelocked account execution without adding another authority bit.
     function evictHookWithGuardians(
         address hook,
         address replacement,
         GuardianVerificationLib.Approval[] calldata guardianApprovals
     ) external {
         bytes32 digest = evictHookDigest(hook, replacement, configVersion);
+        _requireGuardianApproval(digest, guardianApprovals);
+        if (replacement == address(0)) {
+            _uninstallModule(ModuleType.HOOK, hook, "");
+        } else {
+            _installModule(ModuleType.HOOK, replacement, "");
+            if (!_modules[ModuleType.HOOK][hook]) revert InvalidModule();
+            _executingScheduled = true;
+            _removeModuleState(ModuleType.HOOK, hook);
+            emit ModuleUninstalled(ModuleType.HOOK, hook);
+            for (uint256 i; i < _validators.length; ++i) {
+                address validator = _validators[i];
+                if (_policyHookDependency(validator) == hook) {
+                    ILoomPolicyBoundValidator(validator).rebindPolicyHook(replacement);
+                }
+            }
+            _executingScheduled = false;
+        }
+        // The approved EIP-712 digest already commits the account, chain, hook,
+        // replacement, and pre-eviction configuration version.
+        _advanceConfig(digest);
+    }
+
+    function _requireGuardianApproval(bytes32 digest, GuardianVerificationLib.Approval[] calldata guardianApprovals)
+        internal
+        view
+    {
         if (!GuardianVerificationLib.approved(guardianRoot, guardianThreshold, digest, guardianApprovals)) {
             revert InvalidModule();
         }
-        if (replacement == address(0)) {
-            if (_hasDependentValidator(hook)) revert HookHasDependentValidator();
-            _uninstallModule(ModuleType.HOOK, hook, "");
-        } else {
-            if (replacement == hook) revert InvalidModule();
-            _installModule(ModuleType.HOOK, replacement, "");
-            _evictingHook = true;
-            uint256 count = _validators.length;
-            for (uint256 i; i < count; ++i) {
-                address validator = _validators[i];
-                if (policyHookDependency(validator) != hook) continue;
-                ILoomPolicyBoundValidator(validator).rebindPolicyHook(replacement);
-                if (policyHookDependency(validator) != replacement) revert HookHasDependentValidator();
-            }
-            _evictingHook = false;
-            _uninstallModule(ModuleType.HOOK, hook, "");
-        }
-        _advanceConfig(keccak256(abi.encode("HOOK_EVICTED_BY_GUARDIANS", hook, replacement)));
-    }
-
-    /// @dev Every installed validator's declared policy hook must be installed.
-    /// Run at the end of initialization, where modules arrive as a set and the
-    /// hook may legitimately be installed after a validator that names it.
-    function _assertPolicyHookCoherence() internal view {
-        uint256 count = _validators.length;
-        for (uint256 i; i < count; ++i) {
-            _assertValidatorHookInstalled(_validators[i]);
-        }
-    }
-
-    function _assertValidatorHookInstalled(address validator) internal view {
-        address hook = policyHookDependency(validator);
-        if (hook != address(0) && !_modules[ModuleType.HOOK][hook]) revert HookHasDependentValidator();
-    }
-
-    function _hasDependentValidator(address hook) internal view returns (bool) {
-        uint256 count = _validators.length;
-        for (uint256 i; i < count; ++i) {
-            if (policyHookDependency(_validators[i]) == hook) return true;
-        }
-        return false;
     }
 
     function evictHookDigest(address hook, address replacement, uint64 version) public view returns (bytes32) {
-        bytes32 structHash = keccak256(abi.encode(EVICT_HOOK_TYPEHASH, hook, replacement, version));
+        bytes32 typeHash = EVICT_HOOK_TYPEHASH;
+        bytes32 structHash;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, typeHash)
+            mstore(add(ptr, 32), hook)
+            mstore(add(ptr, 64), replacement)
+            mstore(add(ptr, 96), version)
+            structHash := keccak256(ptr, 128)
+        }
         return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
@@ -1162,21 +1147,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
             (bool ok, bytes memory result) = module.call(initData);
             if (!ok) revert CallFailed(result);
         }
-        // A validator that declares a policy hook must have that hook installed
-        // here and now. Checking after the module's own init call is deliberate:
-        // the validator learns its hook from `initData`, so the dependency does not
-        // exist until that call returns. Checked in the account rather than in the
-        // validator because a validator cannot call back into an account that is
-        // still inside its constructor -- it has no code yet.
-        // Recovery is exempt. It is the last-resort path, driven by the guardian
-        // threshold and needing no working validator, so refusing it here would
-        // leave a compromised validator in place -- strictly worse than
-        // installing one that fails closed until its hook is installed, which a
-        // further recovery can repair. The guard belongs on the ordinary
-        // timelocked path, where the owner is choosing the module set.
-        if (moduleTypeId == ModuleType.VALIDATOR && !_initializing && !_recovering) {
-            _assertValidatorHookInstalled(module);
-        }
         emit ModuleInstalled(moduleTypeId, module);
         if (_executingScheduled) _advanceConfig(keccak256(abi.encode("MODULE_INSTALLED", moduleTypeId, module)));
     }
@@ -1194,7 +1164,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (!_validInitialGuardianConfig(guardianRoot_, guardianThreshold_)) {
             revert InvalidGuardianConfig();
         }
-        _initializing = true;
         entryPoint = entryPoint_;
         guardianRoot = guardianRoot_;
         guardianThreshold = guardianThreshold_;
@@ -1204,8 +1173,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
             _installModule(modules[i].moduleTypeId, modules[i].module, modules[i].initData);
         }
         if (_validatorCount == 0) revert InvalidGuardianConfig();
-        _initializing = false;
-        _assertPolicyHookCoherence();
         emit ConfigUpdated(configHash_, 1);
         emit GuardianConfigUpdated(guardianRoot_, guardianThreshold_);
     }

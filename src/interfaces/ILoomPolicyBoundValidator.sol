@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Implemented by validators whose validation depends on a policy hook
 /// being installed on the account.
@@ -27,11 +27,10 @@ interface ILoomPolicyBoundValidator {
     function policyHookFor(address account) external view returns (address);
 
     /// @notice Re-point this validator at `newHook` for the calling account.
-    /// @dev Callable only by the account, and only while the account reports
-    /// `isEvictingHook()`. That restriction matters: ordinary hook changes go
-    /// through `setPolicyHook`, which requires the account's configuration
-    /// timelock. Without the eviction gate this would be an instant, untimelocked
-    /// way to re-point a validator at a permissive hook.
+    /// @dev Callable only by the account while it reports scheduled-configuration
+    /// execution. Guardian hook replacement raises the same flag only around its
+    /// atomic rebind section. Without this gate an account could re-point a
+    /// validator at a permissive hook through untimelocked execution.
     ///
     /// Implementations must require `newHook` to be installed on the account.
     function rebindPolicyHook(address newHook) external;
