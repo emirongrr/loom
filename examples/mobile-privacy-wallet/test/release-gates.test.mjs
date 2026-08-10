@@ -310,14 +310,20 @@ test("deployment lifecycle commands exist and stay honest", () => {
   assert.match(disconnect, /EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY/, "must clear the deployment env fields");
 });
 
-test("local bundler runner discloses executor-key process exposure", () => {
+test("local bundler runner keeps the executor key out of process listings", () => {
   const bundler = read("scripts/run-local-bundler.mjs");
   const readme = read("README.md");
 
-  assert.match(bundler, /argv exposure/i, "runner must warn that Alto receives the rehearsal key in argv");
+  // This gate used to demand a warning that Alto received the executor key in
+  // argv. #241 removed the exposure -- key and RPC URL now go through
+  // child-process environment variables -- so the warning is gone and the gate
+  // was asserting a weakness that no longer exists. It now pins the property
+  // that replaced it, which is the one worth defending against a future edit.
+  assert.match(bundler, /never through argv/i, "runner must keep secrets out of argv");
+  assert.match(bundler, /ALTO_\*/, "runner must pass secrets through the child-process environment (ALTO_*)");
   assert.match(bundler, /low-balance Sepolia rehearsal key/i, "runner must require a constrained rehearsal key");
-  assert.match(bundler, /never reuse a production deployer or user key/i);
-  assert.match(readme, /process-inspection tools may see it/i, "README must document local argv exposure");
+  assert.match(bundler, /over a production/i, "runner must warn against production keys");
+  assert.match(readme, /never argv/i, "README must document that secrets stay out of argv");
   assert.match(readme, /low-balance Sepolia rehearsal key/i);
 });
 
