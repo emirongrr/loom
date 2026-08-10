@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Optional validator capability for EntryPoint-independent execution.
 /// @dev Implementations must validate the account-provided EIP-712 digest and

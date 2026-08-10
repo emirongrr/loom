@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {P256} from "@openzeppelin/contracts/utils/cryptography/P256.sol";
 import {IP256Verifier} from "../../src/interfaces/IP256Verifier.sol";

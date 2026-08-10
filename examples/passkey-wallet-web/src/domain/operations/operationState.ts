@@ -1,5 +1,5 @@
 import type { Hex } from "@loom/core";
-import type { AppError } from "../errors/appError";
+import type { AppError, OperationStage } from "../errors/appError";
 
 export type OperationState =
   | { readonly status: "idle" }
@@ -61,4 +61,17 @@ function transitionAllowed(status: OperationState["status"], event: OperationEve
 
 export function operationIsPending(state: OperationState): boolean {
   return !["idle", "success", "error"].includes(state.status);
+}
+
+export function operationFailureStage(state: OperationState): OperationStage {
+  switch (state.status) {
+    case "validating": return "validation";
+    case "preparing": return "preparation";
+    case "estimating": return "estimation";
+    case "awaiting-passkey":
+    case "signing": return "passkey";
+    case "submitting": return "submission";
+    case "confirming": return "confirmation";
+    default: return "submission";
+  }
 }

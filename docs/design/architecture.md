@@ -12,12 +12,28 @@ path or privileged factory operation. Every authority must be installed by the
 account and exercised through an installed validator.
 
 The account implements the ERC-4337 validation entry point, provider-independent
-direct signed execution, ERC-1271 signature validation, and Loom-specific
+direct signed execution, ERC-1271 routing to the named validator, and Loom-specific
 single and atomic batch execution using the ERC-7579 mode-byte layout. Loom is
 not a conformant ERC-7579 account: its
 single-call encoding and module interfaces are intentionally narrower and are
 not plug-and-play compatible with standard ERC-7579 modules. Only validator
 and hook modules plus one narrowly scoped recovery module are supported.
+
+ERC-4337 is the account's transport, not its authority model. Every environment
+that can make the account act converges on one internal boundary,
+`_validateAuthority(operationHash, nonce, signatureEnvelope, callData,
+paymaster)`, which decodes the signature envelope, requires the named validator
+to be installed, and delegates the decision to it. `validateUserOp` sits above
+that line and does nothing but decode `PackedUserOperation` and pay the
+EntryPoint prefund; it must stay on the account because the EntryPoint calls the
+sender at a fixed selector. Environment-specific validation and settlement
+entry points authenticate their exact transport callers: generic execution
+authorization never grants access to ERC-4337's prefund path.
+`_isExecutionEnvironment` decides only who may call the shared `execute`
+surface. A second standard is added by writing its own entry function, its own
+write-once caller slot or protocol constant, and one execution-predicate
+disjunct — nothing below the boundary changes. See
+[`docs/decisions/0020-execution-environment-boundary.md`](../decisions/0020-execution-environment-boundary.md).
 Executor, fallback, and delegatecall execution modes are deliberately
 rejected.
 
@@ -77,7 +93,11 @@ will invoke the validator only when it is installed.
   per-call and per-UserOperation amount limits, time range, call count, use
   count, and one explicitly selected paymaster. Every item in an atomic batch
   must satisfy the same permission. Grants are timelocked and revocation is
-  immediate.
+  immediate. The account itself and its installed modules are not valid
+  permission targets, because the arguments of a permitted selector there would
+  be account authority rather than a spending capability. Calldata arguments are
+  otherwise unconstrained; `docs/design/permissions.md` states what that does
+  and does not bound.
 - `ECDSAValidator` exists for testing, migration, and hardware-wallet
   integrations. It is not the preferred primary validator.
 
@@ -118,7 +138,13 @@ account guardian root, records a visible pending recovery, enforces a
 three-day delay and seven-day execution window, supports account or guardian
 cancellation, and atomically replaces the complete committed validator set
 and guardian root through the account's narrow recovery entry point. Guardian
-leaves bind salted key commitments to immutable verifier code hashes. The
+leaves bind salted key commitments to a verifier address and its `codehash`.
+Note what that does and does not prove: it pins the code deployed at that
+address, so substituting a different contract there changes the leaf, but a
+`codehash` is stable across an upgradeable proxy's implementation changes. Using
+only immutable verifiers is therefore a production convention enforced by review
+and deployment profile, not by the contract; see
+[`docs/design/guardians.md`](guardians.md). The
 manager has no arbitrary execution authority. Loom includes guardian verifiers
 for ECDSA address commitments, WebAuthn P-256 passkeys, and ERC-1271 contract
 wallets such as multisigs.

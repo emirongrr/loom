@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {IERC7579Validator} from "../../src/interfaces/IERC7579Validator.sol";
 import {ECDSA} from "../../src/libraries/ECDSA.sol";

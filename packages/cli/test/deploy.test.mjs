@@ -10,7 +10,7 @@ const HASH = keccak256(CODE);
 const OTHER = `0x${"11".repeat(32)}`;
 
 const A = {
-  entryPoint: "0x433709e09c7750b04c222fb46e0f27642f41f0b7",
+  entryPoint: "0x43370948ada4bee98369c7a50209b283d6aac061",
   factory: "0x610178da211fef7d417bc0e6fed39f05609ad788",
   implementation: "0x2222222222222222222222222222222222222222",
   validator: "0x3333333333333333333333333333333333333333"

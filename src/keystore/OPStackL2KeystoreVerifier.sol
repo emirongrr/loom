@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {IKeystoreProofVerifier} from "../interfaces/IKeystoreProofVerifier.sol";
 import {ILoomKeystore} from "../interfaces/ILoomKeystore.sol";
@@ -10,10 +10,17 @@ import {RLPReader} from "@optimism-trie/rlp/RLPReader.sol";
 /// @notice Cross-chain keystore verifier for OP Stack L2s (Base, Optimism, and
 /// other OP Stack chains). It proves that the L1 `LoomKeystore` holds a given
 /// `KeystoreConfig` for an identity by verifying an EIP-1186 account-and-storage
-/// proof against the Ethereum L1 state root surfaced by the OP Stack `L1Block`
-/// predeploy. There is no bridge, oracle, messaging layer, or Loom-operated
-/// service in the trust path: authority comes from L1 state alone, and any party
-/// can carry a valid proof. See docs/decisions/0008-op-stack-l2-keystore-verifier.md.
+/// proof against an Ethereum L1 state root. There is no bridge, oracle, messaging
+/// layer, or Loom-operated service in the trust path: authority comes from L1
+/// state alone, and any party can carry a valid proof.
+/// See docs/decisions/0008-op-stack-l2-keystore-verifier.md.
+///
+/// The state root is not read directly. The canonical `L1Block` predeploy does
+/// not publish one; it publishes the L1 block *hash*. The caller therefore
+/// supplies the RLP-encoded L1 block header alongside the proofs, this contract
+/// checks `keccak256(header) == L1Block.hash()`, and reads the state root out of
+/// the header's fourth field. Binding the header to the sequencer-written hash is
+/// what makes the state root authentic; the header itself is untrusted calldata.
 ///
 /// Trust boundary: the OP Stack sequencer that writes `L1Block` is a liveness
 /// dependency for state-root currency (a withheld or stale root only delays
@@ -50,7 +57,22 @@ contract OPStackL2KeystoreVerifier is IKeystoreProofVerifier {
     /// @notice Index of the storage root within the account RLP list.
     uint256 private constant STORAGE_ROOT_INDEX = 2;
 
+    /// @notice Index of `stateRoot` in an Ethereum block header RLP list:
+    /// [parentHash, ommersHash, beneficiary, stateRoot, ...].
+    uint256 private constant HEADER_STATE_ROOT_INDEX = 3;
+
+    /// @notice Minimum number of fields in an Ethereum block header RLP list.
+    /// @dev A pre-London header has 15. Later forks only append (baseFeePerGas,
+    /// withdrawalsRoot, blobGasUsed, excessBlobGas, parentBeaconBlockRoot,
+    /// requestsHash), so a lower bound stays valid across forks while still
+    /// rejecting a short list that could not be a header. The fields this contract
+    /// reads sit well inside the first 15.
+    uint256 private constant MIN_HEADER_FIELDS = 15;
+
     /// @notice Caller-supplied EIP-1186 proof, ABI-encoded as `proof`.
+    /// @param l1BlockHeader      RLP-encoded Ethereum L1 block header. Untrusted until
+    ///                           `keccak256(l1BlockHeader)` matches `L1Block.hash()`;
+    ///                           the state root the proofs verify against is read from it.
     /// @param accountProof       Account-trie nodes proving `loomKeystore` against the L1 state root.
     /// @param validatorRootProof Storage-trie nodes for `_configs[id].validatorRoot` (slot base + 0).
     /// @param guardianRootProof  Storage-trie nodes for `_configs[id].guardianRoot` (slot base + 1).
@@ -58,6 +80,7 @@ contract OPStackL2KeystoreVerifier is IKeystoreProofVerifier {
     /// @param packedProof        Storage-trie nodes for the packed slot holding `guardianThreshold`
     ///                           and `version` (slot base + 3).
     struct KeystoreProof {
+        bytes l1BlockHeader;
         bytes[] accountProof;
         bytes[] validatorRootProof;
         bytes[] guardianRootProof;
@@ -70,6 +93,13 @@ contract OPStackL2KeystoreVerifier is IKeystoreProofVerifier {
     constructor(address loomKeystore_, address l1Block_) {
         if (loomKeystore_ == address(0)) revert InvalidKeystore();
         if (l1Block_.code.length == 0) revert InvalidL1Block();
+        // Probe the predeploy for the exact function this verifier depends on, so a
+        // deployment onto a chain whose `L1Block` does not expose it fails here
+        // rather than silently returning false for every proof forever. The
+        // previous version asked for a function the canonical predeploy has never
+        // had, and nothing caught it until a real chain was involved.
+        (bool probed, bytes memory result) = l1Block_.staticcall(abi.encodeCall(IL1Block.hash, ()));
+        if (!probed || result.length != 32) revert InvalidL1Block();
         loomKeystore = loomKeystore_;
         l1Block = l1Block_;
     }
@@ -109,10 +139,19 @@ contract OPStackL2KeystoreVerifier is IKeystoreProofVerifier {
     ) external view returns (bool) {
         if (msg.sender != address(this)) revert OnlySelf();
 
-        bytes32 stateRoot = IL1Block(l1Block).stateRoot();
-        if (stateRoot == bytes32(0)) return false;
-
         KeystoreProof memory p = abi.decode(proof, (KeystoreProof));
+
+        // The predeploy publishes the L1 block hash, not the state root. Binding
+        // the caller's header to that hash is what makes the state root read out
+        // of it authentic; the header is otherwise untrusted calldata.
+        bytes32 l1BlockHash = IL1Block(l1Block).hash();
+        if (l1BlockHash == bytes32(0)) return false;
+        if (keccak256(p.l1BlockHeader) != l1BlockHash) return false;
+
+        RLPReader.RLPItem[] memory header = RLPReader.readList(p.l1BlockHeader);
+        if (header.length < MIN_HEADER_FIELDS) return false;
+        bytes32 stateRoot = _toBytes32(RLPReader.readBytes(header[HEADER_STATE_ROOT_INDEX]));
+        if (stateRoot == bytes32(0)) return false;
 
         // Prove the LoomKeystore account against the L1 state root and recover its storage root.
         bytes memory accountRLP = SecureMerkleTrie.get(abi.encodePacked(loomKeystore), p.accountProof, stateRoot);

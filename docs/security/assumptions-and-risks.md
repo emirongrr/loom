@@ -12,7 +12,7 @@ Security claims are valid only under the assumptions listed here and in
 | EntryPoint | Calls ERC-4337 validation and account execution | ERC-4337 path loss or malicious official deployment | Per-chain bytecode verification, independent bundlers, direct signed execution, exact migration path |
 | Validators | Approve UserOperations within their profile | Key compromise or validator implementation bug | Timelocked lifecycle, narrow validators, complete-set recovery |
 | Hooks | Inspect and block execution | Policy bypass or temporary denial of service | Hook snapshot semantics, fail-closed behavior, exact delayed-removal bypass |
-| Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, immutable verifier code |
+| Recovery module | Replaces the complete validator set | Guardian compromise or verifier bug | Threshold, visible delay, cancellation, expiry, and a guardian leaf binding the verifier address and `codehash`. A `codehash` is stable across an upgradeable proxy's implementation changes, so immutable verifiers are a review and deployment-profile convention, not a contract guarantee; see `docs/design/guardians.md` |
 | Account proxy | Dispatches account calls to a shared implementation | Initialization bug, storage-layout mismatch, implementation-code dependency, mistaken upgrade assumption | Immutable implementation pointer, no admin or upgrade selector, one-time initialization, codehash manifests, proxy-specific tests |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
@@ -185,15 +185,17 @@ Security claims are valid only under the assumptions listed here and in
     rehearsals, dependency review, updated audit scope, and tests proving the
     ECDSA-compatible signature path and post-quantum signature path are both
     required where the account profile claims hybrid security.
-16. Kohaku SDK dependency review includes pinned local overrides and one
-    time-bounded exception for `GHSA-mh99-v99m-4gvg`. The exception validates
-    the exact locked dependency graph and expires on 2026-08-08. Its isolation
-    test fails if wallet runtime proof imports or attacker-controlled EJS
-    rendering load the vulnerable CLI-only path. Production SDK release must
-    remove the exception through a compatible upstream release and revalidate
-    all overrides against untrusted wallet input and network-facing runtime
-    paths.
-17. Immutable proxy deployment is implemented but unaudited. Production release
+16. The former Kohaku SDK exception for `GHSA-mh99-v99m-4gvg` was removed after
+    compatible upstream releases cleared that dependency graph.
+17. Expo's Metro build pipeline still resolves `image-size`, whose latest
+    release has no fix for `GHSA-w3rx-r6r6-pgpr` or
+    `GHSA-5p2g-fcmc-qvqq`. A fail-closed exception pins the complete audit
+    graph and expires on 2026-08-23. Its isolation test requires `image-size`
+    to remain reachable only through Metro and rejects application-runtime
+    imports of Metro or the parser. Remove the exception as soon as a
+    compatible upstream release exists; remote wallet input must never become
+    build-asset input.
+18. Immutable proxy deployment is implemented but unaudited. Production release
     requires independent review of proxy initialization, storage layout,
     implementation codehash binding, registry non-authority, deployment
     manifests, gas tradeoffs, and migration guidance.

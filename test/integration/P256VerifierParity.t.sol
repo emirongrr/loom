@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {OZP256Verifier} from "../mocks/OZP256Verifier.sol";

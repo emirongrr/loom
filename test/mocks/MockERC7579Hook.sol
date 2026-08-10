@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {IERC7579Hook} from "../../src/interfaces/IERC7579Hook.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";

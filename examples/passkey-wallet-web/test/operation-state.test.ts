@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AppError } from "../src/domain/errors/appError.ts";
-import { operationIsPending, reduceOperationState, type OperationState } from "../src/domain/operations/operationState.ts";
+import { operationFailureStage, operationIsPending, reduceOperationState, type OperationState } from "../src/domain/operations/operationState.ts";
 
 const HASH = `0x${"11".repeat(32)}` as const;
 const TX = `0x${"22".repeat(32)}` as const;
@@ -34,4 +34,12 @@ test("operation state rejects impossible success and duplicate submission transi
     transactionHash: TX
   }));
   assert.throws(() => reduceOperationState({ status: "submitting" }, { type: "SUBMIT" }));
+});
+
+test("operation failures preserve the stage that actually failed", () => {
+  assert.equal(operationFailureStage({ status: "estimating" }), "estimation");
+  assert.equal(operationFailureStage({ status: "awaiting-passkey" }), "passkey");
+  assert.equal(operationFailureStage({ status: "signing" }), "passkey");
+  assert.equal(operationFailureStage({ status: "submitting" }), "submission");
+  assert.equal(operationFailureStage({ status: "confirming", userOperationHash: HASH }), "confirmation");
 });

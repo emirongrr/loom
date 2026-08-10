@@ -48,6 +48,44 @@ A direct validator must:
 - reject arbitrary ERC-1271 message signing unless that validator explicitly
   documents a narrower, reviewed ERC-1271 authority profile.
 
+## What ERC-1271 does today
+
+The account routes `isValidSignature` to the validator named in the signature
+envelope, but **every validator bundled in this repository returns false**. The
+primary ones (`ECDSAValidator`, `P256Validator`, `MultiP256Validator`) cannot
+classify a bare hash against a policy, and the session ones
+(`ExactCallSessionValidator`, `GranularSessionValidator`) authorize
+UserOperations only. `P256RecoveryValidator` inherits the refusal from
+`P256Validator` and adds nothing to it. `supportsInterface` reports `false` for `0x1626ba7e`
+accordingly, so ERC-165 probing already tells the truth.
+
+So no configuration built only from this repository produces a valid ERC-1271
+signature. That is a deliberate refusal, not an omission: a hash carries no
+target, selector, amount, or counterparty, so a policy-aware validator has
+nothing to check it against, and signing it would hand out authority the account
+otherwise meters call by call.
+
+The consequence for dApps is concrete. These do **not** work against a Loom
+account as shipped:
+
+| Flow | Why it needs ERC-1271 |
+| --- | --- |
+| Sign-In with Ethereum | The verifier checks a signature over a plain message. |
+| Permit2 and ERC-2612 permits | Approval is a typed-data signature, not a call. |
+| NFT marketplace listings | Orders are signed off-chain and settled later by a taker. |
+| Off-chain governance voting | Votes are signed messages tallied off-chain. |
+
+The supported alternative is to make the intent a transaction rather than a
+signature: approve through `execute` under a policy hook, or grant an exact-call
+session for the specific settlement. Where an off-chain signature is genuinely
+required, install a validator that documents a reviewed ERC-1271 profile through
+the ERC-7579 shim (decision 0010) and accept that it is external code in a
+signing slot, as trusted as any other installed validator.
+
+A wallet client must report this capability from the installed validator set
+rather than from the account, and must not present a signing request it knows
+will fail as if it might succeed.
+
 A direct validator must not:
 
 - authorize calls by trusting `msg.sender`, `tx.origin`, the relayer, or a
@@ -178,6 +216,40 @@ The SDK does not provide a hosted wallet RPC server, transaction simulation,
 or durable `wallet_getCallsStatus` store. Those remain wallet-client
 responsibilities and must be backed by independent conformance and integration
 tests before a product claims full ERC-5792 wallet-provider support.
+
+## How multiple hooks compose
+
+Up to `MAX_HOOKS` (8) hooks can be installed at once, and every one of them runs
+on every unscheduled `execute()`/`executeDirect()` call. The composition rules
+are:
+
+- **Hooks are peers, not nested wrappers.** All `preCheck` callbacks run before
+  the first target call, in installation order; all `postCheck` callbacks run
+  after the last one, in the *same* order. `postCheck` is not reversed. A hook
+  written to expect LIFO teardown would be wrong.
+- **Hooks wrap the whole operation, not each call.** A batch of 32 calls
+  produces one `preCheck`/`postCheck` pair per hook, not 32. A hook sees the
+  complete account call and must do its own accounting across the items.
+- **Installation order is stable.** Hooks run in the order they were installed,
+  and uninstalling one does not reorder the rest — removal shifts the tail
+  rather than swapping the last entry into the gap. Hooks are still required to
+  be order-independent, and Loom's own `PolicyHook` and `VaultHook` are, but
+  "the order changed because an unrelated hook was removed" is not a failure
+  anyone would think to look for.
+- **Any hook can veto, and a veto is total.** A reverting `preCheck` reverts the
+  whole execution. There is no try-mode and no partial application: hooks that
+  already ran do not get a `postCheck`, because the state those earlier calls
+  produced is rolled back with everything else. A hook therefore cannot
+  implement cleanup-on-failure, and must not hold state that assumes its
+  `postCheck` always follows its `preCheck` within a transaction.
+- **`hookData` is per hook.** Whatever a hook returns from `preCheck` is handed
+  back to that same hook in `postCheck`, never to another one.
+- **The hook set is snapshotted at `preCheck`.** A hook uninstalled during the
+  execution still receives its `postCheck`, so the pairing stays symmetric.
+
+`test/regression/HookComposition.t.sol` pins the ordering and the pairing;
+`test/regression/MaliciousHookTests.t.sol` covers reverting, reentrant,
+gas-griefing, and storage-modifying hooks.
 
 ## Guardian hook eviction
 

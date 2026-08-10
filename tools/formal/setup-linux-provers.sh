@@ -22,14 +22,25 @@ sudo apt-get install -y \
   unzip \
   xz-utils
 
+# One pin, three uses. `toolchain:check` compares SOLC_VERSION against
+# foundry.toml, the npm dependency, and every workflow invocation, so this file
+# cannot drift to a second compiler on its own.
+SOLC_VERSION=0.8.36
+SOLC_BINARY=solc-linux-amd64-v0.8.36+commit.8a079791
+SOLC_SHA256=c8d35afdddc3cd2743ee88b8f25e0fecd16e2bdd5f2120f37e52cd9cc45ae0e6
+
 if ! command -v solc >/dev/null 2>&1; then
-  echo "==> Installing solc 0.8.35"
+  echo "==> Installing solc $SOLC_VERSION"
   mkdir -p "$HOME/.local/bin"
-  curl -L \
-    -o "$HOME/.local/bin/solc-0.8.35" \
-    "https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.35+commit.47b9dedd"
-  chmod +x "$HOME/.local/bin/solc-0.8.35"
-  ln -sf "$HOME/.local/bin/solc-0.8.35" "$HOME/.local/bin/solc"
+  SOLC_PATH="$HOME/.local/bin/solc-$SOLC_VERSION"
+  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+    -o "$SOLC_PATH" \
+    "https://binaries.soliditylang.org/linux-amd64/$SOLC_BINARY"
+  # The Kontrol workflow verifies this same download; a prover run that skipped
+  # the check would prove properties about whatever the host happened to serve.
+  printf '%s  %s\n' "$SOLC_SHA256" "$SOLC_PATH" | sha256sum --check -
+  chmod +x "$SOLC_PATH"
+  ln -sf "$SOLC_PATH" "$HOME/.local/bin/solc"
 fi
 export PATH="$HOME/.local/bin:$PATH"
 solc --version

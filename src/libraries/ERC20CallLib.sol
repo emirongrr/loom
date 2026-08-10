@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Shared parser for the ERC-20 call shapes that Loom policy code
 /// inspects: transfer, transferFrom, and approve.

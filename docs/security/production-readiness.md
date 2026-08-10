@@ -199,7 +199,7 @@ Remaining static-analysis warnings are tracked in `docs/security/static-analysis
 
 ## Advisory baseline
 
-The repository pins Solidity `0.8.35`. Solidity `0.8.28` was removed because
+The repository pins Solidity `0.8.36`. Solidity `0.8.28` was removed because
 the official compiler bug list marks it affected by high-severity
 `SOL-2026-1` when using IR code generation on Cancun or later EVM versions.
 Loom does not currently use transient storage, but audit candidates must not

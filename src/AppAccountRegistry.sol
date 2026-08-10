@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @notice Per-factory, factory-only membership set for the accounts a single
 /// factory deploys. It exists for app-local operational metrics: an institution

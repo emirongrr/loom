@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 library ValidationDataLib {
     uint256 internal constant SIG_VALIDATION_FAILED = 1;

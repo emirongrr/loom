@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
@@ -129,15 +129,19 @@ contract LoomAccountAuthorityFormal is FormalAccountBase {
     }
 
     function test_UnsupportedExecutionModeNeverExecutes() public {
-        check_UnsupportedExecutionModeNeverExecutes(2);
+        check_UnsupportedExecutionModeNeverExecutes(bytes32(uint256(2) << 248));
     }
 
-    function check_UnsupportedExecutionModeNeverExecutes(uint8 callType) public {
-        if (callType <= 1) return;
+    /// @dev Quantifies over the whole 32-byte mode word rather than its leading
+    /// call-type byte. The account requires every remaining mode byte to be
+    /// zero, and a `uint8` parameter cannot express a mode whose call type is
+    /// supported but whose trailing bytes are not - which is precisely the
+    /// input an encoder bug would produce.
+    function check_UnsupportedExecutionModeNeverExecutes(bytes32 mode) public {
+        if (mode == ExecutionLib.SINGLE_EXECUTION_MODE || mode == ExecutionLib.BATCH_EXECUTION_MODE) return;
         (LoomAccount account, MockValidator validator) = _account();
         AuthoritySnapshot memory beforeState = _snapshotAuthority(account);
         FormalTarget target = new FormalTarget();
-        bytes32 mode = bytes32(uint256(callType) << 248);
         ExecutionLib.Execution memory execution =
             ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (uint256(1))));
 

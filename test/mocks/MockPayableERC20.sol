@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.35;
+pragma solidity 0.8.36;
 
 /// @dev Models tokens whose transfer functions accept attached ETH. Standard
 /// ERC-20 implementations revert on value, which would mask the vault-policy
