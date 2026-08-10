@@ -3,6 +3,8 @@
 // storage disclosure; it is not hardware-backed isolation, and an XSS running on
 // this origin can still use the key.
 
+import { resolveDeviceKey } from "./deviceKey.ts";
+
 export interface StoredEnvelope {
   readonly version: 1 | 2;
   readonly iv: string;
@@ -62,12 +64,12 @@ function open(name: string): Promise<IDBDatabase> {
   });
 }
 
-async function deviceKey(db: IDBDatabase): Promise<CryptoKey> {
-  const existing = await promise<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key"));
-  if (existing) return existing;
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  await done(db, "readwrite", store => store.add(key, "device-key"), "keys");
-  return key;
+function deviceKey(db: IDBDatabase): Promise<CryptoKey> {
+  return resolveDeviceKey({
+    read: () => promise<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key")),
+    create: () => crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]),
+    add: key => done(db, "readwrite", store => store.add(key, "device-key"), "keys")
+  });
 }
 
 async function encrypt(key: CryptoKey, value: unknown, recordKey: string): Promise<StoredEnvelope> {
