@@ -144,8 +144,15 @@ const server = createServer((req, res) => {
   // This is development infrastructure, but it still fail-closes to one
   // configured browser origin. Production operators should authenticate and
   // rate-limit before exposing any funded relay.
+  //
+  // The origin must be present, not merely non-conflicting. Skipping the check
+  // when the header is absent left the gate applying only to browsers -- the one
+  // client class that a browser's own CORS already constrains -- while `curl` and
+  // every other script walked past it. A funded relay that pays whoever asks
+  // should refuse the callers it cannot identify, and a cross-origin `fetch`
+  // always sends `Origin`, so the wallet page is unaffected.
   const origin = req.headers.origin;
-  if (origin && origin !== allowedOrigin) {
+  if (origin !== allowedOrigin) {
     return res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "origin not allowed" }));
   }
   if (origin === allowedOrigin) res.setHeader("access-control-allow-origin", allowedOrigin);
@@ -322,11 +329,23 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(port, async () => {
+// Loopback only. `listen(port)` binds every interface, which put an
+// unauthenticated relay holding a funded key on whatever network the machine was
+// attached to -- a café, an office LAN, a forwarded container port. The wallet
+// page reaches it over localhost either way, so nothing legitimate needs the
+// wider bind. An operator who genuinely wants remote access sets SPONSOR_HOST
+// and, per the note below, puts authentication in front of it.
+const host = process.env.SPONSOR_HOST ?? "127.0.0.1";
+
+server.listen(port, host, async () => {
   console.log(`sponsor  ${sponsor.address}`);
   console.log(`balance  ${formatEther(await publicClient.getBalance({ address: sponsor.address }))} ETH`);
   console.log(`deposit  ${formatEther(deposit)} ETH per account`);
-  console.log(`listening on http://localhost:${port}/deploy`);
+  console.log(`listening on http://${host}:${port}/deploy`);
+  console.log(`accepting requests from origin ${allowedOrigin} only`);
   console.log("\nNOTE: this endpoint is unauthenticated and pays for anyone who calls it.");
   console.log("A real deployment puts it behind the institution's own user authentication.");
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    console.log(`WARNING: SPONSOR_HOST=${host} exposes a funded key beyond this machine.`);
+  }
 });
