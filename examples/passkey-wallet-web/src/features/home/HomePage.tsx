@@ -14,6 +14,7 @@ import { useAppServices } from "../../app/AppServices";
 import { AdvancedDetails, StatusPanel } from "../../components/StatusPanel";
 import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation";
 import type { PendingOperation } from "../../storage/pendingOperations";
+import { safeUserMessage } from "../../domain/errors/appError";
 
 const EMPTY_ASSETS: AccountAssets = {
   native: { kind: "native", symbol: "ETH", name: "Ether", decimals: 18, balance: 0n, formatted: "0" },
@@ -59,7 +60,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
       notifications.update(toast, {
         status: "error",
         title: "Account could not be created",
-        detail: issue instanceof Error ? issue.message : "The creation operation failed."
+        detail: safeUserMessage(issue, "The creation operation failed.", "submission")
       });
     } finally { setActivating(false); }
   };
@@ -81,7 +82,6 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   }, [config, account.account]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void load(); }, [load]);
-
   const checkPending = useCallback(async () => {
     if (!deployment) return;
     setConfirmation(current => ({ ...current, checking: true }));

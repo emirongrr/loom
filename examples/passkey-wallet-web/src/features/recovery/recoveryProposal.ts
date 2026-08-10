@@ -18,6 +18,31 @@ export function assertPreparedRecoveryMatchesRequest(prepared: PreparedRecovery,
   ) throw new Error("Live recovery preparation no longer matches the reviewed request.");
 }
 
+export function assertPendingRecoveryMatchesPrepared(pending: {
+  readonly pending: boolean;
+  readonly oldValidatorsHash: Hex;
+  readonly newValidator: Address;
+  readonly initDataHash: Hex;
+  readonly newGuardianRoot: Hex;
+  readonly newGuardianThreshold: number;
+  readonly configVersion: bigint;
+  readonly nonce: bigint;
+}, prepared: PreparedRecovery): void {
+  if (!pending.pending
+    || pending.oldValidatorsHash !== prepared.oldValidatorsHash
+    || pending.newValidator.toLowerCase() !== prepared.newValidator.toLowerCase()
+    || pending.initDataHash !== prepared.initDataHash
+    || pending.newGuardianRoot !== prepared.newGuardianSet.root
+    || pending.newGuardianThreshold !== prepared.newGuardianSet.threshold
+    || pending.configVersion !== prepared.configVersion
+    || pending.nonce !== prepared.nonce
+  ) throw new Error("The pending on-chain recovery does not match this reviewed request.");
+}
+
+export function assertSuccessfulTransactionReceipt(receipt: { readonly status: string }): void {
+  if (receipt.status !== "success") throw new Error("The recovery transaction reverted on chain.");
+}
+
 export function restorePreparedRecovery(input: {
   readonly request: RecoveryRequestV1;
   readonly initData: Hex;

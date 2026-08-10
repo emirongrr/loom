@@ -116,7 +116,12 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint256 public constant MAX_REVERT_DATA_LENGTH = 2_048;
     uint256 public constant MAX_RECOVERY_MODULES = 1;
     uint8 public constant MAX_GUARDIAN_THRESHOLD = GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
-    uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = 32;
+    /// @dev `freeze` verifies a guardian proof itself rather than through
+    /// `GuardianVerificationLib.approved`, which is the only guardian path that
+    /// does. Taking the bound from the library rather than restating the literal
+    /// keeps the two from drifting: a proof length the library rejects for a
+    /// recovery approval must not be accepted for a freeze.
+    uint256 public constant MAX_GUARDIAN_PROOF_LENGTH = GuardianVerificationLib.MAX_PROOF_LENGTH;
     bytes32 public constant SINGLE_EXECUTION_MODE = ExecutionLib.SINGLE_EXECUTION_MODE;
     bytes32 public constant BATCH_EXECUTION_MODE = ExecutionLib.BATCH_EXECUTION_MODE;
     bytes4 public constant ERC1271_MAGIC_VALUE = 0x1626ba7e;
@@ -281,7 +286,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return this.onERC1155BatchReceived.selector;
     }
 
-    // --- Modifiers ---
+    // --- Caller authorization ---
+    /// @dev The one predicate that answers "may this caller use the shared
+    /// execution surface". It deliberately does not authorize an
+    /// environment-specific validation or settlement entry point: each such
+    /// function must authenticate its exact transport caller. Otherwise a new
+    /// environment added here could call ERC-4337's `validateUserOp` and collect
+    /// its EntryPoint-only prefund. See
+    /// docs/decisions/0020-execution-environment-boundary.md.
+    function _isExecutionEnvironment(address caller) internal view returns (bool) {
+        return caller == entryPoint;
+    }
+
     modifier onlyEntryPoint() {
         if (msg.sender != entryPoint) revert OnlyEntryPoint();
         _;
@@ -311,24 +327,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         returns (uint256 validationData)
     {
         if (userOp.sender != address(this)) return ValidationDataLib.SIG_VALIDATION_FAILED;
-        (bool decoded, address validator, bytes memory validatorSignature) = _tryDecodeSignature(userOp.signature);
-        if (!decoded) return ValidationDataLib.SIG_VALIDATION_FAILED;
-        if (!_modules[ModuleType.VALIDATOR][validator]) return ValidationDataLib.SIG_VALIDATION_FAILED;
-        try ILoomValidator(validator)
-            .validateUserOp(
-                address(this),
-                userOpHash,
-                userOp.nonce,
-                validatorSignature,
-                userOp.callData,
-                _paymaster(userOp.paymasterAndData)
-            ) returns (
-            uint256 result
-        ) {
-            validationData = result;
-        } catch {
-            validationData = ValidationDataLib.SIG_VALIDATION_FAILED;
-        }
+        validationData = _validateAuthority(
+            userOpHash, userOp.nonce, userOp.signature, userOp.callData, _paymaster(userOp.paymasterAndData)
+        );
         if (missingAccountFunds != 0) {
             // Best-effort EntryPoint prefund. The EntryPoint enforces sufficient
             // payment and reverts the operation if this account underpays, so the
@@ -338,10 +339,65 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
+    /// @notice The canonical authorization boundary: decode this account's
+    /// signature envelope, require the named validator to be installed, and let
+    /// it decide.
+    /// @dev Everything above this function is transport; everything below is
+    /// authority. `validateUserOp` is ERC-4337's transport and must stay on the
+    /// account because the EntryPoint calls the sender at a fixed selector. A
+    /// second execution environment adds its own entry function that decodes its
+    /// own calldata shape and calls this one.
+    ///
+    /// The envelope decode and the installed-module check live here rather than
+    /// in the caller on purpose: an entry function that supplied the validator
+    /// address would have to repeat the installed check, and one that forgot it
+    /// would be an authorization bypass. The try/catch is here for the same
+    /// reason -- failing closed on a reverting validator is one boundary, not
+    /// one per environment (MEDIUM-04 in
+    /// docs/reviews/preliminary-review-disposition.md).
+    ///
+    /// The EntryPoint prefund is deliberately not a parameter. Paying for gas is
+    /// settlement, not authorization, and a second environment should not have
+    /// to pass a meaningless value for it. See
+    /// docs/decisions/0020-execution-environment-boundary.md.
+    function _validateAuthority(
+        bytes32 operationHash,
+        uint256 nonce,
+        bytes calldata signatureEnvelope,
+        bytes calldata callData,
+        address paymaster
+    ) internal returns (uint256 validationData) {
+        (bool resolved, address validator, bytes memory validatorSignature) =
+            _resolveInstalledValidator(signatureEnvelope);
+        if (!resolved) return ValidationDataLib.SIG_VALIDATION_FAILED;
+        try ILoomValidator(validator)
+            .validateUserOp(address(this), operationHash, nonce, validatorSignature, callData, paymaster) returns (
+            uint256 result
+        ) {
+            return result;
+        } catch {
+            return ValidationDataLib.SIG_VALIDATION_FAILED;
+        }
+    }
+
+    /// @dev The account names a validator the same way on every path: an
+    /// `(address,bytes)` envelope, and the named validator has to be installed.
+    /// Both checks live here so `_validateAuthority` and `isValidSignature`
+    /// cannot drift apart -- an ERC-1271 path that accepted an uninstalled
+    /// validator would be a signing oracle for a module the account rejected.
+    function _resolveInstalledValidator(bytes calldata signatureEnvelope)
+        internal
+        view
+        returns (bool resolved, address validator, bytes memory validatorSignature)
+    {
+        (bool decoded, address candidate, bytes memory signature) = _tryDecodeSignature(signatureEnvelope);
+        if (!decoded || !_modules[ModuleType.VALIDATOR][candidate]) return (false, address(0), bytes(""));
+        return (true, candidate, signature);
+    }
+
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4) {
-        (bool decoded, address validator, bytes memory validatorSignature) = _tryDecodeSignature(signature);
-        if (!decoded) return ERC1271_INVALID;
-        if (!_modules[ModuleType.VALIDATOR][validator]) return ERC1271_INVALID;
+        (bool resolved, address validator, bytes memory validatorSignature) = _resolveInstalledValidator(signature);
+        if (!resolved) return ERC1271_INVALID;
         try ILoomValidator(validator).isValidSignature(address(this), hash, validatorSignature) returns (bool valid) {
             return valid ? ERC1271_MAGIC_VALUE : ERC1271_INVALID;
         } catch {
@@ -351,7 +407,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
     // --- Execution ---
     function execute(bytes32 mode, bytes calldata executionCalldata) external payable nonReentrantExecution {
-        if (msg.sender != entryPoint && msg.sender != address(this)) revert OnlyEntryPoint();
+        if (!_isExecutionEnvironment(msg.sender) && msg.sender != address(this)) revert OnlyEntryPoint();
         _executeAuthorized(mode, executionCalldata, msg.sender, msg.data);
     }
 
