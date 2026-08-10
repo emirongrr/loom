@@ -78,6 +78,21 @@ contract GranularSessionValidator is ILoomValidator {
         emit PermissionBatchGranted(msg.sender, permissionIds.length);
     }
 
+    /// @dev The `token` field and the `selector` must agree in both directions.
+    /// Only one direction was enforced: a permission naming a token had to carry
+    /// a token selector, but a permission carrying a token selector could leave
+    /// `token` unset. That combination is accepted by every other check and then
+    /// metered as a native spend -- `_allowsExecution` reads `execution.value`
+    /// and never decodes the calldata -- so a grant that reads as "up to N wei
+    /// through this contract" authorizes `transfer(anyone, type(uint256).max)`
+    /// on it instead. The amount the granter bounded is not the amount that
+    /// moves.
+    ///
+    /// This is the one argument shape the account can enumerate, so it does,
+    /// the same way an account-or-module target is rejected here rather than
+    /// left to the caller. `ERC20CallLib` owns the selector set, and both hooks
+    /// already fail closed on the calls it names; a session grant is the last
+    /// enforcement layer that did not.
     function _grantPermission(address account, bytes32 permissionId, Permission calldata permission) internal {
         if (
             permissionId == bytes32(0) || permission.signer == address(0) || permission.target == address(0)
@@ -86,7 +101,7 @@ contract GranularSessionValidator is ILoomValidator {
                 || permission.maxAmountPerUserOp < permission.maxAmountPerCall
                 || (permission.token != address(0) && permission.token != permission.target)
                 || (permission.token == address(0) && permission.counterparty != address(0))
-                || (permission.token != address(0) && !ERC20CallLib.isTokenSelector(permission.selector))
+                || ERC20CallLib.isTokenSelector(permission.selector) != (permission.token != address(0))
                 || permission.target == account
         ) revert InvalidPermission();
 
