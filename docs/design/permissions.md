@@ -115,7 +115,19 @@ one observed at grant time, so an address that becomes a module later is denied
 from that point on without the permission having to be revoked. See
 `test/regression/SessionAdministrativeTargets.t.sol`.
 
-`ExactCallSessionValidator` is not subject to either restriction, because a
+**A token selector must name its token.** This is the second case the account
+can enumerate, and for the same reason: `ERC20CallLib` owns the selector set, so
+`transfer`, `transferFrom`, and `approve` are exactly the arguments the account
+already knows how to read. A permission carrying one of those selectors with
+`token == address(0)` is rejected at grant time. It would otherwise be metered
+as a native spend — `execution.value`, which such a call leaves at zero — while
+the token amount sits unread in the free arguments, so a grant that reads as "up
+to N wei through this contract" would authorize `transfer(anyone,
+type(uint256).max)` on it. The mirror rule was already enforced: a permission
+naming a token must carry a token selector, and the token must be the target.
+See `test/unit/GranularSessionValidator.t.sol`.
+
+`ExactCallSessionValidator` is not subject to any of these restrictions, because a
 pinned calldata hash is a specific call the granter reviewed during the
 configuration timelock rather than a standing capability.
 
