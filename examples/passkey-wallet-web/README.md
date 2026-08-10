@@ -217,11 +217,11 @@ Dormant relationships remain hidden. Acting with ECDSA/ERC-1271 can reveal a lin
 
 Relays transport already-authorized operations. They can censor, delay, observe metadata, or waste availability, but must not gain account authority. Users can replace them with direct transactions or another bundler/submitter. Permissionless scheduled/recovery execution is labelled as such; it is not sponsor authority.
 
-`sponsor-server.mjs` is development-only, spends a configured testnet key, accepts one configured origin, simulates before paying, and must still sit behind operator authentication and rate limiting before any public exposure. It does not provide validator deployment. ADR-0013 prefers an audited permissionless deterministic validator factory; no production contract was changed until that design receives dedicated threat analysis and verification.
+`sponsor-server.mjs` is development-only, spends a configured testnet key, simulates before paying, and must still sit behind operator authentication and rate limiting before any public exposure. It binds loopback only and requires the request to carry the configured `Origin`, so a caller that sends no origin at all — `curl`, a script, anything that is not a browser — is refused rather than waved through. `SPONSOR_HOST` widens the bind for an operator who means to, and says so on startup. It does not provide validator deployment. ADR-0013 prefers an audited permissionless deterministic validator factory; no production contract was changed until that design receives dedicated threat analysis and verification.
 
 ## Production checklist
 
-- Serve the static build over HTTPS with `default-src 'self'`, no inline executable script, no remote scripts, `object-src 'none'`, `base-uri 'none'`, and restrictive connect/frame policies.
+- Serve the static build over HTTPS. The build now ships its own Content-Security-Policy in a `meta` tag — `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, `object-src 'none'`, `base-uri 'none'` — so the policy travels with the page instead of depending on host configuration. Send it as a real header too, and add `frame-ancestors 'none'`, which browsers ignore in a `meta` tag; `vite preview` already serves both.
 - Pin and verify chain ID, RP ID/origin, deployment addresses, runtime code hashes, and supported verifier family.
 - Require WebAuthn user verification; handle rejection and credential loss explicitly.
 - Use independent RPC checks for high-value state and revalidate balances/nonces after reorgs.
