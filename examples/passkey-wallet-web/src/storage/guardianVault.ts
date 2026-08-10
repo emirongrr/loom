@@ -88,6 +88,13 @@ export async function decodeGuardianVaultEntries(
   for (const entry of entries) {
     try {
       const record = await decryptRecord(key, entry.envelope, nowSeconds, String(entry.key));
+      // This is what binds a record to its key here, and it is why version 1
+      // envelopes -- written before the key became additional authenticated
+      // data -- are not the exposure in this store that they are in
+      // `encryptedStore`, which has no equivalent check and therefore upgrades
+      // them on read. A ciphertext moved to another key is rejected unless that
+      // key is one this record's own payload derives, which is not a move worth
+      // making.
       if (String(entry.key) !== record.capability.capabilityId
         && String(entry.key) !== guardianVaultIdentity(record.capability)
         && String(entry.key) !== legacyGuardianVaultIdentity(record.capability)) {
