@@ -105,6 +105,30 @@ Two rules follow from what the checker can and cannot see:
   constant is declared twice with different values, reporting the ambiguity
   instead.
 
+## Storage layout is append-only
+
+`src/LoomAccount.sol` calls its storage block append-only and its order
+consensus-critical. Nothing enforced that until `npm run storage:check`, and a
+reordered slot is the rare change that passes everything else: the ABI does not
+move, so the ABI check is quiet; behaviour does not change, so the tests pass;
+the gas difference sits inside the snapshot's tolerance. It surfaces when a
+deployed account reads the wrong slot.
+
+`storage-layout.json` pins the label, slot, offset, and type of every variable in
+the thirteen contracts whose layout something outside their own source depends
+on. It matters most where storage outlives a deployment: an EIP-7702 account
+keeps its storage and re-points at a new implementation, and every module here is
+an immutable singleton holding per-account state.
+
+- **Appending is allowed; moving is not.** A variable added after the last one
+  cannot disturb a slot already written. Moving, removing, resizing, or
+  repacking is reported with the variable and the field that changed, including
+  the packing consequences a reader is least likely to catch by eye.
+- **The snapshot records the layout, not its correctness.** It proves today's
+  layout matches the recorded one. Whether a slot ought to hold what it holds is
+  a review question, and re-recording is the last step of a migration rather than
+  the fix for a failing check.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
