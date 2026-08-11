@@ -1,5 +1,6 @@
 import { validateGuardianInvite, validatePersistedGuardianInvite, type GuardianInviteV1 } from "@loom/sdk/recovery";
 import type { AccountHandle } from "../types.ts";
+import { resolveDeviceKey } from "./deviceKey.ts";
 import { assertGuardianCapabilityMatchesAccount, guardianVaultRecordsForAccount } from "./guardianVaultScope.ts";
 
 export interface GuardianVaultRecord {
@@ -87,6 +88,13 @@ export async function decodeGuardianVaultEntries(
   for (const entry of entries) {
     try {
       const record = await decryptRecord(key, entry.envelope, nowSeconds, String(entry.key));
+      // This is what binds a record to its key here, and it is why version 1
+      // envelopes -- written before the key became additional authenticated
+      // data -- are not the exposure in this store that they are in
+      // `encryptedStore`, which has no equivalent check and therefore upgrades
+      // them on read. A ciphertext moved to another key is rejected unless that
+      // key is one this record's own payload derives, which is not a move worth
+      // making.
       if (String(entry.key) !== record.capability.capabilityId
         && String(entry.key) !== guardianVaultIdentity(record.capability)
         && String(entry.key) !== legacyGuardianVaultIdentity(record.capability)) {
@@ -163,12 +171,12 @@ async function openVault(name: string): Promise<IDBDatabase> {
   });
 }
 
-async function vaultKey(db: IDBDatabase): Promise<CryptoKey> {
-  const existing = await request<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key"));
-  if (existing) return existing;
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  await transactionDone(db, "keys", "readwrite", store => store.add(key, "device-key"));
-  return key;
+function vaultKey(db: IDBDatabase): Promise<CryptoKey> {
+  return resolveDeviceKey({
+    read: () => request<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key")),
+    create: () => crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]),
+    add: key => transactionDone(db, "keys", "readwrite", store => store.add(key, "device-key"))
+  });
 }
 
 async function encryptRecord(key: CryptoKey, record: GuardianVaultRecord, recordKey: string): Promise<StoredEnvelope> {

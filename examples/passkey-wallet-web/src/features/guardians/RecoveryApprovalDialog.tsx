@@ -60,8 +60,8 @@ export function RecoveryApprovalDialog({ request, capability, deployment, guardi
     if (!response) return;
     try {
       const delivered = await createEncryptedLinkTransport<RecoveryResponseV1>({ origin: window.location.origin, path: "/recover" }).deliver(response, { expiresAt: response.expiresAt });
-      await navigator.clipboard.writeText(delivered.value); setError("Encrypted guardian response link copied.");
-    } catch { setError("Encrypted response link could not be copied."); }
+      await navigator.clipboard.writeText(delivered.value); setError("Guardian response bearer link copied. Anyone with the link can read the response; return it over a trusted channel.");
+    } catch { setError("Response link could not be copied."); }
   };
 
   return <Dialog label="Approve recovery" busy={busy} onClose={onClose}>
@@ -73,6 +73,6 @@ export function RecoveryApprovalDialog({ request, capability, deployment, guardi
     {!canApprove && <p className="callout warning">This capability is not a direct P-256 guardian for the open Loom wallet. If it came from the legacy ERC-1271 path, the account owner must remove the guardian and add the same address again through the delayed guardian-change flow before it can approve recovery.</p>}
     {error && <p className="callout" role="status">{error}</p>}
     {!response ? <div className="sheet-actions"><button className="secondary" onClick={onClose} disabled={busy}>Cancel</button>{canApprove && <button className="primary" onClick={() => void approve()} disabled={busy}>{busy ? "Verifying live state…" : "Approve with guardian passkey"}</button>}</div>
-      : <><p className="callout success">The guardian verifier accepted your signature. No transaction or gas was required.</p><div className="guardian-actions"><button className="secondary" onClick={() => void copyJson()}>Copy response JSON</button><button className="primary" onClick={() => void copyLink()}>Copy encrypted response link</button></div><div className="sheet-actions"><span /><button className="secondary" onClick={onClose}>Done</button></div></>}
+      : <><p className="callout success">The guardian verifier accepted your signature. No transaction or gas was required.</p><div className="guardian-actions"><button className="secondary" onClick={() => void copyJson()}>Copy response JSON</button><button className="primary" onClick={() => void copyLink()}>Copy response bearer link</button></div><div className="sheet-actions"><span /><button className="secondary" onClick={onClose}>Done</button></div></>}
   </Dialog>;
 }

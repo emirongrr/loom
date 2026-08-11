@@ -3,6 +3,8 @@
 // storage disclosure; it is not hardware-backed isolation, and an XSS running on
 // this origin can still use the key.
 
+import { resolveDeviceKey } from "./deviceKey.ts";
+
 export interface StoredEnvelope {
   readonly version: 1 | 2;
   readonly iv: string;
@@ -30,7 +32,21 @@ export function createEncryptedStore(dbName: string): EncryptedStore {
       for (let index = 0; index < keys.length; index += 1) {
         const entryKey = String(keys[index]);
         try {
-          results.push({ key: entryKey, value: await decrypt(key, envelopes[index], entryKey), corrupt: false });
+          const envelope = envelopes[index];
+          const value = await decryptEnvelope(key, envelope, entryKey);
+          // A version 1 envelope was written before the record key became
+          // additional authenticated data, so it is not bound to the key it sits
+          // under: anything able to write this database could move one ciphertext
+          // to another record's key and have it decrypt cleanly there. Reading it
+          // is the moment that can be repaired, and the alternative -- refusing
+          // version 1 outright -- destroys records that are otherwise intact.
+          //
+          // Best effort on purpose. A failed rewrite leaves the record exactly as
+          // it was and the value already decrypted is still returned, so a
+          // read-only situation degrades to the old behaviour rather than to an
+          // error.
+          if (version(envelope) === 1) await upgrade(db, key, entryKey, envelope, value);
+          results.push({ key: entryKey, value, corrupt: false });
         } catch {
           results.push({ key: entryKey, value: undefined, corrupt: true });
         }
@@ -39,7 +55,7 @@ export function createEncryptedStore(dbName: string): EncryptedStore {
     },
     async put(key: string, value: unknown) {
       const db = await open(dbName);
-      const envelope = await encrypt(await deviceKey(db), value, key);
+      const envelope = await encryptEnvelope(await deviceKey(db), value, key);
       await done(db, "readwrite", store => store.put(envelope, key));
     },
     async remove(key: string) {
@@ -62,22 +78,24 @@ function open(name: string): Promise<IDBDatabase> {
   });
 }
 
-async function deviceKey(db: IDBDatabase): Promise<CryptoKey> {
-  const existing = await promise<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key"));
-  if (existing) return existing;
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-  await done(db, "readwrite", store => store.add(key, "device-key"), "keys");
-  return key;
+function deviceKey(db: IDBDatabase): Promise<CryptoKey> {
+  return resolveDeviceKey({
+    read: () => promise<CryptoKey | undefined>(db.transaction("keys", "readonly").objectStore("keys").get("device-key")),
+    create: () => crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]),
+    add: key => done(db, "readwrite", store => store.add(key, "device-key"), "keys")
+  });
 }
 
-async function encrypt(key: CryptoKey, value: unknown, recordKey: string): Promise<StoredEnvelope> {
+/** Exported so the record-key binding can be tested without IndexedDB. */
+export async function encryptEnvelope(key: CryptoKey, value: unknown, recordKey: string): Promise<StoredEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(value));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(recordKey) }, key, plaintext);
   return { version: 2, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
 }
 
-async function decrypt(key: CryptoKey, value: unknown, recordKey: string): Promise<unknown> {
+/** @see encryptEnvelope */
+export async function decryptEnvelope(key: CryptoKey, value: unknown, recordKey: string): Promise<unknown> {
   if (!value || typeof value !== "object") throw new Error("envelope is invalid");
   const envelope = value as Partial<StoredEnvelope>;
   if ((envelope.version !== 1 && envelope.version !== 2) || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") {
@@ -89,6 +107,64 @@ async function decrypt(key: CryptoKey, value: unknown, recordKey: string): Promi
     bytes(unbase64(envelope.ciphertext))
   );
   return JSON.parse(new TextDecoder().decode(plaintext));
+}
+
+function version(value: unknown): StoredEnvelope["version"] | undefined {
+  return value && typeof value === "object" ? (value as Partial<StoredEnvelope>).version : undefined;
+}
+
+/**
+ * Rewrite a decrypted record as a version 2 envelope, bound to its record key.
+ *
+ * Never rejects. The caller has already decrypted the value successfully, and a
+ * record that cannot be rewritten is no worse off than before the attempt --
+ * reporting it as unreadable would be a strictly worse outcome than the problem
+ * being repaired.
+ */
+async function upgrade(db: IDBDatabase, key: CryptoKey, recordKey: string, readSnapshot: unknown, value: unknown): Promise<void> {
+  try {
+    const envelope = await encryptEnvelope(key, value, recordKey);
+    await replaceLegacyEnvelope(db, recordKey, readSnapshot, envelope);
+  } catch { /* Best effort; the record stays readable either way. */ }
+}
+
+/**
+ * Return the replacement only while the legacy ciphertext read by the caller is
+ * still current. A concurrent put or remove must win over this best-effort
+ * migration; an upgrade triggered by a stale read must never restore old data.
+ */
+export function replacementIfCurrent(
+  current: unknown,
+  readSnapshot: unknown,
+  replacement: StoredEnvelope
+): StoredEnvelope | undefined {
+  if (!current || typeof current !== "object" || !readSnapshot || typeof readSnapshot !== "object") return undefined;
+  const actual = current as Partial<StoredEnvelope>;
+  const expected = readSnapshot as Partial<StoredEnvelope>;
+  if (actual.version !== 1 || expected.version !== 1 || replacement.version !== 2) return undefined;
+  if (typeof actual.iv !== "string" || typeof actual.ciphertext !== "string") return undefined;
+  if (typeof expected.iv !== "string" || typeof expected.ciphertext !== "string") return undefined;
+  return actual.iv === expected.iv && actual.ciphertext === expected.ciphertext ? replacement : undefined;
+}
+
+function replaceLegacyEnvelope(
+  db: IDBDatabase,
+  recordKey: string,
+  readSnapshot: unknown,
+  replacement: StoredEnvelope
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("records", "readwrite");
+    const store = tx.objectStore("records");
+    const reading = store.get(recordKey);
+    reading.onsuccess = () => {
+      const next = replacementIfCurrent(reading.result, readSnapshot, replacement);
+      if (next) store.put(next, recordKey);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("encrypted store upgrade failed"));
+    tx.onabort = () => reject(tx.error ?? new Error("encrypted store upgrade aborted"));
+  });
 }
 
 function aad(recordKey: string): Uint8Array<ArrayBuffer> {

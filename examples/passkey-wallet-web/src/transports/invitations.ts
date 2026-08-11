@@ -17,11 +17,34 @@ export async function receiveGuardianInvite(
 }
 
 /**
- * A link whose capability travels as ciphertext in the URL fragment, so it is not
- * sent to the server, does not appear in a query string, and is not written to
- * server logs or `Referer` headers. The origin is bound as additional
- * authenticated data, so a link minted for one wallet origin cannot be decrypted
- * as if it were another's.
+ * A link that carries a capability in its URL fragment.
+ *
+ * What this actually provides, stated exactly, because the previous description
+ * claimed more than the code does:
+ *
+ * - **The fragment is never sent to a server.** It is absent from the request
+ *   line, from server logs, and from `Referer`. This is the real property, and
+ *   it holds whether or not the payload is encrypted.
+ * - **The link is a bearer secret.** The AES key travels in the same fragment as
+ *   the ciphertext, so anyone who holds the link can read and copy the capability: the
+ *   messaging app it was pasted into, a screenshot, a clipboard manager, a synced
+ *   browser history. The encryption does not change that and must not be
+ *   described as if it did. The capability does not include the guardian signing
+ *   key, and acceptance remains bound to the matching guardian wallet.
+ * - **The origin as AAD catches accidents, not attackers.** A link minted for
+ *   another wallet origin fails to decrypt cleanly rather than being parsed as a
+ *   capability. It is not a defence: the AAD is the origin string, which is not
+ *   secret and sits in the link's own prefix, so anyone holding the link can
+ *   supply it.
+ *
+ * The controls that do bound this are elsewhere and are real: the invite expires,
+ * acceptance validates the capability against the opening wallet's own account
+ * (`guardianVaultScope`), and a guardian only becomes authority once the
+ * account's guardian root commits to it on chain.
+ *
+ * A transport that wants confidentiality against a link holder has to carry the
+ * key on a second channel. That is a different design, not a stricter version of
+ * this one, and the README says so rather than implying this one already does it.
  */
 export function createEncryptedLinkTransport<T>(options: { origin: string; path?: string }): InvitationTransport<T> {
   const origin = new URL(options.origin).origin;

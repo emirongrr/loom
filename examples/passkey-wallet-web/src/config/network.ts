@@ -1,3 +1,5 @@
+import { AppError } from "../domain/errors/appError.ts";
+
 // Network endpoints the wallet talks to. Infrastructure is replaceable: the
 // account's authority never depends on which RPC or bundler is chosen, so these
 // are ordinary defaults a user can override in Developer settings, not trusted
@@ -41,6 +43,26 @@ function isEndpoint(value: unknown, { allowEmpty = false } = {}): boolean {
   return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
 }
 
+const ENDPOINT_KEYS = ["rpcUrl", "verificationRpcUrl", "bundlerUrl", "explorerUrl", "relayUrl"] as const;
+
+/**
+ * Endpoint fields present in `value` that are not usable, in display order.
+ *
+ * Separated from `normalizeNetworkConfig` because the two callers want opposite
+ * things from a bad value. Reading storage should recover: a damaged record
+ * should not leave the wallet unable to reach a chain. Accepting what someone
+ * typed should not recover, it should refuse — silently substituting the public
+ * default puts the user back on the provider they were trying to leave, and says
+ * nothing about it. Infrastructure being replaceable is the point; replacing the
+ * user's replacement without telling them is not.
+ */
+export function invalidNetworkEndpoints(value: unknown): readonly (keyof NetworkConfig)[] {
+  const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  return Object.freeze(
+    ENDPOINT_KEYS.filter(key => record[key] !== undefined && !isEndpoint(record[key], { allowEmpty: key === "relayUrl" }))
+  );
+}
+
 export function normalizeNetworkConfig(value: unknown): NetworkConfig {
   const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const pick = (key: keyof NetworkConfig, allowEmpty = false): string => {
@@ -63,7 +85,28 @@ export function loadNetworkConfig(storage: Storage = window.localStorage): Netwo
   catch { return DEFAULT_NETWORK; }
 }
 
+const ENDPOINT_LABELS: Readonly<Record<keyof NetworkConfig, string>> = Object.freeze({
+  rpcUrl: "RPC endpoint",
+  verificationRpcUrl: "Independent verification RPC",
+  bundlerUrl: "Bundler endpoint",
+  explorerUrl: "Block explorer",
+  relayUrl: "Optional sponsor relay"
+});
+
+/** Rejects an unusable endpoint rather than replacing it with a default. */
 export function saveNetworkConfig(config: NetworkConfig, storage: Storage = window.localStorage): NetworkConfig {
+  const invalid = invalidNetworkEndpoints(config);
+  if (invalid.length > 0) {
+    const named = invalid.map(key => ENDPOINT_LABELS[key]).join(", ");
+    throw new AppError({
+      code: "CONFIGURATION_ERROR",
+      userMessage: `${named} must be an https:// URL (http:// is allowed for localhost). Nothing was saved.`,
+      diagnostic: `rejected endpoint fields: ${invalid.join(", ")}`,
+      retryable: true,
+      stage: "configuration",
+      metadata: { fields: invalid.join(",") }
+    });
+  }
   const normalized = normalizeNetworkConfig(config);
   storage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   return normalized;

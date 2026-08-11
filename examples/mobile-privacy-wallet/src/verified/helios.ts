@@ -6,6 +6,7 @@ import {
   type VerificationProfile
 } from "@loom/sdk";
 
+import { assertEndpointUrl } from "../config/runtimeOverrides";
 import { blockedGate, MobileWalletConfigurationError } from "../platform/errors";
 import type {
   FlowResult,
@@ -113,14 +114,13 @@ function toHeliosConfig(input: HeliosStateConfiguration): HeliosConfig {
   };
 }
 
+// Delegated rather than restated. The same rule had two copies and both carried
+// the same defect; one of them is now the rule.
 function requireUrl(value: string | undefined, label: string) {
   if (typeof value !== "string" || value.length === 0) {
     throw new MobileWalletConfigurationError(`${label} is required.`);
   }
-  const parsed = new URL(value);
-  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-    throw new MobileWalletConfigurationError(`${label} must be https or localhost.`);
-  }
+  assertEndpointUrl(value, label);
 }
 
 function requireCheckpoint(value: string | undefined) {

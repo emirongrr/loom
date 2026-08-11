@@ -4,8 +4,7 @@ import type {
   MobileWalletConfiguration,
   P256VerifierMode,
   ReleaseGate,
-  VerifiedStateMode,
-  WalletEnvironment
+  VerifiedStateMode
 } from "../types/wallet";
 import { blockedGate } from "../platform/errors";
 
@@ -28,13 +27,6 @@ function optionalNumber(value: string | undefined): number | undefined {
     throw new Error(`Expected positive integer, received ${value}`);
   }
   return parsed;
-}
-
-function walletEnvironment(value: string | undefined): WalletEnvironment {
-  if (value === "production" || value === "testnet" || value === "development") {
-    return value;
-  }
-  return "development";
 }
 
 function verifiedStateMode(value: string | undefined): VerifiedStateMode {
@@ -68,7 +60,6 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   const l1ChainId = optionalNumber(process.env.EXPO_PUBLIC_LOOM_L1_CHAIN_ID) ?? 0;
 
   return {
-    environment: walletEnvironment(process.env.LOOM_WALLET_ENV),
     rpId: process.env.EXPO_PUBLIC_LOOM_RP_ID ?? "",
     origin: process.env.EXPO_PUBLIC_LOOM_ORIGIN ?? "",
     network: {
@@ -107,8 +98,69 @@ export function readEnvironmentConfiguration(): MobileWalletConfiguration {
   };
 }
 
+/**
+ * The critical configuration checks, as data.
+ *
+ * The count used to be a hand-written `9` sitting beside the function, and
+ * HomeScreen renders it as "N/9 configured" -- so a tenth check added without
+ * touching the constant would have shown a full bar while a gate was still
+ * blocked. The one number a user reads to decide whether the wallet is ready
+ * should not be maintained separately from the checks it counts.
+ */
+const CONFIGURATION_CHECKS: readonly {
+  readonly id: string;
+  readonly summary: string;
+  missing(config: MobileWalletConfiguration): boolean;
+}[] = Object.freeze([
+  {
+    id: "config.chainId",
+    summary: "EXPO_PUBLIC_LOOM_CHAIN_ID is not set; the wallet will not assume a chain.",
+    missing: config => config.network.chainId <= 0
+  },
+  {
+    id: "config.l1ChainId",
+    summary: "EXPO_PUBLIC_LOOM_L1_CHAIN_ID is not set; recovery/keystore roots need an explicit L1.",
+    missing: config => config.network.l1ChainId <= 0
+  },
+  {
+    id: "config.rpId",
+    summary: "EXPO_PUBLIC_LOOM_RP_ID is not set; passkeys must bind to an explicit relying-party id.",
+    missing: config => config.rpId.length === 0
+  },
+  {
+    id: "config.origin",
+    summary: "EXPO_PUBLIC_LOOM_ORIGIN is not set; passkeys must bind to an explicit origin.",
+    missing: config => config.origin.length === 0
+  },
+  {
+    id: "config.entryPoint",
+    summary: "EXPO_PUBLIC_LOOM_ENTRYPOINT is not set; UserOperations cannot be submitted.",
+    missing: config => !config.network.entryPoint
+  },
+  {
+    id: "config.bundler",
+    summary: "EXPO_PUBLIC_LOOM_BUNDLER_URL is not set; there is no submission transport.",
+    missing: config => !config.network.bundlerUrl
+  },
+  {
+    id: "config.factory",
+    summary: "EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY is not set; accounts cannot be deployed.",
+    missing: config => !config.deployment.accountFactory
+  },
+  {
+    id: "config.passkeyValidator",
+    summary: "EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR is not set; passkey accounts cannot be created.",
+    missing: config => !config.deployment.passkeyValidator
+  },
+  {
+    id: "config.p256Mode",
+    summary: "EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE is not set; do not deploy passkey accounts.",
+    missing: config => config.deployment.p256VerifierMode === "not-configured"
+  }
+]);
+
 /** Total number of critical checks performed by configurationReadiness. */
-export const CONFIGURATION_CHECK_COUNT = 9;
+export const CONFIGURATION_CHECK_COUNT = CONFIGURATION_CHECKS.length;
 
 /**
  * Returns a blocked gate for every critical configuration value that is missing
@@ -117,37 +169,10 @@ export const CONFIGURATION_CHECK_COUNT = 9;
  * fails visibly instead of silently assuming mainnet or a localhost origin.
  */
 export function configurationReadiness(config: MobileWalletConfiguration): readonly ReleaseGate[] {
-  const gates: ReleaseGate[] = [];
-  const missing = (id: string, summary: string): void => {
-    gates.push({ id, title: "Configuration incomplete", status: "not-configured", summary });
-  };
-
-  if (config.network.chainId <= 0) {
-    missing("config.chainId", "EXPO_PUBLIC_LOOM_CHAIN_ID is not set; the wallet will not assume a chain.");
-  }
-  if (config.network.l1ChainId <= 0) {
-    missing("config.l1ChainId", "EXPO_PUBLIC_LOOM_L1_CHAIN_ID is not set; recovery/keystore roots need an explicit L1.");
-  }
-  if (config.rpId.length === 0) {
-    missing("config.rpId", "EXPO_PUBLIC_LOOM_RP_ID is not set; passkeys must bind to an explicit relying-party id.");
-  }
-  if (config.origin.length === 0) {
-    missing("config.origin", "EXPO_PUBLIC_LOOM_ORIGIN is not set; passkeys must bind to an explicit origin.");
-  }
-  if (!config.network.entryPoint) {
-    missing("config.entryPoint", "EXPO_PUBLIC_LOOM_ENTRYPOINT is not set; UserOperations cannot be submitted.");
-  }
-  if (!config.network.bundlerUrl) {
-    missing("config.bundler", "EXPO_PUBLIC_LOOM_BUNDLER_URL is not set; there is no submission transport.");
-  }
-  if (!config.deployment.accountFactory) {
-    missing("config.factory", "EXPO_PUBLIC_LOOM_ACCOUNT_FACTORY is not set; accounts cannot be deployed.");
-  }
-  if (!config.deployment.passkeyValidator) {
-    missing("config.passkeyValidator", "EXPO_PUBLIC_LOOM_PASSKEY_VALIDATOR is not set; passkey accounts cannot be created.");
-  }
-  if (config.deployment.p256VerifierMode === "not-configured") {
-    missing("config.p256Mode", "EXPO_PUBLIC_LOOM_P256_VERIFIER_MODE is not set; do not deploy passkey accounts.");
-  }
-  return gates;
+  return CONFIGURATION_CHECKS.filter(check => check.missing(config)).map(check => ({
+    id: check.id,
+    title: "Configuration incomplete",
+    status: "not-configured" as const,
+    summary: check.summary
+  }));
 }
