@@ -77,7 +77,10 @@ export function createSecureLocalStore(input: { backend: SecureStoreBackend }): 
       if (value.length === 0) {
         throw new MobileWalletConfigurationError("Refusing to persist an empty value.", { key });
       }
-      if (value.length > MAX_VALUE_BYTES) {
+      // Bytes, not code units. `value.length` counts UTF-16 units, so a string
+      // of non-ASCII characters could be three times the limit this name
+      // promises before it was refused.
+      if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES) {
         throw new MobileWalletConfigurationError("Value exceeds the secure store size limit.", {
           key,
           limit: MAX_VALUE_BYTES

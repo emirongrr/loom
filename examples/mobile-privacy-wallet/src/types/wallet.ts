@@ -8,7 +8,6 @@ import type {
 
 export type Hex = `0x${string}`;
 
-export type WalletEnvironment = "development" | "testnet" | "production";
 
 export type ReleaseGateStatus = "passed" | "blocked" | "not-configured";
 
@@ -95,7 +94,6 @@ export interface PrivacyConfiguration {
 }
 
 export interface MobileWalletConfiguration {
-  readonly environment: WalletEnvironment;
   readonly rpId: string;
   readonly origin: string;
   readonly network: NetworkConfiguration;

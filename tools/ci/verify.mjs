@@ -139,6 +139,11 @@ run("Privacy SDK tests", npm, ["--prefix", "packages/privacy", "test"]);
 run("CLI tests", npm, ["run", "cli:test"]);
 run("Backend tracker example tests", npm, ["run", "example:backend:test"]);
 run("Web passkey example tests", npm, ["run", "example:web:test"]);
+// The mobile example was the one package outside every gate: absent from this
+// program, from the workflows, and from the root scripts. It had drifted red in
+// both its typecheck and its own suite, and nothing said so. Its dependency tree
+// was already audited here, which made the omission easy to miss.
+run("Mobile privacy wallet example tests", npm, ["run", "example:mobile:test"]);
 run("Monitoring component tests", npm, ["run", "monitoring:test"]);
 run("Wallet engine SDK install", npm, ["--prefix", "packages/sdk", "ci"]);
 run("Wallet engine SDK tests", npm, ["--prefix", "packages/sdk", "test"]);
