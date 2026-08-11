@@ -87,6 +87,11 @@ run("Toolchain pin tests", process.execPath, ["--test", "tools/quality/validate-
 run("Compiler bump sweep tests", process.execPath, ["--test", "tools/quality/bump-solidity-version.test.mjs"]);
 run("Dependency audit coverage", process.execPath, ["tools/quality/validate-audit-coverage.mjs"]);
 run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quality/validate-audit-coverage.test.mjs"]);
+// Storage layout is a public contract that no other gate covers: an ABI-identical
+// reorder passes compilation, the tests, and the gas snapshot, and only shows up
+// when a deployed account reads the wrong slot.
+run("Storage layout", process.execPath, ["tools/quality/validate-storage-layout.mjs"]);
+run("Storage layout tests", process.execPath, ["--test", "tools/quality/validate-storage-layout.test.mjs"]);
 run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);
 run("Test double inventory tests", process.execPath, ["--test", "tools/quality/validate-test-doubles.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);

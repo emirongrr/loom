@@ -1,0 +1,361 @@
+{
+  "version": 1,
+  "contracts": {
+    "src/LoomAccount.sol:LoomAccount": [
+      {
+        "label": "entryPoint",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_address"
+      },
+      {
+        "label": "configHash",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_bytes32"
+      },
+      {
+        "label": "configVersion",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_uint64"
+      },
+      {
+        "label": "guardianRoot",
+        "slot": 3,
+        "offset": 0,
+        "type": "t_bytes32"
+      },
+      {
+        "label": "guardianThreshold",
+        "slot": 4,
+        "offset": 0,
+        "type": "t_uint8"
+      },
+      {
+        "label": "frozenUntil",
+        "slot": 4,
+        "offset": 1,
+        "type": "t_uint48"
+      },
+      {
+        "label": "directExecutionNonces",
+        "slot": 5,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint256)"
+      },
+      {
+        "label": "_modules",
+        "slot": 6,
+        "offset": 0,
+        "type": "t_mapping(t_uint256,t_mapping(t_address,t_bool))"
+      },
+      {
+        "label": "_validators",
+        "slot": 7,
+        "offset": 0,
+        "type": "t_array(t_address)dyn_storage"
+      },
+      {
+        "label": "_hooks",
+        "slot": 8,
+        "offset": 0,
+        "type": "t_array(t_address)dyn_storage"
+      },
+      {
+        "label": "_validatorCount",
+        "slot": 9,
+        "offset": 0,
+        "type": "t_uint256"
+      },
+      {
+        "label": "_recoveryModuleCount",
+        "slot": 10,
+        "offset": 0,
+        "type": "t_uint256"
+      },
+      {
+        "label": "scheduledOperations",
+        "slot": 11,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_struct(ScheduledOperation)_storage)"
+      },
+      {
+        "label": "freezeNonces",
+        "slot": 12,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_uint256)"
+      },
+      {
+        "label": "lastFreezeConfigVersion",
+        "slot": 13,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_uint64)"
+      },
+      {
+        "label": "pendingMigration",
+        "slot": 14,
+        "offset": 0,
+        "type": "t_struct(PendingMigration)_storage"
+      },
+      {
+        "label": "migrationNonce",
+        "slot": 19,
+        "offset": 0,
+        "type": "t_uint64"
+      },
+      {
+        "label": "_executingScheduled",
+        "slot": 19,
+        "offset": 8,
+        "type": "t_bool"
+      },
+      {
+        "label": "_executionLocked",
+        "slot": 19,
+        "offset": 9,
+        "type": "t_bool"
+      }
+    ],
+    "src/keystore/LoomKeystore.sol:LoomKeystore": [
+      {
+        "label": "controllerOf",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_address)"
+      },
+      {
+        "label": "_configs",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_struct(KeystoreConfig)_storage)"
+      },
+      {
+        "label": "pendingControllerOf",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_address)"
+      }
+    ],
+    "src/hooks/PolicyHook.sol:PolicyHook": [
+      {
+        "label": "policies",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(Policy)_storage))"
+      },
+      {
+        "label": "spending",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(Spend)_storage))"
+      }
+    ],
+    "src/hooks/VaultHook.sol:VaultHook": [
+      {
+        "label": "policies",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_address,t_struct(VaultPolicy)_storage))"
+      },
+      {
+        "label": "spending",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_address,t_struct(Spend)_storage))"
+      },
+      {
+        "label": "pendingWithdrawals",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(PendingWithdrawal)_storage))"
+      }
+    ],
+    "src/recovery/RecoveryManager.sol:RecoveryManager": [
+      {
+        "label": "pendingRecoveries",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_struct(PendingRecovery)_storage)"
+      },
+      {
+        "label": "recoveryNonces",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint64)"
+      }
+    ],
+    "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule": [
+      {
+        "label": "pendingSyncs",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_struct(PendingSync)_storage)"
+      },
+      {
+        "label": "syncNonces",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint64)"
+      },
+      {
+        "label": "lastAppliedL1Version",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint64)"
+      }
+    ],
+    "src/validators/ECDSAValidator.sol:ECDSAValidator": [
+      {
+        "label": "owners",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_address)"
+      },
+      {
+        "label": "policyHooks",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "src/validators/P256Validator.sol:P256Validator": [
+      {
+        "label": "publicKeys",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_struct(PublicKey)_storage)"
+      },
+      {
+        "label": "policyHooks",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "src/validators/MultiP256Validator.sol:MultiP256Validator": [
+      {
+        "label": "credentials",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(PublicKey)_storage))"
+      },
+      {
+        "label": "keyFingerprints",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_bool))"
+      },
+      {
+        "label": "_credentialIds",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_array(t_bytes32)dyn_storage)"
+      },
+      {
+        "label": "thresholds",
+        "slot": 3,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint8)"
+      },
+      {
+        "label": "policyHooks",
+        "slot": 4,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_address)"
+      }
+    ],
+    "src/validators/GranularSessionValidator.sol:GranularSessionValidator": [
+      {
+        "label": "permissions",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(Permission)_storage))"
+      },
+      {
+        "label": "revoked",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_bool))"
+      },
+      {
+        "label": "_permissionIds",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_array(t_bytes32)dyn_storage)"
+      },
+      {
+        "label": "_knownPermission",
+        "slot": 3,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_bool))"
+      },
+      {
+        "label": "_permissionIdByNonceKey",
+        "slot": 4,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_uint192,t_bytes32))"
+      }
+    ],
+    "src/validators/ExactCallSessionValidator.sol:ExactCallSessionValidator": [
+      {
+        "label": "permissions",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_struct(Permission)_storage))"
+      },
+      {
+        "label": "revoked",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_bytes32,t_bool))"
+      },
+      {
+        "label": "_permissionIdByNonceKey",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_mapping(t_uint192,t_bytes32))"
+      }
+    ],
+    "src/validators/P256RecoveryValidator.sol:P256RecoveryValidator": [
+      {
+        "label": "publicKeys",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_struct(PublicKey)_storage)"
+      },
+      {
+        "label": "policyHooks",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_address)"
+      },
+      {
+        "label": "recoveryAccount",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_address"
+      },
+      {
+        "label": "recoveryInitDataHash",
+        "slot": 3,
+        "offset": 0,
+        "type": "t_bytes32"
+      }
+    ],
+    "src/AppAccountRegistry.sol:AppAccountRegistry": [
+      {
+        "label": "accountCount",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_uint256"
+      },
+      {
+        "label": "isAccount",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_bool)"
+      }
+    ]
+  }
+}
