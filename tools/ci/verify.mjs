@@ -92,6 +92,11 @@ run("Dependency audit coverage tests", process.execPath, ["--test", "tools/quali
 // when a deployed account reads the wrong slot.
 run("Storage layout", process.execPath, ["tools/quality/validate-storage-layout.mjs"]);
 run("Storage layout tests", process.execPath, ["--test", "tools/quality/validate-storage-layout.test.mjs"]);
+// Selectors, event topics, error selectors, and EIP-712 schemas. `abi:check`
+// proves the committed ABI matches the build; this proves the surface consumers
+// encode against did not move underneath them.
+run("Protocol surface", process.execPath, ["tools/quality/validate-protocol-surface.mjs"]);
+run("Protocol surface tests", process.execPath, ["--test", "tools/quality/validate-protocol-surface.test.mjs"]);
 run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);
 run("Test double inventory tests", process.execPath, ["--test", "tools/quality/validate-test-doubles.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);
