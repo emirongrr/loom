@@ -40,7 +40,12 @@ function hexToBytes(value: Hex): Uint8Array | undefined {
   return bytes;
 }
 
-function decodeAddress(word: Hex): Hex {
+function decodeAddress(word: Hex): Hex | undefined {
+  // ABI-encoded addresses occupy one complete word and have twelve zero bytes
+  // of left padding. Do not let a malformed RPC result become a typed address.
+  if (!/^0x0{24}[0-9a-fA-F]{40}$/.test(word)) {
+    return undefined;
+  }
   return ("0x" + word.slice(-40)) as Hex;
 }
 
@@ -151,14 +156,23 @@ export async function verifyManifestCodehashesOnChain(
           data: ACCOUNT_IMPLEMENTATION_SELECTOR
         });
         const implementation = decodeAddress(result);
-        const gate = await verifyRoleCodehash({
-          role: "accountImplementation",
-          address: implementation,
-          manifest,
-          stateTransport
-        });
-        if (gate) {
-          gates.push(gate);
+        if (!implementation) {
+          gates.push({
+            id: "deployment.onchain.accountImplementation.malformed-result",
+            title: "On-chain code hash not confirmed",
+            status: "blocked",
+            summary: "accountFactory.accountImplementation() returned a malformed ABI address word."
+          });
+        } else {
+          const gate = await verifyRoleCodehash({
+            role: "accountImplementation",
+            address: implementation,
+            manifest,
+            stateTransport
+          });
+          if (gate) {
+            gates.push(gate);
+          }
         }
       } catch {
         gates.push({
