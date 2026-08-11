@@ -1,0 +1,567 @@
+{
+  "version": 1,
+  "contracts": {
+    "src/LoomAccount.sol:LoomAccount": {
+      "functions": {
+        "BATCH_EXECUTION_MODE()": "0x7371e283",
+        "CANCEL_MIGRATION_TYPEHASH()": "0x5c364be4",
+        "CANCEL_SCHEDULED_TYPEHASH()": "0xc55f159d",
+        "DIRECT_EXECUTION_TYPEHASH()": "0x6729dff9",
+        "EIP712_DOMAIN_TYPEHASH()": "0xc7977be7",
+        "ERC1155_RECEIVER_INTERFACE_ID()": "0xf25d7128",
+        "ERC1271_INVALID()": "0xa886100f",
+        "ERC1271_MAGIC_VALUE()": "0x51e80a4c",
+        "ERC165_INTERFACE_ID()": "0x950d7f6f",
+        "ERC721_RECEIVER_INTERFACE_ID()": "0xb865c32c",
+        "EVICT_HOOK_TYPEHASH()": "0x58d4fce9",
+        "FREEZE_DURATION()": "0xf79d0731",
+        "FREEZE_TYPEHASH()": "0xc696402f",
+        "MAX_BATCH_SIZE()": "0xcfdbf254",
+        "MAX_GUARDIAN_PROOF_LENGTH()": "0x50c1995e",
+        "MAX_GUARDIAN_THRESHOLD()": "0x78e07c58",
+        "MAX_HOOKS()": "0x4fa4467c",
+        "MAX_MIGRATION_WINDOW()": "0x7ba37e63",
+        "MAX_RECOVERY_MODULES()": "0x6cd511a1",
+        "MAX_REVERT_DATA_LENGTH()": "0xf05d028c",
+        "MAX_SCHEDULE_DELAY()": "0xb5b0b36e",
+        "MAX_VALIDATORS()": "0x714897df",
+        "MIN_CONFIG_DELAY()": "0x3e23d733",
+        "MIN_EXTERNAL_DELAY()": "0x68c551c6",
+        "SCHEDULE_WINDOW()": "0x1eb0fb7f",
+        "SINGLE_EXECUTION_MODE()": "0xa2efbfaf",
+        "accountId()": "0x9cfd7cff",
+        "cancelMigration()": "0x10639ea0",
+        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": "0xeb23f0f9",
+        "cancelScheduled(bytes32)": "0x14a8b2b1",
+        "cancelScheduledDigest(bytes32,uint64,uint64)": "0x25da26fb",
+        "cancelScheduledWithGuardians(bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "0xcd7b1ca4",
+        "configHash()": "0xe1f1176d",
+        "configVersion()": "0xdd64d24d",
+        "decodeScheduleCall(bytes)": "0x03334e4a",
+        "decodeSignature(bytes)": "0xfb9b38be",
+        "directExecutionDigest(address,bytes32,bytes,uint256,uint48)": "0x2c6008af",
+        "directExecutionNonces(address)": "0x49354dae",
+        "entryPoint()": "0xb0d691fe",
+        "evictHookDigest(address,address,uint64)": "0x93296c94",
+        "evictHookWithGuardians(address,address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x785581cc",
+        "execute(bytes32,bytes)": "0xe9ae5c53",
+        "executeDirect(address,bytes32,bytes,uint48,bytes)": "0x6c8410a6",
+        "executeFromExecutor(bytes32,bytes)": "0xd691c964",
+        "executeMigration((address,uint256,bytes)[])": "0x8602e61d",
+        "executeScheduled(address,uint256,bytes)": "0x64579bf6",
+        "freeze(address,bytes32,bytes32,bytes32[],bytes)": "0x46927ea3",
+        "freezeNonces(bytes32)": "0xa57f382d",
+        "frozenUntil()": "0x6b47ffd7",
+        "guardianLeaf(address,bytes32,bytes32)": "0x2e5eab6b",
+        "guardianRoot()": "0xb84abafd",
+        "guardianThreshold()": "0xd5af4e20",
+        "initialize(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x7b253eb8",
+        "initializeDelegatedAccount(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0xf4addc66",
+        "installModule(uint256,address,bytes)": "0x9517e29f",
+        "isExecutingScheduled()": "0x055cbf3b",
+        "isModuleInstalled(uint256,address)": "0x9741d62e",
+        "isModuleInstalled(uint256,address,bytes)": "0x112d3a7d",
+        "isValidSignature(bytes32,bytes)": "0x1626ba7e",
+        "lastFreezeConfigVersion(bytes32)": "0x603db088",
+        "migrationCancelDigest(bytes32,uint64,uint64)": "0xd96e8bfa",
+        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "0xbd9d3532",
+        "migrationNonce()": "0x18ea6fac",
+        "notifyConfigChange(bytes32)": "0x0dd06537",
+        "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": "0xbc197c81",
+        "onERC1155Received(address,address,uint256,uint256,bytes)": "0xf23a6e61",
+        "onERC721Received(address,address,uint256,bytes)": "0x150b7a02",
+        "pendingMigration()": "0x61563c01",
+        "recoverConfiguration(address[],address,bytes,bytes32,uint8)": "0xf6889248",
+        "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": "0x89b28190",
+        "recoveryConfigured()": "0xf8d0cebb",
+        "revokeTokenAllowance(address,address)": "0xbc881467",
+        "scheduleCall(address,uint256,bytes,uint48)": "0xdcfe7ea7",
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "0x528833ca",
+        "scheduledOperations(bytes32)": "0xf4ee9bbb",
+        "setGuardianConfig(bytes32,uint8)": "0xd4c87899",
+        "supportsExecutionMode(bytes32)": "0xd03c7914",
+        "supportsInterface(bytes4)": "0x01ffc9a7",
+        "supportsModule(uint256)": "0xf2dc691d",
+        "unfreeze()": "0x6a28f000",
+        "uninstallModule(uint256,address,bytes)": "0xa71763a8",
+        "validateUserOp((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes),bytes32,uint256)": "0x19822f7c",
+        "validatorAt(uint256)": "0x32e0aa1f",
+        "validatorCount()": "0x0f43a677"
+      },
+      "events": {
+        "AllowanceRevoked(address,address)": "0x8da578e4cb2672c4986388e504a6f639391986195c077e5db9f48e04c97a501b",
+        "ConfigUpdated(bytes32,uint64)": "0x76855322c5cc7335ce7f03ab0323699af75ee9c167c9c3c15f63a103065425d0",
+        "DirectExecution(address,uint256,bytes32)": "0xb7c6727f2ac3bdfc2726006b11137debfcd288b98bdedcef92f5c2a79bee66d4",
+        "Frozen(uint48)": "0xd4e7c6511834a2fe17999a3aaa203c18caa4c30f328fe5b12d90f66a03d445c8",
+        "GuardianConfigUpdated(bytes32,uint8)": "0xbe94b5dbe0be339ed12077f37b7a848df5ddf153c4fc3458bdd33e6adb3a64e8",
+        "MigrationCancelled(bytes32)": "0xa4391902668b001cf56998d0fd274c08b6d1068095959fd6324c6e7ddd8b4cd0",
+        "MigrationExecuted(bytes32,address)": "0x8cbcf9892f8ed0744ab5dd8cd9148eceddd3cd48a3ccd63d529eca34f485f313",
+        "MigrationScheduled(bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": "0xe604f896c5c0b3941a44e32860ee38690f2b20d49577390f4966c5eddce77361",
+        "ModuleInstalled(uint256,address)": "0xd21d0b289f126c4b473ea641963e766833c2f13866e4ff480abd787c100ef123",
+        "ModuleUninstalled(uint256,address)": "0x341347516a9de374859dfda710fa4828b2d48cb57d4fbe4c1149612b8e02276e",
+        "OperationCancelled(bytes32)": "0xcf0f63b97f3387253cbc0bde884f975df77e39184dc3280c2c81be495f58eef4",
+        "OperationExecuted(bytes32)": "0x1277662f4b42b8a4069e99fb5e41ce8919d3c621156090ac08fb11adbcec66f9",
+        "OperationScheduled(bytes32,uint48,uint48,uint64)": "0xc564c423552cda9f4919e3ede1d8a8257b184349a46ce185ba1a26d51f3ca21d"
+      },
+      "errors": {
+        "AccountFrozen()": "0x552afea0",
+        "BatchLimitExceeded()": "0x359fd044",
+        "CallFailed(bytes)": "0xa5fa8d2b",
+        "EmptyBatch()": "0xc2e5347d",
+        "FreezeActive()": "0x7d32c9c2",
+        "InvalidBatch()": "0x33b094a1",
+        "InvalidDelay()": "0x4fbe5dba",
+        "InvalidDirectExecution()": "0x4e2b154e",
+        "InvalidGuardianConfig()": "0x7623bd5d",
+        "InvalidInitialization()": "0xf92ee8a9",
+        "InvalidInitializationContext()": "0x0bda07c4",
+        "InvalidMigration()": "0xb57b5d7b",
+        "InvalidModule()": "0xdd914b28",
+        "InvalidTokenAllowance()": "0xae211175",
+        "MigrationAlreadyPending()": "0xff3dab9f",
+        "MigrationNotPending()": "0xf135abf8",
+        "ModuleLimitReached()": "0x5737ae04",
+        "OnlyEntryPoint()": "0xbd07c551",
+        "OnlySelf()": "0x14d4a4e8",
+        "OperationAlreadyScheduled()": "0x9b382476",
+        "OperationExpired()": "0x74ed780a",
+        "OperationNotReady()": "0xf800799b",
+        "OperationNotScheduled()": "0x27c0d610",
+        "Reentrancy()": "0xab143c06",
+        "ReturnDataLimitExceeded(uint256)": "0x1ab47c35",
+        "UnsupportedExecutionMode()": "0x7f181275",
+        "UnsupportedModuleType()": "0xcf747b87"
+      }
+    },
+    "src/LoomAccountFactory.sol:LoomAccountFactory": {
+      "functions": {
+        "accountImplementation()": "0x11464fbe",
+        "createAccount(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x7b65e75f",
+        "entryPoint()": "0xb0d691fe",
+        "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x2cf1fe9b",
+        "registry()": "0x7b103999"
+      },
+      "events": {
+        "LoomAccountCreated(address)": "0xbd904dc6e7931711be6993c6bab7de06fe4d57649c6006aadaa7e8003ce61467"
+      },
+      "errors": {
+        "InvalidFactory()": "0x7a44db95"
+      }
+    },
+    "src/LoomAccountProxy.sol:LoomAccountProxy": {
+      "functions": {
+        "implementation()": "0x5c60da1b"
+      },
+      "events": {},
+      "errors": {
+        "InitializationFailed(bytes)": "0x23615171",
+        "InvalidProxy()": "0xb9e5cf7c"
+      }
+    },
+    "src/AppAccountRegistry.sol:AppAccountRegistry": {
+      "functions": {
+        "accountCount()": "0xe4af29fc",
+        "factory()": "0xc45a0155",
+        "isAccount(address)": "0x25ca4c9c",
+        "registerAccount(address)": "0x97c414df"
+      },
+      "events": {
+        "AccountRegistered(address)": "0xcd822dc9688e20acea68724a2fbcfe4f3e526d20ecaa37b18fe3047ab377d6a5"
+      },
+      "errors": {
+        "AccountAlreadyRegistered()": "0xcff2d5ad",
+        "InvalidAccount()": "0x6d187b28",
+        "OnlyFactory()": "0x0c6d42ae"
+      }
+    },
+    "src/keystore/LoomKeystore.sol:LoomKeystore": {
+      "functions": {
+        "MAX_GUARDIAN_THRESHOLD()": "0x78e07c58",
+        "acceptController(bytes32)": "0x0379bf10",
+        "cancelControllerTransfer(bytes32)": "0x0e1fd679",
+        "configHash(bytes32)": "0x71d98c9c",
+        "controllerOf(bytes32)": "0xd2b4678b",
+        "getConfig(bytes32)": "0x6dd5b69d",
+        "pendingControllerOf(bytes32)": "0x72eeea6b",
+        "register(bytes32,address,bytes32,bytes32,bytes32,uint8)": "0x008eb11e",
+        "transferController(bytes32,address)": "0x35c57c4d",
+        "updateConfig(bytes32,bytes32,bytes32,bytes32,uint8)": "0xb9389571"
+      },
+      "events": {
+        "ConfigUpdated(bytes32,bytes32,bytes32,bytes32,uint8,uint64)": "0xb6abc31b3bcb9ebd77462e1e3c9d89ba7c46217e34904cc2cb626385a406f320",
+        "ControllerTransferCancelled(bytes32,address)": "0xd536a9962286d009b6f0b66f5441529c3d5ca61b760d1b9a4bec791e2f960c02",
+        "ControllerTransferProposed(bytes32,address,address)": "0x21c6a8d7f0b157d00aa9cb81f27e77ccde307018ce691f88c0e89a143d7a08f9",
+        "ControllerTransferred(bytes32,address,address)": "0x2916b4ec0eddd360b912167f4fea64d0e4a6d8db604ae395e3efde5f47e82ef7",
+        "IdentityRegistered(bytes32,address,bytes32,bytes32,bytes32,uint8,uint64)": "0xb1ee1e7c21c7868710577b2ccc211236d169d3f42666bc9aa9f9c9e596a06534"
+      },
+      "errors": {
+        "IdentityAlreadyRegistered()": "0xa225e469",
+        "IdentityNotRegistered()": "0x9c6f055b",
+        "InvalidConfig()": "0x35be3ac8",
+        "InvalidController()": "0x6d5769be",
+        "InvalidIdentity()": "0x178423dd",
+        "Unauthorized()": "0x82b42900"
+      }
+    },
+    "src/hooks/PolicyHook.sol:PolicyHook": {
+      "functions": {
+        "isLowRisk(address,bytes)": "0x9b3e0cd6",
+        "isModuleType(uint256)": "0xecd05961",
+        "policies(address,bytes32)": "0xe8f180b7",
+        "policyId(address,bytes4)": "0x21cca18b",
+        "postCheck(address,bytes)": "0x0877f255",
+        "preCheck(address,address,bytes)": "0x58725f54",
+        "removePolicy(address,bytes4)": "0xb7b64240",
+        "setPolicy(address,bytes4,(uint128,uint128,uint48,address,bool))": "0x00148d93",
+        "spending(address,bytes32)": "0x9345bca6"
+      },
+      "events": {
+        "PolicyRemoved(address,bytes32)": "0x18b922c01dfae4ffae8c0d06acbddd8c9741827dc89ce507f3c45b544f645797",
+        "PolicySet(address,bytes32,(uint128,uint128,uint48,address,bool))": "0x85d43e5c400390a0bd841688706caf52e70c88f9380d14cc03a424aeb4038a86"
+      },
+      "errors": {
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "CounterpartyNotAllowed()": "0x72c0baba",
+        "InvalidPeriod()": "0x17479ac8",
+        "LimitExceeded()": "0x3261c792",
+        "OnlyAccount()": "0xf3f6425d"
+      }
+    },
+    "src/hooks/VaultHook.sol:VaultHook": {
+      "functions": {
+        "CANCEL_WITHDRAWAL_TYPEHASH()": "0x898f1471",
+        "EIP712_DOMAIN_TYPEHASH()": "0xc7977be7",
+        "MAX_WITHDRAWAL_WINDOW()": "0x417f3868",
+        "MIN_VAULT_DELAY()": "0xcb573b95",
+        "cancelVaultWithdrawal(bytes32)": "0x7facb463",
+        "cancelVaultWithdrawalWithGuardians(address,bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x2f8eedcd",
+        "cancelWithdrawalDigest(address,bytes32,uint64,uint64)": "0x906b0b6c",
+        "isModuleType(uint256)": "0xecd05961",
+        "pendingWithdrawals(address,bytes32)": "0x8fcb889a",
+        "policies(address,address)": "0x187a7b8f",
+        "postCheck(address,bytes)": "0x0877f255",
+        "preCheck(address,address,bytes)": "0x58725f54",
+        "removeVaultPolicy(address)": "0x15ed54ba",
+        "scheduleVaultWithdrawal(address,uint256,bytes,uint48)": "0x1bdd50c5",
+        "setVaultPolicy(address,(uint128,uint48,uint48,bool))": "0xd97a2860",
+        "spending(address,address)": "0x5c3d6032",
+        "withdrawalIdFor(address,address,uint256,bytes32,uint64)": "0x7edf9ca6"
+      },
+      "events": {
+        "VaultPolicyRemoved(address,address)": "0xaabb6005be9786da5708e49d31dc6fd96c7fad6c87fd9c5ca2b97479e2cbbacc",
+        "VaultPolicySet(address,address,(uint128,uint48,uint48,bool))": "0x7978384b734feae2008beccbf007a75a3643206c11d20b116495ab207e69e7ff",
+        "VaultWithdrawalCancelled(address,bytes32)": "0xeeaca35555af96050f6b65deaf9c2d4a296710b2f90ac3f1a16c5e13d3fafb8a",
+        "VaultWithdrawalExecuted(address,bytes32)": "0x94a8a7ff5f1739eaeaccbb36c01bac88d65c33ba24896b152bc1b126e31f354c",
+        "VaultWithdrawalScheduled(address,bytes32,address,uint48,uint48,uint64)": "0x89a34797e943fc6d31570318b11e22ec508cec65a0e6ec1fc6ccff3efeee33e3"
+      },
+      "errors": {
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "InvalidPolicy()": "0xd06b96b1",
+        "InvalidWithdrawal()": "0xc945242d",
+        "LimitExceeded()": "0x3261c792",
+        "OnlyAccount()": "0xf3f6425d",
+        "WithdrawalAlreadyPending()": "0xa2aed0f0",
+        "WithdrawalExpired()": "0xc140b38a",
+        "WithdrawalNotPending()": "0x3a0a1ca6",
+        "WithdrawalNotReady()": "0x0f2ca6e7"
+      }
+    },
+    "src/recovery/RecoveryManager.sol:RecoveryManager": {
+      "functions": {
+        "CANCEL_TYPEHASH()": "0x73fca6ea",
+        "EIP712_DOMAIN_TYPEHASH()": "0xc7977be7",
+        "MAX_GUARDIAN_THRESHOLD()": "0x78e07c58",
+        "PROPOSE_TYPEHASH()": "0xb2547f10",
+        "RECOVERY_DELAY()": "0x47b45652",
+        "RECOVERY_WINDOW()": "0x0a4636b2",
+        "cancelDigest(address,bytes32,uint64,uint64)": "0x18d480b2",
+        "cancelRecovery(address)": "0xc90db447",
+        "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x816aa48e",
+        "executeRecovery(address,address[],bytes)": "0x3ecc40f9",
+        "isModuleType(uint256)": "0xecd05961",
+        "pendingRecoveries(address)": "0xe452cf4a",
+        "proposalDigest(address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64)": "0x0f3ae07e",
+        "proposeRecovery(address,address[],address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x687287cb",
+        "recoveryIdFor(address,(bytes32,address,bytes32,bytes32,uint8,uint48,uint48,uint64,uint64))": "0xfff59454",
+        "recoveryNonces(address)": "0xd033090e"
+      },
+      "events": {
+        "RecoveryCancelled(address,bytes32)": "0x5ec34f3f384538319a5eb81bc3f45fb37b28d5e456474f7a62318ef7a7130949",
+        "RecoveryExecuted(address,bytes32,address)": "0x103d1cfeba4cc208255b2e3861857f19bcee5dd2abe1d4a600305c8212b603d9",
+        "RecoveryProposed(address,bytes32,address,bytes32,uint48,uint48)": "0xfa6459fefb2b58fd2685b8027c43d06385966e57bf66230b08cb9ca5abdf6c4d"
+      },
+      "errors": {
+        "InvalidRecovery()": "0xf7eb744d",
+        "RecoveryAlreadyPending()": "0xe3985b98",
+        "RecoveryExpired()": "0xd3c92b0d",
+        "RecoveryNotReady()": "0xf8aef316",
+        "UnauthorizedCancellation()": "0xe3dfba46"
+      }
+    },
+    "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule": {
+      "functions": {
+        "APP_ACCOUNT_LEAF_TYPEHASH()": "0xf259d135",
+        "CANCEL_TYPEHASH()": "0x73fca6ea",
+        "EIP712_DOMAIN_TYPEHASH()": "0xc7977be7",
+        "MAX_GUARDIAN_THRESHOLD()": "0x78e07c58",
+        "MAX_VALIDATORS()": "0x714897df",
+        "SINGLE_VALIDATOR_ROOT_TYPEHASH()": "0xef2f6cc5",
+        "SYNC_DELAY()": "0x47c7ecdd",
+        "SYNC_WINDOW()": "0x67cec27e",
+        "VALIDATOR_SET_ROOT_TYPEHASH()": "0xe8341d29",
+        "appAccountLeaf(address)": "0x07966a0b",
+        "cancelDigest(address,bytes32,uint64,uint64)": "0x18d480b2",
+        "cancelRecovery(address)": "0xc90db447",
+        "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x9753e03c",
+        "executeSync(address,address[],(uint256,address,bytes)[])": "0x6c249237",
+        "isModuleType(uint256)": "0xecd05961",
+        "l1Keystore()": "0x82862145",
+        "lastAppliedL1Version(address)": "0xca504150",
+        "pendingSyncs(address)": "0x4556ea83",
+        "proofVerifier()": "0x7fa417b3",
+        "proposeSync(address,bytes32,(bytes32,bytes32,bytes32,uint8,uint64),bytes,bytes32[],address[],(uint256,address,bytes)[])": "0x4184b772",
+        "singleValidatorRoot(address,bytes32)": "0x90212455",
+        "syncIdFor(address,(bytes32,bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint48,uint48,uint64,uint64))": "0x47004815",
+        "syncNonces(address)": "0xef51ad2d",
+        "validatorSetRoot((uint256,address,bytes)[])": "0x1d7cbb83"
+      },
+      "events": {
+        "KeystoreSyncCancelled(address,bytes32)": "0x2338f585c715e120d5e4a7fb590533c0cf978fd871454d0698179f37447177e2",
+        "KeystoreSyncExecuted(address,bytes32,bytes32)": "0x9ff29e11c593aa6c0a737604fd9e8ac09f2a527fc251299482ab719aacef5a54",
+        "KeystoreSyncProposed(address,bytes32,bytes32,uint64,bytes32,bytes32,uint8,uint48,uint48)": "0xf45b22f69be6e2b551386432f7a7dba1a94f180b7c1d090c66070cfc022b6bd2"
+      },
+      "errors": {
+        "InvalidSync()": "0xb677abad",
+        "SyncAlreadyPending()": "0x6df6b34c",
+        "SyncExpired()": "0xc8f34491",
+        "SyncNotPending()": "0x453d35da",
+        "SyncNotReady()": "0x77f6d59d",
+        "UnauthorizedCancellation()": "0xe3dfba46"
+      }
+    },
+    "src/validators/ECDSAValidator.sol:ECDSAValidator": {
+      "functions": {
+        "initialize(address,address)": "0x485cc955",
+        "isModuleType(uint256)": "0xecd05961",
+        "isValidSignature(address,bytes32,bytes)": "0x238a4d1e",
+        "owners(address)": "0x022914a7",
+        "policyHookFor(address)": "0x59874bd8",
+        "policyHooks(address)": "0x6395f052",
+        "rebindPolicyHook(address)": "0x1a65c7c6",
+        "setOwner(address)": "0x13af4035",
+        "setPolicyHook(address)": "0xa9c068cf",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
+      },
+      "events": {
+        "OwnerSet(address,address)": "0x342827c97908e5e2f71151c08502a66d44b6f758e3ac2f1de95f02eb95f0a735",
+        "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f"
+      },
+      "errors": {
+        "AlreadyInitialized()": "0x0dc149f0",
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "InvalidOwner()": "0x49e27cff",
+        "InvalidPolicyHook()": "0x2dad2865"
+      }
+    },
+    "src/validators/P256Validator.sol:P256Validator": {
+      "functions": {
+        "MAX_AUTHENTICATOR_DATA_LENGTH()": "0x5378665e",
+        "MAX_CLIENT_DATA_JSON_LENGTH()": "0xeec5cb65",
+        "MAX_ORIGIN_LENGTH()": "0xf02984f2",
+        "P256_HALF_ORDER()": "0xa4f05570",
+        "fallbackVerifier()": "0xfe3c90b0",
+        "initialize(bytes32,bytes32,bytes32,bytes32,address)": "0x03a97c8d",
+        "isModuleType(uint256)": "0xecd05961",
+        "isValidSignature(address,bytes32,bytes)": "0x238a4d1e",
+        "policyHookFor(address)": "0x59874bd8",
+        "policyHooks(address)": "0x6395f052",
+        "publicKeys(address)": "0xa3d6f9a9",
+        "rebindPolicyHook(address)": "0x1a65c7c6",
+        "setKey(bytes32,bytes32,bytes32,bytes32)": "0x95cd2a42",
+        "setPolicyHook(address)": "0xa9c068cf",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
+      },
+      "events": {
+        "KeySet(address,bytes32,bytes32,bytes32,bytes32)": "0x4b4cd8a159daa01d0f479aa880b2701aaf60ddb8a405ca8aa9ff2705d8d7fc19",
+        "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f"
+      },
+      "errors": {
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "InvalidPolicyHook()": "0x2dad2865",
+        "InvalidPublicKey()": "0xa2d0fee8",
+        "KeyAlreadyInitialized()": "0x74b57822"
+      }
+    },
+    "src/validators/MultiP256Validator.sol:MultiP256Validator": {
+      "functions": {
+        "MAX_CREDENTIALS()": "0x8a937fad",
+        "addCredential(bytes32,(bytes32,bytes32,bytes32,bytes32))": "0xc9115dda",
+        "credentialCount(address)": "0x69989ffb",
+        "credentialIdAt(address,uint256)": "0x08172c97",
+        "credentials(address,bytes32)": "0x6372de9a",
+        "fallbackVerifier()": "0xfe3c90b0",
+        "initialize((bytes32,(bytes32,bytes32,bytes32,bytes32))[],uint8,address)": "0x3799f4c3",
+        "isModuleType(uint256)": "0xecd05961",
+        "isValidSignature(address,bytes32,bytes)": "0x238a4d1e",
+        "keyFingerprints(address,bytes32)": "0x2da93760",
+        "policyHookFor(address)": "0x59874bd8",
+        "policyHooks(address)": "0x6395f052",
+        "rebindPolicyHook(address)": "0x1a65c7c6",
+        "removeCredential(bytes32)": "0xd0c8a792",
+        "setPolicyHook(address)": "0xa9c068cf",
+        "setThreshold(uint8)": "0xe5a98603",
+        "thresholds(address)": "0x9df5f6bd",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
+      },
+      "events": {
+        "CredentialAdded(address,bytes32,bytes32)": "0xce9b7fc8955f2bdf03e856f3011325adfc18216568ebc840733e6a559c65a0be",
+        "CredentialRemoved(address,bytes32,bytes32)": "0x4c2c0e80e2ad2c80274f7c587c4ab771eb7c0b64f7bbe0b266e59da079ecc9c1",
+        "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f",
+        "ThresholdSet(address,uint8)": "0x71d1e68103a122a6bf3ccd593baed5289c4ea40093696e1b72dc6d3024f5bc09"
+      },
+      "errors": {
+        "AlreadyInitialized()": "0x0dc149f0",
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "CredentialLimitReached()": "0x88496bef",
+        "DuplicateCredential()": "0x7f7af7c3",
+        "InvalidCredential()": "0xcaa03ea5",
+        "InvalidPolicyHook()": "0x2dad2865",
+        "InvalidThreshold()": "0xaabd5a09"
+      }
+    },
+    "src/validators/GranularSessionValidator.sol:GranularSessionValidator": {
+      "functions": {
+        "BATCH_EXECUTION_MODE()": "0x7371e283",
+        "MAX_PERMISSION_IDS()": "0x5d3e92d9",
+        "SINGLE_EXECUTION_MODE()": "0xa2efbfaf",
+        "grantPermission(bytes32,(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16))": "0x7d198ff1",
+        "grantPermissions(bytes32[],(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16)[])": "0x404721fd",
+        "isModuleType(uint256)": "0xecd05961",
+        "isValidSignature(address,bytes32,bytes)": "0x238a4d1e",
+        "nonceKeyFor(bytes32)": "0x06a7bc39",
+        "permissionCount(address)": "0x0715f191",
+        "permissionIdAt(address,uint256)": "0x65cf4327",
+        "permissions(address,bytes32)": "0x5b225526",
+        "revokePermission(bytes32)": "0xe89005c7",
+        "revoked(address,bytes32)": "0xe46e3846",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
+      },
+      "events": {
+        "PermissionBatchGranted(address,uint256)": "0x12b06d478fb6dd2cd8f55d713750cdf0fe23f7d1117b44fdb7aded9970c87015",
+        "PermissionGranted(address,bytes32,address)": "0x4cf3e1e37593c051ae26cd388ef2937cec5af2f089064370aa2d47b79a636871",
+        "PermissionRevoked(address,bytes32)": "0x789770131846de4d1f28418f0f957cdf4fcabe5eccf70067083e20ecece69a34"
+      },
+      "errors": {
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "InvalidPermission()": "0x868a64de",
+        "PermissionLimitReached()": "0xff4a597f"
+      }
+    },
+    "src/validators/ExactCallSessionValidator.sol:ExactCallSessionValidator": {
+      "functions": {
+        "grantPermission(bytes32,(address,uint48,uint48,bytes32,uint32,address))": "0x69575998",
+        "isModuleType(uint256)": "0xecd05961",
+        "isValidSignature(address,bytes32,bytes)": "0x238a4d1e",
+        "nonceKeyFor(bytes32)": "0x06a7bc39",
+        "permissions(address,bytes32)": "0x5b225526",
+        "revokePermission(bytes32)": "0xe89005c7",
+        "revoked(address,bytes32)": "0xe46e3846",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
+      },
+      "events": {
+        "PermissionGranted(address,bytes32,address)": "0x4cf3e1e37593c051ae26cd388ef2937cec5af2f089064370aa2d47b79a636871",
+        "PermissionRevoked(address,bytes32)": "0x789770131846de4d1f28418f0f957cdf4fcabe5eccf70067083e20ecece69a34"
+      },
+      "errors": {
+        "ConfigTimelockRequired()": "0x05b72c5e",
+        "InvalidPermission()": "0x868a64de"
+      }
+    },
+    "src/validators/P256RecoveryValidatorFactory.sol:P256RecoveryValidatorFactory": {
+      "functions": {
+        "RECOVERY_VALIDATOR_SALT_DOMAIN()": "0x3dacb2ec",
+        "deploy(address,uint64,bytes32)": "0x08baff78",
+        "deploymentSalt(address,uint64,bytes32)": "0xde882ea8",
+        "fallbackVerifier()": "0xfe3c90b0",
+        "getAddress(address,uint64,bytes32)": "0x1362ce13",
+        "validatorInitCodeHash()": "0x08e573d8"
+      },
+      "events": {
+        "RecoveryValidatorDeployed(address,uint64,bytes32,address)": "0x8fd448b44e0b966302d6cf13ddc48d2c3922716b79c513563500a4f6b8b3dd7f"
+      },
+      "errors": {
+        "InvalidFallbackVerifier()": "0x97f1936e",
+        "InvalidRecoveryValidatorInput()": "0xa05e2845",
+        "UnexpectedValidatorAddress()": "0x7f417a11",
+        "UnexpectedValidatorReservation()": "0xba860466"
+      }
+    }
+  },
+  "typedData": {
+    "src/LoomAccount.sol": {
+      "CANCEL_MIGRATION_TYPEHASH": {
+        "schema": "CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)",
+        "hash": "0x52f90a7822bb36f1d21771a488483f833754deecd2c07c22f35286ce0bf1eb07"
+      },
+      "CANCEL_SCHEDULED_TYPEHASH": {
+        "schema": "CancelScheduled(bytes32 operationId,uint64 configVersion,uint64 nonce)",
+        "hash": "0x9e9060e8d409a8900bf609c710261e1f73434ce363c1ac77a624b40c14136d5c"
+      },
+      "DIRECT_EXECUTION_TYPEHASH": {
+        "schema": "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)",
+        "hash": "0x61f511e0621f6823dc2fe9363bda5c23ad9b72042b60d79a59f911b04de6193c"
+      },
+      "EVICT_HOOK_TYPEHASH": {
+        "schema": "EvictHook(address hook,address replacement,uint64 configVersion)",
+        "hash": "0x1d832fe20c2be6dfc210d3fb70ef0fa72461505d540dd018adf91c7c3a5254b7"
+      },
+      "FREEZE_TYPEHASH": {
+        "schema": "Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)",
+        "hash": "0x5a15538edb63284274c9128917d92df4f51c883f00c7852565b3196ba4508fc6"
+      }
+    },
+    "src/hooks/VaultHook.sol": {
+      "CANCEL_WITHDRAWAL_TYPEHASH": {
+        "schema": "CancelVaultWithdrawal(address account,bytes32 withdrawalId,uint64 configVersion,uint64 nonce)",
+        "hash": "0x9936bf773a0cb4a3ef4ab1d4b8aadaa0d66bfd5063468e8b6335e4a730925662"
+      }
+    },
+    "src/libraries/EIP712Lib.sol": {
+      "DOMAIN_TYPEHASH": {
+        "schema": "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+        "hash": "0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f"
+      }
+    },
+    "src/recovery/KeystoreSyncRecoveryModule.sol": {
+      "APP_ACCOUNT_LEAF_TYPEHASH": {
+        "schema": "LoomAppAccount(uint256 chainId,address account,address syncModule)",
+        "hash": "0x28620e70e0ff27b67a4fb2b178d10a1890e48e8a44ddba8e53cf60f027ed70eb"
+      },
+      "CANCEL_TYPEHASH": {
+        "schema": "CancelKeystoreSync(address account,bytes32 syncId,uint64 accountConfigVersion,uint64 nonce)",
+        "hash": "0x7edc09e15592619b0451809be62214c7fef3486bbd322756713684fff8c9f304"
+      },
+      "SINGLE_VALIDATOR_ROOT_TYPEHASH": {
+        "schema": "LoomSingleValidatorRoot(address validator,bytes32 initDataHash)",
+        "hash": "0x169da4d17bfe7dc579efd3bf138a2d750e79db47824946175443476537be3c83"
+      },
+      "VALIDATOR_SET_ROOT_TYPEHASH": {
+        "schema": "LoomValidatorSetRoot(bytes32 validatorsHash)",
+        "hash": "0x197ffaf32f6f78f317afc40a16775430654c3c308029fe0acc338eafdb04379e"
+      }
+    },
+    "src/recovery/RecoveryManager.sol": {
+      "CANCEL_TYPEHASH": {
+        "schema": "CancelRecovery(address account,bytes32 recoveryId,uint64 configVersion,uint64 nonce)",
+        "hash": "0x0a531f1082b4b7a236bbb32ec92cf33a0f0d7701f2e29ce47100ac07e08f7a47"
+      },
+      "PROPOSE_TYPEHASH": {
+        "schema": "ProposeRecovery(address account,bytes32 oldValidatorsHash,address newValidator,bytes32 initDataHash,bytes32 newGuardianRoot,uint8 newGuardianThreshold,uint64 configVersion,uint64 nonce)",
+        "hash": "0x8fd818fd992056ee019e2ff2487582268df5188744968a9d935e74821912f944"
+      }
+    }
+  }
+}
