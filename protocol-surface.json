@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "contracts": {
     "src/LoomAccount.sol:LoomAccount": {
       "functions": {
@@ -88,6 +88,319 @@
         "validatorAt(uint256)": "0x32e0aa1f",
         "validatorCount()": "0x0f43a677"
       },
+      "functionOutputs": {
+        "BATCH_EXECUTION_MODE()": [
+          "bytes32"
+        ],
+        "CANCEL_MIGRATION_TYPEHASH()": [
+          "bytes32"
+        ],
+        "CANCEL_SCHEDULED_TYPEHASH()": [
+          "bytes32"
+        ],
+        "DIRECT_EXECUTION_TYPEHASH()": [
+          "bytes32"
+        ],
+        "EIP712_DOMAIN_TYPEHASH()": [
+          "bytes32"
+        ],
+        "ERC1155_RECEIVER_INTERFACE_ID()": [
+          "bytes4"
+        ],
+        "ERC1271_INVALID()": [
+          "bytes4"
+        ],
+        "ERC1271_MAGIC_VALUE()": [
+          "bytes4"
+        ],
+        "ERC165_INTERFACE_ID()": [
+          "bytes4"
+        ],
+        "ERC721_RECEIVER_INTERFACE_ID()": [
+          "bytes4"
+        ],
+        "EVICT_HOOK_TYPEHASH()": [
+          "bytes32"
+        ],
+        "FREEZE_DURATION()": [
+          "uint48"
+        ],
+        "FREEZE_TYPEHASH()": [
+          "bytes32"
+        ],
+        "MAX_BATCH_SIZE()": [
+          "uint256"
+        ],
+        "MAX_GUARDIAN_PROOF_LENGTH()": [
+          "uint256"
+        ],
+        "MAX_GUARDIAN_THRESHOLD()": [
+          "uint8"
+        ],
+        "MAX_HOOKS()": [
+          "uint256"
+        ],
+        "MAX_MIGRATION_WINDOW()": [
+          "uint48"
+        ],
+        "MAX_RECOVERY_MODULES()": [
+          "uint256"
+        ],
+        "MAX_REVERT_DATA_LENGTH()": [
+          "uint256"
+        ],
+        "MAX_SCHEDULE_DELAY()": [
+          "uint48"
+        ],
+        "MAX_VALIDATORS()": [
+          "uint256"
+        ],
+        "MIN_CONFIG_DELAY()": [
+          "uint48"
+        ],
+        "MIN_EXTERNAL_DELAY()": [
+          "uint48"
+        ],
+        "SCHEDULE_WINDOW()": [
+          "uint48"
+        ],
+        "SINGLE_EXECUTION_MODE()": [
+          "bytes32"
+        ],
+        "accountId()": [
+          "string"
+        ],
+        "cancelMigration()": [],
+        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "cancelScheduled(bytes32)": [],
+        "cancelScheduledDigest(bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "cancelScheduledWithGuardians(bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "configHash()": [
+          "bytes32"
+        ],
+        "configVersion()": [
+          "uint64"
+        ],
+        "decodeScheduleCall(bytes)": [
+          "address",
+          "uint256",
+          "bytes",
+          "uint48"
+        ],
+        "decodeSignature(bytes)": [
+          "address",
+          "bytes"
+        ],
+        "directExecutionDigest(address,bytes32,bytes,uint256,uint48)": [
+          "bytes32"
+        ],
+        "directExecutionNonces(address)": [
+          "uint256"
+        ],
+        "entryPoint()": [
+          "address"
+        ],
+        "evictHookDigest(address,address,uint64)": [
+          "bytes32"
+        ],
+        "evictHookWithGuardians(address,address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "execute(bytes32,bytes)": [],
+        "executeDirect(address,bytes32,bytes,uint48,bytes)": [],
+        "executeFromExecutor(bytes32,bytes)": [
+          "bytes[]"
+        ],
+        "executeMigration((address,uint256,bytes)[])": [],
+        "executeScheduled(address,uint256,bytes)": [],
+        "freeze(address,bytes32,bytes32,bytes32[],bytes)": [],
+        "freezeNonces(bytes32)": [
+          "uint256"
+        ],
+        "frozenUntil()": [
+          "uint48"
+        ],
+        "guardianLeaf(address,bytes32,bytes32)": [
+          "bytes32"
+        ],
+        "guardianRoot()": [
+          "bytes32"
+        ],
+        "guardianThreshold()": [
+          "uint8"
+        ],
+        "initialize(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": [],
+        "initializeDelegatedAccount(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": [],
+        "installModule(uint256,address,bytes)": [],
+        "isExecutingScheduled()": [
+          "bool"
+        ],
+        "isModuleInstalled(uint256,address)": [
+          "bool"
+        ],
+        "isModuleInstalled(uint256,address,bytes)": [
+          "bool"
+        ],
+        "isValidSignature(bytes32,bytes)": [
+          "bytes4"
+        ],
+        "lastFreezeConfigVersion(bytes32)": [
+          "uint64"
+        ],
+        "migrationCancelDigest(bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": [
+          "bytes32"
+        ],
+        "migrationNonce()": [
+          "uint64"
+        ],
+        "notifyConfigChange(bytes32)": [],
+        "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": [
+          "bytes4"
+        ],
+        "onERC1155Received(address,address,uint256,uint256,bytes)": [
+          "bytes4"
+        ],
+        "onERC721Received(address,address,uint256,bytes)": [
+          "bytes4"
+        ],
+        "pendingMigration()": [
+          "address",
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "uint48",
+          "uint48",
+          "uint64",
+          "uint64"
+        ],
+        "recoverConfiguration(address[],address,bytes,bytes32,uint8)": [],
+        "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": [],
+        "recoveryConfigured()": [
+          "bool"
+        ],
+        "revokeTokenAllowance(address,address)": [],
+        "scheduleCall(address,uint256,bytes,uint48)": [
+          "bytes32"
+        ],
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": [
+          "bytes32"
+        ],
+        "scheduledOperations(bytes32)": [
+          "uint48",
+          "uint48",
+          "uint64"
+        ],
+        "setGuardianConfig(bytes32,uint8)": [],
+        "supportsExecutionMode(bytes32)": [
+          "bool"
+        ],
+        "supportsInterface(bytes4)": [
+          "bool"
+        ],
+        "supportsModule(uint256)": [
+          "bool"
+        ],
+        "unfreeze()": [],
+        "uninstallModule(uint256,address,bytes)": [],
+        "validateUserOp((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes),bytes32,uint256)": [
+          "uint256"
+        ],
+        "validatorAt(uint256)": [
+          "address"
+        ],
+        "validatorCount()": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "BATCH_EXECUTION_MODE()": "view",
+        "CANCEL_MIGRATION_TYPEHASH()": "view",
+        "CANCEL_SCHEDULED_TYPEHASH()": "view",
+        "DIRECT_EXECUTION_TYPEHASH()": "view",
+        "EIP712_DOMAIN_TYPEHASH()": "view",
+        "ERC1155_RECEIVER_INTERFACE_ID()": "view",
+        "ERC1271_INVALID()": "view",
+        "ERC1271_MAGIC_VALUE()": "view",
+        "ERC165_INTERFACE_ID()": "view",
+        "ERC721_RECEIVER_INTERFACE_ID()": "view",
+        "EVICT_HOOK_TYPEHASH()": "view",
+        "FREEZE_DURATION()": "view",
+        "FREEZE_TYPEHASH()": "view",
+        "MAX_BATCH_SIZE()": "view",
+        "MAX_GUARDIAN_PROOF_LENGTH()": "view",
+        "MAX_GUARDIAN_THRESHOLD()": "view",
+        "MAX_HOOKS()": "view",
+        "MAX_MIGRATION_WINDOW()": "view",
+        "MAX_RECOVERY_MODULES()": "view",
+        "MAX_REVERT_DATA_LENGTH()": "view",
+        "MAX_SCHEDULE_DELAY()": "view",
+        "MAX_VALIDATORS()": "view",
+        "MIN_CONFIG_DELAY()": "view",
+        "MIN_EXTERNAL_DELAY()": "view",
+        "SCHEDULE_WINDOW()": "view",
+        "SINGLE_EXECUTION_MODE()": "view",
+        "accountId()": "pure",
+        "cancelMigration()": "nonpayable",
+        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "cancelScheduled(bytes32)": "nonpayable",
+        "cancelScheduledDigest(bytes32,uint64,uint64)": "view",
+        "cancelScheduledWithGuardians(bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "configHash()": "view",
+        "configVersion()": "view",
+        "decodeScheduleCall(bytes)": "pure",
+        "decodeSignature(bytes)": "pure",
+        "directExecutionDigest(address,bytes32,bytes,uint256,uint48)": "view",
+        "directExecutionNonces(address)": "view",
+        "entryPoint()": "view",
+        "evictHookDigest(address,address,uint64)": "view",
+        "evictHookWithGuardians(address,address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "execute(bytes32,bytes)": "payable",
+        "executeDirect(address,bytes32,bytes,uint48,bytes)": "payable",
+        "executeFromExecutor(bytes32,bytes)": "pure",
+        "executeMigration((address,uint256,bytes)[])": "nonpayable",
+        "executeScheduled(address,uint256,bytes)": "nonpayable",
+        "freeze(address,bytes32,bytes32,bytes32[],bytes)": "nonpayable",
+        "freezeNonces(bytes32)": "view",
+        "frozenUntil()": "view",
+        "guardianLeaf(address,bytes32,bytes32)": "view",
+        "guardianRoot()": "view",
+        "guardianThreshold()": "view",
+        "initialize(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "payable",
+        "initializeDelegatedAccount(address,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "payable",
+        "installModule(uint256,address,bytes)": "nonpayable",
+        "isExecutingScheduled()": "view",
+        "isModuleInstalled(uint256,address)": "view",
+        "isModuleInstalled(uint256,address,bytes)": "view",
+        "isValidSignature(bytes32,bytes)": "view",
+        "lastFreezeConfigVersion(bytes32)": "view",
+        "migrationCancelDigest(bytes32,uint64,uint64)": "view",
+        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "view",
+        "migrationNonce()": "view",
+        "notifyConfigChange(bytes32)": "nonpayable",
+        "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": "pure",
+        "onERC1155Received(address,address,uint256,uint256,bytes)": "pure",
+        "onERC721Received(address,address,uint256,bytes)": "pure",
+        "pendingMigration()": "view",
+        "recoverConfiguration(address[],address,bytes,bytes32,uint8)": "nonpayable",
+        "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": "nonpayable",
+        "recoveryConfigured()": "view",
+        "revokeTokenAllowance(address,address)": "nonpayable",
+        "scheduleCall(address,uint256,bytes,uint48)": "nonpayable",
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "nonpayable",
+        "scheduledOperations(bytes32)": "view",
+        "setGuardianConfig(bytes32,uint8)": "nonpayable",
+        "supportsExecutionMode(bytes32)": "pure",
+        "supportsInterface(bytes4)": "pure",
+        "supportsModule(uint256)": "pure",
+        "unfreeze()": "nonpayable",
+        "uninstallModule(uint256,address,bytes)": "nonpayable",
+        "validateUserOp((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes),bytes32,uint256)": "nonpayable",
+        "validatorAt(uint256)": "view",
+        "validatorCount()": "view"
+      },
       "events": {
         "AllowanceRevoked(address,address)": "0x8da578e4cb2672c4986388e504a6f639391986195c077e5db9f48e04c97a501b",
         "ConfigUpdated(bytes32,uint64)": "0x76855322c5cc7335ce7f03ab0323699af75ee9c167c9c3c15f63a103065425d0",
@@ -102,6 +415,103 @@
         "OperationCancelled(bytes32)": "0xcf0f63b97f3387253cbc0bde884f975df77e39184dc3280c2c81be495f58eef4",
         "OperationExecuted(bytes32)": "0x1277662f4b42b8a4069e99fb5e41ce8919d3c621156090ac08fb11adbcec66f9",
         "OperationScheduled(bytes32,uint48,uint48,uint64)": "0xc564c423552cda9f4919e3ede1d8a8257b184349a46ce185ba1a26d51f3ca21d"
+      },
+      "eventLayouts": {
+        "AllowanceRevoked(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "ConfigUpdated(bytes32,uint64)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "DirectExecution(address,uint256,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "Frozen(uint48)": {
+          "anonymous": false,
+          "indexed": [
+            false
+          ]
+        },
+        "GuardianConfigUpdated(bytes32,uint8)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            false
+          ]
+        },
+        "MigrationCancelled(bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true
+          ]
+        },
+        "MigrationExecuted(bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "MigrationScheduled(bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        "ModuleInstalled(uint256,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "ModuleUninstalled(uint256,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "OperationCancelled(bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true
+          ]
+        },
+        "OperationExecuted(bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true
+          ]
+        },
+        "OperationScheduled(bytes32,uint48,uint48,uint64)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            false,
+            false,
+            false
+          ]
+        }
       },
       "errors": {
         "AccountFrozen()": "0x552afea0",
@@ -141,8 +551,40 @@
         "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x2cf1fe9b",
         "registry()": "0x7b103999"
       },
+      "functionOutputs": {
+        "accountImplementation()": [
+          "address"
+        ],
+        "createAccount(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": [
+          "address"
+        ],
+        "entryPoint()": [
+          "address"
+        ],
+        "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": [
+          "address"
+        ],
+        "registry()": [
+          "address"
+        ]
+      },
+      "functionMutability": {
+        "accountImplementation()": "view",
+        "createAccount(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "nonpayable",
+        "entryPoint()": "view",
+        "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "view",
+        "registry()": "view"
+      },
       "events": {
         "LoomAccountCreated(address)": "0xbd904dc6e7931711be6993c6bab7de06fe4d57649c6006aadaa7e8003ce61467"
+      },
+      "eventLayouts": {
+        "LoomAccountCreated(address)": {
+          "anonymous": false,
+          "indexed": [
+            true
+          ]
+        }
       },
       "errors": {
         "InvalidFactory()": "0x7a44db95"
@@ -152,7 +594,16 @@
       "functions": {
         "implementation()": "0x5c60da1b"
       },
+      "functionOutputs": {
+        "implementation()": [
+          "address"
+        ]
+      },
+      "functionMutability": {
+        "implementation()": "view"
+      },
       "events": {},
+      "eventLayouts": {},
       "errors": {
         "InitializationFailed(bytes)": "0x23615171",
         "InvalidProxy()": "0xb9e5cf7c"
@@ -165,8 +616,34 @@
         "isAccount(address)": "0x25ca4c9c",
         "registerAccount(address)": "0x97c414df"
       },
+      "functionOutputs": {
+        "accountCount()": [
+          "uint256"
+        ],
+        "factory()": [
+          "address"
+        ],
+        "isAccount(address)": [
+          "bool"
+        ],
+        "registerAccount(address)": []
+      },
+      "functionMutability": {
+        "accountCount()": "view",
+        "factory()": "view",
+        "isAccount(address)": "view",
+        "registerAccount(address)": "nonpayable"
+      },
       "events": {
         "AccountRegistered(address)": "0xcd822dc9688e20acea68724a2fbcfe4f3e526d20ecaa37b18fe3047ab377d6a5"
+      },
+      "eventLayouts": {
+        "AccountRegistered(address)": {
+          "anonymous": false,
+          "indexed": [
+            true
+          ]
+        }
       },
       "errors": {
         "AccountAlreadyRegistered()": "0xcff2d5ad",
@@ -187,12 +664,94 @@
         "transferController(bytes32,address)": "0x35c57c4d",
         "updateConfig(bytes32,bytes32,bytes32,bytes32,uint8)": "0xb9389571"
       },
+      "functionOutputs": {
+        "MAX_GUARDIAN_THRESHOLD()": [
+          "uint8"
+        ],
+        "acceptController(bytes32)": [],
+        "cancelControllerTransfer(bytes32)": [],
+        "configHash(bytes32)": [
+          "bytes32"
+        ],
+        "controllerOf(bytes32)": [
+          "address"
+        ],
+        "getConfig(bytes32)": [
+          "(bytes32,bytes32,bytes32,uint8,uint64)"
+        ],
+        "pendingControllerOf(bytes32)": [
+          "address"
+        ],
+        "register(bytes32,address,bytes32,bytes32,bytes32,uint8)": [],
+        "transferController(bytes32,address)": [],
+        "updateConfig(bytes32,bytes32,bytes32,bytes32,uint8)": []
+      },
+      "functionMutability": {
+        "MAX_GUARDIAN_THRESHOLD()": "view",
+        "acceptController(bytes32)": "nonpayable",
+        "cancelControllerTransfer(bytes32)": "nonpayable",
+        "configHash(bytes32)": "view",
+        "controllerOf(bytes32)": "view",
+        "getConfig(bytes32)": "view",
+        "pendingControllerOf(bytes32)": "view",
+        "register(bytes32,address,bytes32,bytes32,bytes32,uint8)": "nonpayable",
+        "transferController(bytes32,address)": "nonpayable",
+        "updateConfig(bytes32,bytes32,bytes32,bytes32,uint8)": "nonpayable"
+      },
       "events": {
         "ConfigUpdated(bytes32,bytes32,bytes32,bytes32,uint8,uint64)": "0xb6abc31b3bcb9ebd77462e1e3c9d89ba7c46217e34904cc2cb626385a406f320",
         "ControllerTransferCancelled(bytes32,address)": "0xd536a9962286d009b6f0b66f5441529c3d5ca61b760d1b9a4bec791e2f960c02",
         "ControllerTransferProposed(bytes32,address,address)": "0x21c6a8d7f0b157d00aa9cb81f27e77ccde307018ce691f88c0e89a143d7a08f9",
         "ControllerTransferred(bytes32,address,address)": "0x2916b4ec0eddd360b912167f4fea64d0e4a6d8db604ae395e3efde5f47e82ef7",
         "IdentityRegistered(bytes32,address,bytes32,bytes32,bytes32,uint8,uint64)": "0xb1ee1e7c21c7868710577b2ccc211236d169d3f42666bc9aa9f9c9e596a06534"
+      },
+      "eventLayouts": {
+        "ConfigUpdated(bytes32,bytes32,bytes32,bytes32,uint8,uint64)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        "ControllerTransferCancelled(bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "ControllerTransferProposed(bytes32,address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "ControllerTransferred(bytes32,address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "IdentityRegistered(bytes32,address,bytes32,bytes32,bytes32,uint8,uint64)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
       },
       "errors": {
         "IdentityAlreadyRegistered()": "0xa225e469",
@@ -215,9 +774,65 @@
         "setPolicy(address,bytes4,(uint128,uint128,uint48,address,bool))": "0x00148d93",
         "spending(address,bytes32)": "0x9345bca6"
       },
+      "functionOutputs": {
+        "isLowRisk(address,bytes)": [
+          "bool"
+        ],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "policies(address,bytes32)": [
+          "uint128",
+          "uint128",
+          "uint48",
+          "address",
+          "bool"
+        ],
+        "policyId(address,bytes4)": [
+          "bytes32"
+        ],
+        "postCheck(address,bytes)": [],
+        "preCheck(address,address,bytes)": [
+          "bytes"
+        ],
+        "removePolicy(address,bytes4)": [],
+        "setPolicy(address,bytes4,(uint128,uint128,uint48,address,bool))": [],
+        "spending(address,bytes32)": [
+          "uint128",
+          "uint48"
+        ]
+      },
+      "functionMutability": {
+        "isLowRisk(address,bytes)": "view",
+        "isModuleType(uint256)": "pure",
+        "policies(address,bytes32)": "view",
+        "policyId(address,bytes4)": "pure",
+        "postCheck(address,bytes)": "view",
+        "preCheck(address,address,bytes)": "nonpayable",
+        "removePolicy(address,bytes4)": "nonpayable",
+        "setPolicy(address,bytes4,(uint128,uint128,uint48,address,bool))": "nonpayable",
+        "spending(address,bytes32)": "view"
+      },
       "events": {
         "PolicyRemoved(address,bytes32)": "0x18b922c01dfae4ffae8c0d06acbddd8c9741827dc89ce507f3c45b544f645797",
         "PolicySet(address,bytes32,(uint128,uint128,uint48,address,bool))": "0x85d43e5c400390a0bd841688706caf52e70c88f9380d14cc03a424aeb4038a86"
+      },
+      "eventLayouts": {
+        "PolicyRemoved(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "PolicySet(address,bytes32,(uint128,uint128,uint48,address,bool))": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            false
+          ]
+        }
       },
       "errors": {
         "ConfigTimelockRequired()": "0x05b72c5e",
@@ -247,12 +862,123 @@
         "spending(address,address)": "0x5c3d6032",
         "withdrawalIdFor(address,address,uint256,bytes32,uint64)": "0x7edf9ca6"
       },
+      "functionOutputs": {
+        "CANCEL_WITHDRAWAL_TYPEHASH()": [
+          "bytes32"
+        ],
+        "EIP712_DOMAIN_TYPEHASH()": [
+          "bytes32"
+        ],
+        "MAX_WITHDRAWAL_WINDOW()": [
+          "uint48"
+        ],
+        "MIN_VAULT_DELAY()": [
+          "uint48"
+        ],
+        "cancelVaultWithdrawal(bytes32)": [],
+        "cancelVaultWithdrawalWithGuardians(address,bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "cancelWithdrawalDigest(address,bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "pendingWithdrawals(address,bytes32)": [
+          "uint48",
+          "uint48",
+          "uint64",
+          "uint64"
+        ],
+        "policies(address,address)": [
+          "uint128",
+          "uint48",
+          "uint48",
+          "bool"
+        ],
+        "postCheck(address,bytes)": [],
+        "preCheck(address,address,bytes)": [
+          "bytes"
+        ],
+        "removeVaultPolicy(address)": [],
+        "scheduleVaultWithdrawal(address,uint256,bytes,uint48)": [
+          "bytes32"
+        ],
+        "setVaultPolicy(address,(uint128,uint48,uint48,bool))": [],
+        "spending(address,address)": [
+          "uint128",
+          "uint48"
+        ],
+        "withdrawalIdFor(address,address,uint256,bytes32,uint64)": [
+          "bytes32"
+        ]
+      },
+      "functionMutability": {
+        "CANCEL_WITHDRAWAL_TYPEHASH()": "view",
+        "EIP712_DOMAIN_TYPEHASH()": "view",
+        "MAX_WITHDRAWAL_WINDOW()": "view",
+        "MIN_VAULT_DELAY()": "view",
+        "cancelVaultWithdrawal(bytes32)": "nonpayable",
+        "cancelVaultWithdrawalWithGuardians(address,bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "cancelWithdrawalDigest(address,bytes32,uint64,uint64)": "view",
+        "isModuleType(uint256)": "pure",
+        "pendingWithdrawals(address,bytes32)": "view",
+        "policies(address,address)": "view",
+        "postCheck(address,bytes)": "view",
+        "preCheck(address,address,bytes)": "nonpayable",
+        "removeVaultPolicy(address)": "nonpayable",
+        "scheduleVaultWithdrawal(address,uint256,bytes,uint48)": "nonpayable",
+        "setVaultPolicy(address,(uint128,uint48,uint48,bool))": "nonpayable",
+        "spending(address,address)": "view",
+        "withdrawalIdFor(address,address,uint256,bytes32,uint64)": "pure"
+      },
       "events": {
         "VaultPolicyRemoved(address,address)": "0xaabb6005be9786da5708e49d31dc6fd96c7fad6c87fd9c5ca2b97479e2cbbacc",
         "VaultPolicySet(address,address,(uint128,uint48,uint48,bool))": "0x7978384b734feae2008beccbf007a75a3643206c11d20b116495ab207e69e7ff",
         "VaultWithdrawalCancelled(address,bytes32)": "0xeeaca35555af96050f6b65deaf9c2d4a296710b2f90ac3f1a16c5e13d3fafb8a",
         "VaultWithdrawalExecuted(address,bytes32)": "0x94a8a7ff5f1739eaeaccbb36c01bac88d65c33ba24896b152bc1b126e31f354c",
         "VaultWithdrawalScheduled(address,bytes32,address,uint48,uint48,uint64)": "0x89a34797e943fc6d31570318b11e22ec508cec65a0e6ec1fc6ccff3efeee33e3"
+      },
+      "eventLayouts": {
+        "VaultPolicyRemoved(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "VaultPolicySet(address,address,(uint128,uint48,uint48,bool))": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            false
+          ]
+        },
+        "VaultWithdrawalCancelled(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "VaultWithdrawalExecuted(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "VaultWithdrawalScheduled(address,bytes32,address,uint48,uint48,uint64)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false
+          ]
+        }
       },
       "errors": {
         "ConfigTimelockRequired()": "0x05b72c5e",
@@ -285,10 +1011,108 @@
         "recoveryIdFor(address,(bytes32,address,bytes32,bytes32,uint8,uint48,uint48,uint64,uint64))": "0xfff59454",
         "recoveryNonces(address)": "0xd033090e"
       },
+      "functionOutputs": {
+        "CANCEL_TYPEHASH()": [
+          "bytes32"
+        ],
+        "EIP712_DOMAIN_TYPEHASH()": [
+          "bytes32"
+        ],
+        "MAX_GUARDIAN_THRESHOLD()": [
+          "uint8"
+        ],
+        "PROPOSE_TYPEHASH()": [
+          "bytes32"
+        ],
+        "RECOVERY_DELAY()": [
+          "uint48"
+        ],
+        "RECOVERY_WINDOW()": [
+          "uint48"
+        ],
+        "cancelDigest(address,bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "cancelRecovery(address)": [],
+        "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "executeRecovery(address,address[],bytes)": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "pendingRecoveries(address)": [
+          "bytes32",
+          "address",
+          "bytes32",
+          "bytes32",
+          "uint8",
+          "uint48",
+          "uint48",
+          "uint64",
+          "uint64"
+        ],
+        "proposalDigest(address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64)": [
+          "bytes32"
+        ],
+        "proposeRecovery(address,address[],address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": [
+          "bytes32"
+        ],
+        "recoveryIdFor(address,(bytes32,address,bytes32,bytes32,uint8,uint48,uint48,uint64,uint64))": [
+          "bytes32"
+        ],
+        "recoveryNonces(address)": [
+          "uint64"
+        ]
+      },
+      "functionMutability": {
+        "CANCEL_TYPEHASH()": "view",
+        "EIP712_DOMAIN_TYPEHASH()": "view",
+        "MAX_GUARDIAN_THRESHOLD()": "view",
+        "PROPOSE_TYPEHASH()": "view",
+        "RECOVERY_DELAY()": "view",
+        "RECOVERY_WINDOW()": "view",
+        "cancelDigest(address,bytes32,uint64,uint64)": "view",
+        "cancelRecovery(address)": "nonpayable",
+        "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "executeRecovery(address,address[],bytes)": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "pendingRecoveries(address)": "view",
+        "proposalDigest(address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64)": "view",
+        "proposeRecovery(address,address[],address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "recoveryIdFor(address,(bytes32,address,bytes32,bytes32,uint8,uint48,uint48,uint64,uint64))": "pure",
+        "recoveryNonces(address)": "view"
+      },
       "events": {
         "RecoveryCancelled(address,bytes32)": "0x5ec34f3f384538319a5eb81bc3f45fb37b28d5e456474f7a62318ef7a7130949",
         "RecoveryExecuted(address,bytes32,address)": "0x103d1cfeba4cc208255b2e3861857f19bcee5dd2abe1d4a600305c8212b603d9",
         "RecoveryProposed(address,bytes32,address,bytes32,uint48,uint48)": "0xfa6459fefb2b58fd2685b8027c43d06385966e57bf66230b08cb9ca5abdf6c4d"
+      },
+      "eventLayouts": {
+        "RecoveryCancelled(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "RecoveryExecuted(address,bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "RecoveryProposed(address,bytes32,address,bytes32,uint48,uint48)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false
+          ]
+        }
       },
       "errors": {
         "InvalidRecovery()": "0xf7eb744d",
@@ -325,10 +1149,145 @@
         "syncNonces(address)": "0xef51ad2d",
         "validatorSetRoot((uint256,address,bytes)[])": "0x1d7cbb83"
       },
+      "functionOutputs": {
+        "APP_ACCOUNT_LEAF_TYPEHASH()": [
+          "bytes32"
+        ],
+        "CANCEL_TYPEHASH()": [
+          "bytes32"
+        ],
+        "EIP712_DOMAIN_TYPEHASH()": [
+          "bytes32"
+        ],
+        "MAX_GUARDIAN_THRESHOLD()": [
+          "uint8"
+        ],
+        "MAX_VALIDATORS()": [
+          "uint256"
+        ],
+        "SINGLE_VALIDATOR_ROOT_TYPEHASH()": [
+          "bytes32"
+        ],
+        "SYNC_DELAY()": [
+          "uint48"
+        ],
+        "SYNC_WINDOW()": [
+          "uint48"
+        ],
+        "VALIDATOR_SET_ROOT_TYPEHASH()": [
+          "bytes32"
+        ],
+        "appAccountLeaf(address)": [
+          "bytes32"
+        ],
+        "cancelDigest(address,bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "cancelRecovery(address)": [],
+        "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "executeSync(address,address[],(uint256,address,bytes)[])": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "l1Keystore()": [
+          "address"
+        ],
+        "lastAppliedL1Version(address)": [
+          "uint64"
+        ],
+        "pendingSyncs(address)": [
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "uint8",
+          "uint64",
+          "uint48",
+          "uint48",
+          "uint64",
+          "uint64"
+        ],
+        "proofVerifier()": [
+          "address"
+        ],
+        "proposeSync(address,bytes32,(bytes32,bytes32,bytes32,uint8,uint64),bytes,bytes32[],address[],(uint256,address,bytes)[])": [
+          "bytes32"
+        ],
+        "singleValidatorRoot(address,bytes32)": [
+          "bytes32"
+        ],
+        "syncIdFor(address,(bytes32,bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint48,uint48,uint64,uint64))": [
+          "bytes32"
+        ],
+        "syncNonces(address)": [
+          "uint64"
+        ],
+        "validatorSetRoot((uint256,address,bytes)[])": [
+          "bytes32"
+        ]
+      },
+      "functionMutability": {
+        "APP_ACCOUNT_LEAF_TYPEHASH()": "view",
+        "CANCEL_TYPEHASH()": "view",
+        "EIP712_DOMAIN_TYPEHASH()": "view",
+        "MAX_GUARDIAN_THRESHOLD()": "view",
+        "MAX_VALIDATORS()": "view",
+        "SINGLE_VALIDATOR_ROOT_TYPEHASH()": "view",
+        "SYNC_DELAY()": "view",
+        "SYNC_WINDOW()": "view",
+        "VALIDATOR_SET_ROOT_TYPEHASH()": "view",
+        "appAccountLeaf(address)": "view",
+        "cancelDigest(address,bytes32,uint64,uint64)": "view",
+        "cancelRecovery(address)": "nonpayable",
+        "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "executeSync(address,address[],(uint256,address,bytes)[])": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "l1Keystore()": "view",
+        "lastAppliedL1Version(address)": "view",
+        "pendingSyncs(address)": "view",
+        "proofVerifier()": "view",
+        "proposeSync(address,bytes32,(bytes32,bytes32,bytes32,uint8,uint64),bytes,bytes32[],address[],(uint256,address,bytes)[])": "nonpayable",
+        "singleValidatorRoot(address,bytes32)": "pure",
+        "syncIdFor(address,(bytes32,bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint48,uint48,uint64,uint64))": "view",
+        "syncNonces(address)": "view",
+        "validatorSetRoot((uint256,address,bytes)[])": "pure"
+      },
       "events": {
         "KeystoreSyncCancelled(address,bytes32)": "0x2338f585c715e120d5e4a7fb590533c0cf978fd871454d0698179f37447177e2",
         "KeystoreSyncExecuted(address,bytes32,bytes32)": "0x9ff29e11c593aa6c0a737604fd9e8ac09f2a527fc251299482ab719aacef5a54",
         "KeystoreSyncProposed(address,bytes32,bytes32,uint64,bytes32,bytes32,uint8,uint48,uint48)": "0xf45b22f69be6e2b551386432f7a7dba1a94f180b7c1d090c66070cfc022b6bd2"
+      },
+      "eventLayouts": {
+        "KeystoreSyncCancelled(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "KeystoreSyncExecuted(address,bytes32,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "KeystoreSyncProposed(address,bytes32,bytes32,uint64,bytes32,bytes32,uint8,uint48,uint48)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
       },
       "errors": {
         "InvalidSync()": "0xb677abad",
@@ -353,9 +1312,65 @@
         "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
         "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
       },
+      "functionOutputs": {
+        "initialize(address,address)": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "isValidSignature(address,bytes32,bytes)": [
+          "bool"
+        ],
+        "owners(address)": [
+          "address"
+        ],
+        "policyHookFor(address)": [
+          "address"
+        ],
+        "policyHooks(address)": [
+          "address"
+        ],
+        "rebindPolicyHook(address)": [],
+        "setOwner(address)": [],
+        "setPolicyHook(address)": [],
+        "validateDirectExecution(address,bytes32,bytes,bytes)": [
+          "bool"
+        ],
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "initialize(address,address)": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "isValidSignature(address,bytes32,bytes)": "pure",
+        "owners(address)": "view",
+        "policyHookFor(address)": "view",
+        "policyHooks(address)": "view",
+        "rebindPolicyHook(address)": "nonpayable",
+        "setOwner(address)": "nonpayable",
+        "setPolicyHook(address)": "nonpayable",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "view",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "view"
+      },
       "events": {
         "OwnerSet(address,address)": "0x342827c97908e5e2f71151c08502a66d44b6f758e3ac2f1de95f02eb95f0a735",
         "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f"
+      },
+      "eventLayouts": {
+        "OwnerSet(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "PolicyHookSet(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        }
       },
       "errors": {
         "AlreadyInitialized()": "0x0dc149f0",
@@ -383,9 +1398,91 @@
         "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
         "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
       },
+      "functionOutputs": {
+        "MAX_AUTHENTICATOR_DATA_LENGTH()": [
+          "uint256"
+        ],
+        "MAX_CLIENT_DATA_JSON_LENGTH()": [
+          "uint256"
+        ],
+        "MAX_ORIGIN_LENGTH()": [
+          "uint256"
+        ],
+        "P256_HALF_ORDER()": [
+          "uint256"
+        ],
+        "fallbackVerifier()": [
+          "address"
+        ],
+        "initialize(bytes32,bytes32,bytes32,bytes32,address)": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "isValidSignature(address,bytes32,bytes)": [
+          "bool"
+        ],
+        "policyHookFor(address)": [
+          "address"
+        ],
+        "policyHooks(address)": [
+          "address"
+        ],
+        "publicKeys(address)": [
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "bytes32"
+        ],
+        "rebindPolicyHook(address)": [],
+        "setKey(bytes32,bytes32,bytes32,bytes32)": [],
+        "setPolicyHook(address)": [],
+        "validateDirectExecution(address,bytes32,bytes,bytes)": [
+          "bool"
+        ],
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "MAX_AUTHENTICATOR_DATA_LENGTH()": "view",
+        "MAX_CLIENT_DATA_JSON_LENGTH()": "view",
+        "MAX_ORIGIN_LENGTH()": "view",
+        "P256_HALF_ORDER()": "view",
+        "fallbackVerifier()": "view",
+        "initialize(bytes32,bytes32,bytes32,bytes32,address)": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "isValidSignature(address,bytes32,bytes)": "pure",
+        "policyHookFor(address)": "view",
+        "policyHooks(address)": "view",
+        "publicKeys(address)": "view",
+        "rebindPolicyHook(address)": "nonpayable",
+        "setKey(bytes32,bytes32,bytes32,bytes32)": "nonpayable",
+        "setPolicyHook(address)": "nonpayable",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "view",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "view"
+      },
       "events": {
         "KeySet(address,bytes32,bytes32,bytes32,bytes32)": "0x4b4cd8a159daa01d0f479aa880b2701aaf60ddb8a405ca8aa9ff2705d8d7fc19",
         "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f"
+      },
+      "eventLayouts": {
+        "KeySet(address,bytes32,bytes32,bytes32,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        "PolicyHookSet(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        }
       },
       "errors": {
         "ConfigTimelockRequired()": "0x05b72c5e",
@@ -416,11 +1513,114 @@
         "validateDirectExecution(address,bytes32,bytes,bytes)": "0xf418c9c9",
         "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
       },
+      "functionOutputs": {
+        "MAX_CREDENTIALS()": [
+          "uint256"
+        ],
+        "addCredential(bytes32,(bytes32,bytes32,bytes32,bytes32))": [],
+        "credentialCount(address)": [
+          "uint256"
+        ],
+        "credentialIdAt(address,uint256)": [
+          "bytes32"
+        ],
+        "credentials(address,bytes32)": [
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "bytes32"
+        ],
+        "fallbackVerifier()": [
+          "address"
+        ],
+        "initialize((bytes32,(bytes32,bytes32,bytes32,bytes32))[],uint8,address)": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "isValidSignature(address,bytes32,bytes)": [
+          "bool"
+        ],
+        "keyFingerprints(address,bytes32)": [
+          "bool"
+        ],
+        "policyHookFor(address)": [
+          "address"
+        ],
+        "policyHooks(address)": [
+          "address"
+        ],
+        "rebindPolicyHook(address)": [],
+        "removeCredential(bytes32)": [],
+        "setPolicyHook(address)": [],
+        "setThreshold(uint8)": [],
+        "thresholds(address)": [
+          "uint8"
+        ],
+        "validateDirectExecution(address,bytes32,bytes,bytes)": [
+          "bool"
+        ],
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "MAX_CREDENTIALS()": "view",
+        "addCredential(bytes32,(bytes32,bytes32,bytes32,bytes32))": "nonpayable",
+        "credentialCount(address)": "view",
+        "credentialIdAt(address,uint256)": "view",
+        "credentials(address,bytes32)": "view",
+        "fallbackVerifier()": "view",
+        "initialize((bytes32,(bytes32,bytes32,bytes32,bytes32))[],uint8,address)": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "isValidSignature(address,bytes32,bytes)": "pure",
+        "keyFingerprints(address,bytes32)": "view",
+        "policyHookFor(address)": "view",
+        "policyHooks(address)": "view",
+        "rebindPolicyHook(address)": "nonpayable",
+        "removeCredential(bytes32)": "nonpayable",
+        "setPolicyHook(address)": "nonpayable",
+        "setThreshold(uint8)": "nonpayable",
+        "thresholds(address)": "view",
+        "validateDirectExecution(address,bytes32,bytes,bytes)": "view",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "view"
+      },
       "events": {
         "CredentialAdded(address,bytes32,bytes32)": "0xce9b7fc8955f2bdf03e856f3011325adfc18216568ebc840733e6a559c65a0be",
         "CredentialRemoved(address,bytes32,bytes32)": "0x4c2c0e80e2ad2c80274f7c587c4ab771eb7c0b64f7bbe0b266e59da079ecc9c1",
         "PolicyHookSet(address,address)": "0x64014008b55a52bf082c1b1dae2a68848e469f4111792d0707b7b1da29592b0f",
         "ThresholdSet(address,uint8)": "0x71d1e68103a122a6bf3ccd593baed5289c4ea40093696e1b72dc6d3024f5bc09"
+      },
+      "eventLayouts": {
+        "CredentialAdded(address,bytes32,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "CredentialRemoved(address,bytes32,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "PolicyHookSet(address,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "ThresholdSet(address,uint8)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            false
+          ]
+        }
       },
       "errors": {
         "AlreadyInitialized()": "0x0dc149f0",
@@ -449,10 +1649,99 @@
         "revoked(address,bytes32)": "0xe46e3846",
         "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
       },
+      "functionOutputs": {
+        "BATCH_EXECUTION_MODE()": [
+          "bytes32"
+        ],
+        "MAX_PERMISSION_IDS()": [
+          "uint256"
+        ],
+        "SINGLE_EXECUTION_MODE()": [
+          "bytes32"
+        ],
+        "grantPermission(bytes32,(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16))": [],
+        "grantPermissions(bytes32[],(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16)[])": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "isValidSignature(address,bytes32,bytes)": [
+          "bool"
+        ],
+        "nonceKeyFor(bytes32)": [
+          "uint192"
+        ],
+        "permissionCount(address)": [
+          "uint256"
+        ],
+        "permissionIdAt(address,uint256)": [
+          "bytes32"
+        ],
+        "permissions(address,bytes32)": [
+          "address",
+          "address",
+          "address",
+          "address",
+          "address",
+          "bytes4",
+          "uint128",
+          "uint128",
+          "uint48",
+          "uint48",
+          "uint32",
+          "uint16"
+        ],
+        "revokePermission(bytes32)": [],
+        "revoked(address,bytes32)": [
+          "bool"
+        ],
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "BATCH_EXECUTION_MODE()": "view",
+        "MAX_PERMISSION_IDS()": "view",
+        "SINGLE_EXECUTION_MODE()": "view",
+        "grantPermission(bytes32,(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16))": "nonpayable",
+        "grantPermissions(bytes32[],(address,address,address,address,address,bytes4,uint128,uint128,uint48,uint48,uint32,uint16)[])": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "isValidSignature(address,bytes32,bytes)": "pure",
+        "nonceKeyFor(bytes32)": "pure",
+        "permissionCount(address)": "view",
+        "permissionIdAt(address,uint256)": "view",
+        "permissions(address,bytes32)": "view",
+        "revokePermission(bytes32)": "nonpayable",
+        "revoked(address,bytes32)": "view",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "view"
+      },
       "events": {
         "PermissionBatchGranted(address,uint256)": "0x12b06d478fb6dd2cd8f55d713750cdf0fe23f7d1117b44fdb7aded9970c87015",
         "PermissionGranted(address,bytes32,address)": "0x4cf3e1e37593c051ae26cd388ef2937cec5af2f089064370aa2d47b79a636871",
         "PermissionRevoked(address,bytes32)": "0x789770131846de4d1f28418f0f957cdf4fcabe5eccf70067083e20ecece69a34"
+      },
+      "eventLayouts": {
+        "PermissionBatchGranted(address,uint256)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            false
+          ]
+        },
+        "PermissionGranted(address,bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "PermissionRevoked(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        }
       },
       "errors": {
         "ConfigTimelockRequired()": "0x05b72c5e",
@@ -471,9 +1760,63 @@
         "revoked(address,bytes32)": "0xe46e3846",
         "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "0x19d6e266"
       },
+      "functionOutputs": {
+        "grantPermission(bytes32,(address,uint48,uint48,bytes32,uint32,address))": [],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "isValidSignature(address,bytes32,bytes)": [
+          "bool"
+        ],
+        "nonceKeyFor(bytes32)": [
+          "uint192"
+        ],
+        "permissions(address,bytes32)": [
+          "address",
+          "uint48",
+          "uint48",
+          "bytes32",
+          "uint32",
+          "address"
+        ],
+        "revokePermission(bytes32)": [],
+        "revoked(address,bytes32)": [
+          "bool"
+        ],
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": [
+          "uint256"
+        ]
+      },
+      "functionMutability": {
+        "grantPermission(bytes32,(address,uint48,uint48,bytes32,uint32,address))": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "isValidSignature(address,bytes32,bytes)": "pure",
+        "nonceKeyFor(bytes32)": "pure",
+        "permissions(address,bytes32)": "view",
+        "revokePermission(bytes32)": "nonpayable",
+        "revoked(address,bytes32)": "view",
+        "validateUserOp(address,bytes32,uint256,bytes,bytes,address)": "view"
+      },
       "events": {
         "PermissionGranted(address,bytes32,address)": "0x4cf3e1e37593c051ae26cd388ef2937cec5af2f089064370aa2d47b79a636871",
         "PermissionRevoked(address,bytes32)": "0x789770131846de4d1f28418f0f957cdf4fcabe5eccf70067083e20ecece69a34"
+      },
+      "eventLayouts": {
+        "PermissionGranted(address,bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "PermissionRevoked(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        }
       },
       "errors": {
         "ConfigTimelockRequired()": "0x05b72c5e",
@@ -489,8 +1832,47 @@
         "getAddress(address,uint64,bytes32)": "0x1362ce13",
         "validatorInitCodeHash()": "0x08e573d8"
       },
+      "functionOutputs": {
+        "RECOVERY_VALIDATOR_SALT_DOMAIN()": [
+          "bytes32"
+        ],
+        "deploy(address,uint64,bytes32)": [
+          "address"
+        ],
+        "deploymentSalt(address,uint64,bytes32)": [
+          "bytes32"
+        ],
+        "fallbackVerifier()": [
+          "address"
+        ],
+        "getAddress(address,uint64,bytes32)": [
+          "address"
+        ],
+        "validatorInitCodeHash()": [
+          "bytes32"
+        ]
+      },
+      "functionMutability": {
+        "RECOVERY_VALIDATOR_SALT_DOMAIN()": "view",
+        "deploy(address,uint64,bytes32)": "nonpayable",
+        "deploymentSalt(address,uint64,bytes32)": "pure",
+        "fallbackVerifier()": "view",
+        "getAddress(address,uint64,bytes32)": "view",
+        "validatorInitCodeHash()": "view"
+      },
       "events": {
         "RecoveryValidatorDeployed(address,uint64,bytes32,address)": "0x8fd448b44e0b966302d6cf13ddc48d2c3922716b79c513563500a4f6b8b3dd7f"
+      },
+      "eventLayouts": {
+        "RecoveryValidatorDeployed(address,uint64,bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false
+          ]
+        }
       },
       "errors": {
         "InvalidFallbackVerifier()": "0x97f1936e",

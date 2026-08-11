@@ -7,9 +7,10 @@
 // type string changes every digest an installed validator will accept while the
 // ABI stays byte-identical.
 //
-// So this records the four things a consumer actually binds to -- function
-// selectors, event topics, error selectors, and typed-data schemas -- and
-// diffs them with removal and change treated differently from addition.
+// So this records the values a consumer actually binds to -- function selectors,
+// outputs and mutability; event topics and indexed layout; error selectors; and
+// typed-data schemas. Every addition must be recorded so it is protected from a
+// later removal, while removals and changes are reported as wire-breaking.
 //
 // Typed data is recorded as the *string being hashed*, not only its keccak.
 // `keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)")`
@@ -65,16 +66,33 @@ const selector = value => hash(value).slice(0, 10);
 /** Functions, events, and errors keyed by signature, so a diff reads as prose. */
 export function surfaceOf(abi) {
   const functions = {};
+  const functionOutputs = {};
+  const functionMutability = {};
   const events = {};
+  const eventLayouts = {};
   const errors = {};
   for (const item of abi) {
-    if (item.type === "function") functions[signatureOf(item)] = selector(signatureOf(item));
-    else if (item.type === "event") events[signatureOf(item)] = hash(signatureOf(item));
+    if (item.type === "function") {
+      const signature = signatureOf(item);
+      functions[signature] = selector(signature);
+      functionOutputs[signature] = (item.outputs ?? []).map(canonicalType);
+      functionMutability[signature] = item.stateMutability ?? "";
+    } else if (item.type === "event") {
+      const signature = signatureOf(item);
+      events[signature] = hash(signature);
+      eventLayouts[signature] = {
+        anonymous: item.anonymous === true,
+        indexed: (item.inputs ?? []).map(input => input.indexed === true)
+      };
+    }
     else if (item.type === "error") errors[signatureOf(item)] = selector(signatureOf(item));
   }
   return {
     functions: sortKeys(functions),
+    functionOutputs: sortKeys(functionOutputs),
+    functionMutability: sortKeys(functionMutability),
     events: sortKeys(events),
+    eventLayouts: sortKeys(eventLayouts),
     errors: sortKeys(errors)
   };
 }
@@ -135,12 +153,20 @@ export function buildSnapshot(targets = SURFACE_CONTRACTS, run = spawnSync) {
     if (Object.keys(found).length > 0) typedData[relative] = sortKeys(found);
   }
 
-  return { version: 1, contracts, typedData: sortKeys(typedData) };
+  return { version: 2, contracts, typedData: sortKeys(typedData) };
 }
 
-/** Removal and change are breaking; addition is additive and passes. */
+function sameValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Every change requires review; removals and changes are wire-breaking. */
 export function compareSnapshots(before, after) {
   const problems = [];
+
+  if (before.version !== after.version) {
+    problems.push(`snapshot version changed ${before.version ?? "missing"} -> ${after.version ?? "missing"}`);
+  }
 
   for (const [contract, kinds] of Object.entries(before.contracts)) {
     const current = after.contracts[contract];
@@ -150,9 +176,28 @@ export function compareSnapshots(before, after) {
     }
     for (const [kind, entries] of Object.entries(kinds)) {
       for (const [signature, value] of Object.entries(entries)) {
-        const now = current[kind][signature];
+        const now = current[kind]?.[signature];
         if (now === undefined) problems.push(`${contract}: ${kind.slice(0, -1)} ${signature} was removed`);
-        else if (now !== value) problems.push(`${contract}: ${signature} selector changed ${value} -> ${now}`);
+        else if (!sameValue(now, value)) {
+          problems.push(
+            `${contract}: ${kind} ${signature} changed ${JSON.stringify(value)} -> ${JSON.stringify(now)}`
+          );
+        }
+      }
+    }
+  }
+
+  for (const [contract, kinds] of Object.entries(after.contracts)) {
+    const recorded = before.contracts[contract];
+    if (!recorded) {
+      problems.push(`${contract}: contract was added but is not recorded`);
+      continue;
+    }
+    for (const [kind, entries] of Object.entries(kinds)) {
+      for (const signature of Object.keys(entries)) {
+        if (recorded[kind]?.[signature] === undefined) {
+          problems.push(`${contract}: ${kind.slice(0, -1)} ${signature} was added but is not recorded`);
+        }
       }
     }
   }
@@ -164,7 +209,16 @@ export function compareSnapshots(before, after) {
       if (!now) problems.push(`${file}: ${name} was removed`);
       else if (now.schema !== pinned.schema) {
         problems.push(`${file}: ${name} schema changed\n      was: ${pinned.schema}\n      now: ${now.schema}`);
+      } else if (now.hash !== pinned.hash) {
+        problems.push(`${file}: ${name} hash changed ${pinned.hash} -> ${now.hash}`);
       }
+    }
+  }
+
+  for (const [file, entries] of Object.entries(after.typedData)) {
+    const recorded = before.typedData[file];
+    for (const name of Object.keys(entries)) {
+      if (!recorded?.[name]) problems.push(`${file}: ${name} was added but is not recorded`);
     }
   }
 
@@ -200,8 +254,8 @@ function main() {
     console.error("the protocol surface changed in a way consumers cannot follow:\n");
     for (const problem of problems) console.error(`  - ${problem}`);
     console.error(
-      "\nAdding a function, event, error, or typed-data schema is additive and passes." +
-        "\nRemoving or changing one breaks every consumer that already encodes it:" +
+        "\nAdditive changes must be recorded so a later removal cannot become invisible." +
+        "\nRemoving or changing a recorded item breaks consumers that already encode it:" +
         "\nSDK, CLI, examples, and any signature already produced against the old" +
         "\nschema. Declare it as wire/API breaking, write the migration, and only" +
         "\nthen re-record with `npm run surface:write`."
