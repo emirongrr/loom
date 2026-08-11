@@ -52,14 +52,15 @@ export async function preparePasskeyAccountCreation(input: {
     };
   }
 
-  const registration = await input.passkey.createPasskey({
-    rpId: input.config.rpId,
-    expectedOrigin: input.config.origin,
-    challenge: input.registrationChallenge,
-    userName: input.userName,
-    displayName: input.displayName
-  });
-
+  // Resolved before the authenticator is touched, not after. Every value this
+  // requires is already covered by configurationReadiness above, so today this
+  // cannot fire -- but that is the problem it used to have: the promise at the
+  // top of this function, that no credential is created until configuration is
+  // explicit, held only for as long as two separately maintained lists agreed
+  // about what "configured" means. Adding a field to one and not the other
+  // would have meant a biometric prompt, a credential left behind in the
+  // platform keychain, and then a blocked result. Checking here makes the
+  // promise local to the function that makes it.
   try {
     requireAccountDeploymentConfig(input.config);
   } catch (error) {
@@ -77,6 +78,14 @@ export async function preparePasskeyAccountCreation(input: {
       ]
     };
   }
+
+  const registration = await input.passkey.createPasskey({
+    rpId: input.config.rpId,
+    expectedOrigin: input.config.origin,
+    challenge: input.registrationChallenge,
+    userName: input.userName,
+    displayName: input.displayName
+  });
 
   return {
     status: "ready",

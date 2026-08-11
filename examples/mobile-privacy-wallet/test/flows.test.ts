@@ -579,3 +579,54 @@ void test("the mobile passkey signer refuses to be built without deployment conf
     );
   }
 });
+
+void test("no deployment value can be missing without blocking before the authenticator", async () => {
+  // The guarantee is that a credential is never created against configuration
+  // the app has not fully resolved. It used to depend on configurationReadiness
+  // and requireAccountDeploymentConfig listing the same fields; this pins it
+  // per field so a future edit to either list cannot quietly break it.
+  for (const field of ["accountFactory", "passkeyValidator"] as const) {
+    const base = completeConfiguration();
+    const config: MobileWalletConfiguration = {
+      ...base,
+      deployment: { ...base.deployment, [field]: undefined }
+    };
+    let touchedPasskey = false;
+    const result = await preparePasskeyAccountCreation({
+      config,
+      passkey: passkeyStub({
+        async createPasskey(passkeyInput) {
+          touchedPasskey = true;
+          return passkeyStub().createPasskey(passkeyInput);
+        }
+      }),
+      userName: "user",
+      displayName: "User",
+      registrationChallenge: CHALLENGE
+    });
+
+    assert.equal(result.status, "blocked", `${field} must block account creation`);
+    assert.equal(touchedPasskey, false, `${field} must block before a credential is created`);
+  }
+
+  const base = completeConfiguration();
+  const withoutEntryPoint: MobileWalletConfiguration = {
+    ...base,
+    network: { ...base.network, entryPoint: undefined }
+  };
+  let touched = false;
+  const result = await preparePasskeyAccountCreation({
+    config: withoutEntryPoint,
+    passkey: passkeyStub({
+      async createPasskey(passkeyInput) {
+        touched = true;
+        return passkeyStub().createPasskey(passkeyInput);
+      }
+    }),
+    userName: "user",
+    displayName: "User",
+    registrationChallenge: CHALLENGE
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(touched, false, "entryPoint must block before a credential is created");
+});
