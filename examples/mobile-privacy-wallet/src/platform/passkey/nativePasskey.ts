@@ -7,6 +7,10 @@ import type {
   PlatformPasskeyAuthenticator,
   PlatformPasskeyRegistration
 } from "../../types/wallet";
+import {
+  validateNativePasskeyAssertion,
+  validateNativePasskeyRegistration
+} from "./nativePasskeyValidation";
 
 interface LoomPasskeyNativeModule {
   isPlatformPasskeyAvailable(): Promise<boolean>;
@@ -35,29 +39,11 @@ function loadNativeModule(): LoomPasskeyNativeModule {
   }
 }
 
-function assertHex(value: string, field: string): asserts value is Hex {
-  if (!/^0x[0-9a-fA-F]*$/.test(value)) {
-    throw new MobileWalletConfigurationError(`Native passkey module returned invalid ${field}.`, {
-      field
-    });
-  }
-}
-
-function validateRegistration(output: PlatformPasskeyRegistration): PlatformPasskeyRegistration {
-  assertHex(output.publicKeyX, "publicKeyX");
-  assertHex(output.publicKeyY, "publicKeyY");
-  assertHex(output.credentialIdHash, "credentialIdHash");
-  if (!output.rpId || !output.origin) {
-    throw new MobileWalletConfigurationError("Native passkey registration omitted RP binding.");
-  }
-  return output;
-}
-
 function assertRegistrationBinding(
   input: { rpId: string; expectedOrigin: string },
   output: PlatformPasskeyRegistration
 ): PlatformPasskeyRegistration {
-  const registration = validateRegistration(output);
+  const registration = validateNativePasskeyRegistration(output);
   if (registration.rpId !== input.rpId || registration.origin !== input.expectedOrigin) {
     throw new MobileWalletConfigurationError("Native passkey registration returned an unexpected WebAuthn binding.", {
       expectedRpId: input.rpId,
@@ -67,16 +53,6 @@ function assertRegistrationBinding(
     });
   }
   return registration;
-}
-
-function validateAssertion(output: PlatformPasskeyAssertion): PlatformPasskeyAssertion {
-  assertHex(output.authenticatorData, "authenticatorData");
-  assertHex(output.clientDataJSON, "clientDataJSON");
-  assertHex(output.signature, "signature");
-  if (output.userHandle !== undefined) {
-    assertHex(output.userHandle, "userHandle");
-  }
-  return output;
 }
 
 export function createNativePasskeyAuthenticator(): PlatformPasskeyAuthenticator {
@@ -98,7 +74,7 @@ export function createNativePasskeyAuthenticator(): PlatformPasskeyAuthenticator
       if (!available) {
         throw new MobileWalletConfigurationError("Platform passkeys are not available on this device.");
       }
-      return validateAssertion(await nativeModule.signWithPasskey(input));
+      return validateNativePasskeyAssertion(await nativeModule.signWithPasskey(input));
     }
   };
 }

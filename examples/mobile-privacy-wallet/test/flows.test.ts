@@ -527,6 +527,24 @@ void test("on-chain code hash confirmation reads bytecode through the state tran
   const noSupportGates = await verifyManifestCodehashesOnChain(manifest, noSupport);
   assert.ok(noSupportGates.every(gate => gate.status === "blocked"));
   assert.ok(noSupportGates.some(gate => gate.id === "deployment.onchain.entryPoint.no-getcode-support"));
+
+  for (const malformedResult of ["0x", "0xzz", "0x" + "11".repeat(32)]) {
+    let implementationCodeRead = false;
+    const malformedImplementation = stubTransport({
+      async ethCall() {
+        return malformedResult as Hex;
+      },
+      async getCode(input) {
+        if (!bytecodeByAddress[input.address.toLowerCase()]) {
+          implementationCodeRead = true;
+        }
+        return bytecodeByAddress[input.address.toLowerCase()] as Hex;
+      }
+    });
+    const gates = await verifyManifestCodehashesOnChain(manifest, malformedImplementation);
+    assert.ok(gates.some(gate => gate.id === "deployment.onchain.accountImplementation.malformed-result"));
+    assert.equal(implementationCodeRead, false, "malformed implementation words must not reach getCode");
+  }
 });
 
 void test("a loopback host relaxes the transport, not the scheme", async () => {
@@ -629,4 +647,80 @@ void test("no deployment value can be missing without blocking before the authen
   });
   assert.equal(result.status, "blocked");
   assert.equal(touched, false, "entryPoint must block before a credential is created");
+});
+void test("malformed bytecode is a failure to confirm, not a thrown error", async () => {
+  const { verifyManifestCodehashesOnChain } = await import("../src/loom/deployment/onChainCodehash");
+  const { parseDeploymentManifest } = await import("../src/loom/deployment/manifest");
+  const manifest = parseDeploymentManifest({
+    chainId: 11155111,
+    entryPoint: ENTRY_POINT,
+    accountFactory: FACTORY,
+    passkeyValidator: VALIDATOR,
+    p256VerifierMode: "native-precompile",
+    codehashes: { entryPoint: "0x" + "ab".repeat(32), accountFactory: "0x" + "cd".repeat(32) }
+  });
+
+  for (const malformed of ["0xabc", "0xzz"]) {
+    const gates = await verifyManifestCodehashesOnChain(manifest, {
+      async getCode() {
+        return malformed as Hex;
+      }
+    } as never);
+    assert.ok(gates.length > 0, `${malformed} must block rather than confirm`);
+    assert.ok(
+      gates.some(gate => gate.id.endsWith("malformed-bytecode") && gate.status === "blocked"),
+      `${malformed} must be reported as unconfirmable bytecode`
+    );
+  }
+});
+
+void test("native passkey values reject malformed and wrong-width fields", async () => {
+  const {
+    validateNativePasskeyAssertion,
+    validateNativePasskeyRegistration
+  } = await import("../src/platform/passkey/nativePasskeyValidation");
+  const { MobileWalletConfigurationError } = await import("../src/platform/errors");
+  const hexBytes = (length: number) => ("0x" + "ab".repeat(length)) as Hex;
+
+  const registration = {
+    publicKeyX: hexBytes(32),
+    publicKeyY: hexBytes(32),
+    credentialIdHash: hexBytes(32),
+    rpId: "wallet.example.org",
+    origin: "https://wallet.example.org"
+  };
+  assert.equal(validateNativePasskeyRegistration(registration), registration);
+
+  for (const [field, value] of [
+    ["publicKeyX", hexBytes(31)],
+    ["publicKeyY", "0xabc" as Hex],
+    ["credentialIdHash", "0xzz" as Hex]
+  ] as const) {
+    assert.throws(
+      () => validateNativePasskeyRegistration({ ...registration, [field]: value }),
+      MobileWalletConfigurationError,
+      field
+    );
+  }
+
+  const assertion = {
+    authenticatorData: hexBytes(37),
+    clientDataJSON: hexBytes(1),
+    signature: hexBytes(64)
+  };
+  assert.equal(validateNativePasskeyAssertion(assertion), assertion);
+
+  for (const [field, value] of [
+    ["authenticatorData", hexBytes(36)],
+    ["clientDataJSON", "0x" as Hex],
+    ["signature", hexBytes(63)],
+    ["signature", hexBytes(65)],
+    ["userHandle", "0xabc" as Hex]
+  ] as const) {
+    assert.throws(
+      () => validateNativePasskeyAssertion({ ...assertion, [field]: value }),
+      MobileWalletConfigurationError,
+      field
+    );
+  }
 });
