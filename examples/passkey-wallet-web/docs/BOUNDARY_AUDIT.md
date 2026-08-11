@@ -2,6 +2,17 @@
 
 Baseline: `68ba41c697c0acd6b4bbac98c40ec7ca85fccfb9` (`feat(example): a full-featured passkey wallet on Loom`).
 
+> **Status: closed.** The refactor this audit specifies has landed —
+> `src/wallet.mjs` and the inline `index.html` script are gone, and the example is
+> organised into `src/features`, `src/storage`, and `src/transports`. See
+> [`MIGRATION.md`](MIGRATION.md).
+>
+> Everything below describes the **baseline commit** and the plan as written
+> against it. It is kept as the reasoning behind the current structure, not as a
+> description of the code today. Where the plan and the tree disagree — it names
+> `src/loom` and `server`, which the example does not have — the tree is
+> authoritative.
+
 ## Problem and acceptance condition
 
 The baseline demonstrates real account operations, but its application layer is also a second protocol implementation. A safe reference wallet must leave guardian commitments, proofs, typed-data digests, approval ordering, recovery calldata, scheduled-operation identity, account inspection, and UserOperation preparation to Loom packages. React should only coordinate typed domain states and injected I/O. The measurable boundary condition is that no reusable guardian Merkle or recovery algorithm remains under `examples/passkey-wallet-web` and normal flows never exchange raw digests or signatures.
@@ -18,7 +29,7 @@ The affected authority boundary is complete account control: a recovery proposal
 - `@loom/core` exports account, factory, EntryPoint, and P-256 validator ABIs, but not the supported account recovery/freeze and `RecoveryManager` ABIs.
 - The canonical manifest type records generic modules but the example maintains a second unvalidated projection with guardian verifier fields and no runtime code hashes.
 
-## Current responsibility map
+## Baseline responsibility map
 
 | Baseline function or area | Current behavior | Correct owner |
 | --- | --- | --- |
