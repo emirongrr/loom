@@ -153,6 +153,34 @@ byte-identical and the tests pass.
   rather than declared as a literal would be invisible to it. Nothing does that
   today; if something starts to, the gate has to learn about it rather than
   quietly covering less.
+## A change says what kind of change it is
+
+The two snapshots above answer most of the compatibility question mechanically.
+If `storage-layout.json` moved, deployed accounts read different slots. If
+`protocol-surface.json` moved, something consumers encode against changed. Those
+are facts, so the rule built on them takes no judgement: the diff sets a floor,
+and the pull request description must meet it.
+
+The class no artifact can see is the one the rule exists for — contracts changed
+while both snapshots held. That is the behaviour-changing but wire-compatible
+case: new revert conditions, different authority, altered lifecycle. It is also
+the class most easily described as a refactor, by an author who believes it.
+
+- **Exactly one class, and only where a reader can see it.** The template lists
+  the five with what each means, inside an HTML comment; a declaration left in
+  that comment does not count, because the checker reads the description as a
+  reader sees it rather than as raw text. Two classes are refused rather than
+  resolved to the stronger one — a description that hedges is not a declaration.
+- **Declaring more than the diff shows is allowed.** Overstating impact costs a
+  release note; understating it costs a migration nobody wrote.
+- **Adding is not moving.** A snapshot that appears in a diff records something
+  new; a snapshot that changes says a slot or selector shifted under consumers.
+  Conflating the two made the changes introducing these gates read as the worst
+  class each gate can describe, and they would have passed only by overstating
+  themselves.
+- **It forces the choice to be stated, not to be correct.** No checker can tell a
+  genuine behaviour change from a genuine refactor. That residue is deliberate;
+  it is the part that needs a person, and the declaration is where review starts.
 
 ## Complexity Budget
 
