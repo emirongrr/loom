@@ -249,7 +249,11 @@ test("runtime endpoint overrides are transport-only and validated", () => {
 
   assert.match(overrides, /bundlerUrl/);
   assert.match(overrides, /rpcUrl/);
-  assert.match(overrides, /must be https or localhost/);
+  assert.match(
+    overrides,
+    /store\.set\(key, assertEndpointUrl\(/,
+    "saved endpoint overrides must pass URL validation"
+  );
   assert.doesNotMatch(overrides, /accountFactory|passkeyValidator|entryPoint|chainId|rpId|origin:/,
     "runtime overrides must never touch chain identity, addresses, or passkey binding");
   assert.doesNotMatch(settings, /accountFactory|passkeyValidator|CHAIN_ID|RP_ID/,
