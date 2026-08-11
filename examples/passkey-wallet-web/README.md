@@ -104,7 +104,7 @@ sequenceDiagram
   O->>W: Add guardian
   W->>W: Build individualized capability
   W->>T: Authenticated ciphertext
-  T-->>G: Encrypted link fragment
+  T-->>G: Bearer fragment (key + ciphertext)
   G->>G: Validate chain, root, proof, expiry and code hash
   G->>G: Create/select credential and sign acceptance
   G-->>O: Acceptance bound to draft and expiry
@@ -157,7 +157,9 @@ Recovery requests bind the same account, chain, current root/config version, rep
 
 `createGuardianRecoveryClient` also fails closed unless the replacement is present in `trustedRecoveryValidators`, its deployed runtime bytecode matches the manifest code hash, its P256 initializer has the exact supported shape, and its policy hook is explicitly allowed. Treat this profile as signed deployment metadata, not user-supplied recovery input.
 
-An approval transport should encrypt payloads before an opaque mailbox sees them, with the decryption key travelling separately — in a URL fragment, never a query parameter. Such a mailbox learns ciphertext size, timing, capability identifier/IP metadata, and expiry; it holds no signing authority and cannot alter ciphertext undetectably. It must enforce size, expiry, one-time retrieval, origin policy, and rate limits. The example ships the encrypted invitation link on this principle; the approval mailbox is not built.
+An approval transport should encrypt payloads before an opaque mailbox sees them, with the decryption key travelling separately — in a URL fragment, never a query parameter. Such a mailbox learns ciphertext size, timing, capability identifier/IP metadata, and expiry; it holds no signing authority and cannot alter ciphertext undetectably. It must enforce size, expiry, one-time retrieval, origin policy, and rate limits. Neither that mailbox nor a transport meeting that description is built here.
+
+The invitation link this example does ship is weaker, and the difference matters: its key travels in the same fragment as the ciphertext, so it is a **bearer secret** — whoever holds the link can read and copy the capability. The link does not contain the guardian signing key, and acceptance remains bound to the matching guardian wallet. What the fragment buys is that the payload never reaches a web server, a log, or a `Referer` header, which is true with or without the encryption. Binding the origin as additional authenticated data makes a link opened against the wrong wallet fail cleanly; it is not a defence, because the origin is public and sits in the link itself. What further bounds the invitation is its expiry and the fact that a guardian is not authority until the account's guardian root commits to it on chain. Deliver it the way you would deliver a password.
 
 ```mermaid
 sequenceDiagram
@@ -245,7 +247,7 @@ src/config/           network endpoints, defaulted to public RPC and bundler
 src/features/         Home, Activity, Apps, Security, send, guardian and wallet flows
 src/notifications/    transaction and action notifications
 src/storage/          account store, encrypted GuardianVault and guardian roster
-src/transports/       encrypted invitation links
+src/transports/       bearer invitation links and encrypted local transports
 src/styles/           tokens, responsive layout, accessibility and themes
 test/                 guardian, activity, asset, transport and activation unit tests
 sponsor-server.mjs    optional development-only funded submitter

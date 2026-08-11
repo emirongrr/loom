@@ -23,11 +23,12 @@ export function GuardianInvitationCard({ invitation, onCopy, onClose }: {
     {qr ? <svg className="guardian-invite-qr" viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={`Guardian invitation QR for ${invitation.guardianLabel}`}>
       <rect width={qr.size} height={qr.size} fill="#fff" />
       <path d={qr.path} fill="#111" />
-    </svg> : <p className="callout warning">This invite is too large for one QR code. Use the encrypted link instead.</p>}
-    <label className="field"><span>Encrypted invite link</span>
+    </svg> : <p className="callout warning">This invite is too large for one QR code. Use the invite link instead.</p>}
+    <label className="field"><span>Invite link</span>
       <textarea readOnly rows={3} value={invitation.link} onFocus={event => event.currentTarget.select()} />
     </label>
-    <p className="form-note">Expires {new Date(invitation.expiresAt * 1_000).toLocaleString()}. The capability is encrypted in the URL fragment and is not sent to the web server.</p>
+    <p className="form-note">Expires {new Date(invitation.expiresAt * 1_000).toLocaleString()}. The capability rides in the URL fragment, so it is never sent to a web server or written to its logs.</p>
+    <p className="callout warning">Treat this link like a password: it carries its own decryption key, so anyone who has it can read and copy the invitation. Only the matching guardian wallet can accept and use it. Send it over a channel you trust and let it expire if it goes astray.</p>
     <div className="guardian-actions">
       <button className="secondary" onClick={onClose}>Close</button>
       <button className="primary" onClick={onCopy}>Copy invite link</button>
