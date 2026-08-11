@@ -27,12 +27,48 @@ export const CHANGE_CLASSES = Object.freeze([
 
 const rank = value => CHANGE_CLASSES.indexOf(value);
 
-/** The strongest class the diff itself demonstrates. */
-export function observedClass(changedFiles) {
-  if (changedFiles.includes("storage-layout.json")) return "state-incompatible";
-  if (changedFiles.includes("protocol-surface.json")) return "wire-breaking";
-  if (changedFiles.some(file => file.startsWith("src/") && file.endsWith(".sol"))) return "behavior-changing";
+/**
+ * The strongest class the diff itself demonstrates.
+ *
+ * Addition and modification are read differently, because they are different
+ * claims. A snapshot that *moved* says a slot or a selector shifted underneath
+ * consumers. A snapshot that was *added* says something is now recorded that was
+ * not recorded before, which changes nothing that is deployed. Conflating the
+ * two makes the change that introduces a gate look like the worst change the
+ * gate can describe -- and pass only by overstating itself.
+ *
+ * The same distinction applies to contracts: a new `.sol` file adds surface, so
+ * it is additive. Anything that wires it into an existing contract modifies that
+ * contract, which is caught on its own.
+ */
+export function observedClass(changes) {
+  const moved = path => changes.some(change => change.path === path && change.status !== "added");
+  const touchedSolidity = status =>
+    changes.some(
+      change => change.path.startsWith("src/") && change.path.endsWith(".sol") && change.status === status
+    );
+
+  if (moved("storage-layout.json")) return "state-incompatible";
+  if (moved("protocol-surface.json")) return "wire-breaking";
+  if (touchedSolidity("modified") || touchedSolidity("removed")) return "behavior-changing";
+  if (touchedSolidity("added")) return "additive";
   return "implementation-only";
+}
+
+/** `git diff --name-status` output, with renames read as modifications. */
+export function parseNameStatus(output) {
+  return output
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const fields = line.split("\t");
+      const code = fields[0][0];
+      // A rename keeps the destination path; the content still moved.
+      const path = fields[fields.length - 1];
+      const status = code === "A" ? "added" : code === "D" ? "removed" : "modified";
+      return { path, status };
+    });
 }
 
 /** Classes named in a `Change class:` line, in any order or case. */
@@ -46,8 +82,16 @@ export function declaredClasses(body) {
   return CHANGE_CLASSES.filter(value => tokens.includes(value));
 }
 
-export function validate(changedFiles, body) {
-  const observed = observedClass(changedFiles);
+/** Why the diff says what it says, so the message argues rather than asserts. */
+const EVIDENCE = Object.freeze({
+  "state-incompatible": "storage-layout.json moved: deployed accounts would read different slots.",
+  "wire-breaking": "protocol-surface.json moved: a selector, topic, error, or typed-data schema changed.",
+  "behavior-changing": "Solidity under src/ was modified, so behaviour may differ even with both snapshots intact.",
+  additive: "A new contract was added under src/."
+});
+
+export function validate(changes, body) {
+  const observed = observedClass(changes);
   if (observed === "implementation-only") return [];
 
   const declared = declaredClasses(body);
@@ -64,11 +108,7 @@ export function validate(changedFiles, body) {
   if (rank(strongest) < rank(observed)) {
     return [
       `Declared "${strongest}", but the diff shows "${observed}".`,
-      observed === "state-incompatible"
-        ? `storage-layout.json changed: deployed accounts would read different slots.`
-        : observed === "wire-breaking"
-          ? `protocol-surface.json changed: a selector, topic, error, or typed-data schema moved.`
-          : `Solidity under src/ changed, so behaviour may differ even with both snapshots intact.`,
+      EVIDENCE[observed],
       ``,
       `Declare at least "${observed}", or explain in the description why the`,
       `snapshot moved without the compatibility consequence it normally implies.`
@@ -78,10 +118,10 @@ export function validate(changedFiles, body) {
   return [];
 }
 
-function changedFilesFrom(base, run = spawnSync) {
-  const result = run("git", ["diff", "--name-only", `${base}...HEAD`], { encoding: "utf8" });
+function changesFrom(base, run = spawnSync) {
+  const result = run("git", ["diff", "--name-status", `${base}...HEAD`], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`git diff failed: ${result.stderr}`);
-  return result.stdout.split("\n").map(line => line.trim()).filter(Boolean);
+  return parseNameStatus(result.stdout);
 }
 
 function argument(name) {
@@ -94,8 +134,8 @@ function main() {
   const body = bodyFile ? readFileSync(bodyFile, "utf8") : (process.env.PR_BODY ?? "");
   const changedFile = argument("changed-file");
   const changed = changedFile
-    ? readFileSync(changedFile, "utf8").split("\n").map(line => line.trim()).filter(Boolean)
-    : changedFilesFrom(argument("base") ?? "origin/main");
+    ? parseNameStatus(readFileSync(changedFile, "utf8"))
+    : changesFrom(argument("base") ?? "origin/main");
 
   const problems = validate(changed, body);
   if (problems.length > 0) {
