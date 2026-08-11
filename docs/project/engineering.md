@@ -129,6 +129,31 @@ an immutable singleton holding per-account state.
   a review question, and re-recording is the last step of a migration rather than
   the fix for a failing check.
 
+## The wire surface is recorded, not just regenerated
+
+`npm run abi:check` proves the committed ABI matches the build. That is
+freshness, not compatibility: regenerating produces the diff, and whether anyone
+reads what moved is left to review.
+
+`protocol-surface.json` records what a consumer actually binds to across fifteen
+contracts — function selectors, event topics, error selectors, and EIP-712
+schemas — so `npm run surface:check` can treat a removal differently from an
+addition. The case that motivated it is one an ABI diff cannot show at all: an
+EIP-712 type string is a `keccak256` constant, so reordering two fields inside it
+changes every digest an installed validator will accept while the ABI stays
+byte-identical and the tests pass.
+
+- **Schemas are recorded as the string being hashed.** Comparing two 32-byte
+  hashes tells a reviewer nothing. Comparing two type strings shows the field
+  that moved, which is the reason the record exists at all.
+- **Adding passes; removing or changing does not.** Whether a removal is
+  acceptable is a release decision the checker does not make. It reports, and the
+  migration is argued in review.
+- **It sees declared constants, not assembled ones.** A schema built at runtime
+  rather than declared as a literal would be invisible to it. Nothing does that
+  today; if something starts to, the gate has to learn about it rather than
+  quietly covering less.
+
 ## Complexity Budget
 
 Complexity is a security cost. A new abstraction must remove demonstrated
