@@ -97,6 +97,9 @@ run("Storage layout tests", process.execPath, ["--test", "tools/quality/validate
 // encode against did not move underneath them.
 run("Protocol surface", process.execPath, ["tools/quality/validate-protocol-surface.mjs"]);
 run("Protocol surface tests", process.execPath, ["--test", "tools/quality/validate-protocol-surface.test.mjs"]);
+// The gate itself runs in pull-request-policy.yml, where the description exists.
+// What runs here is its comparator, which is where the judgement lives.
+run("Change class tests", process.execPath, ["--test", "tools/ci/validate-change-class.test.mjs"]);
 run("Test double inventory", process.execPath, ["tools/quality/validate-test-doubles.mjs"]);
 run("Test double inventory tests", process.execPath, ["--test", "tools/quality/validate-test-doubles.test.mjs"]);
 run("Documentation references", process.execPath, ["tools/quality/validate-doc-links.mjs"]);

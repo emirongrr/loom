@@ -58,6 +58,7 @@
     "surface:check": "node tools/quality/validate-protocol-surface.mjs",
     "surface:write": "node tools/quality/validate-protocol-surface.mjs --write",
     "surface:test": "node --test tools/quality/validate-protocol-surface.test.mjs",
+    "changeclass:test": "node --test tools/ci/validate-change-class.test.mjs",
     "doubles:check": "node tools/quality/validate-test-doubles.mjs",
     "doubles:test": "node --test tools/quality/validate-test-doubles.test.mjs",
     "fixtures:check": "node tools/evidence/validate-webauthn-fixtures.mjs",
