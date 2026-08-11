@@ -24,6 +24,7 @@ const TARGET = "0x6666666666666666666666666666666666666666" as Hex;
 const TOKEN = "0x0000000000000000000000000000000000000000" as Hex;
 const SELECTOR = "0xa9059cbb" as Hex;
 const CHALLENGE = ("0x" + "ab".repeat(32)) as Hex;
+const CREDENTIAL_ID_HASH = ("0x" + "cd".repeat(32)) as Hex;
 
 function completeConfiguration(): MobileWalletConfiguration {
   return {
@@ -543,5 +544,38 @@ void test("a loopback host relaxes the transport, not the scheme", async () => {
     "http://bundler.example"
   ]) {
     assert.throws(() => assertEndpointUrl(rejected, "Bundler URL"), MobileWalletConfigurationError, rejected);
+  }
+});
+
+void test("the mobile passkey signer commits to the configured validator and EntryPoint", async () => {
+  const { createMobilePasskeySigner } = await import("../src/loom/passkeySigner");
+  const config = completeConfiguration();
+
+  const signer = createMobilePasskeySigner({
+    config,
+    credentialIdHash: CREDENTIAL_ID_HASH,
+    passkey: passkeyStub()
+  });
+
+  // These four are the construction-time commitments the SDK requires and this
+  // wrapper never supplied, which is why it did not type-check at all.
+  assert.equal(signer.validator.toLowerCase(), config.deployment.passkeyValidator?.toLowerCase());
+  assert.equal(signer.entryPoint.toLowerCase(), config.network.entryPoint?.toLowerCase());
+  assert.equal(signer.rpId, config.rpId);
+  assert.equal(signer.origin, config.origin);
+  assert.equal(signer.credentialId, CREDENTIAL_ID_HASH);
+});
+
+void test("the mobile passkey signer refuses to be built without deployment configuration", async () => {
+  const { createMobilePasskeySigner } = await import("../src/loom/passkeySigner");
+  const base = completeConfiguration();
+
+  for (const config of [
+    { ...base, deployment: { ...base.deployment, passkeyValidator: undefined } },
+    { ...base, network: { ...base.network, entryPoint: undefined } }
+  ] as MobileWalletConfiguration[]) {
+    assert.throws(() =>
+      createMobilePasskeySigner({ config, credentialIdHash: CREDENTIAL_ID_HASH, passkey: passkeyStub() })
+    );
   }
 });
