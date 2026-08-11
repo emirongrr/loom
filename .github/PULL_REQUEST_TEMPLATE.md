@@ -41,6 +41,21 @@ unrelated refactors and documentation changes in separate pull requests. -->
 
 -
 
+## Change class
+
+<!-- Required when this pull request touches src/**.sol or a committed snapshot.
+CI checks this against the diff and refuses a declaration weaker than the
+evidence. Declaring something stronger is always allowed.
+
+  implementation-only  no observable behaviour, ABI, storage, or invariant change
+  additive             new interface, function, or module; nothing existing moves
+  behavior-changing    same ABI, different validation, authority, or lifecycle
+  wire-breaking        selector, event, error, or typed-data schema moved
+  state-incompatible   storage layout, derivation, or deployment identity moved
+-->
+
+Change class:
+
 ## Security impact
 
 <!-- Describe changes to authority, trust assumptions, external dependencies,
