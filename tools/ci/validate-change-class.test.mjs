@@ -8,7 +8,8 @@ import {
   parseNameStatus,
   protocolSnapshotHasBreakingChanges,
   storageSnapshotHasBreakingChanges,
-  validate
+  validate,
+  visibleMarkdown
 } from "./validate-change-class.mjs";
 
 const added = path => ({ path, status: "added" });
@@ -86,7 +87,10 @@ test("a declaration is read in any order, case, or phrasing", () => {
   assert.deepEqual(declaredClasses("## Change class: additive, behavior-changing"), ["additive", "behavior-changing"]);
   assert.deepEqual(declaredClasses("no declaration here"), []);
   assert.deepEqual(declaredClasses("<!-- Change class: state-incompatible -->"), []);
+  assert.deepEqual(declaredClasses("<!-- <!--> Change class: state-incompatible -->"), []);
+  assert.deepEqual(declaredClasses("<!-- unclosed\nChange class: state-incompatible"), []);
   assert.deepEqual(declaredClasses("not a declaration: Change class: state-incompatible"), []);
+  assert.match(visibleMarkdown("Change <!-- hidden -->class: additive"), /^Change {16}class: additive$/);
 });
 
 test("a declaration must make one visible choice", () => {

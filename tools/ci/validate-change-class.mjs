@@ -122,13 +122,39 @@ export function parseNameStatus(output) {
 
 /** Classes named in a `Change class:` line, in any order or case. */
 export function declaredClasses(body) {
-  const visibleBody = (body ?? "").replaceAll(/<!--[\s\S]*?-->/g, "");
+  const visibleBody = visibleMarkdown(body ?? "");
   const lines = [...visibleBody.matchAll(/^[ \t]*(?:#{1,6}[ \t]+)?change[ \t]*class[ \t]*:[ \t]*([^\r\n]*)$/gim)];
   // Tokenised rather than matched with word boundaries: the class names contain
   // hyphens, and a boundary assertion around them is both harder to read and
   // easy to get wrong.
   const tokens = lines.flatMap(line => line[1].toLowerCase().split(/[^a-z-]+/).filter(Boolean));
   return CHANGE_CLASSES.filter(value => tokens.includes(value));
+}
+
+/**
+ * Preserve visible text and line boundaries while blanking HTML comments.
+ * A depth counter deliberately treats nested or malformed openers as hidden
+ * until every opener closes, so crafted delimiters cannot splice a declaration
+ * together or make an outer comment end early.
+ */
+export function visibleMarkdown(body) {
+  let visible = "";
+  let depth = 0;
+  for (let index = 0; index < body.length; ) {
+    if (body.startsWith("<!--", index)) {
+      depth += 1;
+      visible += "    ";
+      index += 4;
+    } else if (depth > 0 && body.startsWith("-->", index)) {
+      depth -= 1;
+      visible += "   ";
+      index += 3;
+    } else {
+      const character = body[index++];
+      visible += depth === 0 || character === "\r" || character === "\n" ? character : " ";
+    }
+  }
+  return visible;
 }
 
 /** Why the diff says what it says, so the message argues rather than asserts. */
