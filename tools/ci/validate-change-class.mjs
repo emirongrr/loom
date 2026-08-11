@@ -2,10 +2,9 @@
 // and the claim is checked against the diff rather than believed.
 //
 // The two snapshots in this repository already answer most of the question
-// mechanically: if `storage-layout.json` moved, deployed accounts read different
-// slots; if `protocol-surface.json` moved, a selector, topic, error, or
-// typed-data schema that consumers encode against changed. Both are facts, not
-// opinions, so the author cannot classify below them.
+// mechanically: their base-to-head semantic comparison distinguishes compatible
+// additions from a moved storage slot or changed wire value. Those breaking
+// differences are facts, not opinions, so the author cannot classify below them.
 //
 // What the author still owns is the case no artifact can see: contracts changed
 // while both snapshots held. That is the "behaviour-changing but wire-compatible"
@@ -15,6 +14,10 @@
 
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("../../", import.meta.url));
 
 /** Ordered weakest to strongest; a declaration may exceed the observation. */
 export const CHANGE_CLASSES = Object.freeze([
@@ -26,6 +29,38 @@ export const CHANGE_CLASSES = Object.freeze([
 ]);
 
 const rank = value => CHANGE_CLASSES.indexOf(value);
+const sameValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+export function storageSnapshotHasBreakingChanges(before, after) {
+  if (before?.version !== after?.version) return true;
+  for (const [contract, entries] of Object.entries(before?.contracts ?? {})) {
+    const current = after?.contracts?.[contract];
+    if (!current) return true;
+    for (const [index, pinned] of entries.entries()) {
+      if (!sameValue(current[index], pinned)) return true;
+    }
+  }
+  return false;
+}
+
+export function protocolSnapshotHasBreakingChanges(before, after) {
+  if (before?.version !== after?.version) return true;
+  for (const [contract, kinds] of Object.entries(before?.contracts ?? {})) {
+    const current = after?.contracts?.[contract];
+    if (!current) return true;
+    for (const [kind, entries] of Object.entries(kinds)) {
+      for (const [signature, value] of Object.entries(entries)) {
+        if (!sameValue(current[kind]?.[signature], value)) return true;
+      }
+    }
+  }
+  for (const [file, entries] of Object.entries(before?.typedData ?? {})) {
+    for (const [name, value] of Object.entries(entries)) {
+      if (!sameValue(after?.typedData?.[file]?.[name], value)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * The strongest class the diff itself demonstrates.
@@ -41,8 +76,15 @@ const rank = value => CHANGE_CLASSES.indexOf(value);
  * it is additive. Anything that wires it into an existing contract modifies that
  * contract, which is caught on its own.
  */
-export function observedClass(changes) {
-  const moved = path => changes.some(change => change.path === path && change.status !== "added");
+export function observedClass(changes, snapshotImpact = {}) {
+  const moved = path => {
+    const change = changes.find(entry => entry.path === path || entry.previousPath === path);
+    if (!change) return false;
+    if (change.previousPath === path || change.status === "removed") return true;
+    if (change.status === "added") return false;
+    // A changed snapshot without a successful semantic comparison fails closed.
+    return snapshotImpact[path] ?? true;
+  };
   const touchedSolidity = status =>
     changes.some(
       change => change.path.startsWith("src/") && change.path.endsWith(".sol") && change.status === status
@@ -55,30 +97,37 @@ export function observedClass(changes) {
   return "implementation-only";
 }
 
-/** `git diff --name-status` output, with renames read as modifications. */
+/** NUL-delimited `git diff --name-status -z` output. */
 export function parseNameStatus(output) {
-  return output
-    .split("\n")
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      const fields = line.split("\t");
-      const code = fields[0][0];
-      // A rename keeps the destination path; the content still moved.
-      const path = fields[fields.length - 1];
-      const status = code === "A" ? "added" : code === "D" ? "removed" : "modified";
-      return { path, status };
-    });
+  const fields = output.split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  const changes = [];
+  for (let index = 0; index < fields.length; ) {
+    const code = fields[index++];
+    if (!/^[ACDMRTUXB][0-9]*$/.test(code)) throw new Error(`unsupported git name-status code: ${code}`);
+    const status = code[0] === "A" ? "added" : code[0] === "D" ? "removed" : "modified";
+    if (code[0] === "R" || code[0] === "C") {
+      const previousPath = fields[index++];
+      const path = fields[index++];
+      if (previousPath === undefined || path === undefined) throw new Error(`incomplete git ${code} record`);
+      changes.push({ path, previousPath, status });
+    } else {
+      const path = fields[index++];
+      if (path === undefined) throw new Error(`incomplete git ${code} record`);
+      changes.push({ path, status });
+    }
+  }
+  return changes;
 }
 
 /** Classes named in a `Change class:` line, in any order or case. */
 export function declaredClasses(body) {
-  const line = /change\s*class\s*:\s*(.+)/i.exec(body ?? "");
-  if (!line) return [];
+  const visibleBody = (body ?? "").replaceAll(/<!--[\s\S]*?-->/g, "");
+  const lines = [...visibleBody.matchAll(/^[ \t]*(?:#{1,6}[ \t]+)?change[ \t]*class[ \t]*:[ \t]*([^\r\n]*)$/gim)];
   // Tokenised rather than matched with word boundaries: the class names contain
   // hyphens, and a boundary assertion around them is both harder to read and
   // easy to get wrong.
-  const tokens = line[1].toLowerCase().split(/[^a-z-]+/).filter(Boolean);
+  const tokens = lines.flatMap(line => line[1].toLowerCase().split(/[^a-z-]+/).filter(Boolean));
   return CHANGE_CLASSES.filter(value => tokens.includes(value));
 }
 
@@ -90,8 +139,8 @@ const EVIDENCE = Object.freeze({
   additive: "A new contract was added under src/."
 });
 
-export function validate(changes, body) {
-  const observed = observedClass(changes);
+export function validate(changes, body, snapshotImpact = {}) {
+  const observed = observedClass(changes, snapshotImpact);
   if (observed === "implementation-only") return [];
 
   const declared = declaredClasses(body);
@@ -104,14 +153,18 @@ export function validate(changes, body) {
     ];
   }
 
+  if (declared.length !== 1) {
+    return [`Declare exactly one change class; found: ${declared.join(", ")}.`];
+  }
+
   const strongest = declared.reduce((left, right) => (rank(right) > rank(left) ? right : left));
   if (rank(strongest) < rank(observed)) {
     return [
       `Declared "${strongest}", but the diff shows "${observed}".`,
       EVIDENCE[observed],
       ``,
-      `Declare at least "${observed}", or explain in the description why the`,
-      `snapshot moved without the compatibility consequence it normally implies.`
+      `Declare at least "${observed}". If the movement is intentional, document`,
+      `the compatibility consequence and migration in the pull request.`
     ];
   }
 
@@ -119,9 +172,36 @@ export function validate(changes, body) {
 }
 
 function changesFrom(base, run = spawnSync) {
-  const result = run("git", ["diff", "--name-status", `${base}...HEAD`], { encoding: "utf8" });
+  const result = run("git", ["diff", "--name-status", "-z", `${base}...HEAD`, "--"], {
+    cwd: root,
+    encoding: "utf8"
+  });
   if (result.status !== 0) throw new Error(`git diff failed: ${result.stderr}`);
   return parseNameStatus(result.stdout);
+}
+
+function jsonAtRevision(revision, path, run = spawnSync) {
+  const result = run("git", ["show", `${revision}:${path}`], { cwd: root, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`git show failed for ${path}: ${result.stderr}`);
+  return JSON.parse(result.stdout);
+}
+
+function snapshotImpactFrom(base, changes, run = spawnSync) {
+  const impact = {};
+  const modified = path => changes.some(change => change.path === path && change.status === "modified");
+  if (modified("storage-layout.json")) {
+    impact["storage-layout.json"] = storageSnapshotHasBreakingChanges(
+      jsonAtRevision(base, "storage-layout.json", run),
+      JSON.parse(readFileSync(join(root, "storage-layout.json"), "utf8"))
+    );
+  }
+  if (modified("protocol-surface.json")) {
+    impact["protocol-surface.json"] = protocolSnapshotHasBreakingChanges(
+      jsonAtRevision(base, "protocol-surface.json", run),
+      JSON.parse(readFileSync(join(root, "protocol-surface.json"), "utf8"))
+    );
+  }
+  return impact;
 }
 
 function argument(name) {
@@ -136,13 +216,14 @@ function main() {
   const changed = changedFile
     ? parseNameStatus(readFileSync(changedFile, "utf8"))
     : changesFrom(argument("base") ?? "origin/main");
+  const snapshotImpact = changedFile ? {} : snapshotImpactFrom(argument("base") ?? "origin/main", changed);
 
-  const problems = validate(changed, body);
+  const problems = validate(changed, body, snapshotImpact);
   if (problems.length > 0) {
     for (const problem of problems) console.error(problem);
     process.exit(1);
   }
-  console.log(`change class ok: diff observed as "${observedClass(changed)}"`);
+  console.log(`change class ok: diff observed as "${observedClass(changed, snapshotImpact)}"`);
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replaceAll("\\", "/")}`).href) {
