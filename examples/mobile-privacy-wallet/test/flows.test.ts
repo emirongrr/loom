@@ -27,7 +27,6 @@ const CHALLENGE = ("0x" + "ab".repeat(32)) as Hex;
 
 function completeConfiguration(): MobileWalletConfiguration {
   return {
-    environment: "development",
     rpId: "wallet.example.org",
     origin: "https://wallet.example.org",
     network: {
@@ -85,7 +84,7 @@ void test("environment configuration keeps unset critical values as blocking sen
   const savedEnv = { ...process.env };
   try {
     for (const key of Object.keys(process.env)) {
-      if (key.startsWith("EXPO_PUBLIC_LOOM_") || key === "LOOM_WALLET_ENV") {
+      if (key.startsWith("EXPO_PUBLIC_LOOM_")) {
         delete process.env[key];
       }
     }
