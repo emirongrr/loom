@@ -527,3 +527,21 @@ void test("on-chain code hash confirmation reads bytecode through the state tran
   assert.ok(noSupportGates.every(gate => gate.status === "blocked"));
   assert.ok(noSupportGates.some(gate => gate.id === "deployment.onchain.entryPoint.no-getcode-support"));
 });
+
+void test("a loopback host relaxes the transport, not the scheme", async () => {
+  const { assertEndpointUrl } = await import("../src/config/runtimeOverrides");
+  const { MobileWalletConfigurationError } = await import("../src/platform/errors");
+
+  assert.equal(assertEndpointUrl("https://bundler.example", "Bundler URL"), "https://bundler.example");
+  assert.equal(assertEndpointUrl("http://localhost:4337", "Bundler URL"), "http://localhost:4337");
+  assert.equal(assertEndpointUrl("http://127.0.0.1:4337", "Bundler URL"), "http://127.0.0.1:4337");
+
+  for (const rejected of [
+    "ftp://localhost/bundler",
+    "file://localhost/bundler",
+    "ws://localhost:4337",
+    "http://bundler.example"
+  ]) {
+    assert.throws(() => assertEndpointUrl(rejected, "Bundler URL"), MobileWalletConfigurationError, rejected);
+  }
+});

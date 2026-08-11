@@ -15,7 +15,7 @@ export interface AppServices {
   readonly accounts: AccountStore;
   /** Capabilities held for accounts this device protects as a guardian. */
   readonly guardianVault: GuardianVault;
-  /** Delivery for guardian invitations; the link keeps ciphertext in the fragment. */
+  /** Bearer delivery for guardian invitations; key and ciphertext share the fragment. */
   readonly invitationLinks: InvitationTransport<GuardianInviteV1>;
   /** Cached read-only RPC clients. Components never construct endpoint clients. */
   readonly publicClients: PublicClientRegistry;
