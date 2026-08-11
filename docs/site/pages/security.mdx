@@ -7,9 +7,33 @@ production readiness. Do not use it to secure production assets.
 
 ## Current evidence
 
-The repository has unit and integration tests, fuzz tests, stateful invariants,
-gas snapshots, static checks, SDK boundary tests, selected symbolic workflows,
-and website/documentation validation.
+The repository has unit, integration, and fork tests, fuzz tests, stateful
+invariants, gas and bytecode-size snapshots, static checks, selected symbolic
+(Halmos) workflows, SDK boundary and packaging tests, and website/documentation
+validation.
+
+Four checks exist because passing tests would not catch what they catch:
+
+- **Cross-implementation golden vectors.** UserOperation hashes, SDK calldata,
+  signature envelopes, and account derivation are computed in both Solidity and
+  TypeScript and compared against committed fixtures, so the two implementations
+  cannot drift apart quietly.
+- **Critical-guard mutation testing.** Nineteen deliberate weakenings of
+  authority, replay, time, and state-transition guards must each be caught by a
+  named test. A guard whose test still passes when the guard is removed is not
+  evidence that the guard works.
+- **Storage layout snapshot.** Account storage is append-only and its order is
+  consensus-critical. A reordered slot leaves the ABI unchanged, the tests
+  passing, and the gas within tolerance, and reinterprets storage a deployed
+  account already holds.
+- **Protocol surface snapshot.** Function selectors, event topics, error
+  selectors, and EIP-712 type strings are recorded. Reordering two fields inside
+  a signed struct leaves the ABI byte-identical while invalidating every
+  signature made against the old schema.
+
+The toolchain is pinned to immutable references — one Solidity version, every
+GitHub Action at a commit SHA — and dependency audits cover every committed
+lockfile.
 
 That evidence is useful for review, but the authoritative release checklist is
 [Production readiness](https://github.com/emirongrr/loom/blob/main/docs/security/production-readiness.md).
