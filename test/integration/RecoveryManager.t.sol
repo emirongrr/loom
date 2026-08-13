@@ -24,6 +24,7 @@ contract RecoveryManagerTest {
     VmRecovery internal constant vm = VmRecovery(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     uint256 internal constant GUARDIAN_KEY = 0xA11CE;
+    uint256 internal constant SECOND_GUARDIAN_KEY = 0xB0B;
     bytes32 internal constant NEW_GUARDIAN_ROOT = keccak256("rotated-guardian-root");
 
     LoomAccount internal account;
@@ -351,7 +352,9 @@ contract RecoveryManagerTest {
     function testAccountAndGuardianCanCancelRecovery() public {
         bytes memory initData = "";
         _propose(initData);
-        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        bytes memory cancel = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), _accountCancellationApprovals())
+        );
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         require(readyAt == 0, "account cancellation failed");
@@ -363,6 +366,106 @@ contract RecoveryManagerTest {
         recovery.cancelRecoveryWithGuardians(address(account), _guardianApprovals(digest));
         (,,,,, readyAt,,,) = recovery.pendingRecoveries(address(account));
         require(readyAt == 0, "guardian cancellation failed");
+    }
+
+    /// @notice Possession of the current validator must not be enough to
+    /// permanently grief a guardian recovery for that compromised validator.
+    function testAccountCannotCancelRecoveryWithoutGuardianApproval() public {
+        _propose("");
+
+        GuardianVerificationLib.Approval[] memory noGuardianApprovals = new GuardianVerificationLib.Approval[](0);
+        bytes memory cancel = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), noGuardianApprovals)
+        );
+        (bool cancelled,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)))
+                )
+            );
+
+        require(!cancelled, "current validator cancelled recovery alone");
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAt != 0, "failed cancellation cleared recovery");
+
+        bytes memory legacyCancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        (bool legacyCancelled,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, legacyCancel)))
+                )
+            );
+        require(!legacyCancelled, "legacy owner-only selector cancelled recovery");
+        (,,,,, readyAt,,,) = recovery.pendingRecoveries(address(account));
+        require(readyAt != 0, "legacy cancellation cleared recovery");
+    }
+
+    function testAccountCancellationRequiresOneLessThanRecoveryThreshold() public {
+        address[] memory validators = _sortedValidators();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[0], "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[1], "");
+        modules[2] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        LoomAccount thresholdAccount =
+            new LoomAccount(address(this), _twoGuardianRoot(), 2, keccak256("threshold-config"), modules);
+
+        bytes32 rotatedRoot = keccak256("threshold-rotated-root");
+        bytes32 proposalDigest = recovery.proposalDigest(
+            address(thresholdAccount),
+            keccak256(abi.encode(validators)),
+            address(newValidator),
+            keccak256(bytes("")),
+            rotatedRoot,
+            1,
+            thresholdAccount.configVersion(),
+            0
+        );
+        recovery.proposeRecovery(
+            address(thresholdAccount),
+            validators,
+            address(newValidator),
+            keccak256(bytes("")),
+            rotatedRoot,
+            1,
+            _twoGuardianApprovals(proposalDigest)
+        );
+
+        RecoveryManager.PendingRecovery memory pending;
+        (
+            pending.oldValidatorsHash,
+            pending.newValidator,
+            pending.initDataHash,
+            pending.newGuardianRoot,
+            pending.newGuardianThreshold,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.configVersion,
+            pending.nonce
+        ) = recovery.pendingRecoveries(address(thresholdAccount));
+        bytes32 recoveryId = recovery.recoveryIdFor(address(thresholdAccount), pending);
+        bytes32 cancelDigest =
+            recovery.cancelDigest(address(thresholdAccount), recoveryId, pending.configVersion, pending.nonce);
+
+        GuardianVerificationLib.Approval[] memory none = new GuardianVerificationLib.Approval[](0);
+        bytes memory unsupported =
+            abi.encodeCall(RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(thresholdAccount), none));
+        (bool ownerOnly,) = address(thresholdAccount)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, unsupported)))
+                )
+            );
+        require(!ownerOnly, "2-of-2 recovery cancelled by owner alone");
+
+        bytes memory supported = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians,
+            (address(thresholdAccount), _oneOfTwoGuardianApprovals(cancelDigest))
+        );
+        thresholdAccount.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, supported)));
+        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(thresholdAccount));
+        require(readyAt == 0, "owner plus threshold-minus-one guardian could not cancel");
     }
 
     function testFrozenAccountCanCancelExactRecovery() public {
@@ -385,7 +488,9 @@ contract RecoveryManagerTest {
             address(guardianVerifier), keyCommitment, guardianSalt, new bytes32[](0), _guardianSignature(freezeDigest)
         );
 
-        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        bytes memory cancel = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), _accountCancellationApprovals())
+        );
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         require(readyAt == 0, "frozen cancellation failed");
@@ -489,15 +594,13 @@ contract RecoveryManagerTest {
         require(target.value() == 0, "attacker operation executed after recovery");
     }
 
-    /// @notice Cancelling a recovery while frozen must not let a compromised
-    /// validator outlast the guardians.
+    /// @notice Cancelling a recovery while frozen must retire stale authority
+    /// and re-arm guardian intervention.
     /// @dev `_isFrozenSafe` deliberately allows exactly one action while frozen:
-    /// cancelling this account's pending recovery. That exists so a real owner can
-    /// stop a malicious guardian recovery, and it must stay -- but a compromised
-    /// validator inherits it. Because `freeze` allows each guardian leaf one freeze
-    /// per configuration version and `RecoveryManager._cancel` advances only its own
-    /// nonce, an attacker could previously cancel, reset the guardians' 3-day clock,
-    /// and exhaust their freezes while a pre-scheduled operation waited.
+    /// cancelling this account's pending recovery with supporting guardian
+    /// approvals. Because `freeze` allows each guardian leaf one freeze per
+    /// configuration version, cancellation must advance the configuration rather
+    /// than leave pre-scheduled authority alive through the next recovery window.
     ///
     /// The cancellation now advances the account configuration, which both retires
     /// that pending operation and re-arms every guardian leaf.
@@ -516,8 +619,11 @@ contract RecoveryManagerTest {
         uint64 versionBeforeCancel = account.configVersion();
         uint48 frozenUntilBeforeCancel = account.frozenUntil();
 
-        // The compromised validator cancels the recovery from inside the freeze.
-        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        // The current account authority and a guardian cancel the recovery from
+        // inside the freeze. The account cannot reach this path alone.
+        bytes memory cancel = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), _accountCancellationApprovals())
+        );
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
 
         (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
@@ -561,7 +667,9 @@ contract RecoveryManagerTest {
         _propose("");
         uint64 versionBefore = account.configVersion();
 
-        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        bytes memory cancel = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), _accountCancellationApprovals())
+        );
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(recovery), 0, cancel)));
 
         (,,,,, uint48 readyAtAfterCancel,,,) = recovery.pendingRecoveries(address(account));
@@ -725,8 +833,13 @@ contract RecoveryManagerTest {
             _proposalApprovals(validators, initData, 0, account.configVersion());
         require(!_tryPropose(validators, initData, NEW_GUARDIAN_ROOT, 1, approvals), "second pending recovery accepted");
 
-        (bool unauthorizedCancel,) =
-            address(recovery).call(abi.encodeCall(RecoveryManager.cancelRecovery, (address(account))));
+        (bool unauthorizedCancel,) = address(recovery)
+            .call(
+                abi.encodeCall(
+                    RecoveryManager.cancelRecoveryWithAccountAndGuardians,
+                    (address(account), _accountCancellationApprovals())
+                )
+            );
         require(!unauthorizedCancel, "external cancellation accepted");
 
         (bool wrongPayload,) = address(recovery)
@@ -806,6 +919,74 @@ contract RecoveryManagerTest {
         });
     }
 
+    function _accountCancellationApprovals() internal returns (GuardianVerificationLib.Approval[] memory approvals) {
+        RecoveryManager.PendingRecovery memory pending = _pending();
+        bytes32 recoveryId = recovery.recoveryIdFor(address(account), pending);
+        bytes32 digest = recovery.cancelDigest(address(account), recoveryId, pending.configVersion, pending.nonce);
+        return _guardianApprovals(digest);
+    }
+
+    function _twoGuardianRoot() internal returns (bytes32) {
+        bytes32 first = guardianLeaf;
+        bytes32 second = _secondGuardianLeaf();
+        return first <= second ? keccak256(abi.encodePacked(first, second)) : keccak256(abi.encodePacked(second, first));
+    }
+
+    function _twoGuardianApprovals(bytes32 digest)
+        internal
+        returns (GuardianVerificationLib.Approval[] memory approvals)
+    {
+        bytes32 first = guardianLeaf;
+        bytes32 second = _secondGuardianLeaf();
+        approvals = new GuardianVerificationLib.Approval[](2);
+        if (first <= second) {
+            approvals[0] = _guardianApproval(GUARDIAN_KEY, guardianSalt, second, digest);
+            approvals[1] = _guardianApproval(SECOND_GUARDIAN_KEY, keccak256("second-guardian-salt"), first, digest);
+        } else {
+            approvals[0] = _guardianApproval(SECOND_GUARDIAN_KEY, keccak256("second-guardian-salt"), first, digest);
+            approvals[1] = _guardianApproval(GUARDIAN_KEY, guardianSalt, second, digest);
+        }
+    }
+
+    function _oneOfTwoGuardianApprovals(bytes32 digest)
+        internal
+        returns (GuardianVerificationLib.Approval[] memory approvals)
+    {
+        bytes32 first = guardianLeaf;
+        bytes32 second = _secondGuardianLeaf();
+        approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = first <= second
+            ? _guardianApproval(GUARDIAN_KEY, guardianSalt, second, digest)
+            : _guardianApproval(SECOND_GUARDIAN_KEY, keccak256("second-guardian-salt"), first, digest);
+    }
+
+    function _secondGuardianLeaf() internal returns (bytes32) {
+        address secondGuardian = vm.addr(SECOND_GUARDIAN_KEY);
+        return keccak256(
+            abi.encode(
+                address(guardianVerifier),
+                address(guardianVerifier).codehash,
+                keccak256(abi.encode(secondGuardian)),
+                keccak256("second-guardian-salt")
+            )
+        );
+    }
+
+    function _guardianApproval(uint256 privateKey, bytes32 salt, bytes32 sibling, bytes32 digest)
+        internal
+        returns (GuardianVerificationLib.Approval memory approval)
+    {
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = sibling;
+        approval = GuardianVerificationLib.Approval({
+            verifier: address(guardianVerifier),
+            keyCommitment: keccak256(abi.encode(vm.addr(privateKey))),
+            salt: salt,
+            signature: _guardianSignature(privateKey, digest),
+            proof: proof
+        });
+    }
+
     function _freeze() internal {
         uint256 freezeNonce = account.freezeNonces(guardianLeaf);
         bytes32 freezeStruct =
@@ -826,7 +1007,11 @@ contract RecoveryManagerTest {
     }
 
     function _guardianSignature(bytes32 digest) internal returns (bytes memory) {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(GUARDIAN_KEY, digest);
+        return _guardianSignature(GUARDIAN_KEY, digest);
+    }
+
+    function _guardianSignature(uint256 privateKey, bytes32 digest) internal returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         return abi.encodePacked(r, s, v);
     }
 

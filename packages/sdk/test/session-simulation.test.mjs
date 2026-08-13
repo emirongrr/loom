@@ -256,7 +256,7 @@ test("randomized SDK sessions preserve authority, immutability, determinism, and
       );
       assert.equal(
         Boolean(review.requiresGuardianApproval),
-        cancelInputs.route === "guardian",
+        true,
         `cancel route authority mismatch (seed ${seed}, route ${cancelInputs.route})`
       );
       steps += 1;

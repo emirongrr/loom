@@ -241,7 +241,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         );
 
         account.freeze(address(verifier), keyCommitment, salt, new bytes32[](0), "");
-        bytes memory cancelRecovery = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        bytes memory cancelRecovery =
+            abi.encodeCall(RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), approvals));
         _executeFromEntryPoint(account, ExecutionLib.Execution(address(recovery), 0, cancelRecovery));
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         assert(readyAt == 0);

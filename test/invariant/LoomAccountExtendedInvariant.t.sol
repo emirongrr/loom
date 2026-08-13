@@ -788,17 +788,23 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
     // Handler 18: cancelRecoveryDirect
     //
-    // WHY: The account cancels its own pending recovery through execute(). This
-    //      is the frozen-safe carve-out (_isRecoveryExecution): it must succeed
-    //      even while the account is frozen, unlike ordinary execution. Driving
-    //      it under fuzzing exercises that exact carve-out in arbitrary states.
+    // WHY: The account and supporting guardian cancel a pending recovery through
+    //      execute(). This is the frozen-safe carve-out (_isRecoveryExecution):
+    //      it must succeed even while the account is frozen, unlike ordinary
+    //      execution. Driving it under fuzzing exercises that exact carve-out in
+    //      arbitrary states.
     // ─────────────────────────────────────────────────────────────────────────
 
     function cancelRecoveryDirect() external {
         (,,,,, uint48 pendingReadyAt,,,) = recovery.pendingRecoveries(address(account));
         if (pendingReadyAt == 0) return;
         uint64 versionBefore = account.configVersion();
-        bytes memory cancel = abi.encodeCall(RecoveryManager.cancelRecovery, (address(account)));
+        RecoveryManager.PendingRecovery memory pending = _pendingRecovery();
+        bytes32 recoveryId = recovery.recoveryIdFor(address(account), pending);
+        bytes32 digest = recovery.cancelDigest(address(account), recoveryId, pending.configVersion, pending.nonce);
+        GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
+        bytes memory cancel =
+            abi.encodeCall(RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(account), approvals));
         (bool ok,) = address(account)
             .call(
                 abi.encodeCall(
@@ -857,6 +863,20 @@ contract LoomAccountExtendedHandler {
             if (cleared != 0) violated = true;
         }
         _checkVersion(versionBefore);
+    }
+
+    function _pendingRecovery() internal view returns (RecoveryManager.PendingRecovery memory pending) {
+        (
+            pending.oldValidatorsHash,
+            pending.newValidator,
+            pending.initDataHash,
+            pending.newGuardianRoot,
+            pending.newGuardianThreshold,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.configVersion,
+            pending.nonce
+        ) = recovery.pendingRecoveries(address(account));
     }
 
     /// @dev Reconstructs the account's complete validator set in strictly

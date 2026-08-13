@@ -815,12 +815,17 @@ export function createGuardianRecoveryClient(options: {
         status: readyAt === 0n ? "none" : now === undefined ? "unknown" : now < readyAt ? "delay-active" : now > expiresAt ? "expired" : "ready"
       });
     },
-    async cancelRecovery(review: GuardianActionReview) {
-      const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "cancelRecovery", args: [account] });
+    async cancelRecovery(review: GuardianActionReview, approvals: readonly GuardianApprovalTuple[]) {
+      const tuples = [...approvals]
+        .sort((left, right) => compareHex(left.leaf, right.leaf))
+        .map(({ leaf: _leaf, ...approval }) => approval);
+      const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "cancelRecoveryWithAccountAndGuardians", args: [account, tuples] });
       return submit(recoveryManager, data, review, false);
     },
     async cancelRecoveryWithGuardians(review: GuardianActionReview, approvals: readonly GuardianApprovalTuple[]) {
-      const tuples = approvals.map(({ leaf: _leaf, ...approval }) => approval);
+      const tuples = [...approvals]
+        .sort((left, right) => compareHex(left.leaf, right.leaf))
+        .map(({ leaf: _leaf, ...approval }) => approval);
       const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "cancelRecoveryWithGuardians", args: [account, tuples] });
       return submit(recoveryManager, data, review, true);
     },
