@@ -53,6 +53,16 @@ contract RecoveryManager is ILoomModule {
     event RecoveryCancelled(address indexed account, bytes32 indexed recoveryId);
     event RecoveryExecuted(address indexed account, bytes32 indexed recoveryId, address indexed newValidator);
 
+    /// @notice Retained only as a fail-closed wire-compatibility boundary.
+    /// Existing clients must migrate to the guardian-supported overload.
+    function cancelRecovery(address account) external {
+        // Keep the historical nonpayable ABI without allowing its owner-only
+        // authority back in. The revert rolls this compatibility marker back,
+        // so it cannot be observed as a cancellation event.
+        emit RecoveryCancelled(account, bytes32(0));
+        revert UnauthorizedCancellation();
+    }
+
     function proposeRecovery(
         address account,
         address[] calldata oldValidators,
@@ -123,10 +133,26 @@ contract RecoveryManager is ILoomModule {
         emit RecoveryProposed(account, recoveryId, newValidator, oldValidatorsHash, readyAt, readyAt + RECOVERY_WINDOW);
     }
 
-    function cancelRecovery(address account) external {
+    /// @notice Cancels a pending recovery with the current account authority
+    /// plus guardian support. Requiring both prevents a compromised current
+    /// validator from indefinitely cancelling the recovery intended to replace
+    /// it. The guardian-only path remains available at the full recovery
+    /// threshold.
+    function cancelRecoveryWithAccountAndGuardians(
+        address account,
+        GuardianVerificationLib.Approval[] calldata guardianApprovals
+    ) external {
         PendingRecovery memory pending = pendingRecoveries[account];
         if (pending.readyAt == 0) revert InvalidRecovery();
         if (msg.sender != account) revert UnauthorizedCancellation();
+        bytes32 recoveryId = recoveryIdFor(account, pending);
+        bytes32 digest = cancelDigest(account, recoveryId, pending.configVersion, pending.nonce);
+        ILoomAccount loom = ILoomAccount(account);
+        uint256 threshold = loom.guardianThreshold();
+        if (threshold > 1) --threshold;
+        if (!GuardianVerificationLib.approved(loom.guardianRoot(), threshold, digest, guardianApprovals)) {
+            revert UnauthorizedCancellation();
+        }
         _cancel(account, pending);
     }
 

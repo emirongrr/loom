@@ -488,6 +488,13 @@ test("the recovery client owns account inspection, freeze verification, and prop
   assert.equal(decodeFunctionData({ abi: RecoveryManagerAbi, data: submitted.at(-1).data }).functionName, "proposeRecovery");
   assert.match(recovery.review.summary, /Replace all 1 validator/);
 
+  await client.cancelRecovery(recovery.review, collected.approvals);
+  const ownerCancellation = decodeFunctionData({ abi: RecoveryManagerAbi, data: submitted.at(-1).data });
+  assert.equal(ownerCancellation.functionName, "cancelRecoveryWithAccountAndGuardians");
+  assert.equal(ownerCancellation.args[0], account);
+  assert.equal(ownerCancellation.args[1].length, 1);
+  assert.equal(submitted.at(-1).permissionless, false);
+
   livePendingRecovery = [
     recovery.oldValidatorsHash,
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

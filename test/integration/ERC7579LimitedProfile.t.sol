@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
 import {MockERC7579HookAdapter} from "../mocks/MockERC7579HookAdapter.sol";
@@ -132,7 +133,10 @@ contract ERC7579LimitedProfileTest {
         LoomAccount recoveryAccount =
             new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
 
-        bytes memory recoveryCall = abi.encodeCall(RecoveryManager.cancelRecovery, (address(recoveryAccount)));
+        GuardianVerificationLib.Approval[] memory noApprovals = new GuardianVerificationLib.Approval[](0);
+        bytes memory recoveryCall = abi.encodeCall(
+            RecoveryManager.cancelRecoveryWithAccountAndGuardians, (address(recoveryAccount), noApprovals)
+        );
         bytes memory shortSchedule = abi.encodeCall(
             LoomAccount.scheduleCall, (address(recovery), 0, recoveryCall, recoveryAccount.MIN_EXTERNAL_DELAY())
         );

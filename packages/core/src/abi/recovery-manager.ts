@@ -128,6 +128,51 @@ export const RecoveryManagerAbi = [
   },
   {
     "type": "function",
+    "name": "cancelRecoveryWithAccountAndGuardians",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "guardianApprovals",
+        "type": "tuple[]",
+        "internalType": "struct GuardianVerificationLib.Approval[]",
+        "components": [
+          {
+            "name": "verifier",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "keyCommitment",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "signature",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "cancelRecoveryWithGuardians",
     "inputs": [
       {

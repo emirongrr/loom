@@ -44,7 +44,9 @@ contract PolicyHook is ILoomHook, IPolicyHook {
     event PolicyRemoved(address indexed account, bytes32 indexed policyId);
 
     bytes4 private constant REVOKE_PERMISSION = bytes4(keccak256("revokePermission(bytes32)"));
-    bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
+    bytes4 private constant CANCEL_RECOVERY =
+        bytes4(keccak256("cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])"));
+    uint256 private constant CANCEL_RECOVERY_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
     function setPolicy(address target, bytes4 selector, Policy calldata policy) external {
         // Assert the timelock directly rather than relying on notifyConfigChange's
@@ -142,7 +144,8 @@ contract PolicyHook is ILoomHook, IPolicyHook {
             return true;
         }
         if (
-            selector == CANCEL_RECOVERY && item.value == 0 && item.callData.length == 36
+            selector == CANCEL_RECOVERY && item.value == 0
+                && item.callData.length >= CANCEL_RECOVERY_MIN_SELECTOR_AND_STATIC_ARGS_SIZE
                 && ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, item.target)
                 && _addressArgument(item.callData) == account
         ) return true;

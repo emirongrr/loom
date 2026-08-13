@@ -147,7 +147,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 private constant CONFIGURATION_RECOVERED_HASH = keccak256("CONFIGURATION_RECOVERED");
     bytes32 private constant CONFIGURATION_SET_RECOVERED_HASH = keccak256("CONFIGURATION_SET_RECOVERED");
     bytes32 private constant FROZEN_RECOVERY_CANCELLED_HASH = keccak256("FROZEN_RECOVERY_CANCELLED");
-    bytes4 private constant CANCEL_RECOVERY = bytes4(keccak256("cancelRecovery(address)"));
+    bytes4 private constant CANCEL_RECOVERY =
+        bytes4(keccak256("cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])"));
+    uint256 private constant CANCEL_RECOVERY_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
     // --- Storage (layout is append-only; order is consensus-critical) ---
@@ -502,22 +504,18 @@ contract LoomAccount is IERC1271, ILoomAccount {
 
         // Reaching here while frozen means `_isFrozenSafe` accepted the call, and
         // the only shape it accepts is cancelling this account's pending recovery
-        // on an installed recovery module. That carve-out exists so the real owner
-        // can stop a malicious guardian recovery even while guardians hold a
-        // freeze, and it must stay. But a compromised validator inherits it, and
-        // without this the compromise won: cancelling reset the guardians' 3-day
-        // recovery clock while `freeze` allowed each guardian leaf only one freeze
-        // per configuration version, so the guardians ran out of freezes before
-        // recovery could ever complete, and any operation the attacker had already
-        // scheduled survived to be executed once the freeze lapsed.
+        // on an installed recovery module. That carve-out lets the current account
+        // authority and supporting guardians stop a malicious recovery even while
+        // the account is frozen. The recovery module verifies guardian support;
+        // this account-level gate verifies only the exact call shape.
         //
         // Advancing the configuration makes that cancellation self-defeating. It
         // re-arms every guardian leaf, because the freeze gate compares against
         // `configVersion`, and it invalidates every pending scheduled operation,
         // migration, and vault withdrawal, because each binds the configuration
-        // version it was created at. The attacker can still cancel recovery, but
-        // each cancellation destroys the payload the freeze was buying time to
-        // stop and hands the guardians another freeze.
+        // version it was created at. Even an authorized cancellation therefore
+        // destroys the payload the freeze was buying time to stop and hands the
+        // guardians another freeze.
         //
         // Only the frozen path does this. Cancelling a recovery on an unfrozen
         // account is an ordinary uncontested action and must not silently discard
@@ -1309,7 +1307,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
             selector := mload(add(callData, 32))
         }
         if (!_modules[ModuleType.RECOVERY][execution.target]) return false;
-        if (selector != CANCEL_RECOVERY || callData.length != 36 || execution.value != 0) return false;
+        if (
+            selector != CANCEL_RECOVERY || callData.length < CANCEL_RECOVERY_MIN_SELECTOR_AND_STATIC_ARGS_SIZE
+                || execution.value != 0
+        ) return false;
         address recoveryAccount;
         assembly {
             recoveryAccount := mload(add(callData, 36))

@@ -1002,6 +1002,7 @@
         "RECOVERY_WINDOW()": "0x0a4636b2",
         "cancelDigest(address,bytes32,uint64,uint64)": "0x18d480b2",
         "cancelRecovery(address)": "0xc90db447",
+        "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x96fb52df",
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x816aa48e",
         "executeRecovery(address,address[],bytes)": "0x3ecc40f9",
         "isModuleType(uint256)": "0xecd05961",
@@ -1034,6 +1035,7 @@
           "bytes32"
         ],
         "cancelRecovery(address)": [],
+        "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "executeRecovery(address,address[],bytes)": [],
         "isModuleType(uint256)": [
@@ -1072,6 +1074,7 @@
         "RECOVERY_WINDOW()": "view",
         "cancelDigest(address,bytes32,uint64,uint64)": "view",
         "cancelRecovery(address)": "nonpayable",
+        "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "executeRecovery(address,address[],bytes)": "nonpayable",
         "isModuleType(uint256)": "pure",

@@ -373,7 +373,7 @@ export function createAccountLifecycleClient(defaults: { chainId?: number; accou
         nonce: normalizeNonNegativeBigInt(input.nonce, "nonce"),
         route,
         callData: normalizeHex(input.callData ?? "0x", "callData"),
-        authority: cancellationAuthority("account-recovery-cancellation", route)
+        authority: cancellationAuthority("account-recovery-cancellation", route, true)
       } as LifecycleIntent);
     },
     buildRecoveryExecution(input) {
@@ -662,12 +662,13 @@ export function createLifecycleCallEncoder(): LifecycleCallEncoder {
 
 function cancellationAuthority(
   risk: LifecycleAuthority["risk"],
-  route: "account" | "guardian"
+  route: "account" | "guardian",
+  accountRouteRequiresGuardian = false
 ): Readonly<LifecycleAuthority> {
   return Object.freeze({
     risk,
     requiresUserSignature: route === "account",
-    requiresGuardianApproval: route === "guardian",
+    requiresGuardianApproval: route === "guardian" || accountRouteRequiresGuardian,
     delayRequired: false,
     cancelsPendingHighRiskOperation: true
   });
