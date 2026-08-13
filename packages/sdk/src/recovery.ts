@@ -816,12 +816,16 @@ export function createGuardianRecoveryClient(options: {
       });
     },
     async cancelRecovery(review: GuardianActionReview, approvals: readonly GuardianApprovalTuple[]) {
-      const tuples = approvals.map(({ leaf: _leaf, ...approval }) => approval);
+      const tuples = [...approvals]
+        .sort((left, right) => compareHex(left.leaf, right.leaf))
+        .map(({ leaf: _leaf, ...approval }) => approval);
       const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "cancelRecoveryWithAccountAndGuardians", args: [account, tuples] });
       return submit(recoveryManager, data, review, false);
     },
     async cancelRecoveryWithGuardians(review: GuardianActionReview, approvals: readonly GuardianApprovalTuple[]) {
-      const tuples = approvals.map(({ leaf: _leaf, ...approval }) => approval);
+      const tuples = [...approvals]
+        .sort((left, right) => compareHex(left.leaf, right.leaf))
+        .map(({ leaf: _leaf, ...approval }) => approval);
       const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "cancelRecoveryWithGuardians", args: [account, tuples] });
       return submit(recoveryManager, data, review, true);
     },

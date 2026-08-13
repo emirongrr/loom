@@ -495,6 +495,26 @@ test("the recovery client owns account inspection, freeze verification, and prop
   assert.equal(ownerCancellation.args[1].length, 1);
   assert.equal(submitted.at(-1).permissionless, false);
 
+  const twoGuardianSet = createGuardianSet({ guardians, threshold: 2 });
+  const twoGuardianApprovals = await assembleGuardianApprovals({
+    set: twoGuardianSet,
+    approvals: twoGuardianSet.guardians.map((guardian, index) => ({ leaf: guardian.leaf, signature: `0x0${index + 1}` }))
+  });
+  const reversedApprovals = [...twoGuardianApprovals.approvals].reverse();
+  await client.cancelRecovery(recovery.review, reversedApprovals);
+  const sortedOwnerCancellation = decodeFunctionData({ abi: RecoveryManagerAbi, data: submitted.at(-1).data });
+  assert.deepEqual(
+    sortedOwnerCancellation.args[1].map(approval => approval.keyCommitment),
+    twoGuardianApprovals.approvals.map(approval => approval.keyCommitment)
+  );
+
+  await client.cancelRecoveryWithGuardians(recovery.review, reversedApprovals);
+  const sortedGuardianCancellation = decodeFunctionData({ abi: RecoveryManagerAbi, data: submitted.at(-1).data });
+  assert.deepEqual(
+    sortedGuardianCancellation.args[1].map(approval => approval.keyCommitment),
+    twoGuardianApprovals.approvals.map(approval => approval.keyCommitment)
+  );
+
   livePendingRecovery = [
     recovery.oldValidatorsHash,
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
