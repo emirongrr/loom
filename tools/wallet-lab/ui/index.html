@@ -98,6 +98,10 @@
       </section>
 
       <section id="panel-deployment" class="workspace-panel" role="tabpanel" aria-labelledby="tab-deployment" hidden>
+        <div class="deployment-source-bar">
+          <label><span>Deployment</span><select id="deployment-source"><option value="local">Local deterministic run</option><option value="sepolia">Sepolia deployment</option></select></label>
+          <div id="deployment-verification" class="deployment-verification waiting" role="status" aria-live="polite"><strong>Local evidence</strong><span>Captured by the deterministic Wallet Lab run.</span></div>
+        </div>
         <article class="surface graph-surface">
           <div class="section-title"><div><p class="eyebrow">DEPLOYMENT TOPOLOGY</p><h2>Contracts and authority flow</h2></div><span>Click a contract to inspect its ABI</span></div>
           <div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div>

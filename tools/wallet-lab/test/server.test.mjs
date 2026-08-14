@@ -21,3 +21,14 @@ test("lab server exposes a validated no-store artifact and rejects traversal", a
   assert.equal((await response.json()).runId, "server-run");
   assert.equal((await fetch(`${listening.url}%2e%2e/package.json`)).status, 404);
 });
+
+test("lab server keeps Sepolia unavailable unless a startup-owned RPC is configured", async t => {
+  const dir = mkdtempSync(join(tmpdir(), "loom-wallet-lab-"));
+  const server = createWalletLabServer({ artifactPath: join(dir, "missing.json"), port: 0 });
+  const listening = await server.start();
+  t.after(() => server.stop());
+
+  const response = await fetch(`${listening.url}api/deployments/sepolia`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { status: "unavailable", message: "Sepolia deployment is not configured." });
+});

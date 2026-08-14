@@ -3,6 +3,8 @@ const $$ = selector => [...document.querySelectorAll(selector)];
 const EMPTY = "-";
 const state = {
   artifact: null,
+  sepoliaDeployment: null,
+  deploymentSource: "local",
   activeTab: "overview",
   selectedSpanId: null,
   selectedNetworkIndex: 0,
@@ -229,6 +231,32 @@ function evmTraceEvidence(events = []) {
   return [...events].reverse().find(event => event.phase === "evm-trace")?.payload ?? null;
 }
 
+function currentDeployment(events = state.artifact?.events ?? []) {
+  return state.deploymentSource === "sepolia" ? state.sepoliaDeployment?.deployment ?? null : deploymentEvidence(events);
+}
+
+function currentTrace(events = state.artifact?.events ?? []) {
+  return state.deploymentSource === "sepolia" ? null : evmTraceEvidence(events);
+}
+
+function renderDeploymentVerification() {
+  const root = $("#deployment-verification");
+  if (state.deploymentSource === "local") {
+    root.className = "deployment-verification waiting";
+    root.innerHTML = "<strong>Local evidence</strong><span>Captured by the deterministic Wallet Lab run.</span>";
+    return;
+  }
+  const report = state.sepoliaDeployment;
+  if (!report || report.status === "unavailable") {
+    root.className = "deployment-verification error";
+    root.innerHTML = "<strong>Sepolia unavailable</strong><span>Sepolia deployment is not configured. Start Wallet Lab with SEPOLIA_RPC_URL or --rpc-url.</span>";
+    return;
+  }
+  const verified = report.status === "verified";
+  root.className = `deployment-verification ${verified ? "success" : "error"}`;
+  root.innerHTML = `<strong>${verified ? "Verified on Sepolia" : "Deployment mismatch"}</strong><span>${escapeHtml(verified ? `${report.checks.length}/${report.checks.length} runtime code hashes match via ${report.endpointOrigin}.` : `${report.failures.length} manifest commitment${report.failures.length === 1 ? " does" : "s do"} not match the live chain.`)}</span>`;
+}
+
 function graphPositions(nodes) {
   const positions = {};
   const left = nodes.filter(node => ["protocol", "factory", "recovery"].includes(node.kind));
@@ -270,7 +298,8 @@ function renderDeploymentGraph(deployment) {
   const nodes = deployment.nodes.map(node => {
     const point = positions[node.id];
     const selected = node.id === state.selectedContractId ? " selected" : "";
-    return `<g class="graph-node ${escapeHtml(node.kind)}${selected}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${point.x - 130}" y="${point.y - 34}" width="260" height="68" rx="12"></rect><text class="node-kind" x="${point.x - 112}" y="${point.y - 10}">${escapeHtml(node.kind.toUpperCase())}</text><text class="node-name" x="${point.x - 112}" y="${point.y + 10}">${escapeHtml(node.name)}</text><text class="node-address" x="${point.x - 112}" y="${point.y + 27}">${escapeHtml(short(node.address, 8, 6))}</text></g>`;
+    const verification = node.verification ? ` / ${node.verification}` : "";
+    return `<g class="graph-node ${escapeHtml(node.kind)}${selected}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${point.x - 130}" y="${point.y - 34}" width="260" height="68" rx="12"></rect><text class="node-kind" x="${point.x - 112}" y="${point.y - 10}">${escapeHtml(node.kind.toUpperCase() + verification.toUpperCase())}</text><text class="node-name" x="${point.x - 112}" y="${point.y + 10}">${escapeHtml(node.name)}</text><text class="node-address" x="${point.x - 112}" y="${point.y + 27}">${escapeHtml(short(node.address, 8, 6))}</text></g>`;
   }).join("");
   root.innerHTML = `<svg viewBox="0 0 1200 520" role="img" aria-label="Loom deployment contract relationship graph"><defs><marker id="arrow-authority" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-call" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-create" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs>${edges}${nodes}</svg>`;
 }
@@ -310,7 +339,7 @@ function renderContractList(deployment) {
     return;
   }
   root.className = "contract-list";
-  root.innerHTML = nodes.map(node => `<button type="button" class="catalog-item${node.id === state.selectedContractId ? " selected" : ""}" data-contract-id="${escapeHtml(node.id)}"><span class="catalog-icon ${escapeHtml(node.kind)}">${escapeHtml(node.name.slice(0, 1))}</span><span><strong>${escapeHtml(node.name)}</strong><code>${escapeHtml(short(node.address, 8, 6))}</code></span><small>${escapeHtml(node.functions.length)} fn</small></button>`).join("");
+  root.innerHTML = nodes.map(node => `<button type="button" class="catalog-item${node.id === state.selectedContractId ? " selected" : ""}" data-contract-id="${escapeHtml(node.id)}"><span class="catalog-icon ${escapeHtml(node.kind)}">${escapeHtml(node.name.slice(0, 1))}</span><span><strong>${escapeHtml(node.name)}</strong><code>${escapeHtml(short(node.address, 8, 6))}</code></span><small>${node.verification ? escapeHtml(node.verification) : `${escapeHtml(node.functions.length)} fn`}</small></button>`).join("");
 }
 
 function renderFunctionList(contract) {
@@ -406,8 +435,8 @@ function renderEvmTrace(tracePayload) {
 }
 
 function renderDeployment(events = []) {
-  const deployment = deploymentEvidence(events);
-  const tracePayload = evmTraceEvidence(events);
+  const deployment = currentDeployment(events);
+  const tracePayload = currentTrace(events);
   if (deployment?.nodes?.length && !deployment.nodes.some(node => node.id === state.selectedContractId)) {
     state.selectedContractId = deployment.nodes.find(node => node.kind === "account")?.id ?? deployment.nodes[0].id;
     state.selectedFunctionSelector = null;
@@ -424,6 +453,11 @@ function renderDeployment(events = []) {
   renderFunctionList(contract);
   renderFunctionInspector(contract, fn, tracePayload);
   renderEvmTrace(tracePayload);
+  if (state.deploymentSource === "sepolia" && !tracePayload) {
+    $("#evm-trace").textContent = "Sepolia contracts are connected read-only. Select the local run to inspect a captured transaction trace.";
+  }
+  $("#contract-count").textContent = deployment?.nodes?.length ?? 0;
+  renderDeploymentVerification();
 }
 
 function switchTab(tab, focus = false) {
@@ -450,7 +484,7 @@ function render(artifact) {
   $("#metric-redaction").textContent = artifact.redaction.level;
   $("#timeline-count").textContent = artifact.events.length;
   $("#network-count").textContent = networkExchanges(artifact.events).length;
-  $("#contract-count").textContent = deploymentEvidence(artifact.events)?.nodes?.length ?? 0;
+  $("#contract-count").textContent = currentDeployment(artifact.events)?.nodes?.length ?? 0;
   $("#updated-at").textContent = artifact.finishedAt ? `Finished ${new Date(artifact.finishedAt).toLocaleTimeString()}` : "Live";
   renderEnvironment(artifact.environment);
   renderState(artifact.stateDiff);
@@ -501,20 +535,20 @@ $("#network-rows").addEventListener("click", event => {
 });
 
 $("#panel-deployment").addEventListener("click", event => {
-  if (!state.artifact) return;
+  const events = state.artifact?.events ?? [];
   const contractButton = event.target.closest("[data-contract-id]");
   if (contractButton) {
     state.selectedContractId = contractButton.dataset.contractId;
     state.selectedFunctionSelector = null;
     state.functionValues = {};
-    renderDeployment(state.artifact.events);
+    renderDeployment(events);
     return;
   }
   const functionButton = event.target.closest("[data-function-selector]");
   if (functionButton) {
     state.selectedFunctionSelector = functionButton.dataset.functionSelector;
     state.functionValues = {};
-    renderDeployment(state.artifact.events);
+    renderDeployment(events);
     return;
   }
   const traceButton = event.target.closest("[data-trace-contract]");
@@ -522,28 +556,36 @@ $("#panel-deployment").addEventListener("click", event => {
     state.selectedContractId = traceButton.dataset.traceContract;
     state.selectedFunctionSelector = traceButton.dataset.traceSelector || null;
     state.functionValues = {};
-    renderDeployment(state.artifact.events);
+    renderDeployment(events);
   }
 });
 
 $("#deployment-graph").addEventListener("keydown", event => {
   if (!["Enter", " "].includes(event.key)) return;
   const node = event.target.closest("[data-contract-id]");
-  if (!node || !state.artifact) return;
+  if (!node) return;
   event.preventDefault();
   state.selectedContractId = node.dataset.contractId;
   state.selectedFunctionSelector = null;
   state.functionValues = {};
-  renderDeployment(state.artifact.events);
+  renderDeployment(state.artifact?.events ?? []);
 });
 
 $("#function-inspector").addEventListener("change", event => {
-  if (!state.artifact) return;
+  const events = state.artifact?.events ?? [];
   if (event.target.id === "function-call-value") state.functionCallValue = event.target.value;
   if (event.target.dataset.argumentIndex !== undefined) state.functionValues[Number(event.target.dataset.argumentIndex)] = event.target.value;
-  const deployment = deploymentEvidence(state.artifact.events);
+  const deployment = currentDeployment(events);
   const contract = selectedContract(deployment);
-  renderFunctionInspector(contract, selectedFunction(contract), evmTraceEvidence(state.artifact.events));
+  renderFunctionInspector(contract, selectedFunction(contract), currentTrace(events));
+});
+
+$("#deployment-source").addEventListener("change", event => {
+  state.deploymentSource = event.target.value;
+  state.selectedContractId = null;
+  state.selectedFunctionSelector = null;
+  state.functionValues = {};
+  renderDeployment(state.artifact?.events ?? []);
 });
 
 for (const [selector, key, renderer] of [
@@ -554,7 +596,7 @@ for (const [selector, key, renderer] of [
 ]) {
   $(selector).addEventListener("input", event => {
     state[key] = event.target.value;
-    if (state.artifact) renderer(state.artifact.events);
+    if (state.artifact || renderer === renderDeployment) renderer(state.artifact?.events ?? []);
   });
 }
 
@@ -580,4 +622,15 @@ async function poll() {
   }
 }
 
+async function loadSepoliaDeployment() {
+  try {
+    const response = await fetch("/api/deployments/sepolia", { cache: "no-store" });
+    state.sepoliaDeployment = await response.json();
+  } catch {
+    state.sepoliaDeployment = { status: "unavailable" };
+  }
+  renderDeployment(state.artifact?.events ?? []);
+}
+
+loadSepoliaDeployment();
 poll();
