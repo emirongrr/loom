@@ -421,7 +421,13 @@ try {
     entryPoint,
     bundler: bundlerUrl,
     userOpHash: sentSecond.userOpHash,
-    payload: { method: "eth_sendUserOperation", independentlyComputedHash, bundlerHash: sentSecond.userOpHash }
+    payload: {
+      method: "eth_sendUserOperation",
+      userOperation: signedSecond.userOperation,
+      packedUserOperation: packedSecond,
+      independentlyComputedHash,
+      bundlerHash: sentSecond.userOpHash
+    }
   });
 
   const inclusionSpan = labRecorder?.begin({

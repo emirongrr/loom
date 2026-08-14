@@ -51,6 +51,7 @@ export type LabPhase =
   | "entrypoint-validation"
   | "execution"
   | "receipt"
+  | "network"
   | "state-after"
   | "finality"
   | "ui";

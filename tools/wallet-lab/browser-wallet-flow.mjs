@@ -169,12 +169,25 @@ export async function runBrowserWalletFlow(input) {
     let assertions = 0;
     cdp.on("WebAuthn.credentialAsserted", () => { assertions += 1; });
     const rpcExchanges = [];
-    page.on("response", async response => {
+    const responseCaptures = [];
+    page.on("response", response => {
       const request = response.request();
-      if (request.method() !== "POST" || request.url() !== browserBundlerUrl) return;
+      if (request.method() !== "POST" || ![browserRpcUrl, browserBundlerUrl].includes(request.url())) return;
       const body = jsonRpcBody(request);
       if (!body?.method) return;
-      try { rpcExchanges.push({ request: body, response: await response.json() }); } catch { /* Ignore non-JSON diagnostics. */ }
+      const capture = (async () => {
+        try {
+          rpcExchanges.push({
+            transport: request.url() === browserBundlerUrl ? "bundler" : "rpc",
+            endpoint: request.url(),
+            status: response.status(),
+            ok: response.ok(),
+            request: body,
+            response: await response.json()
+          });
+        } catch { /* Ignore non-JSON diagnostics. */ }
+      })();
+      responseCaptures.push(capture);
     });
 
     const uiSpan = recorder?.begin({
@@ -245,6 +258,7 @@ export async function runBrowserWalletFlow(input) {
     await page.getByRole("button", { name: "Sign & send with passkey" }).click();
     if (intentSpan) recorder.finish(intentSpan, { status: "success", chainId: deployment.chainId, account: account.account });
     await page.getByText("Sent ETH", { exact: true }).waitFor({ timeout: 60_000 });
+    await Promise.all(responseCaptures);
     if (passkeySpan) recorder.finish(passkeySpan, {
       status: "success",
       chainId: deployment.chainId,
@@ -272,7 +286,13 @@ export async function runBrowserWalletFlow(input) {
       entryPoint: deployment.entryPoint,
       bundler: bundlerUrl,
       userOpHash,
-      payload: { independentHash, bundlerHash: userOpHash }
+      payload: {
+        method: "eth_sendUserOperation",
+        userOperation,
+        packedUserOperation: packUserOperation(userOperation),
+        independentHash,
+        bundlerHash: userOpHash
+      }
     });
     const receipt = rpcExchanges.filter(exchange => exchange.request.method === "eth_getUserOperationReceipt" && exchange.response?.result?.userOpHash === userOpHash).at(-1)?.response.result;
     assert.ok(receipt, "browser did not receive its transfer UserOperation receipt");
@@ -333,6 +353,19 @@ export async function runBrowserWalletFlow(input) {
         screenshot: ".loom/wallet-lab/wallet-example.png",
         browserTrace: ".loom/wallet-lab/browser-trace.zip"
       }
+    });
+    const networkSpan = recorder?.begin({
+      component: "rpc",
+      phase: "network",
+      explanation: "Captured the browser wallet's local RPC and bundler JSON-RPC exchanges for this deterministic run.",
+      payload: { exchanges: rpcExchanges }
+    });
+    if (networkSpan) recorder.finish(networkSpan, {
+      status: "success",
+      chainId: deployment.chainId,
+      account: account.account,
+      bundler: bundlerUrl,
+      payload: { exchanges: rpcExchanges }
     });
     await page.screenshot({ path: join(browserOutput, "wallet-example.png"), fullPage: true });
     await context.tracing.stop({ path: join(browserOutput, "browser-trace.zip") });
