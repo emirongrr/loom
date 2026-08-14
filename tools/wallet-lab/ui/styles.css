@@ -132,6 +132,12 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .empty, .empty-state { color: var(--muted); }
 .empty-state { padding: 3rem; border: 1px dashed var(--line-strong); border-radius: 14px; text-align: center; }
 .graph-surface { overflow: hidden; }
+.deployment-source-bar { display: flex; align-items: stretch; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; padding: .75rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.deployment-source-bar label { width: min(320px, 100%); }
+.deployment-source-bar label > span { display: block; margin: 0 0 .35rem .15rem; color: var(--muted); font: 600 .62rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; }
+.deployment-verification { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: .55rem .75rem; border: 1px solid currentColor; border-radius: 9px; background: var(--surface-soft); }
+.deployment-verification strong { font-size: .76rem; }
+.deployment-verification span { margin-top: .25rem; color: var(--muted); font-size: .68rem; line-height: 1.4; }
 .deployment-graph { min-height: 420px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(circle at 50% 45%, #132019, #090d0b 65%); }
 .deployment-graph svg { display: block; min-width: 920px; width: 100%; height: auto; }
 .graph-edge path { fill: none; stroke-width: 1.5; opacity: .72; }
@@ -238,6 +244,7 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 }
 
 @media (max-width: 640px) {
+  .deployment-source-bar { flex-direction: column; }
   .masthead { align-items: flex-start; flex-direction: column; gap: 1rem; padding-top: 1.25rem; }
   .run-identity { width: 100%; align-items: flex-start; justify-content: space-between; }
   .run-identity p { white-space: normal; }

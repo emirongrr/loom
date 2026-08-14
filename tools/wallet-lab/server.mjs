@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertWalletLabArtifact } from "./dist/index.js";
+import { inspectSepoliaDeployment } from "./sepolia-deployment.mjs";
 
 const uiRoot = fileURLToPath(new URL("./ui/", import.meta.url));
 const mime = Object.freeze({ ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" });
@@ -13,9 +14,19 @@ function safeUiPath(pathname) {
   return resolved.startsWith(uiRoot) ? resolved : null;
 }
 
-export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port = 4173 } = {}) {
+export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port = 4173, sepolia } = {}) {
   if (!artifactPath) throw new Error("wallet lab artifact path is required");
-  const server = createServer((request, response) => {
+  let sepoliaInspection;
+  const inspectSepolia = () => {
+    if (!sepoliaInspection) {
+      sepoliaInspection = inspectSepoliaDeployment(sepolia).catch(error => {
+        sepoliaInspection = undefined;
+        throw error;
+      });
+    }
+    return sepoliaInspection;
+  };
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${host}:${port}`);
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
@@ -44,6 +55,23 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
       } catch (error) {
         response.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({ error: "artifact-invalid", message: String(error?.message ?? error) }));
+      }
+      return;
+    }
+    if (url.pathname === "/api/deployments/sepolia") {
+      response.setHeader("content-type", "application/json");
+      response.setHeader("cache-control", "no-store");
+      if (!sepolia) {
+        response.writeHead(503);
+        response.end(JSON.stringify({ status: "unavailable", message: "Sepolia deployment is not configured." }));
+        return;
+      }
+      try {
+        response.writeHead(200);
+        response.end(JSON.stringify(await inspectSepolia()));
+      } catch {
+        response.writeHead(502);
+        response.end(JSON.stringify({ status: "unavailable", message: "Sepolia deployment verification could not be completed." }));
       }
       return;
     }

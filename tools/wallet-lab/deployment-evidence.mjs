@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { keccak256, stringToHex } from "viem";
 
@@ -14,6 +14,9 @@ const ARTIFACTS = Object.freeze({
   ExactCallSessionValidator: ["out", "ExactCallSessionValidator.sol", "ExactCallSessionValidator.json"],
   GranularSessionValidator: ["out", "GranularSessionValidator.sol", "GranularSessionValidator.json"],
   RecoveryManager: ["out", "RecoveryManager.sol", "RecoveryManager.json"],
+  ECDSAGuardianVerifier: ["out", "ECDSAGuardianVerifier.sol", "ECDSAGuardianVerifier.json"],
+  P256GuardianVerifier: ["out", "P256GuardianVerifier.sol", "P256GuardianVerifier.json"],
+  ERC1271GuardianVerifier: ["out", "ERC1271GuardianVerifier.sol", "ERC1271GuardianVerifier.json"],
   DevnetTarget: ["out", "DeployDevnet.s.sol", "DevnetTarget.json"]
 });
 
@@ -78,28 +81,39 @@ function relationship(from, to, kind, label) {
 export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, account }) {
   const nodes = Object.entries(addresses).map(([name, address]) => {
     const artifactParts = ARTIFACTS[name];
-    const artifact = artifactParts ? JSON.parse(readFileSync(join(repoRoot, ...artifactParts), "utf8")) : null;
+    const artifactPath = artifactParts ? join(repoRoot, ...artifactParts) : null;
+    const artifact = artifactPath && existsSync(artifactPath) ? JSON.parse(readFileSync(artifactPath, "utf8")) : null;
     return {
       id: name,
       name,
       address,
       runtimeCodeHash: codeHashes[name] ?? null,
-      kind: name === "EntryPoint" ? "protocol" : name.includes("Factory") ? "factory" : name.includes("Validator") ? "validator" : name.includes("Hook") ? "hook" : name === "RecoveryManager" ? "recovery" : "contract",
+      kind: name === "EntryPoint" ? "protocol" : name === "LoomAccount" ? "account" : name.includes("Factory") ? "factory" : name.includes("Validator") ? "validator" : name.includes("Hook") ? "hook" : name === "RecoveryManager" ? "recovery" : "contract",
       functions: artifact ? catalogFunctions(name, artifact.abi ?? []) : []
     };
   });
   if (account) {
-    const accountArtifact = JSON.parse(readFileSync(join(repoRoot, ...ARTIFACTS.LoomAccount), "utf8"));
+    const accountArtifactPath = join(repoRoot, ...ARTIFACTS.LoomAccount);
+    const accountArtifact = existsSync(accountArtifactPath) ? JSON.parse(readFileSync(accountArtifactPath, "utf8")) : null;
     nodes.push({
       id: "ObservedAccount",
       name: "Observed Loom account",
       address: account,
       runtimeCodeHash: null,
       kind: "account",
-      functions: catalogFunctions("LoomAccount", accountArtifact.abi ?? [])
+      functions: accountArtifact ? catalogFunctions("LoomAccount", accountArtifact.abi ?? []) : []
     });
   }
   const edges = [
+    relationship("LoomAccountFactory", "LoomAccount", "creates", "CREATE2 proxy / immutable implementation"),
+    relationship("EntryPoint", "LoomAccount", "invokes", "validateUserOp / execute"),
+    relationship("LoomAccount", "P256Validator", "validates-with", "WebAuthn P-256 authority"),
+    relationship("LoomAccount", "PolicyHook", "guarded-by", "pre/post execution policy"),
+    relationship("RecoveryManager", "LoomAccount", "recovers", "delayed validator replacement"),
+    relationship("ECDSAGuardianVerifier", "RecoveryManager", "approves", "ECDSA guardian proof"),
+    relationship("P256GuardianVerifier", "RecoveryManager", "approves", "P-256 guardian proof"),
+    relationship("ERC1271GuardianVerifier", "RecoveryManager", "approves", "contract guardian proof"),
+    relationship("P256RecoveryValidatorFactory", "P256Validator", "creates", "recovered passkey validator"),
     relationship("LoomAccountFactory", "ObservedAccount", "creates", "CREATE2 immutable proxy"),
     relationship("ObservedAccount", "LoomAccount", "delegates", "immutable implementation"),
     relationship("EntryPoint", "ObservedAccount", "invokes", "validateUserOp / execute"),
