@@ -127,7 +127,15 @@ export function removeSync(path) {
   }
 }
 
-export async function up() {
+export function devnetAnvilArguments({ stepsTracing = false } = {}) {
+  return [
+    "--port", String(versions.ports.rpc),
+    "--chain-id", String(versions.chainId),
+    ...(stepsTracing ? ["--steps-tracing"] : [])
+  ];
+}
+
+export async function up(options = {}) {
   const existing = readState();
   if (existing) {
     // A crash or hard kill can leave the state file behind with nothing
@@ -150,7 +158,7 @@ export async function up() {
   const anvilPid = spawnLogged(
     "anvil",
     bin("anvil"),
-    ["--port", String(versions.ports.rpc), "--chain-id", String(versions.chainId)],
+    devnetAnvilArguments(options),
     "anvil"
   );
   await waitFor("anvil", () => rpc(rpcUrl, "eth_chainId", []));

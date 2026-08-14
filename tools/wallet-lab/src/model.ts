@@ -36,6 +36,7 @@ export type LabComponent =
 
 export type LabPhase =
   | "environment"
+  | "deployment"
   | "intent"
   | "account-resolution"
   | "manifest-verification"
@@ -50,6 +51,7 @@ export type LabPhase =
   | "inclusion"
   | "entrypoint-validation"
   | "execution"
+  | "evm-trace"
   | "receipt"
   | "network"
   | "state-after"
