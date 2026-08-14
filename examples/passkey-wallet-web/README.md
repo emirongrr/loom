@@ -2,7 +2,7 @@
 
 A production-shaped, security-first reference wallet for Loom. It demonstrates a passkey owner, live balances and transfers, private guardian capabilities, guardian set management under the account's own timelock, and guardian-initiated emergency freeze — without requiring a Loom-hosted service.
 
-This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings. Guardian setup and emergency freeze run against live chain state through `@loom/sdk/recovery`. Executing a guardian recovery is not part of this example: it needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) records as a separate contract change.
+This is pre-audit reference software, not a recommendation to hold production funds. Balances, token and collectible holdings, transfers, and account history are live by default over public Sepolia, Pimlico, and Blockscout endpoints, all overridable in Developer settings. Guardian setup, emergency freeze, and guardian recovery all run against live chain state through `@loom/sdk/recovery`. Recovery provisions its replacement validator through the permissionless factory in [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md); a deployment that does not publish one stops safely at `UNSUPPORTED_RECOVERED_VALIDATOR_PATH` before any passkey, request, or transaction exists.
 
 ## What this example proves
 
@@ -80,7 +80,7 @@ sequenceDiagram
 
 ## Sending and sessions
 
-Home exposes Receive, Send, and Refresh, and activates an account that does not exist on chain yet. Send moves ETH, ERC-20 tokens, and ERC-721/1155 collectibles; each transfer is encoded from the chosen asset and signed by the passkey, and the recipient and amount are validated before signing. Nothing is described as simulated or confirmed on the strength of encoding alone.
+Home exposes Receive, Send, and Refresh, and activates an account that does not exist on chain yet. Receive opens a sheet with a locally drawn QR code, the full checksummed address, copy and native share, the selected network with its chain id, and a wrong-network warning. The code encodes the bare address because every scanner accepts one; a chain-bound EIP-681 link sits behind progressive disclosure. Send moves ETH, ERC-20 tokens, and ERC-721/1155 collectibles; each transfer is encoded from the chosen asset and signed by the passkey, and the recipient and amount are validated before signing. Nothing is described as simulated or confirmed on the strength of encoding alone.
 
 Apps lists connected applications and bounded permissions: allowed targets/selectors, assets and spending limits, expiry, usage count, and immediate revocation. Application sessions never receive owner authority.
 
@@ -149,9 +149,13 @@ sequenceDiagram
   A-->>W: Receipt and updated frozen state
 ```
 
-## Recovery room (design, not implemented here)
+## Recovery and guardian approval
 
-This section records the intended shape of a guardian recovery flow. **This example does not implement it**: executing a recovery needs a compatible uninstalled validator, which [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) defers to a separate contract change. What the example does implement is guardian set management and guardian-initiated freeze, both against live chain state.
+The example implements this flow end to end against live chain state: creating the replacement passkey, publishing its validator through the permissionless factory, collecting guardian approvals, proposing on chain, waiting out the contract delay, and executing.
+
+A guardian can also discover a request instead of being sent one. Where a deployment publishes a `recoveryIntentBoard` ([ADR-0024](../../docs/decisions/0024-recovery-intent-board.md)), the workspace queries it for the accounts already in the local vault — the query set comes from held capabilities, so the chain is never asked which accounts a person guards. A request is labelled verified only when its announced parameters re-derive against the account's live root, threshold, config version, and validator set; anything else is an unverified lead with no review action.
+
+Approving offers an explicit choice. Sharing the signed response privately stays the default. Publishing it on chain is a second, warned step: it is permanent, and an abandoned or cancelled recovery leaves the guardian exposed against a guardian set that is still in use, because nothing rotates. Both produce the same approval, so the privacy choice costs no interoperability, and losing the board removes only discovery.
 
 Recovery requests bind the same account, chain, current root/config version, replacement credential/validator, expiry, and replay-resistant nonce. An implementation may derive a 64-bit grouped comparison code from that exact proposal digest and compare it over a separate trusted channel — derived from the live digest, never from a fixed value.
 
@@ -234,7 +238,7 @@ Relays transport already-authorized operations. They can censor, delay, observe 
 
 ## Security limitations and browser compatibility
 
-Balances and transfers are read and submitted over the configured RPC and bundler, and holdings and history come from the configured block explorer's index (public endpoints by default). An explorer index is not a trust anchor: it can omit or mislabel history, so it is presented as history only and never as account authority or as the source of a balance. Guardian changes are scheduled through the account's own timelock and freezes are verified against the account's live configuration before submission; the recovery-progress screen remains illustrative reference behavior, not chain evidence. The guardian roster is the only copy of who your guardians are — losing it does not lose the account or its recovery, but it does lose the ability to edit the set from that device. The default public endpoints are rate-limited and best-effort — a production integrator points them at owned infrastructure, wires `createGuardianRecoveryClient` to independent state and submit transports, replaces the memory mailbox, performs real WebAuthn ceremonies, and provides authenticated relay operations. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, a malicious RPC, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
+Balances and transfers are read and submitted over the configured RPC and bundler, and holdings and history come from the configured block explorer's index (public endpoints by default). An explorer index is not a trust anchor: it can omit or mislabel history, so it is presented as history only and never as account authority or as the source of a balance. Guardian changes are scheduled through the account's own timelock and freezes are verified against the account's live configuration before submission; recovery progress is read from the recovery manager and the intent board rather than assumed, and a board log is treated as a hint to re-verify rather than as evidence. The guardian roster is the only copy of who your guardians are — losing it does not lose the account or its recovery, but it does lose the ability to edit the set from that device. The default public endpoints are rate-limited and best-effort — a production integrator points them at owned infrastructure, wires `createGuardianRecoveryClient` to independent state and submit transports, replaces the memory mailbox, performs real WebAuthn ceremonies, and provides authenticated relay operations. IndexedDB encryption is not hardware-backed isolation. Browser extensions, XSS, compromised dependencies, a malicious RPC, address poisoning, stale roots, concurrent recoveries, reorgs, and ERC-1271 surprises remain explicit threat-model items.
 
 Current Chromium, Safari, and Firefox can run the shell, but authenticator support differs by OS/browser. Test discoverable credentials, UV behavior, synced-passkey policy, PRF availability, and WebAuthn cancellation on every supported combination.
 
