@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { createGuardianInvite, createGuardianSet } from "@loom/sdk/recovery";
 import { AppServicesProvider, type AppServices } from "../../src/app/AppServices.tsx";
+import { NetworkProvider } from "../../src/config/NetworkContext.tsx";
 import { GuardianWorkspace } from "../../src/features/guardians/GuardianWorkspace.tsx";
 import type { GuardianVaultSnapshot } from "../../src/storage/guardianVault.ts";
 import type { AccountHandle } from "../../src/types.ts";
@@ -77,13 +78,13 @@ test("switching wallets clears the previous guardian relationships before loadin
   } as AppServices;
 
   const view = render(
-    <AppServicesProvider services={services}><GuardianWorkspace account={first} /></AppServicesProvider>
+    <NetworkProvider><AppServicesProvider services={services}><GuardianWorkspace account={first} /></AppServicesProvider></NetworkProvider>
   );
   await screen.findByText(/^0xaaaa…aaaa$/iu);
   expect(screen.queryByText("Protected A")).toBeNull();
 
   view.rerender(
-    <AppServicesProvider services={services}><GuardianWorkspace account={second} /></AppServicesProvider>
+    <NetworkProvider><AppServicesProvider services={services}><GuardianWorkspace account={second} /></AppServicesProvider></NetworkProvider>
   );
   await waitFor(() => { expect(screen.queryByText(/^0xaaaa…aaaa$/iu)).toBeNull(); });
 

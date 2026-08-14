@@ -13,6 +13,11 @@ import { safeUserMessage } from "../../domain/errors/appError";
 import { guardianVaultRecordsForAccount, reviewableGuardianCapabilitiesForAccount } from "../../storage/guardianVaultScope";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
 import { RecoveryApprovalDialog } from "./RecoveryApprovalDialog";
+import { useNetwork } from "../../config/NetworkContext";
+import { createRecoveryLogTransport } from "../../transports/recoveryLogs";
+import { createAccountGuardianClient } from "../security/guardianClient";
+import { discoverGuardianRecoveryRequests } from "./guardianDiscovery";
+import type { DiscoveredRequestView } from "./discoveredRequests";
 
 export function GuardianWorkspace({ account, inboundLink = "" }: { readonly account: AccountHandle; readonly inboundLink?: string }) {
   const services = useAppServices();
@@ -23,7 +28,14 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
   const [recoveryArtifact, setRecoveryArtifact] = useState("");
-  const [approving, setApproving] = useState<{ readonly request: RecoveryRequestV1; readonly capability: GuardianInviteV1 } | null>(null);
+  const [approving, setApproving] = useState<{ readonly request: RecoveryRequestV1; readonly capability: GuardianInviteV1; readonly alreadyPublished?: boolean } | null>(null);
+  const { config } = useNetwork();
+  const [discovery, setDiscovery] = useState<{
+    readonly status: "idle" | "checking" | "done";
+    readonly requests: readonly DiscoveredRequestView[];
+    readonly rolledBack: readonly string[];
+    readonly unavailable?: string;
+  }>({ status: "idle", requests: [], rolledBack: [] });
   const refresh = () => services.guardianVault.inspect(account)
     .then(snapshot => { setRecords(snapshot.records); setIssues(snapshot.issues); })
     .catch(error => setMessage(safeUserMessage(error, "Guardian vault unavailable.", "storage")));
@@ -86,6 +98,51 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
   };
   const visibleRecords = guardianVaultRecordsForAccount(records, account);
   const reviewableRecords = reviewableGuardianCapabilitiesForAccount(records, account, Math.floor(services.now() / 1000));
+
+  /**
+   * Ask the board about the accounts this wallet already protects. The query set
+   * comes from the local vault, so the chain is never asked which accounts this
+   * person guards, and a failure here only removes a convenience: the paste and
+   * bearer-link paths below stay available.
+   */
+  const checkForRequests = async () => {
+    if (!deployment) return;
+    setDiscovery(current => ({ ...current, status: "checking" }));
+    try {
+      const result = await discoverGuardianRecoveryRequests({
+        capabilities: reviewableRecords.map(record => record.capability),
+        ...(deployment.recoveryIntentBoard ? { board: deployment.recoveryIntentBoard } : {}),
+        ...(deployment.recoveryModule ? { recoveryManager: deployment.recoveryModule } : {}),
+        chainId: deployment.chainId,
+        logTransport: createRecoveryLogTransport(config, services.publicClients),
+        inspect: async protectedAccount => {
+          const client = createAccountGuardianClient({
+            config, chainId: deployment.chainId, account: protectedAccount,
+            recoveryManager: deployment.recoveryModule!, publicClients: services.publicClients,
+            ...(deployment.recoveryValidatorProvisioner ? { recoveryValidatorProvisioner: deployment.recoveryValidatorProvisioner } : {}),
+            ...(deployment.policyHook ? { policyHook: deployment.policyHook } : {})
+          });
+          const live = await client.inspectAccount();
+          return {
+            guardianRoot: live.guardianRoot,
+            guardianThreshold: live.guardianThreshold,
+            configVersion: live.configVersion,
+            validators: live.validators,
+            recoveryConfigured: live.recoveryConfigured
+          };
+        },
+        now: Math.floor(services.now() / 1000)
+      });
+      setDiscovery({
+        status: "done",
+        requests: result.requests,
+        rolledBack: result.rolledBack,
+        ...(result.unavailable === undefined ? {} : { unavailable: result.unavailable })
+      });
+    } catch {
+      setDiscovery({ status: "done", requests: [], rolledBack: [], unavailable: "Recovery requests could not be read from the network. Paste a request or bearer link instead." });
+    }
+  };
   const reviewRecovery = async () => {
     try {
       const request = recoveryArtifact.trim().startsWith("{")
@@ -108,6 +165,38 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
       <details><summary>Advanced / portable file fallback</summary><p>Paste a versioned JSON capability exported from an independent wallet. It contains only your proof, never the full guardian set.</p></details>
       {message && <p className="toast" role="status">{message}</p>}
     </section>
+    {reviewableRecords.length > 0 && <section className="section-card" aria-labelledby="discovered-requests-heading">
+      <div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2 id="discovered-requests-heading">Requests for accounts you protect</h2></div><span className="pill">{discovery.requests.length}</span></div>
+      <p>Checked against the accounts in your local list only. Nothing on chain records who you protect.</p>
+      {discovery.rolledBack.length > 0 && <p className="callout warning" role="status"><strong>A published approval was rolled back.</strong> {discovery.rolledBack.length} approval(s) disappeared after a chain reorganisation, so the counts below are lower than what you saw before.</p>}
+      {discovery.unavailable && <p className="callout warning" role="status">{discovery.unavailable}</p>}
+      {discovery.status === "done" && discovery.requests.length === 0 && !discovery.unavailable && <p className="form-note">No recovery request was found for the accounts you protect.</p>}
+      <ul className="wallet-list discovered-request-list">
+        {discovery.requests.map(view => <li key={view.key}>
+          <article className="section-card discovered-request">
+            <div className="section-heading">
+              <div><p className="eyebrow">{shorten(view.account)}</p><h3>{view.trust === "verified" ? "Recovery request verified" : "Possible recovery request"}</h3></div>
+              <span className={`pill ${view.trust === "verified" ? "included" : "pending"}`}>{view.trust === "verified" ? "Verified against chain" : "Unverified"}</span>
+            </div>
+            <div className="permission-grid">
+              <div><span>Published approvals</span><strong>{view.publishedApprovals} of {view.threshold}</strong></div>
+              {view.expiresAt !== undefined && <div><span>Expires</span><strong>{new Date(view.expiresAt * 1000).toLocaleString()}</strong></div>}
+            </div>
+            {view.trust === "verified"
+              ? <p className="form-note">The announced request matches this account's live guardian configuration. Compare the six-digit code with the person recovering it before you approve.</p>
+              : <p className="callout warning">{view.issue}</p>}
+            {view.alreadyPublishedByMe && <p className="form-note">You have already published an approval for this request.</p>}
+            {view.trust === "verified" && view.request && <button className="primary" onClick={() => {
+              const record = reviewableRecords.find(candidate => candidate.capability.capabilityId === view.capabilityId);
+              if (record) setApproving({ request: view.request!, capability: record.capability, alreadyPublished: view.alreadyPublishedByMe });
+            }}>Review request</button>}
+          </article>
+        </li>)}
+      </ul>
+      <button className="secondary" disabled={discovery.status === "checking" || !deployment} onClick={() => void checkForRequests()}>
+        {discovery.status === "checking" ? "Checking the chain…" : "Check for recovery requests"}
+      </button>
+    </section>}
     {reviewableRecords.length > 0 && <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the request or bearer link sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p><label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim()} onClick={() => void reviewRecovery()}>Review recovery request</button></section>}
     {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
