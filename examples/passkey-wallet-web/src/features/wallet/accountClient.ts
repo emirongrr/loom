@@ -62,6 +62,17 @@ export async function submitAccountCalls(input: {
   account: AccountHandle;
   deployment: WalletDeployment;
   calls: readonly AccountCall[];
+  /**
+   * Creation data for an account that does not exist yet, so its first send
+   * creates it and moves the money in one operation instead of two.
+   *
+   * Creation runs in the validation phase, ahead of the calls, so a reverting
+   * transfer does not undo it: a failed first send leaves an account that exists
+   * and a transfer that did not happen. `confirmUserOperationReceipt` rejects
+   * `success = false`, so that surfaces as a failure and never as a send.
+   * Measured on a devnet by `tools/e2e/devnet-atomic-first-send.mjs`.
+   */
+  activation?: { readonly factory: Address; readonly factoryData: Hex };
   onState?: AccountOperationObserver;
   pendingOperations: PendingOperationStore;
   runtime: RuntimeVerifier;
@@ -98,6 +109,16 @@ export async function submitAccountCalls(input: {
       verificationPublicClient: publicClients.forEndpoint(config.verificationRpcUrl)
     });
     release = await acquireAccountOperation(account.id, pendingOperations);
+
+    // Re-read deployment immediately before building the operation. If the
+    // account was created since the balance read, carrying creation data would
+    // make the EntryPoint reject the whole send, so it is dropped instead.
+    let activation = input.activation;
+    if (activation) {
+      const code = await publicClients.forEndpoint(config.rpcUrl).getCode({ address: account.account });
+      if (code && code !== "0x") activation = undefined;
+    }
+
     emit({ type: "PREPARE" });
     const signer = createPasskeySigner({
       credentialId: account.credentialId,
@@ -145,7 +166,8 @@ export async function submitAccountCalls(input: {
     });
 
     const result = await client.sendTransaction(
-      { calls: calls.map(call => ({ target: call.target, value: call.value, data: call.data })) }
+      { calls: calls.map(call => ({ target: call.target, value: call.value, data: call.data })) },
+      activation ? { factory: activation.factory, factoryData: activation.factoryData } : undefined
     );
     const transactionHash = await confirmUserOperationReceipt({
       receipt: result.receipt,

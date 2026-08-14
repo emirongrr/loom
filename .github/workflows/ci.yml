@@ -101,6 +101,10 @@ jobs:
         run: |
           set -o pipefail
           npm run e2e:intent-board 2>&1 | tee artifacts/devnet/intent-board.log
+      - name: Atomic first send devnet
+        run: |
+          set -o pipefail
+          npm run e2e:atomic-first-send 2>&1 | tee artifacts/devnet/atomic-first-send.log
       - name: Upload devnet evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
