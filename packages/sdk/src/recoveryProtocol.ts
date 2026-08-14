@@ -114,6 +114,39 @@ export function serializeRecoveryProtocol(value: RecoveryRequestV1 | RecoveryRes
   return canonicalJson(value);
 }
 
+/**
+ * Project an off-chain guardian response onto the approval tuple
+ * `RecoveryManager.proposeRecovery` accepts.
+ *
+ * This is what makes the two guardian choices interoperable rather than merely
+ * parallel: a guardian who signs and shares privately and a guardian who
+ * publishes on-chain sign the same digest and produce the same tuple, so a
+ * bundle may mix them freely. `createRecoveryIntentBoardReader` yields the same
+ * shape from a log, and both remain unverified until the recovery client
+ * revalidates them against live guardian state.
+ *
+ * Callers must not treat the result as verified. It is a re-encoding of
+ * attacker-supplied data.
+ */
+export function recoveryApprovalFromResponse(response: RecoveryResponseV1): {
+  readonly verifier: Address;
+  readonly keyCommitment: Hex;
+  readonly salt: Hex;
+  readonly signature: Hex;
+  readonly proof: readonly Hex[];
+  readonly leaf: Hex;
+} {
+  const parsed = normalizeResponse(response, true);
+  return Object.freeze({
+    verifier: parsed.verifier,
+    keyCommitment: parsed.keyCommitment,
+    salt: parsed.salt,
+    signature: parsed.signature,
+    proof: parsed.proof,
+    leaf: parsed.guardianLeaf
+  });
+}
+
 export function humanRecoveryCode(requestId: Hex): string {
   const value = BigInt(bytes32(requestId, "request id")) % 1_000_000n;
   return value.toString().padStart(6, "0");
