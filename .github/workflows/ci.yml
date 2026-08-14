@@ -62,6 +62,8 @@ jobs:
         run: npm run example:web:test
       - name: Test monitoring component
         run: npm run monitoring:test
+      - name: Test Wallet Lab artifact and local server boundaries
+        run: npm run wallet-lab:test
       - name: Prepare devnet evidence
         run: |
           mkdir -p artifacts/devnet
@@ -85,10 +87,19 @@ jobs:
           cp broadcast/DeployDevnet.s.sol/31337/run-latest.json artifacts/devnet/deployment-broadcast.json
           cp broadcast/DevnetAccountLifecycle.s.sol/31337/run-latest.json artifacts/devnet/account-lifecycle-broadcast.json
       - name: Bundler-in-the-loop devnet
+        env:
+          LOOM_WALLET_LAB_ARTIFACT: artifacts/devnet/wallet-lab-run.json
+          LOOM_WALLET_LAB_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          LOOM_WALLET_LAB_GIT_COMMIT: ${{ github.sha }}
+          LOOM_WALLET_LAB_GIT_DIRTY: "false"
+          LOOM_WALLET_LAB_BROWSER_FLOW: "true"
         run: |
           set -o pipefail
+          export LOOM_WALLET_LAB_TRACE_ID="${GITHUB_SHA:0:32}"
           npm run e2e:bundler-devnet 2>&1 | tee artifacts/devnet/bundler-devnet.log
           cp .loom/devnet/alto.log artifacts/devnet/alto.log || true
+          cp .loom/wallet-lab/*.png artifacts/devnet/ || true
+          cp .loom/wallet-lab/*.zip artifacts/devnet/ || true
       - name: Guardian freeze and recovery devnet
         run: |
           set -o pipefail
