@@ -185,6 +185,7 @@
         "type": "t_mapping(t_address,t_uint64)"
       }
     ],
+    "src/recovery/RecoveryIntentBoard.sol:RecoveryIntentBoard": [],
     "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule": [
       {
         "label": "pendingSyncs",

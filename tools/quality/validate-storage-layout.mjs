@@ -38,12 +38,19 @@ const snapshotPath = join(root, "storage-layout.json");
 // Contracts whose slot assignment is depended on from outside their own source:
 // the account across implementation generations, and every singleton that keys
 // live user state by account address.
+//
+// `RecoveryIntentBoard` is pinned for the opposite reason: its layout must stay
+// *empty*. ADR-0024 accepts a permissionless, unauthenticated `announce` only
+// because the contract has no storage for a griefer to grow, so the first slot
+// it gains would silently invalidate that argument. Pinning it here makes that
+// regression a gate failure rather than a review oversight.
 export const PINNED_CONTRACTS = Object.freeze([
   "src/LoomAccount.sol:LoomAccount",
   "src/keystore/LoomKeystore.sol:LoomKeystore",
   "src/hooks/PolicyHook.sol:PolicyHook",
   "src/hooks/VaultHook.sol:VaultHook",
   "src/recovery/RecoveryManager.sol:RecoveryManager",
+  "src/recovery/RecoveryIntentBoard.sol:RecoveryIntentBoard",
   "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule",
   "src/validators/ECDSAValidator.sol:ECDSAValidator",
   "src/validators/P256Validator.sol:P256Validator",

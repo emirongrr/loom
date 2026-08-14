@@ -1125,6 +1125,70 @@
         "UnauthorizedCancellation()": "0xe3dfba46"
       }
     },
+    "src/recovery/RecoveryIntentBoard.sol:RecoveryIntentBoard": {
+      "functions": {
+        "MAX_SIGNATURE_BYTES()": "0x31e8cf56",
+        "announce(address,address,bytes32,address,bytes32,bytes32,uint8,uint48)": "0x8f52bc93",
+        "publishApproval(address,address,bytes32,address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x42502236"
+      },
+      "functionOutputs": {
+        "MAX_SIGNATURE_BYTES()": [
+          "uint256"
+        ],
+        "announce(address,address,bytes32,address,bytes32,bytes32,uint8,uint48)": [
+          "bytes32"
+        ],
+        "publishApproval(address,address,bytes32,address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": [
+          "bytes32"
+        ]
+      },
+      "functionMutability": {
+        "MAX_SIGNATURE_BYTES()": "view",
+        "announce(address,address,bytes32,address,bytes32,bytes32,uint8,uint48)": "nonpayable",
+        "publishApproval(address,address,bytes32,address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable"
+      },
+      "events": {
+        "RecoveryAnnounced(address,bytes32,address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64,uint48)": "0xd3e02ac6697fe40bd485e5fddbe5eb9042e5dcdc38565954e37fe000249254d2",
+        "RecoveryApprovalPublished(address,bytes32,bytes32,address,address,bytes32,bytes32,bytes,bytes32[])": "0xdd52e44476d54a2b9bd57ae1ba988b6001f58be4f32d8db5df29ad505fe6b7c4"
+      },
+      "eventLayouts": {
+        "RecoveryAnnounced(address,bytes32,address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64,uint48)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        "RecoveryApprovalPublished(address,bytes32,bytes32,address,address,bytes32,bytes32,bytes,bytes32[])": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      },
+      "errors": {
+        "InvalidApproval()": "0x1f3e0de8",
+        "SignatureTooLarge()": "0x26e27838",
+        "SingleApprovalRequired()": "0x08d686b9"
+      }
+    },
     "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule": {
       "functions": {
         "APP_ACCOUNT_LEAF_TYPEHASH()": "0xf259d135",
