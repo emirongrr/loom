@@ -21,6 +21,7 @@ import { createTraceRecorder, nativeTransferScenario } from "../wallet-lab/dist/
 import { writeWalletLabArtifact } from "../wallet-lab/node-artifact.mjs";
 import { deterministicTestPasskey } from "../wallet-lab/test-passkey.mjs";
 import { runBrowserWalletFlow } from "../wallet-lab/browser-wallet-flow.mjs";
+import { buildDeploymentEvidence, compactOpcodeTrace, normalizeCallTrace, summarizeCallTrace } from "../wallet-lab/deployment-evidence.mjs";
 import {
   deriveAccountAddress,
   getUserOpHash as coreGetUserOpHash,
@@ -58,7 +59,7 @@ let state;
 let labRecorder;
 try {
   console.log("==> loom devnet up (anvil + Loom + Alto)");
-  state = await up();
+  state = await up({ stepsTracing: Boolean(labArtifactPath) });
   console.log(`    rpc ${state.rpcUrl} · bundler ${state.bundlerUrl} · alto ${state.alto}`);
 
   const { rpcUrl, bundlerUrl, addresses } = state;
@@ -70,6 +71,8 @@ try {
   const deployer = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
   const versions = JSON.parse(readFileSync(join(repoRoot, "devnet", "versions.json"), "utf8"));
   const runtimeCodeHash = async address => keccak256(await rpcCall(rpcUrl, "eth_getCode", [address, "latest"]));
+  let labCodeHashes = {};
+  let deploymentEvidence = null;
 
   if (labArtifactPath) {
     labRecorder = createTraceRecorder({
@@ -85,20 +88,20 @@ try {
       reproduction: "npm run wallet-lab:run",
       payload: { chainId: state.chainId, addresses }
     });
-    const codeHashes = {};
-    for (const [name, address] of Object.entries(addresses)) codeHashes[name] = await runtimeCodeHash(address);
+    labCodeHashes = {};
+    for (const [name, address] of Object.entries(addresses)) labCodeHashes[name] = await runtimeCodeHash(address);
     labRecorder.setEnvironment({
       gitCommit: process.env.LOOM_WALLET_LAB_GIT_COMMIT ?? "unknown",
       dirty: process.env.LOOM_WALLET_LAB_GIT_DIRTY === "true",
       chainId: state.chainId,
       seed: nativeTransferScenario.seed,
       addresses,
-      codeHashes,
+      codeHashes: labCodeHashes,
       components: [
         { name: "Anvil", version: versions.foundry, endpoint: rpcUrl, status: "healthy" },
         { name: "Alto", version: versions.alto, endpoint: bundlerUrl, status: "healthy" },
-        { name: "EntryPoint", version: "0.9.0", digest: codeHashes.EntryPoint, status: "healthy" },
-        { name: "Loom contracts", version: process.env.LOOM_WALLET_LAB_GIT_COMMIT ?? "working-tree", digest: codeHashes.LoomAccount, status: "healthy" }
+        { name: "EntryPoint", version: "0.9.0", digest: labCodeHashes.EntryPoint, status: "healthy" },
+        { name: "Loom contracts", version: process.env.LOOM_WALLET_LAB_GIT_COMMIT ?? "working-tree", digest: labCodeHashes.LoomAccount, status: "healthy" }
       ]
     });
     labRecorder.finish(environmentSpan, {
@@ -107,7 +110,7 @@ try {
       chainId: state.chainId,
       entryPoint,
       bundler: bundlerUrl,
-      payload: { versions, codeHashes }
+      payload: { versions, codeHashes: labCodeHashes }
     });
   }
 
@@ -200,6 +203,23 @@ try {
     payload: { account, factory, implementation, salt }
   });
   console.log(`==> account derived: ${account}`);
+  if (labRecorder) {
+    deploymentEvidence = buildDeploymentEvidence({ repoRoot, addresses, codeHashes: labCodeHashes, account });
+    const deploymentSpan = labRecorder.begin({
+      component: "orchestrator",
+      phase: "deployment",
+      explanation: "Cataloging the exact local deployment addresses, runtime code hashes, ABI functions, and architectural relationships.",
+      source: { file: "tools/wallet-lab/deployment-evidence.mjs", symbol: "buildDeploymentEvidence" },
+      payload: { deployment: deploymentEvidence }
+    });
+    labRecorder.finish(deploymentSpan, {
+      status: "success",
+      chainId: state.chainId,
+      account,
+      entryPoint,
+      payload: { deployment: deploymentEvidence }
+    });
+  }
 
   // Prefund the account's EntryPoint deposit from the unlocked dev account.
   await rpcCall(rpcUrl, "eth_sendTransaction", [
@@ -456,6 +476,34 @@ try {
     blockNumber: Number(BigInt(onChainReceipt?.blockNumber ?? "0x0")),
     payload: { userOperationReceipt: secondReceipt, transactionReceipt: onChainReceipt }
   });
+  if (labRecorder && deploymentEvidence) {
+    const traceSpan = labRecorder.begin({
+      component: "rpc",
+      phase: "evm-trace",
+      explanation: "Tracing the successful enclosing transaction with Anvil's call tracer and resolving observed selectors against the deployment ABI catalog.",
+      payload: { method: "debug_traceTransaction", transactionHash }
+    });
+    const rawTrace = await rpcCall(rpcUrl, "debug_traceTransaction", [transactionHash, { tracer: "callTracer" }]);
+    const rawOpcodeTrace = await rpcCall(rpcUrl, "debug_traceTransaction", [transactionHash, {
+      disableMemory: true,
+      disableStack: true,
+      disableStorage: true
+    }]);
+    const trace = normalizeCallTrace(rawTrace, deploymentEvidence);
+    const summary = summarizeCallTrace(trace);
+    const opcodeProfile = compactOpcodeTrace(rawOpcodeTrace);
+    assert.ok(trace && summary.calls > 0, "EVM call trace did not contain an observable call tree");
+    assert.ok(opcodeProfile.totalSteps > 0, "EVM opcode trace did not contain execution steps");
+    labRecorder.finish(traceSpan, {
+      status: "success",
+      chainId: state.chainId,
+      account,
+      entryPoint,
+      transactionHash,
+      userOpHash: sentSecond.userOpHash,
+      payload: { method: "debug_traceTransaction", transactionHash, summary, trace, opcodeProfile }
+    });
+  }
 
   const includedBlock = Number(BigInt(onChainReceipt.blockNumber));
   const finalitySpan = labRecorder?.begin({

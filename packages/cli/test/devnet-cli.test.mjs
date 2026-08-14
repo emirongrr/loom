@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { removeSync } from "../src/devnet.mjs";
+import { devnetAnvilArguments, removeSync } from "../src/devnet.mjs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,11 @@ import { fileURLToPath } from "node:url";
 const bin = fileURLToPath(new URL("../bin/loom.mjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const statePath = join(repoRoot, ".loom", "devnet", "state.json");
+
+test("step tracing is opt-in for diagnostic devnet runs", () => {
+  assert.equal(devnetAnvilArguments().includes("--steps-tracing"), false);
+  assert.equal(devnetAnvilArguments({ stepsTracing: true }).includes("--steps-tracing"), true);
+});
 
 function loom(...args) {
   const result = spawnSync(process.execPath, [bin, ...args], { encoding: "utf8" });

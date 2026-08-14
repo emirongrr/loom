@@ -37,6 +37,7 @@
         <button type="button" role="tab" id="tab-userop" aria-controls="panel-userop" aria-selected="false" data-tab="userop">UserOperation</button>
         <button type="button" role="tab" id="tab-webauthn" aria-controls="panel-webauthn" aria-selected="false" data-tab="webauthn">WebAuthn</button>
         <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">Network <span id="network-count">0</span></button>
+        <button type="button" role="tab" id="tab-deployment" aria-controls="panel-deployment" aria-selected="false" data-tab="deployment">Contracts &amp; EVM <span id="contract-count">0</span></button>
       </nav>
 
       <div id="failure-panel" class="failure-banner" hidden>
@@ -94,6 +95,32 @@
           <div class="table-scroll"><table><thead><tr><th>#</th><th>Transport</th><th>Method</th><th>HTTP</th><th>Result</th></tr></thead><tbody id="network-rows"></tbody></table></div>
           <article id="network-inspector" class="surface inspector-detail empty">Select a request to compare its JSON-RPC request and response.</article>
         </div>
+      </section>
+
+      <section id="panel-deployment" class="workspace-panel" role="tabpanel" aria-labelledby="tab-deployment" hidden>
+        <article class="surface graph-surface">
+          <div class="section-title"><div><p class="eyebrow">DEPLOYMENT TOPOLOGY</p><h2>Contracts and authority flow</h2></div><span>Click a contract to inspect its ABI</span></div>
+          <div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div>
+          <div id="relationship-summary" class="relationship-summary empty">Select a contract to list its architectural relationships.</div>
+          <div class="graph-legend" aria-label="Relationship legend"><span><i class="edge-authority"></i>Authority / validation</span><span><i class="edge-call"></i>Execution call</span><span><i class="edge-create"></i>Creation / binding</span></div>
+        </article>
+        <div class="contract-workspace">
+          <article class="surface catalog-panel">
+            <div class="section-title"><div><p class="eyebrow">DEPLOYED CODE</p><h2>Contracts</h2></div></div>
+            <label class="compact-search"><span>Filter contracts</span><input id="contract-search" type="search" placeholder="Account, validator..." /></label>
+            <div id="contract-list" class="contract-list empty">No contracts cataloged.</div>
+          </article>
+          <article class="surface catalog-panel">
+            <div id="contract-heading" class="section-title"><div><p class="eyebrow">ABI SURFACE</p><h2>Functions</h2></div></div>
+            <label class="compact-search"><span>Filter functions</span><input id="function-search" type="search" placeholder="execute, validate..." /></label>
+            <div id="function-list" class="function-list empty">Select a contract.</div>
+          </article>
+          <article id="function-inspector" class="surface function-inspector empty">Select a function to inspect its parameters and EVM behavior.</article>
+        </div>
+        <article class="surface evm-surface">
+          <div class="section-title"><div><p class="eyebrow">OBSERVED EXECUTION</p><h2>Real EVM call trace</h2></div><span id="evm-trace-summary">No trace captured</span></div>
+          <div id="evm-trace" class="evm-trace empty">Run the deterministic scenario to capture a transaction trace.</div>
+        </article>
       </section>
     </main>
     <div id="copy-status" class="sr-only" aria-live="polite"></div>
