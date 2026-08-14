@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AccountHeader, type BalanceView } from "../../components/AccountHeader";
 import { SecurityStatus } from "../../components/SecurityStatus";
 import { SendDialog } from "../send/SendDialog";
+import { ReceiveDialog } from "../wallet/ReceiveDialog";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
@@ -36,6 +37,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   const [deployed, setDeployed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [send, setSend] = useState<{ open: boolean; preselect?: SendableAsset }>({ open: false });
+  const [receiveOpen, setReceiveOpen] = useState(false);
   const [activating, setActivating] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     readonly checking: boolean;
@@ -116,7 +118,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
 
     <div className="quick-actions">
-      <button onClick={() => void copyAddress(account.account, notifications)}><span aria-hidden="true">↓</span><span>Receive</span></button>
+      <button onClick={() => setReceiveOpen(true)}><span aria-hidden="true">↓</span><span>Receive</span></button>
       <button onClick={() => openSend()}><span aria-hidden="true">↗</span><span>Send</span></button>
       <button onClick={() => void refresh()} disabled={refreshing}><span aria-hidden="true" className={refreshing ? "spin" : ""}>⟳</span><span>{refreshing ? "Refreshing" : "Refresh"}</span></button>
       <button onClick={() => onNavigate("activity")}><span aria-hidden="true">⋯</span><span>Activity</span></button>
@@ -175,6 +177,8 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
 
     {guardianThreshold === 0 && <section className="section-card pending-card"><div><p className="eyebrow">Action required</p><h2>Recovery is not configured</h2><p>This account is stored locally, but losing the matching passkey can still mean losing access.</p></div><button className="secondary" onClick={() => onNavigate("security")}>Open Security</button></section>}
 
+    {receiveOpen && <ReceiveDialog address={account.account} chainId={account.chainId} deployed={deployed} onClose={() => setReceiveOpen(false)} />}
+
     {send.open && <SendDialog account={account} deployment={deployment} deployed={deployed} assets={assets} {...(send.preselect ? { preselect: send.preselect } : {})} onClose={() => setSend({ open: false })} onSent={() => void load(true)} />}
   </div>;
 }
@@ -199,9 +203,5 @@ function NftCard({ nft, onSend }: { nft: NftAsset; onSend(): void }) {
   </article>;
 }
 
-async function copyAddress(address: string, notifications: ReturnType<typeof useNotifications>) {
-  try { await navigator.clipboard.writeText(address); notifications.notify({ status: "success", title: "Address copied", detail: "Share it to receive funds." }); }
-  catch { notifications.notify({ status: "error", title: "Copy unavailable", detail: "Select the address and copy it manually." }); }
-}
 
 function hostOf(url: string): string { return url.replace(/^https?:\/\//, "").split("/")[0] ?? url; }
