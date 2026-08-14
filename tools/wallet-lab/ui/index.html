@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loom Wallet Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">LOCAL · DETERMINISTIC · PROVIDER-INDEPENDENT</p>
+        <h1>Loom Wallet Lab</h1>
+        <p id="run-summary">Waiting for a run artifact…</p>
+      </div>
+      <div id="run-status" class="status waiting">Waiting</div>
+    </header>
+    <main>
+      <section aria-labelledby="health-title">
+        <div class="section-title"><h2 id="health-title">Environment</h2><span id="updated-at">Not started</span></div>
+        <div id="environment" class="grid empty">No environment manifest yet.</div>
+      </section>
+      <section aria-labelledby="failure-title" id="failure-panel" hidden>
+        <div class="section-title"><h2 id="failure-title">First failing boundary</h2></div>
+        <div id="failure" class="failure"></div>
+      </section>
+      <section aria-labelledby="timeline-title">
+        <div class="section-title"><h2 id="timeline-title">Lifecycle timeline</h2><span id="timeline-count">0 stages</span></div>
+        <ol id="timeline" class="timeline"><li class="empty">The scenario has not emitted a stage yet.</li></ol>
+      </section>
+      <section aria-labelledby="state-title">
+        <div class="section-title"><h2 id="state-title">Semantic state diff</h2></div>
+        <div id="state-diff" class="state-grid empty">State has not changed yet.</div>
+      </section>
+      <section aria-labelledby="invariant-title">
+        <div class="section-title"><h2 id="invariant-title">Invariants</h2></div>
+        <div id="invariants" class="invariants empty">No invariant results yet.</div>
+      </section>
+      <section aria-labelledby="replay-title">
+        <div class="section-title"><h2 id="replay-title">Export and replay</h2></div>
+        <pre id="replay">Waiting for artifact…</pre>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -64,9 +64,29 @@ function contentSecurityPolicyTag(): Plugin {
   };
 }
 
+function walletLabProxy(): Record<string, { target: string; changeOrigin: false; rewrite: () => string }> {
+  const values = [
+    ["/wallet-lab/rpc", process.env.LOOM_WALLET_LAB_RPC_TARGET],
+    ["/wallet-lab/bundler", process.env.LOOM_WALLET_LAB_BUNDLER_TARGET]
+  ] as const;
+  const proxy: Record<string, { target: string; changeOrigin: false; rewrite: () => string }> = {};
+  for (const [path, candidate] of values) {
+    if (!candidate) continue;
+    const target = new URL(candidate);
+    if (target.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(target.hostname)) {
+      throw new Error(`Wallet Lab proxy target must be loopback HTTP: ${path}`);
+    }
+    proxy[path] = { target: target.origin, changeOrigin: false, rewrite: () => "/" };
+  }
+  return proxy;
+}
+
 export default defineConfig({
   plugins: [contentSecurityPolicyTag()],
   build: { target: "es2022", sourcemap: true },
-  server: { headers: { "Content-Security-Policy": contentSecurityPolicy({ development: true, asMetaTag: false }) } },
+  server: {
+    headers: { "Content-Security-Policy": contentSecurityPolicy({ development: true, asMetaTag: false }) },
+    proxy: walletLabProxy()
+  },
   preview: { headers: { "Content-Security-Policy": contentSecurityPolicy({ development: false, asMetaTag: false }) } }
 });
