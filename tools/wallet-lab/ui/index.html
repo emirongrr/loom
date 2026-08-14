@@ -3,44 +3,100 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
     <title>Loom Wallet Lab</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="masthead">
-      <div>
-        <p class="eyebrow">LOCAL · DETERMINISTIC · PROVIDER-INDEPENDENT</p>
-        <h1>Loom Wallet Lab</h1>
-        <p id="run-summary">Waiting for a run artifact…</p>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <div>
+          <p class="eyebrow">LOCAL TEST EVIDENCE</p>
+          <h1>Wallet Lab</h1>
+        </div>
       </div>
-      <div id="run-status" class="status waiting">Waiting</div>
+      <div class="run-identity">
+        <p id="run-summary">Waiting for a run artifact...</p>
+        <div id="run-status" class="status waiting" role="status" aria-live="polite">Waiting</div>
+      </div>
     </header>
+
     <main>
-      <section aria-labelledby="health-title">
-        <div class="section-title"><h2 id="health-title">Environment</h2><span id="updated-at">Not started</span></div>
-        <div id="environment" class="grid empty">No environment manifest yet.</div>
+      <section class="run-strip" aria-label="Run summary">
+        <div><span>Scenario</span><strong id="metric-scenario">-</strong></div>
+        <div><span>Chain</span><strong id="metric-chain">-</strong></div>
+        <div><span>Events</span><strong id="metric-events">0</strong></div>
+        <div><span>Duration</span><strong id="metric-duration">-</strong></div>
+        <div><span>Evidence</span><strong id="metric-redaction">-</strong></div>
       </section>
-      <section aria-labelledby="failure-title" id="failure-panel" hidden>
-        <div class="section-title"><h2 id="failure-title">First failing boundary</h2></div>
-        <div id="failure" class="failure"></div>
+
+      <nav class="workspace-tabs" role="tablist" aria-label="Wallet Lab panels">
+        <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview">Overview</button>
+        <button type="button" role="tab" id="tab-timeline" aria-controls="panel-timeline" aria-selected="false" data-tab="timeline">Timeline <span id="timeline-count">0</span></button>
+        <button type="button" role="tab" id="tab-userop" aria-controls="panel-userop" aria-selected="false" data-tab="userop">UserOperation</button>
+        <button type="button" role="tab" id="tab-webauthn" aria-controls="panel-webauthn" aria-selected="false" data-tab="webauthn">WebAuthn</button>
+        <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">Network <span id="network-count">0</span></button>
+      </nav>
+
+      <div id="failure-panel" class="failure-banner" hidden>
+        <span>First failing boundary</span>
+        <strong id="failure"></strong>
+      </div>
+
+      <section id="panel-overview" class="workspace-panel" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="overview-grid">
+          <article class="surface span-two">
+            <div class="section-title"><div><p class="eyebrow">RUNTIME</p><h2>Environment</h2></div><span id="updated-at">Not started</span></div>
+            <div id="environment" class="metric-grid empty">No environment manifest yet.</div>
+          </article>
+          <article class="surface">
+            <div class="section-title"><div><p class="eyebrow">PROPERTIES</p><h2>Invariants</h2></div></div>
+            <div id="invariants" class="invariants empty">No invariant results yet.</div>
+          </article>
+          <article class="surface">
+            <div class="section-title"><div><p class="eyebrow">REPLAY</p><h2>Reproduce this run</h2></div></div>
+            <pre id="replay">Waiting for artifact...</pre>
+          </article>
+          <article class="surface span-two">
+            <div class="section-title"><div><p class="eyebrow">SEMANTIC DELTA</p><h2>State changes</h2></div></div>
+            <div id="state-diff" class="state-grid empty">State has not changed yet.</div>
+          </article>
+        </div>
       </section>
-      <section aria-labelledby="timeline-title">
-        <div class="section-title"><h2 id="timeline-title">Lifecycle timeline</h2><span id="timeline-count">0 stages</span></div>
-        <ol id="timeline" class="timeline"><li class="empty">The scenario has not emitted a stage yet.</li></ol>
+
+      <section id="panel-timeline" class="workspace-panel" role="tabpanel" aria-labelledby="tab-timeline" hidden>
+        <div class="toolbar">
+          <label><span>Search</span><input id="timeline-search" type="search" placeholder="Phase, component, hash..." /></label>
+          <label><span>Component</span><select id="timeline-component"><option value="all">All components</option></select></label>
+          <label><span>Status</span><select id="timeline-status"><option value="all">All statuses</option></select></label>
+        </div>
+        <div class="inspector-layout">
+          <ol id="timeline" class="timeline"><li class="empty">The scenario has not emitted a stage yet.</li></ol>
+          <article id="event-inspector" class="surface inspector-detail empty">Select a lifecycle stage to inspect its evidence.</article>
+        </div>
       </section>
-      <section aria-labelledby="state-title">
-        <div class="section-title"><h2 id="state-title">Semantic state diff</h2></div>
-        <div id="state-diff" class="state-grid empty">State has not changed yet.</div>
+
+      <section id="panel-userop" class="workspace-panel" role="tabpanel" aria-labelledby="tab-userop" hidden>
+        <div id="userop-inspector" class="empty-state">No signed UserOperation evidence is available yet.</div>
       </section>
-      <section aria-labelledby="invariant-title">
-        <div class="section-title"><h2 id="invariant-title">Invariants</h2></div>
-        <div id="invariants" class="invariants empty">No invariant results yet.</div>
+
+      <section id="panel-webauthn" class="workspace-panel" role="tabpanel" aria-labelledby="tab-webauthn" hidden>
+        <div id="webauthn-inspector" class="empty-state">No WebAuthn evidence is available yet.</div>
       </section>
-      <section aria-labelledby="replay-title">
-        <div class="section-title"><h2 id="replay-title">Export and replay</h2></div>
-        <pre id="replay">Waiting for artifact…</pre>
+
+      <section id="panel-network" class="workspace-panel" role="tabpanel" aria-labelledby="tab-network" hidden>
+        <div class="toolbar network-toolbar">
+          <label><span>Search requests</span><input id="network-search" type="search" placeholder="eth_sendUserOperation..." /></label>
+          <label><span>Transport</span><select id="network-transport"><option value="all">RPC and bundler</option><option value="rpc">RPC</option><option value="bundler">Bundler</option></select></label>
+        </div>
+        <div class="network-layout">
+          <div class="table-scroll"><table><thead><tr><th>#</th><th>Transport</th><th>Method</th><th>HTTP</th><th>Result</th></tr></thead><tbody id="network-rows"></tbody></table></div>
+          <article id="network-inspector" class="surface inspector-detail empty">Select a request to compare its JSON-RPC request and response.</article>
+        </div>
       </section>
     </main>
+    <div id="copy-status" class="sr-only" aria-live="polite"></div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -58,6 +58,40 @@ test("trace recorder redacts secret fields and endpoint credentials", () => {
   assert.deepEqual(artifact.redaction.removedFields, ["privateKey"]);
 });
 
+test("network evidence keeps public JSON-RPC context while redacting credentials", () => {
+  const recorder = createTraceRecorder({
+    runId: "run-network",
+    traceId: "22222222222222222222222222222222",
+    scenario: nativeTransferScenario,
+    now: () => 1_000
+  });
+  const span = recorder.begin({
+    component: "rpc",
+    phase: "network",
+    explanation: "network evidence",
+    payload: {
+      exchanges: [{
+        transport: "bundler",
+        endpoint: "https://user:token@example.test/rpc?apiKey=secret",
+        request: { jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] },
+        response: { jsonrpc: "2.0", id: 1, result: "0xaa36a7" },
+        authorization: "Bearer never-write-me"
+      }]
+    }
+  });
+  recorder.finish(span, { status: "success" });
+  const artifact = recorder.complete("success");
+  const event = artifact.events[0];
+  const text = JSON.stringify(event);
+
+  assert.equal(event.phase, "network");
+  assert.match(text, /eth_chainId/u);
+  assert.match(text, /https:\/\/example\.test/u);
+  assert.equal(text.includes("never-write-me"), false);
+  assert.equal(text.includes("user:token"), false);
+  assert.equal(text.includes("apiKey=secret"), false);
+});
+
 test("scenario validation rejects duplicate actions before execution", () => {
   assert.throws(
     () => defineWalletLabScenario({ ...nativeTransferScenario, actions: [nativeTransferScenario.actions[0], nativeTransferScenario.actions[0]] }),
