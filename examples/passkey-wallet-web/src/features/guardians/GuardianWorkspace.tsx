@@ -115,6 +115,27 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
         ...(deployment.recoveryModule ? { recoveryManager: deployment.recoveryModule } : {}),
         chainId: deployment.chainId,
         logTransport: createRecoveryLogTransport(config, services.publicClients),
+        // An independent endpoint's view of the same account. The verified badge
+        // sits in front of a signing decision, so one RPC's word is not enough.
+        corroborate: async protectedAccount => {
+          const client = createAccountGuardianClient({
+            config: { ...config, rpcUrl: config.verificationRpcUrl },
+            chainId: deployment.chainId,
+            account: protectedAccount,
+            recoveryManager: deployment.recoveryModule!,
+            publicClients: services.publicClients,
+            ...(deployment.recoveryValidatorProvisioner ? { recoveryValidatorProvisioner: deployment.recoveryValidatorProvisioner } : {}),
+            ...(deployment.policyHook ? { policyHook: deployment.policyHook } : {})
+          });
+          const live = await client.inspectAccount();
+          return {
+            guardianRoot: live.guardianRoot,
+            guardianThreshold: live.guardianThreshold,
+            configVersion: live.configVersion,
+            validators: live.validators,
+            recoveryConfigured: live.recoveryConfigured
+          };
+        },
         inspect: async protectedAccount => {
           const client = createAccountGuardianClient({
             config, chainId: deployment.chainId, account: protectedAccount,

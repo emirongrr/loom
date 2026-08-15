@@ -6,7 +6,7 @@ import {
   type RecoveryDiscoverySnapshot,
   type RecoveryLogTransport
 } from "@loom/sdk/recovery";
-import { classifyDiscoveredRequests, type DiscoveredRequestView } from "./discoveredRequests.ts";
+import { classifyDiscoveredRequests, type DiscoveredRequestView, type LiveGuardianAccountState } from "./discoveredRequests.ts";
 
 /**
  * Bind board discovery to the accounts this guardian actually holds a capability
@@ -36,6 +36,16 @@ export interface GuardianDiscoveryInput {
     readonly validators: readonly Address[];
     readonly recoveryConfigured: boolean;
   }>;
+  /**
+   * An independent endpoint's view of the same account state.
+   *
+   * The badge this produces sits in front of a signing decision, so one RPC's
+   * word is not enough to call a request verified. When the two disagree — or
+   * when the second cannot be reached — the request stays an unverified lead.
+   * Omitting this keeps single-endpoint deployments working, which is why it is
+   * an improvement rather than a new requirement.
+   */
+  readonly corroborate?: (account: Address) => Promise<LiveGuardianAccountState>;
   readonly previous?: Readonly<Record<string, RecoveryDiscoverySnapshot>>;
   readonly now: number;
 }
@@ -87,7 +97,9 @@ export async function discoverGuardianRecoveryRequests(input: GuardianDiscoveryI
 
       // Live state is read per account and never taken from the logs.
       const live = await input.inspect(capability.account);
+      const confirmed = await corroborated(input.corroborate, capability.account, live);
       requests.push(...classifyDiscoveredRequests({
+        ...(confirmed ? {} : { contested: true }),
         announcements: snapshot.announcements,
         approvals: snapshot.approvals,
         capability,
@@ -121,4 +133,30 @@ function sortRequests(requests: readonly DiscoveredRequestView[]): readonly Disc
 
 function frozen(result: GuardianDiscoveryResult): GuardianDiscoveryResult {
   return Object.freeze(result);
+}
+
+/**
+ * Whether a second endpoint confirms the fields a verified badge depends on.
+ *
+ * An unreachable second endpoint counts as unconfirmed rather than as agreement:
+ * failing open here would make the corroboration disappear exactly when an
+ * endpoint is misbehaving, which is when it matters.
+ */
+async function corroborated(
+  read: ((account: Address) => Promise<LiveGuardianAccountState>) | undefined,
+  account: Address,
+  live: LiveGuardianAccountState
+): Promise<boolean> {
+  if (!read) return true;
+  try {
+    const other = await read(account);
+    return other.guardianRoot.toLowerCase() === live.guardianRoot.toLowerCase()
+      && other.configVersion === live.configVersion
+      && other.guardianThreshold === live.guardianThreshold
+      && other.recoveryConfigured === live.recoveryConfigured
+      && other.validators.length === live.validators.length
+      && other.validators.every((item, index) => item.toLowerCase() === live.validators[index]!.toLowerCase());
+  } catch {
+    return false;
+  }
 }
