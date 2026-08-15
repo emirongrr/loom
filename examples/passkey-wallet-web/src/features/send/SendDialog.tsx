@@ -15,6 +15,7 @@ import type { AccountAssets, TokenAsset } from "../wallet/assets";
 import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset } from "../wallet/transfers";
 import { assessRecipient, type KnownAddress, type RecipientRisk } from "../wallet/recipientRisk";
 import { nativeMaxAmount, nativeSendReserve } from "../wallet/sendLimits";
+import { buildSendReview } from "../wallet/sendReview";
 import { formatUnits, isAddress } from "viem";
 
 export function SendDialog({ account, deployment, deployed, assets, preselect, onClose, onSent }: {
@@ -90,6 +91,11 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
     if (feePrice === null) return "";
     return formatUnits(nativeMaxAmount({ balance: token.balance, maxFeePerGas: feePrice }), token.decimals);
   };
+  const review = useMemo(
+    () => buildSendReview({ asset, recipient: to, amount, account: account.account, chainId: account.chainId, maxFeePerGas: feePrice }),
+    [asset, to, amount, account.account, account.chainId, feePrice]
+  );
+
   const gasReserve = isNative && feePrice !== null
     ? formatUnits(nativeSendReserve({ maxFeePerGas: feePrice }), asset.token.decimals)
     : null;
@@ -164,6 +170,15 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
         {maxUnavailable && <small className="form-note" data-testid="gas-reserve-unavailable">The current fee price is unavailable, so Max cannot work out what to leave for gas. Enter an amount instead.</small>}
       </label>}
       {isNft && <p className="form-note">This transfers the single collectible shown above from your account.</p>}
+
+      <section className="review-summary send-review" aria-label="Review this transfer" data-testid="send-review">
+        <div><span>Asset</span><strong>{review.asset}</strong></div>
+        {review.amount && <div><span>Amount</span><strong>{review.amount}</strong></div>}
+        <div><span>To</span><strong className="breakable">{review.recipient ?? "Enter a recipient address"}</strong></div>
+        <div><span>Network</span><strong>{review.network}</strong></div>
+        <div><span>Gas paid by</span><strong className="breakable">This account ({short(account.account)})</strong></div>
+        <div><span>Network fee</span><strong>{review.maxFee ? `at most ~${review.maxFee} ETH` : "Unavailable right now"}</strong></div>
+      </section>
 
       <div aria-live="polite">
         {error && <StatusPanel id={errorId} tone="warning">
