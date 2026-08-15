@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import { deriveAccountAddress, getUserOpHash, packUserOperation, P256ValidatorAbi } from "../../packages/core/dist/index.js";
 import { encodeAbiParameters, encodeFunctionData, keccak256, sha256, stringToHex } from "viem";
 import { deterministicTestPasskey } from "./test-passkey.mjs";
+import { annotateNetworkExchange } from "./network-evidence.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const exampleRoot = join(repoRoot, "examples", "passkey-wallet-web");
@@ -170,21 +171,29 @@ export async function runBrowserWalletFlow(input) {
     cdp.on("WebAuthn.credentialAsserted", () => { assertions += 1; });
     const rpcExchanges = [];
     const responseCaptures = [];
+    let currentNetworkOperation = "wallet-discovery";
+    const requestOperations = new WeakMap();
+    page.on("request", request => {
+      if (request.method() === "POST" && [browserRpcUrl, browserBundlerUrl].includes(request.url())) {
+        requestOperations.set(request, currentNetworkOperation);
+      }
+    });
     page.on("response", response => {
       const request = response.request();
       if (request.method() !== "POST" || ![browserRpcUrl, browserBundlerUrl].includes(request.url())) return;
       const body = jsonRpcBody(request);
       if (!body?.method) return;
+      const operation = requestOperations.get(request) ?? currentNetworkOperation;
       const capture = (async () => {
         try {
-          rpcExchanges.push({
+          rpcExchanges.push(annotateNetworkExchange({
             transport: request.url() === browserBundlerUrl ? "bundler" : "rpc",
             endpoint: request.url(),
             status: response.status(),
             ok: response.ok(),
             request: body,
             response: await response.json()
-          });
+          }, operation));
         } catch { /* Ignore non-JSON diagnostics. */ }
       })();
       responseCaptures.push(capture);
@@ -225,6 +234,7 @@ export async function runBrowserWalletFlow(input) {
     });
 
     await rpcCall(rpcUrl, "eth_sendTransaction", [{ from: input.deployer, to: account.account, value: "0xde0b6b3a7640000" }]);
+    currentNetworkOperation = "account-activation";
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.getByRole("button", { name: "Activate account" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Activate account" }).click();
@@ -235,6 +245,7 @@ export async function runBrowserWalletFlow(input) {
       throw new Error(`browser account activation failed before completion; observed bundler methods: ${rpcExchanges.map(exchange => exchange.request.method).join(", ") || "none"}`);
     }
 
+    currentNetworkOperation = "native-transfer";
     const before = {
       recipientBalance: BigInt(await rpcCall(rpcUrl, "eth_getBalance", [RECIPIENT, "latest"])),
       nonce: BigInt(await rpcCall(rpcUrl, "eth_call", [{ to: deployment.entryPoint, data: input.encodeNonce(account.account) }, "latest"]))

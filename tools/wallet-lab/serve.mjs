@@ -14,17 +14,17 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const artifactPath = resolve(positional ?? ".loom/wallet-lab/latest-run.json");
 const rpcUrl = valueFor("--rpc-url") ?? process.env.SEPOLIA_RPC_URL;
 const manifestPath = resolve(valueFor("--sepolia-manifest") ?? fileURLToPath(new URL("../../examples/passkey-wallet-web/public/sepolia.deployment.json", import.meta.url)));
+const sepoliaProfile = { repoRoot, manifest: JSON.parse(readFileSync(manifestPath, "utf8")) };
 const sepolia = rpcUrl ? {
-  repoRoot,
-  manifest: JSON.parse(readFileSync(manifestPath, "utf8")),
+  ...sepoliaProfile,
   rpc: createJsonRpc(rpcUrl),
   endpointOrigin: rpcEndpointOrigin(rpcUrl)
 } : undefined;
-const server = createWalletLabServer({ artifactPath, port: Number(process.env.LOOM_WALLET_LAB_PORT ?? 4173), sepolia });
+const server = createWalletLabServer({ artifactPath, port: Number(process.env.LOOM_WALLET_LAB_PORT ?? 4173), sepolia, sepoliaProfile });
 const listening = await server.start();
 console.log(`Loom Wallet Lab: ${listening.url}`);
 console.log(`Artifact: ${artifactPath}`);
-console.log(sepolia ? `Sepolia: verification enabled through ${sepolia.endpointOrigin}` : "Sepolia: unavailable (set SEPOLIA_RPC_URL or pass --rpc-url)");
+console.log(sepolia ? `Sepolia: verification enabled through ${sepolia.endpointOrigin}` : "Sepolia: connect a public RPC preset from the UI, set SEPOLIA_RPC_URL, or pass --rpc-url");
 await new Promise(resolveStop => {
   const stop = async () => {
     await server.stop();

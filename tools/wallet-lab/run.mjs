@@ -14,13 +14,16 @@ const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=n
 const runId = `run-${crypto.randomBytes(8).toString("hex")}`;
 const traceId = crypto.createHash("sha256").update(`${runId}:passkey-native-transfer.v1`).digest("hex").slice(0, 32);
 const sepoliaRpcUrl = process.env.SEPOLIA_RPC_URL;
-const sepolia = sepoliaRpcUrl ? {
+const sepoliaProfile = {
   repoRoot,
-  manifest: JSON.parse(readFileSync(join(repoRoot, "examples", "passkey-wallet-web", "public", "sepolia.deployment.json"), "utf8")),
+  manifest: JSON.parse(readFileSync(join(repoRoot, "examples", "passkey-wallet-web", "public", "sepolia.deployment.json"), "utf8"))
+};
+const sepolia = sepoliaRpcUrl ? {
+  ...sepoliaProfile,
   rpc: createJsonRpc(sepoliaRpcUrl),
   endpointOrigin: rpcEndpointOrigin(sepoliaRpcUrl)
 } : undefined;
-const server = createWalletLabServer({ artifactPath, port, sepolia });
+const server = createWalletLabServer({ artifactPath, port, sepolia, sepoliaProfile });
 const listening = await server.start();
 
 process.env.LOOM_WALLET_LAB_ARTIFACT = artifactPath;
