@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog } from "../../components/Dialog";
 import { AdvancedDetails, StatusPanel } from "../../components/StatusPanel";
 import { useAppServices } from "../../app/AppServices";
@@ -16,6 +16,8 @@ import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset }
 import { assessRecipient, type KnownAddress, type RecipientRisk } from "../wallet/recipientRisk";
 import { nativeMaxAmount, nativeSendReserve } from "../wallet/sendLimits";
 import { buildSendReview } from "../wallet/sendReview";
+import { parseScannedRecipient } from "../wallet/scannedRecipient";
+import { createRecipientScanner } from "../wallet/scanRecipient";
 import { formatUnits, isAddress } from "viem";
 
 export function SendDialog({ account, deployment, deployed, assets, preselect, onClose, onSent }: {
@@ -100,6 +102,39 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
     ? formatUnits(nativeSendReserve({ maxFeePerGas: feePrice }), asset.token.decimals)
     : null;
 
+  // Scanning is started only here, by an explicit press, and the adapter stops
+  // the camera on every exit path.
+  const scanner = useMemo(() => createRecipientScanner(), []);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanIssue, setScanIssue] = useState("");
+
+  const cancelScan = () => { abortRef.current?.abort(); setScanning(false); };
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const startScan = async () => {
+    setScanIssue("");
+    setScanning(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const video = videoRef.current;
+      if (!video) throw new Error("The camera preview is unavailable.");
+      const raw = await scanner.scan({ video, signal: controller.signal });
+      if (raw === null) return;
+      const parsed = parseScannedRecipient(raw, { chainId: account.chainId });
+      if (parsed.kind === "rejected") { setScanIssue(parsed.reason); return; }
+      setTo(parsed.address);
+      setError(null);
+    } catch {
+      setScanIssue("The camera could not be used. Type or paste the address instead.");
+    } finally {
+      setScanning(false);
+      abortRef.current = null;
+    }
+  };
+
   const submit = async () => {
     setError(null);
     if (!deployment) {
@@ -154,8 +189,17 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       </label>
 
       <label className="field"><span>Recipient address</span>
-        <input value={to} disabled={busy} onChange={event => setTo(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" aria-invalid={error?.stage === "validation" || undefined} />
+        <div className="amount-row">
+          <input value={to} disabled={busy} onChange={event => setTo(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" aria-invalid={error?.stage === "validation" || undefined} />
+          {scanner.available && <button type="button" className="text-button" disabled={busy || scanning} onClick={() => void startScan()} data-testid="scan-recipient">{scanning ? "Scanning…" : "Scan"}</button>}
+        </div>
       </label>
+
+      <div className={scanning ? "scan-preview" : "scan-preview hidden"} aria-hidden={!scanning}>
+        <video ref={videoRef} muted playsInline data-testid="scan-preview" />
+        {scanning && <button type="button" className="secondary" onClick={cancelScan}>Stop scanning</button>}
+      </div>
+      {scanIssue && <p className="callout warning" role="status" data-testid="scan-issue">{scanIssue}</p>}
 
       {risks.length > 0 && <div className="callout warning" data-testid="recipient-risks" role="status">
         {risks.map((risk, index) => <p key={index}>{describeRisk(risk)}</p>)}
