@@ -14,6 +14,8 @@ import {P256GuardianVerifier} from "../../src/recovery/P256GuardianVerifier.sol"
 import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
 import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
 import {P256TestKeys} from "../helpers/P256TestKeys.sol";
+import {ERC1271GuardianVerifier} from "../../src/recovery/ERC1271GuardianVerifier.sol";
+import {MockERC1271Signer} from "../mocks/MockERC1271Signer.sol";
 
 /// @notice `RecoveryIntentBoard` must let guardian approvals accumulate across
 /// separate transactions without becoming an authority. Every test here asserts
@@ -366,6 +368,58 @@ contract RecoveryIntentBoardTest is RecoveryIntentBoardHarness {
         // acceptance above is not the verifier waving everything through.
         approvals[0].keyCommitment = keccak256("not-this-passkey");
         require(!_tryPublishFor(mixed, validators, approvals), "a wrong passkey commitment published an approval");
+    }
+
+    /// A contract-wallet guardian is the third supported verifier class, and the
+    /// one whose semantics depend on somebody else's code. It must publish like
+    /// the others, and a reverting signer must still be refused.
+    function testPublishApprovalAcceptsAnErc1271Guardian() public {
+        ERC1271GuardianVerifier contractVerifier = new ERC1271GuardianVerifier();
+        MockERC1271Signer signer = new MockERC1271Signer();
+        bytes32 signerCommitment = keccak256(abi.encode(address(signer)));
+        bytes32 signerSalt = keccak256("erc1271-guardian-salt");
+        bytes32 signerLeaf = keccak256(
+            abi.encode(address(contractVerifier), address(contractVerifier).codehash, signerCommitment, signerSalt)
+        );
+
+        address[] memory validators = _sortedValidators();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[0], "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[1], "");
+        modules[2] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        LoomAccount mixed =
+            new LoomAccount(address(this), _pairHash(signerLeaf, leafA), 2, keccak256("config"), modules);
+
+        bytes32 digest = recovery.proposalDigest(
+            address(mixed),
+            keccak256(abi.encode(validators)),
+            address(newValidator),
+            keccak256(""),
+            NEW_GUARDIAN_ROOT,
+            1,
+            mixed.configVersion(),
+            recovery.recoveryNonces(address(mixed))
+        );
+        bytes memory signerSignature = hex"cafe";
+        signer.setAccepted(digest, signerSignature);
+
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = leafA;
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval({
+            verifier: address(contractVerifier),
+            keyCommitment: signerCommitment,
+            salt: signerSalt,
+            signature: abi.encode(address(signer), signerSignature),
+            proof: proof
+        });
+
+        require(_tryPublishFor(mixed, validators, approvals), "a contract-wallet guardian could not publish");
+
+        // A guardian whose contract reverts must not be able to publish, or a
+        // hostile signer could emit approvals it never authorised.
+        signer.setRevert(true);
+        require(!_tryPublishFor(mixed, validators, approvals), "a reverting ERC-1271 guardian published an approval");
     }
 
     // --- Fuzz -----------------------------------------------------------------
