@@ -82,8 +82,10 @@ test("Sepolia RPC rejects oversized responses before parsing them", async () => 
 test("Wallet Lab UI exposes a local or verified Sepolia deployment choice", () => {
   const html = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
   const script = readFileSync(new URL("../ui/app.js", import.meta.url), "utf8");
-  assert.match(html, /id="deployment-source"/u);
-  assert.match(html, /value="sepolia"/u);
+  assert.match(html, /id="deployment-gateway"/u);
+  assert.match(html, /id="sepolia-provider"/u);
+  assert.match(html, /id="active-deployment-name"/u);
+  assert.doesNotMatch(html, /id="deployment-source"/u);
   assert.match(script, /\/api\/deployments\/sepolia/u);
   assert.match(script, /Sepolia deployment is not configured/u);
 });
