@@ -80,6 +80,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       const state = await client.inspectAccount();
       if (!state.recoveryConfigured) throw new GuardianRecoveryError("RECOVERY_NOT_CONFIGURED", "account has no active guardian recovery");
       setInspection({ status: "protected", account: getAddress(account), threshold: state.guardianThreshold, configVersion: state.configVersion.toString(), validators: state.validators.length, deployment });
+      // Nothing is chosen between checking the account and creating the
+      // passkey, so this advances rather than asking for a click that
+      // decides nothing. The provisioning notice moves with it.
+      if (deployment.recoveryValidatorProvisioner) setShowPasskey(true);
       const drafts = (await draftRepository.inspect()).drafts.filter(draft =>
         draft.chainId === deployment.chainId
         && draft.account.toLowerCase() === account.toLowerCase()
@@ -295,7 +299,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       {inspection.status === "protected" && <div className="callout success"><strong>Guardian recovery is active.</strong><p>{inspection.threshold} approvals required · config version {inspection.configVersion} · {inspection.validators} validator(s)</p></div>}
       {inspection.status === "protected" && preferredGasPayer?.chainId === inspection.deployment.chainId && preferredGasPayer.account.toLowerCase() === inspection.account.toLowerCase() && <div className="callout warning"><strong>This wallet is the recovery target.</strong><p>It cannot pay its own recovery factory gas while its old passkey is unavailable. Choose another Saved Wallet in the publication step.</p></div>}
       {inspection.status === "protected" && !inspection.deployment.recoveryValidatorProvisioner && <div className="callout warning"><strong>New validator provisioning is unavailable.</strong><p>This deployment does not publish a trusted one-time recovered-validator provisioning path. Recovery stops safely before creating a passkey, request, approval, or transaction.</p><code>UNSUPPORTED_RECOVERED_VALIDATOR_PATH</code></div>}
-      {inspection.status === "protected" && inspection.deployment.recoveryValidatorProvisioner && !showPasskey && <><div className="callout success"><strong>Permissionless validator provisioning is verified.</strong><p>The deployment publishes the factory and child bytecode commitments required for a new recovery passkey.</p></div><button className="primary" onClick={() => setShowPasskey(true)}>Continue to new passkey</button></>}
+      {inspection.status === "protected" && inspection.deployment.recoveryValidatorProvisioner && showPasskey && <div className="callout success"><strong>Permissionless validator provisioning is verified.</strong><p>The deployment publishes the factory and child bytecode commitments required for a new recovery passkey.</p></div>}
       {inspection.status === "protected" && showPasskey && <div className="recovery-passkey-stage">
         <p className="eyebrow">Step 2 of 4</p><h2>Create a new recovery passkey</h2>
         <p>This passkey becomes authoritative only after guardian approval, the on-chain delay, and recovery execution. Your current validators remain unchanged now.</p>
