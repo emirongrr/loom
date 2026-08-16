@@ -35,7 +35,7 @@ import {
   EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256RecoveryValidatorFactoryAbi,
   P256ValidatorAbi, packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
-import { createRecoveryIntentBoardReader } from "../../packages/sdk/dist/recovery.js";
+import { createRecoveryIntentBoardReader, reconcileRecoveryDiscovery } from "../../packages/sdk/dist/recovery.js";
 import {
   encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, serializeSignature, stringToHex
 } from "viem";
@@ -291,6 +291,9 @@ async function main() {
 
   // --- guardian 1 publishes on chain, paying their own gas ------------------
   console.log("\n==> Guardian 1 publishes an approval on chain");
+  // Taken before the publication, so reverting here genuinely discards the block
+  // the approval was mined in rather than a later empty one.
+  const checkpoint = await rpc("evm_snapshot", []);
   const published = await approvalFor(0);
   await send(rpc, guardians[0].address, board, encodeFunctionData({ abi: boardAbi, functionName: "publishApproval", args: boardArgs([published]) }), "0x2dc6c0");
   await mine(rpc, 6);
@@ -298,9 +301,10 @@ async function main() {
 
   // --- read it back through the SDK over real logs --------------------------
   console.log("\n==> Reading the approval back through the SDK board reader");
-  const snapshot = await createRecoveryIntentBoardReader({
+  const readBoard = () => createRecoveryIntentBoardReader({
     chainId: Number(CHAIN_ID), account, board, recoveryManager, logTransport: logTransport(rpc)
   }).discover({ fromBlock: 0n });
+  const snapshot = await readBoard();
 
   if (snapshot.approvals.length !== 1) fail(`expected exactly 1 discovered approval, got ${snapshot.approvals.length}`);
   if (snapshot.confirmedApprovalCount !== 1) fail("the published approval was not reported as confirmed");
@@ -322,6 +326,33 @@ async function main() {
   }
   ok("the decoded tuple is byte-identical to the guardian's published approval");
 
+  // --- a real reorg discards the published approval -------------------------
+  // Unit tests can only show the reconciler agreeing with snapshots a test
+  // wrote. Here anvil actually discards the block the approval was mined in,
+  // and the same reader is asked again over the same transport.
+  console.log("\n==> Reorganising the chain so the published approval is discarded");
+  const beforeReorg = snapshot;
+  if ((await rpc("evm_revert", [checkpoint])) !== true) fail("the devnet refused to reorganise");
+  await mine(rpc, 8);
+  const afterReorg = await readBoard();
+  if (afterReorg.approvals.length !== 0) fail(`the discarded approval is still reported (${afterReorg.approvals.length})`);
+  if (afterReorg.confirmedApprovalCount !== 0) fail("a discarded approval is still counted as confirmed");
+  ok("the reader no longer reports an approval the chain discarded");
+
+  const reconciled = reconcileRecoveryDiscovery(beforeReorg, afterReorg);
+  if (!reconciled.rolledBack) fail("the rollback was absorbed silently instead of reported");
+  if (reconciled.droppedApprovals.length !== 1 || reconciled.droppedApprovals[0] !== discovered.guardianLeaf) {
+    fail("the rollback did not name the guardian whose approval vanished");
+  }
+  ok("the rollback is reported and names the guardian whose approval vanished");
+
+  // Republish, so the rest of the run proceeds from a chain that agrees with it.
+  await send(rpc, guardians[0].address, board, encodeFunctionData({ abi: boardAbi, functionName: "publishApproval", args: boardArgs([published]) }), "0x2dc6c0");
+  await mine(rpc, 6);
+  const restored = await readBoard();
+  if (restored.approvals.length !== 1) fail("the republished approval was not picked up");
+  ok("republished after the reorg; discovery agrees with the chain again");
+
   // --- guardian 3 signs privately and sends nothing -------------------------
   console.log("\n==> Guardian 3 signs privately (no transaction)");
   const privateApproval = await approvalFor(2);
@@ -331,13 +362,15 @@ async function main() {
   // --- an independent submitter finalises -----------------------------------
   console.log("\n==> An independent submitter assembles both approvals and proposes");
   const leafOf = approval => guardianLeaves.find(l => same(l.keyCommitment, approval.keyCommitment)).leaf;
+  // Use the approval that survived the reorg, not the one that was discarded.
+  const survivor = restored.approvals[0];
   const bundle = [
     {
-      verifier: discovered.approval.verifier,
-      keyCommitment: discovered.approval.keyCommitment,
-      salt: discovered.approval.salt,
-      signature: discovered.approval.signature,
-      proof: [...discovered.approval.proof]
+      verifier: survivor.approval.verifier,
+      keyCommitment: survivor.approval.keyCommitment,
+      salt: survivor.approval.salt,
+      signature: survivor.approval.signature,
+      proof: [...survivor.approval.proof]
     },
     privateApproval
   ].sort((a, b) => (BigInt(leafOf(a)) < BigInt(leafOf(b)) ? -1 : 1));
