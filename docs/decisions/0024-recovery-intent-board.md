@@ -205,7 +205,8 @@ Stated explicitly, as required by `ARCHITECTURE.md:64-74`.
 | Blocking a legitimate request | Impossible. The board holds no state a legitimate request reads. |
 | Forged approval | Impossible. `publishApproval` requires a real guardian under the live root. |
 | Duplicate approval | Rejected twice: identical leaves are deduplicated by clients at reassembly, and rejected by `GuardianVerificationLib.approved` at propose time. |
-| Unbounded storage growth | Structurally impossible. Zero storage variables. |
+| Unbounded storage growth | Structurally impossible. Zero storage variables, enforced by `tools/quality/validate-no-storage-writes.mjs`, which rejects the deployed bytecode if it contains `SSTORE` or `TSTORE`, and by a `vm.record()` check over both entry points. Note that `storage:check` does *not* enforce this: it permits appending, so a first slot would pass it. |
+| Forged digest source | `publishApproval` and `announce` require the named manager to be the account's own installed recovery module, so the digest cannot come from a contract the caller chose. Without this a post could carry a genuine recovery identity while its approval was verified against an attacker's digest. |
 | Making the account pay gas | Impossible. The board never calls the account. |
 | Learning the guardian graph | A guardian is revealed only by their own act of publishing. Dormant guardians remain invisible; the board enumerates nothing. |
 | Cancelling or replacing an approved request | Impossible. No cancellation surface exists. |

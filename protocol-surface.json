@@ -1186,7 +1186,8 @@
       "errors": {
         "InvalidApproval()": "0x1f3e0de8",
         "SignatureTooLarge()": "0x26e27838",
-        "SingleApprovalRequired()": "0x08d686b9"
+        "SingleApprovalRequired()": "0x08d686b9",
+        "UnknownRecoveryManager()": "0x39ee5451"
       }
     },
     "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule": {

@@ -55,6 +55,8 @@
     "storage:check": "node tools/quality/validate-storage-layout.mjs",
     "storage:write": "node tools/quality/validate-storage-layout.mjs --write",
     "storage:test": "node --test tools/quality/validate-storage-layout.test.mjs",
+    "nostore:check": "node tools/quality/validate-no-storage-writes.mjs",
+    "nostore:test": "node --test tools/quality/validate-no-storage-writes.test.mjs",
     "surface:check": "node tools/quality/validate-protocol-surface.mjs",
     "surface:write": "node tools/quality/validate-protocol-surface.mjs --write",
     "surface:test": "node --test tools/quality/validate-protocol-surface.test.mjs",

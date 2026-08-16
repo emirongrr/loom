@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
+import {ModuleType} from "../libraries/ModuleType.sol";
 
 /// @notice The narrow slice of a recovery manager this board reads. Deliberately
 /// not `RecoveryManager` itself: the board is a discovery channel, not a
@@ -48,6 +49,8 @@ contract RecoveryIntentBoard {
     error InvalidApproval();
     error SingleApprovalRequired();
     error SignatureTooLarge();
+    /// @dev The account has not installed the named contract as its recovery module.
+    error UnknownRecoveryManager();
 
     /// @notice Upper bound on a published signature, so one guardian cannot emit
     /// an unbounded log. Comfortably above a WebAuthn P-256 assertion, which is
@@ -112,6 +115,15 @@ contract RecoveryIntentBoard {
         uint8 newGuardianThreshold,
         uint48 expiresAt
     ) external returns (bytes32 recoveryId) {
+        // The caller names the manager, so the manager must be the one the
+        // account itself installed. Without this the digest comes from a
+        // contract of the caller's choosing, and a post could carry a genuine
+        // recovery identity while its approval was verified against a digest
+        // nobody with authority ever defined. An account holds at most one
+        // recovery module, so this leaves no discretion.
+        if (!ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, recoveryManager)) {
+            revert UnknownRecoveryManager();
+        }
         uint64 configVersion = ILoomAccount(account).configVersion();
         uint64 nonce = IRecoveryProposalSource(recoveryManager).recoveryNonces(account);
         recoveryId = _recoveryId(
@@ -184,6 +196,15 @@ contract RecoveryIntentBoard {
         }
         if (approvals[0].signature.length > MAX_SIGNATURE_BYTES) revert SignatureTooLarge();
 
+        // The caller names the manager, so the manager must be the one the
+        // account itself installed. Without this the digest comes from a
+        // contract of the caller's choosing, and a post could carry a genuine
+        // recovery identity while its approval was verified against a digest
+        // nobody with authority ever defined. An account holds at most one
+        // recovery module, so this leaves no discretion.
+        if (!ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, recoveryManager)) {
+            revert UnknownRecoveryManager();
+        }
         uint64 configVersion = ILoomAccount(account).configVersion();
         uint64 nonce = IRecoveryProposalSource(recoveryManager).recoveryNonces(account);
         bytes32 digest = IRecoveryProposalSource(recoveryManager)
