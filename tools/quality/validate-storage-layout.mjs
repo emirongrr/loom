@@ -38,12 +38,20 @@ const snapshotPath = join(root, "storage-layout.json");
 // Contracts whose slot assignment is depended on from outside their own source:
 // the account across implementation generations, and every singleton that keys
 // live user state by account address.
+//
+// `RecoveryIntentBoard` is pinned so its empty layout is at least recorded and
+// reviewable. It is *not* what enforces that emptiness: this gate allows
+// appending, and a contract with no slots can only ever gain one by appending,
+// so the first slot it gained would pass here unchanged. The enforcement is
+// `tools/quality/validate-no-storage-writes.mjs`, which rejects the deployed
+// bytecode if it contains any storage-writing opcode.
 export const PINNED_CONTRACTS = Object.freeze([
   "src/LoomAccount.sol:LoomAccount",
   "src/keystore/LoomKeystore.sol:LoomKeystore",
   "src/hooks/PolicyHook.sol:PolicyHook",
   "src/hooks/VaultHook.sol:VaultHook",
   "src/recovery/RecoveryManager.sol:RecoveryManager",
+  "src/recovery/RecoveryIntentBoard.sol:RecoveryIntentBoard",
   "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule",
   "src/validators/ECDSAValidator.sol:ECDSAValidator",
   "src/validators/P256Validator.sol:P256Validator",

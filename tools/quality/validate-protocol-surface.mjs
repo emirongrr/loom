@@ -40,6 +40,7 @@ export const SURFACE_CONTRACTS = Object.freeze([
   "src/hooks/PolicyHook.sol:PolicyHook",
   "src/hooks/VaultHook.sol:VaultHook",
   "src/recovery/RecoveryManager.sol:RecoveryManager",
+  "src/recovery/RecoveryIntentBoard.sol:RecoveryIntentBoard",
   "src/recovery/KeystoreSyncRecoveryModule.sol:KeystoreSyncRecoveryModule",
   "src/validators/ECDSAValidator.sol:ECDSAValidator",
   "src/validators/P256Validator.sol:P256Validator",
