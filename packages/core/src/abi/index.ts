@@ -4,6 +4,7 @@ export { LoomAccountFactoryAbi } from "./loom-account-factory.js";
 export { P256ValidatorAbi } from "./p256-validator.js";
 export { P256RecoveryValidatorFactoryAbi } from "./p256-recovery-validator-factory.js";
 export { RecoveryManagerAbi } from "./recovery-manager.js";
+export { RecoveryIntentBoardAbi } from "./recovery-intent-board.js";
 export { ECDSAGuardianVerifierAbi } from "./ecdsa-guardian-verifier.js";
 export { P256GuardianVerifierAbi } from "./p256-guardian-verifier.js";
 export { ERC1271GuardianVerifierAbi } from "./erc1271-guardian-verifier.js";

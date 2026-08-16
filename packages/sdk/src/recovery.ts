@@ -97,10 +97,14 @@ export type GuardianRecoveryErrorCode =
   | "TRANSPORT_PAYLOAD_EXPIRED"
   | "INVALID_RECOVERY_REQUEST"
   | "INVALID_RECOVERY_RESPONSE"
-  | "UNSUPPORTED_RECOVERED_VALIDATOR_PATH";
+  | "UNSUPPORTED_RECOVERED_VALIDATOR_PATH"
+  | "RECOVERY_DISCOVERY_UNAVAILABLE"
+  | "RECOVERY_DISCOVERY_LIMIT_EXCEEDED"
+  | "INVALID_RECOVERY_APPROVAL_LOG";
 
 export * from "./recoveryProtocol.js";
 export * from "./guardianCapability.js";
+export * from "./recoveryDiscovery.js";
 
 export class GuardianRecoveryError extends Error {
   readonly code: GuardianRecoveryErrorCode;

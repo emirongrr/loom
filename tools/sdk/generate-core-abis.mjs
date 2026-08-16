@@ -23,6 +23,7 @@ export const GENERATED_ABIS = Object.freeze([
   Object.freeze({ contract: "P256Validator", exportName: "P256ValidatorAbi", file: "p256-validator.ts" }),
   Object.freeze({ contract: "P256RecoveryValidatorFactory", exportName: "P256RecoveryValidatorFactoryAbi", file: "p256-recovery-validator-factory.ts" }),
   Object.freeze({ contract: "RecoveryManager", exportName: "RecoveryManagerAbi", file: "recovery-manager.ts" }),
+  Object.freeze({ contract: "RecoveryIntentBoard", exportName: "RecoveryIntentBoardAbi", file: "recovery-intent-board.ts" }),
   Object.freeze({ contract: "ECDSAGuardianVerifier", exportName: "ECDSAGuardianVerifierAbi", file: "ecdsa-guardian-verifier.ts" }),
   Object.freeze({ contract: "P256GuardianVerifier", exportName: "P256GuardianVerifierAbi", file: "p256-guardian-verifier.ts" }),
   Object.freeze({ contract: "ERC1271GuardianVerifier", exportName: "ERC1271GuardianVerifierAbi", file: "erc1271-guardian-verifier.ts" }),
