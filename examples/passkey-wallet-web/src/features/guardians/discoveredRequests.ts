@@ -66,6 +66,12 @@ export function classifyDiscoveredRequests(input: {
   readonly live: LiveGuardianAccountState;
   readonly recoveryManager: Address;
   readonly board: Address;
+  /**
+   * Set when a second endpoint did not confirm `live`. A contested read can
+   * still produce a lead, but never a verified badge: the badge is what a
+   * guardian acts on.
+   */
+  readonly contested?: boolean;
   readonly now: number;
 }): readonly DiscoveredRequestView[] {
   const { capability, live, now } = input;
@@ -141,6 +147,9 @@ export function classifyDiscoveredRequests(input: {
       Object.freeze({ ...base, trust: "detected" as const, issue });
 
     if (!live.recoveryConfigured) return detected("This account no longer has guardian recovery configured.");
+    if (input.contested === true) {
+      return detected("This account's state could not be independently confirmed by a second endpoint.");
+    }
 
     const expiresAt = Number(entry.expiresAt);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return detected("This recovery request has expired.");
