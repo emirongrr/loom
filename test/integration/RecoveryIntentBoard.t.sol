@@ -10,6 +10,10 @@ import {RecoveryIntentBoard} from "../../src/recovery/RecoveryIntentBoard.sol";
 import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
 import {MockValidator} from "../mocks/MockValidator.sol";
 import {RecoveryIntentBoardHarness} from "./RecoveryIntentBoardHarness.sol";
+import {P256GuardianVerifier} from "../../src/recovery/P256GuardianVerifier.sol";
+import {WebAuthnP256} from "../../src/libraries/WebAuthnP256.sol";
+import {MockP256Verifier} from "../mocks/MockP256Verifier.sol";
+import {P256TestKeys} from "../helpers/P256TestKeys.sol";
 
 /// @notice `RecoveryIntentBoard` must let guardian approvals accumulate across
 /// separate transactions without becoming an authority. Every test here asserts
@@ -303,5 +307,229 @@ contract RecoveryIntentBoardTest is RecoveryIntentBoardHarness {
             "recovery did not complete"
         );
         require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "guardian root was not rotated");
+    }
+
+    // --- The board is verifier-agnostic, not ECDSA-shaped ---------------------
+
+    /// The board delegates to `GuardianVerificationLib`, so a passkey guardian
+    /// should publish exactly like an address guardian. Only ECDSA was exercised
+    /// until now, which left the claim untested for the guardian type the wallet
+    /// actually recommends.
+    function testPublishApprovalAcceptsAPasskeyGuardian() public {
+        P256GuardianVerifier passkeyVerifier = new P256GuardianVerifier(address(new MockP256Verifier()));
+        WebAuthnP256.PublicKey memory publicKey = WebAuthnP256.PublicKey(
+            P256TestKeys.x(1),
+            P256TestKeys.y(1),
+            keccak256("wallet.example"),
+            keccak256(bytes("https://wallet.example"))
+        );
+        bytes32 passkeyCommitment = WebAuthnP256.fingerprint(publicKey);
+        bytes32 passkeySalt = keccak256("passkey-guardian-salt");
+        bytes32 passkeyLeaf = keccak256(
+            abi.encode(address(passkeyVerifier), address(passkeyVerifier).codehash, passkeyCommitment, passkeySalt)
+        );
+
+        // A fresh account whose tree mixes a passkey guardian with an address one.
+        address[] memory validators = _sortedValidators();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[0], "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[1], "");
+        modules[2] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        LoomAccount mixed =
+            new LoomAccount(address(this), _pairHash(passkeyLeaf, leafA), 2, keccak256("config"), modules);
+
+        bytes32 digest = recovery.proposalDigest(
+            address(mixed),
+            keccak256(abi.encode(validators)),
+            address(newValidator),
+            keccak256(""),
+            NEW_GUARDIAN_ROOT,
+            1,
+            mixed.configVersion(),
+            recovery.recoveryNonces(address(mixed))
+        );
+
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = leafA;
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval({
+            verifier: address(passkeyVerifier),
+            keyCommitment: passkeyCommitment,
+            salt: passkeySalt,
+            signature: abi.encode(publicKey, _webAuthnSignature(digest)),
+            proof: proof
+        });
+
+        require(_tryPublishFor(mixed, validators, approvals), "a passkey guardian could not publish an approval");
+
+        // A commitment that is not this passkey must still be refused, so the
+        // acceptance above is not the verifier waving everything through.
+        approvals[0].keyCommitment = keccak256("not-this-passkey");
+        require(!_tryPublishFor(mixed, validators, approvals), "a wrong passkey commitment published an approval");
+    }
+
+    // --- Fuzz -----------------------------------------------------------------
+
+    /// `_recoveryId` duplicates `RecoveryManager.recoveryIdFor`, because the
+    /// manager exposes it only over a struct that does not exist before a
+    /// proposal does. Pin that duplication across arbitrary inputs.
+    function testFuzzAnnouncedIdentityMatchesTheManager(
+        address fuzzValidator,
+        bytes32 oldValidatorsHash,
+        bytes32 initDataHash,
+        bytes32 newGuardianRoot,
+        uint8 thresholdSeed,
+        uint48 expiresAt
+    ) public {
+        uint8 threshold = uint8(thresholdSeed % 32) + 1;
+        RecoveryManager.PendingRecovery memory identity;
+        identity.oldValidatorsHash = oldValidatorsHash;
+        identity.newValidator = fuzzValidator;
+        identity.initDataHash = initDataHash;
+        identity.newGuardianRoot = newGuardianRoot;
+        identity.newGuardianThreshold = threshold;
+        identity.configVersion = account.configVersion();
+        identity.nonce = recovery.recoveryNonces(address(account));
+
+        bytes32 announced = board.announce(
+            address(account),
+            address(recovery),
+            oldValidatorsHash,
+            fuzzValidator,
+            initDataHash,
+            newGuardianRoot,
+            threshold,
+            expiresAt
+        );
+        require(
+            announced == recovery.recoveryIdFor(address(account), identity),
+            "board and manager disagree on recovery identity"
+        );
+    }
+
+    /// Whatever an announcement claims, it must leave every authoritative field
+    /// exactly as it found it.
+    function testFuzzAnnouncementNeverMutatesAuthoritativeState(
+        address fuzzValidator,
+        bytes32 oldValidatorsHash,
+        bytes32 initDataHash,
+        bytes32 newGuardianRoot,
+        uint8 thresholdSeed,
+        uint48 expiresAt
+    ) public {
+        RecoveryManager.PendingRecovery memory beforeState = _pending();
+        uint64 nonceBefore = recovery.recoveryNonces(address(account));
+        bytes32 rootBefore = account.guardianRoot();
+        uint64 versionBefore = account.configVersion();
+        uint256 validatorsBefore = account.validatorCount();
+
+        board.announce(
+            address(account),
+            address(recovery),
+            oldValidatorsHash,
+            fuzzValidator,
+            initDataHash,
+            newGuardianRoot,
+            uint8(thresholdSeed % 32) + 1,
+            expiresAt
+        );
+
+        require(_pending().readyAt == beforeState.readyAt, "an announcement created or moved a pending recovery");
+        require(recovery.recoveryNonces(address(account)) == nonceBefore, "an announcement advanced the recovery nonce");
+        require(account.guardianRoot() == rootBefore, "an announcement changed the guardian root");
+        require(account.configVersion() == versionBefore, "an announcement advanced the configuration version");
+        require(account.validatorCount() == validatorsBefore, "an announcement changed the validator set");
+    }
+
+    /// Only a guardian under the live root may publish, whatever is supplied.
+    function testFuzzPublishApprovalRejectsForgedApprovals(
+        bytes32 keyCommitment,
+        bytes32 approvalSalt,
+        bytes memory signature,
+        bytes32 proofItem
+    ) public {
+        if (signature.length > board.MAX_SIGNATURE_BYTES()) return;
+        // A real commitment paired with its own salt is the one input allowed to
+        // succeed; every other combination must be refused.
+        if (
+            (keyCommitment == commitmentA && approvalSalt == saltA)
+                || (keyCommitment == commitmentB && approvalSalt == saltB)
+        ) return;
+
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = proofItem;
+        GuardianVerificationLib.Approval[] memory approvals = new GuardianVerificationLib.Approval[](1);
+        approvals[0] = GuardianVerificationLib.Approval({
+            verifier: address(guardianVerifier),
+            keyCommitment: keyCommitment,
+            salt: approvalSalt,
+            signature: signature,
+            proof: proof
+        });
+        require(!_tryPublishMany(approvals), "a forged approval was published");
+    }
+
+    // --- Helpers ------------------------------------------------------------
+
+    function _tryPublishFor(
+        LoomAccount target,
+        address[] memory validators,
+        GuardianVerificationLib.Approval[] memory approvals
+    ) internal returns (bool ok) {
+        (ok,) = address(board)
+            .call(
+                abi.encodeCall(
+                    RecoveryIntentBoard.publishApproval,
+                    (
+                        address(target),
+                        address(recovery),
+                        keccak256(abi.encode(validators)),
+                        address(newValidator),
+                        keccak256(""),
+                        NEW_GUARDIAN_ROOT,
+                        1,
+                        approvals
+                    )
+                )
+            );
+    }
+
+    /// A WebAuthn assertion over `digest`, in the shape `P256GuardianVerifier`
+    /// checks: relying-party hash, origin, user verification, and the challenge
+    /// binding. The mock verifier stands in for the curve arithmetic; everything
+    /// the guardian path itself enforces is real.
+    function _webAuthnSignature(bytes32 digest) internal pure returns (WebAuthnP256.Signature memory) {
+        bytes memory origin = bytes("https://wallet.example");
+        return WebAuthnP256.Signature({
+            authenticatorData: bytes.concat(keccak256("wallet.example"), hex"05"),
+            clientDataJSON: bytes.concat(
+                bytes('{"type":"webauthn.get","challenge":"'),
+                _base64Url(digest),
+                bytes('","origin":"'),
+                origin,
+                bytes('","crossOrigin":false}')
+            ),
+            origin: origin,
+            r: bytes32(uint256(1)),
+            s: bytes32(uint256(1))
+        });
+    }
+
+    function _base64Url(bytes32 input) internal pure returns (bytes memory) {
+        bytes memory table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        bytes memory output = new bytes(43);
+        bytes memory raw = abi.encodePacked(input);
+        uint256 outIndex;
+        for (uint256 i; i < 32; i += 3) {
+            uint256 remaining = 32 - i;
+            uint24 chunk = uint24(uint8(raw[i])) << 16;
+            if (remaining > 1) chunk |= uint24(uint8(raw[i + 1])) << 8;
+            if (remaining > 2) chunk |= uint24(uint8(raw[i + 2]));
+            output[outIndex++] = table[(chunk >> 18) & 0x3f];
+            output[outIndex++] = table[(chunk >> 12) & 0x3f];
+            if (remaining > 1) output[outIndex++] = table[(chunk >> 6) & 0x3f];
+            if (remaining > 2) output[outIndex++] = table[chunk & 0x3f];
+        }
+        return output;
     }
 }
