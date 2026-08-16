@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 import {RecoveryIntentBoard} from "../../src/recovery/RecoveryIntentBoard.sol";
+import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
 import {RecoveryIntentBoardHarness} from "./RecoveryIntentBoardHarness.sol";
 
@@ -69,7 +70,10 @@ contract RecoveryIntentBoardAdversarialTest is RecoveryIntentBoardHarness {
             0
         );
         HostileProposalSource hostile = new HostileProposalSource(hostileDigest, 0);
-        require(!account.isModuleInstalled(2, address(hostile)), "the hostile source must not be an installed module");
+        require(
+            !account.isModuleInstalled(ModuleType.RECOVERY, address(hostile)),
+            "the hostile source must not be an installed module"
+        );
 
         GuardianVerificationLib.Approval[] memory approvals =
             _one(_approval(leafB, address(guardianVerifier), commitmentA, saltA, keyA, hostileDigest));
