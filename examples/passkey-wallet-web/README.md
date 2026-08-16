@@ -34,7 +34,7 @@ flowchart LR
 | `@loom/sdk/recovery` | guardian sets, individualized invites, digests, approvals, reviews, recovery client |
 | Example | product state, screens, local stores, replaceable I/O adapters |
 
-The evidence-backed boundary audit is in [docs/BOUNDARY_AUDIT.md](docs/BOUNDARY_AUDIT.md). Validator provisioning and guardian privacy decisions are recorded in [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) and [ADR-0014](../../docs/decisions/0014-guardian-capabilities-and-execution-privacy.md).
+The evidence-backed boundary audit is in [docs/BOUNDARY_AUDIT.md](docs/BOUNDARY_AUDIT.md), and what each flow costs a person is counted in [docs/INTERACTION_BUDGET.md](docs/INTERACTION_BUDGET.md). Validator provisioning and guardian privacy decisions are recorded in [ADR-0013](../../docs/decisions/0013-recovery-validator-provisioning.md) and [ADR-0014](../../docs/decisions/0014-guardian-capabilities-and-execution-privacy.md).
 
 ## Five-minute local setup
 
