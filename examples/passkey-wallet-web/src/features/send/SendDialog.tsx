@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Dialog } from "../../components/Dialog";
 import { AdvancedDetails, StatusPanel } from "../../components/StatusPanel";
 import { useAppServices } from "../../app/AppServices";
@@ -11,8 +11,11 @@ import type { AccountHandle } from "../../types";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { planActivation } from "../wallet/activate";
-import type { AccountAssets } from "../wallet/assets";
+import type { AccountAssets, TokenAsset } from "../wallet/assets";
 import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset } from "../wallet/transfers";
+import { assessRecipient, type KnownAddress, type RecipientRisk } from "../wallet/recipientRisk";
+import { nativeMaxAmount, nativeSendReserve } from "../wallet/sendLimits";
+import { formatUnits, isAddress } from "viem";
 
 export function SendDialog({ account, deployment, deployed, assets, preselect, onClose, onSent }: {
   account: AccountHandle;
@@ -52,7 +55,44 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       return { factory: plan.factory, factoryData: plan.factoryData };
     } catch { return null; }
   }, [account, deployment, deployed]);
+  const known = useMemo<readonly KnownAddress[]>(() => Object.freeze([
+    ...assets.tokens.filter(token => token.address).map(token => ({ address: token.address!, label: token.symbol, kind: "contract" as const })),
+    ...assets.nfts.map(nft => ({ address: nft.contract, label: nft.collection, kind: "contract" as const }))
+  ]), [assets]);
+  const risks: readonly RecipientRisk[] = useMemo(
+    () => (isAddress(to.trim(), { strict: false }) ? assessRecipient({ recipient: to.trim(), account: account.account, known }) : []),
+    [to, account.account, known]
+  );
   const available = asset.type === "token" ? `${asset.token.formatted} ${asset.token.symbol}` : `${asset.nft.collection} #${asset.nft.tokenId}`;
+
+  // The account pays for its own operation out of the balance it is sending
+  // from, so Max needs a fee price to know what it must leave behind. Without
+  // one there is no honest maximum, and Max is withheld rather than guessed.
+  const [feePrice, setFeePrice] = useState<bigint | null>(null);
+  useEffect(() => {
+    let active = true;
+    // The client registry is a replaceable adapter, so treat a missing or
+    // throwing fee reader as "unknown price" rather than letting it break the
+    // whole send screen.
+    void (async () => {
+      try {
+        const price = await publicClients.forEndpoint(config.rpcUrl).getGasPrice();
+        if (active) setFeePrice(typeof price === "bigint" && price > 0n ? price * 2n : null);
+      } catch { if (active) setFeePrice(null); }
+    })();
+    return () => { active = false; };
+  }, [config.rpcUrl, publicClients]);
+
+  const isNative = asset.type === "token" && asset.token.kind === "native";
+  const maxUnavailable = isNative && feePrice === null;
+  const maxAmountFor = (token: TokenAsset): string => {
+    if (token.kind !== "native") return token.formatted;
+    if (feePrice === null) return "";
+    return formatUnits(nativeMaxAmount({ balance: token.balance, maxFeePerGas: feePrice }), token.decimals);
+  };
+  const gasReserve = isNative && feePrice !== null
+    ? formatUnits(nativeSendReserve({ maxFeePerGas: feePrice }), asset.token.decimals)
+    : null;
 
   const submit = async () => {
     setError(null);
@@ -111,11 +151,17 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
         <input value={to} disabled={busy} onChange={event => setTo(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" aria-invalid={error?.stage === "validation" || undefined} />
       </label>
 
+      {risks.length > 0 && <div className="callout warning" data-testid="recipient-risks" role="status">
+        {risks.map((risk, index) => <p key={index}>{describeRisk(risk)}</p>)}
+      </div>}
+
       {!isNft && <label className="field"><span>Amount ({asset.type === "token" ? asset.token.symbol : ""})</span>
         <div className="amount-row">
           <input value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} placeholder="0.0" inputMode="decimal" />
-          {asset.type === "token" && <button type="button" className="text-button" disabled={busy} onClick={() => setAmount(asset.token.formatted)}>Max</button>}
+          {asset.type === "token" && <button type="button" className="text-button" disabled={busy || maxUnavailable} onClick={() => setAmount(maxAmountFor(asset.token))}>Max</button>}
         </div>
+        {gasReserve && <small className="form-note" data-testid="gas-reserve">Max keeps {gasReserve} {asset.type === "token" ? asset.token.symbol : ""} back so this account can pay for its own transfer.</small>}
+        {maxUnavailable && <small className="form-note" data-testid="gas-reserve-unavailable">The current fee price is unavailable, so Max cannot work out what to leave for gas. Enter an amount instead.</small>}
       </label>}
       {isNft && <p className="form-note">This transfers the single collectible shown above from your account.</p>}
 
@@ -134,6 +180,19 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       </div>
     </form>
   </Dialog>;
+}
+
+function describeRisk(risk: RecipientRisk): string {
+  switch (risk.kind) {
+    case "self":
+      return "This is this account's own address. The transfer would send the asset back to itself and still cost gas.";
+    case "burn":
+      return "This is the zero address. Anything sent there is destroyed and cannot be recovered by anyone.";
+    case "contract":
+      return `This is the ${risk.label} contract itself, not a wallet. Tokens sent to their own contract are usually unrecoverable.`;
+    case "look-alike":
+      return `This address begins and ends like ${risk.label} (${risk.similarTo}) but is not the same address. Address-poisoning attacks rely on exactly this. Compare every character before sending.`;
+  }
 }
 
 function keyOf(asset: SendableAsset): string {
