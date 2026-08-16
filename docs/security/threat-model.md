@@ -63,6 +63,10 @@
   been reviewed.
 - The installed recovery module is the audited immutable `RecoveryManager`;
   any recovery module can exercise the narrow validator-replacement authority.
+- `RecoveryIntentBoard`, where a deployment publishes one, is a discovery
+  channel and not an authority. It is never installed as a module and holds no
+  state, so a client must re-verify every approval it reads before submitting;
+  no client may treat a board log as sufficient evidence.
 - A malicious or broken hook can deny normal execution for the 72-hour config
   delay. Scheduling removal of an already-installed hook has a narrow
   hook-bypass recovery path, so the denial is not permanent.
@@ -86,6 +90,23 @@
 
 ## Known limitations
 
+- A guardian who publishes an approval on chain reveals their verifier, key
+  commitment, salt, proof, and signature against a guardian root that is still
+  live. Recovery normally couples that disclosure to rotation, because
+  execution replaces the root in the same transaction, but an abandoned,
+  cancelled, or expired recovery leaves the guardian exposed with nothing
+  rotated. Private sharing remains the default for this reason; the mitigation
+  is a client default, not a contract guarantee.
+- Recovery announcements are unauthenticated by design. Anyone can publish an
+  intent naming any account, so a client must treat an announcement as an
+  unverified lead, re-derive it against live account state, and rely on the
+  out-of-band comparison code before a guardian signs. The cost of a flood
+  falls on the announcer and no account state is reachable from it.
+- On-chain recovery discovery depends on an RPC that serves `eth_getLogs` over
+  a useful range, and log-derived approval counts can be reduced by a chain
+  reorganisation. Discovery is therefore a convenience with a liveness
+  dependency that the QR, file, clipboard, and direct submission paths do not
+  have.
 - Granular session permissions recognize only Loom's exact single/batch
   execution encoding and canonical ERC-20 `transfer`, `transferFrom`, and
   `approve` calldata. Non-standard token methods and richer allowlists require
