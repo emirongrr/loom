@@ -32,7 +32,7 @@ Definitions:
 | Show someone my address — **before** | 1 | 0 | 0 | 0 | `HomePage.tsx` quick action |
 | Show someone my address — **after** | 1 to a QR, 2 to also copy | 0 | 0 | 0 | `ReceiveDialog.tsx` |
 | Send ETH from an existing account — **before** | 2 | 2 | 1 | 1 | `SendDialog.tsx` |
-| Send ETH from an existing account — **after** | 2 | 2 | 1 | 1 | unchanged |
+| Send ETH from an existing account — **after** | 2 | 2 | 1 | 1 | `SendDialog.tsx`; same count, now with an inline review |
 | **First** send from a new account — **before** | 3 | 2 | **2** | **2** | activation card, then `SendDialog.tsx` |
 | **First** send from a new account — **after** | 2 | 2 | **1** | **1** | `SendDialog.tsx` activation passthrough |
 | Approve a recovery as a guardian — **before** | 3 | **1** | 1 | 0 | paste box in `GuardianWorkspace.tsx` |
@@ -61,6 +61,12 @@ payload; the flow's real precondition was an out-of-band delivery that the
 table cannot show. After, the guardian finds the request themselves and types
 nothing. Trading a text entry and an external dependency for one click is the
 intended trade, not an accident.
+
+**The pre-submit review costs nothing.** Asset, amount, recipient, network, gas
+payer, and the fee ceiling are shown inline above the submit button and update
+as the draft changes, so the send stays two clicks. A separate confirmation step
+would have added a click without adding information, which is the opposite of
+what a review is for.
 
 **Publishing on chain is deliberately not the cheapest path.** It costs two more
 clicks than sharing privately because the second is a warning the guardian must
@@ -114,6 +120,5 @@ finished result:
   are now discoverable, but privately shared ones still arrive by hand.
 - Starting a recovery still costs two authenticator ceremonies: one to create
   the replacement passkey and one to publish its validator.
-- There is no pre-submit review showing asset, recipient, amount, network, gas
-  payer, and estimated fee together. The brief this work came from asks for one;
-  it is not built.
+- Recipients must be typed or pasted; there is no camera or QR scan on the send
+  screen, so an address copied from a phone still travels by hand.
