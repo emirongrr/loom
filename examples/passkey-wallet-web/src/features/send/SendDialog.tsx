@@ -10,6 +10,7 @@ import { useNotifications } from "../../notifications/NotificationsContext";
 import type { AccountHandle } from "../../types";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import { submitAccountCalls } from "../wallet/accountClient";
+import { planActivation } from "../wallet/activate";
 import type { AccountAssets } from "../wallet/assets";
 import { assetLabel, buildTransferCall, normalizeRecipient, type SendableAsset } from "../wallet/transfers";
 
@@ -40,6 +41,17 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
   const busy = operationIsPending(operation);
   const asset = options.find(option => keyOf(option) === assetKey) ?? options[0]!;
   const isNft = asset.type === "nft";
+  // An account that does not exist yet is created by its first operation, so the
+  // creation call rides along with this send rather than costing its own
+  // ceremony. A handle whose configuration cannot be rebuilt has no safe
+  // creation call, and must go through the home screen instead.
+  const activation = useMemo(() => {
+    if (deployed || !deployment || account.kind !== "derived") return null;
+    try {
+      const plan = planActivation(account, deployment);
+      return { factory: plan.factory, factoryData: plan.factoryData };
+    } catch { return null; }
+  }, [account, deployment, deployed]);
   const available = asset.type === "token" ? `${asset.token.formatted} ${asset.token.symbol}` : `${asset.nft.collection} #${asset.nft.tokenId}`;
 
   const submit = async () => {
@@ -61,7 +73,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
     const label = assetLabel(asset);
     const toastId = notifications.notify({ status: "pending", title: `Sending ${label}`, detail: `To ${short(recipient)} · waiting for confirmation` });
     try {
-      const result = await submitAccountCalls({ config, account, deployment, calls: [call], onState: setOperation, pendingOperations, runtime, publicClients });
+      const result = await submitAccountCalls({ config, account, deployment, calls: [call], ...(activation ? { activation } : {}), onState: setOperation, pendingOperations, runtime, publicClients });
       notifications.update(toastId, {
         status: "success",
         title: `Sent ${label}`,
@@ -82,9 +94,10 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       <div className="sheet-handle" aria-hidden="true" />
       <div className="section-heading"><div><p className="eyebrow">On {hostOf(config.rpcUrl)}</p><h2>Send</h2></div></div>
 
-      {!deployed && <p className="callout warning">
-        This account does not exist on chain yet, and funding it alone does not create it — it is created by its first
-        operation. Use "Activate account" on the home screen first; it pays for itself from this balance.
+      {!deployed && <p className={activation ? "callout" : "callout warning"} data-testid="first-send-notice">
+        {activation
+          ? "This account does not exist on chain yet. This send creates it and makes the transfer in one operation, paid from this balance — no separate activation step and no second passkey prompt. If the transfer itself fails, the account is still created and nothing is sent."
+          : "This account does not exist on chain yet, and its creation call cannot be rebuilt from the saved handle. Create it from the home screen before sending."}
       </p>}
 
       <label className="field"><span>Asset</span>
@@ -117,7 +130,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
       </div>
       <div className="sheet-actions">
         <button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="submit" className="primary" disabled={busy || !deployed}>{operationLabel(operation)}</button>
+        <button type="submit" className="primary" disabled={busy || (!deployed && !activation)}>{operationLabel(operation)}</button>
       </div>
     </form>
   </Dialog>;

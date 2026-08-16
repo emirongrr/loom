@@ -139,18 +139,18 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     {balance.status === "loaded" && !deployed && account.kind === "derived" && <section className="section-card pending-card">
       <div>
         <p className="eyebrow">Not created yet</p>
-        <h2>Activate this account</h2>
+        <h2>This account is created by its first operation</h2>
         <p>
           The address is reserved for your passkey, but the account exists on chain only once its first operation
-          creates it — funding alone does not. That operation pays for itself out of this balance and goes through the
-          same public bundler as any other, which carries it without being able to change it.
+          creates it — funding alone does not. Sending carries that creation along with it, so there is no separate
+          step to take first. Creating it on its own is available here if you would rather not wait for a send.
         </p>
         {assets.native.balance === 0n && <p className="form-note">
           This address holds no ETH. Send it a small amount first: the account funds its own creation.
         </p>}
       </div>
-      <button className="primary" disabled={activating || !deployment || assets.native.balance === 0n} onClick={() => void activate()}>
-        {activating ? "Confirm on your device…" : "Activate account"}
+      <button className="secondary" disabled={activating || !deployment || assets.native.balance === 0n} onClick={() => void activate()}>
+        {activating ? "Confirm on your device…" : "Create account now"}
       </button>
     </section>}
 
