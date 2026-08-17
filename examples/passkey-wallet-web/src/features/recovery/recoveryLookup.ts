@@ -125,3 +125,28 @@ export function verifyExecutionArguments(input: {
 
   return Object.freeze({ ok: problems.length === 0, problems: Object.freeze(problems) });
 }
+
+/**
+ * Pick the execution data this device already holds for a pending recovery.
+ *
+ * The data is never asked for by hand. It contains the new passkey's public
+ * key, and that passkey lives on the device that created it, so someone who
+ * cannot produce the data here also cannot use the account afterwards --
+ * offering a paste box would suggest a way out that does not exist. What it can
+ * do is find the value among the sessions and drafts already stored here, which
+ * is the case where finishing the recovery is genuinely possible.
+ *
+ * Candidates are matched by hash, not by account or label: the hash is what
+ * `executeRecovery` compares, so a stale draft for the same account cannot be
+ * mistaken for the live one.
+ */
+export function selectLocalInitData(input: {
+  readonly record: PendingRecoveryRecord;
+  readonly candidates: readonly Hex[];
+}): Hex | null {
+  for (const candidate of input.candidates) {
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(candidate)) continue;
+    if (keccak256(candidate).toLowerCase() === input.record.initDataHash.toLowerCase()) return candidate;
+  }
+  return null;
+}

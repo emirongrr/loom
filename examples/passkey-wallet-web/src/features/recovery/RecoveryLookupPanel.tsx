@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { encodeFunctionData, getAddress, isAddress, type Address, type Hex } from "viem";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
-import { executionBlockers, verifyExecutionArguments } from "./recoveryLookup";
+import { executionBlockers, selectLocalInitData, verifyExecutionArguments } from "./recoveryLookup";
+import { createRecoverySessionRepository } from "./recoverySession";
+import { createRecoveryDraftRepository } from "./recoveryDraft";
 import { encodeExecuteRecovery, lookupRecovery, type RecoveryLookupResult } from "./recoveryLookupClient";
+import type { PendingRecoveryRecord } from "./recoveryLookup";
 import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 
@@ -26,7 +29,7 @@ export function RecoveryLookupPanel() {
   const [deploymentError, setDeploymentError] = useState("");
   const [address, setAddress] = useState("");
   const [result, setResult] = useState<RecoveryLookupResult | null>(null);
-  const [initData, setInitData] = useState("");
+  const [initData, setInitData] = useState<Hex | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<Hex | "">("");
@@ -53,12 +56,29 @@ export function RecoveryLookupPanel() {
   const record = found?.record ?? null;
 
   const argumentCheck = record && initData
-    ? verifyExecutionArguments({ record, oldValidators: result!.oldValidators, initData: initData.trim() as Hex })
+    ? verifyExecutionArguments({ record, oldValidators: result!.oldValidators, initData })
     : null;
 
   const blockers = result
     ? executionBlockers({ lookup: result.lookup, hasInitData: Boolean(argumentCheck?.ok) })
     : [];
+  const otherBlockers = blockers.filter(reason => !reason.includes("initialization data"));
+
+  // Everything this device could legitimately hold for a pending recovery: the
+  // sessions it started and the drafts it prepared. Matched by hash, so a stale
+  // record for the same account cannot stand in for the approved one.
+  const localInitData = async (record: PendingRecoveryRecord) => {
+    const candidates: Hex[] = [];
+    try {
+      const sessions = await createRecoverySessionRepository().inspect();
+      for (const session of sessions.sessions) if (session.local?.initData) candidates.push(session.local.initData);
+    } catch { /* an unreadable store is not a reason to claim the data is absent */ }
+    try {
+      const drafts = await createRecoveryDraftRepository().inspect();
+      for (const draft of drafts.drafts) if (draft.preparation?.initData) candidates.push(draft.preparation.initData);
+    } catch { /* same */ }
+    return selectLocalInitData({ record, candidates });
+  };
 
   const look = async () => {
     setError(""); setResult(null); setSent("");
@@ -66,11 +86,13 @@ export function RecoveryLookupPanel() {
     if (!isAddress(address.trim())) { setError("Enter a valid account address."); return; }
     setBusy(true);
     try {
-      setResult(await lookupRecovery({
+      const found = await lookupRecovery({
         publicClient: publicClients.forEndpoint(config.rpcUrl),
         recoveryManager: manager,
         account: getAddress(address.trim())
-      }));
+      });
+      setResult(found);
+      setInitData(found.lookup.kind === "none" ? "" : (await localInitData(found.lookup.record)) ?? "");
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The lookup failed.");
     } finally { setBusy(false); }
@@ -94,12 +116,12 @@ export function RecoveryLookupPanel() {
         return;
       }
       const recheck = verifyExecutionArguments({
-        record: fresh.lookup.record, oldValidators: fresh.oldValidators, initData: initData.trim() as Hex
+        record: fresh.lookup.record, oldValidators: fresh.oldValidators, initData: initData as Hex
       });
       if (!recheck.ok) { setResult(fresh); setError(recheck.problems.join(" ")); return; }
 
       const call = encodeExecuteRecovery({
-        account: fresh.account, oldValidators: fresh.oldValidators, initData: initData.trim() as Hex
+        account: fresh.account, oldValidators: fresh.oldValidators, initData: initData as Hex
       });
       const hash = await sendEip1193Transaction({
         provider,
@@ -156,18 +178,21 @@ export function RecoveryLookupPanel() {
         </p>
       </div>
 
-      <label className="field"><span>New validator initialization data</span>
-        <textarea value={initData} disabled={busy} spellCheck={false} rows={3} placeholder="0x…"
-          onChange={event => setInitData(event.target.value)} />
-        <small className="form-note">
-          Only its hash is on chain. This comes from the device that started the recovery; anything else is
-          rejected here before it can cost gas.
-        </small>
-      </label>
-      {argumentCheck && !argumentCheck.ok && <p className="callout warning">{argumentCheck.problems.join(" ")}</p>}
-      {argumentCheck?.ok && <p className="callout success">The initialization data matches what the guardians approved.</p>}
+      {argumentCheck?.ok
+        ? <p className="callout success">
+          The execution data for this recovery was found on this device and matches what the guardians approved.
+        </p>
+        : <p className="callout">
+          <strong>This recovery can only be completed on the device that started it.</strong>
+          <span> The new validator's initialization data is not published -- only its hash is -- and it is not stored
+            here. It also would not be enough on its own: it carries the new passkey's public key, and that passkey
+            exists only on the device that created it, so the account would still be unusable. Start a new recovery
+            instead.</span>
+        </p>}
 
-      {blockers.length > 0 && <ul className="form-note">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      {/* The missing-data case has its own explanation above; repeating it here
+          would say the same thing twice and bury the reasons that differ. */}
+      {otherBlockers.length > 0 && <ul className="form-note">{otherBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
 
       <button className="primary" disabled={busy || blockers.length > 0} onClick={() => void execute()}>
         {busy ? "Working…" : "Execute recovery"}
