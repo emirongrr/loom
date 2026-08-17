@@ -186,3 +186,49 @@ test("the first read has nothing to compare against and reports no rollback", as
   const result = await run({ previous: undefined });
   assert.deepEqual(result.rolledBack, []);
 });
+
+// --- two endpoints must agree before a request is called verified ------------
+
+test("a request is verified only when both endpoints agree about live state", async () => {
+  const agreeing = await run({ corroborate: inspectLive });
+  assert.equal(agreeing.requests[0].trust, "verified");
+  assert.ok(agreeing.requests[0].request, "an agreed request stays reviewable");
+});
+
+test("endpoints that disagree about the guardian root refuse to verify", async () => {
+  const result = await run({
+    corroborate: async () => ({ ...liveState, guardianRoot: `0x${"ff".repeat(32)}` })
+  });
+  assert.equal(result.requests[0].trust, "detected");
+  assert.equal(result.requests[0].request, undefined, "a contested request must not be reviewable");
+  assert.match(result.requests[0].issue!, /independent|disagree|confirm/iu);
+});
+
+test("endpoints that disagree about the configuration version refuse to verify", async () => {
+  const result = await run({ corroborate: async () => ({ ...liveState, configVersion: 9n }) });
+  assert.equal(result.requests[0].trust, "detected");
+  assert.equal(result.requests[0].request, undefined);
+});
+
+test("endpoints that disagree about the validator set refuse to verify", async () => {
+  const result = await run({
+    corroborate: async () => ({ ...liveState, validators: ["0x9999999999999999999999999999999999999999"] })
+  });
+  assert.equal(result.requests[0].trust, "detected");
+  assert.equal(result.requests[0].request, undefined);
+});
+
+test("a second endpoint that cannot be reached fails closed rather than trusting one", async () => {
+  // Signing is the decision on the other side of this badge, so an unconfirmed
+  // read is treated as unconfirmed rather than quietly accepted.
+  const result = await run({ corroborate: async () => { throw new Error("verification rpc down"); } });
+  assert.equal(result.requests[0].trust, "detected");
+  assert.equal(result.requests[0].request, undefined);
+});
+
+test("without a second endpoint configured the single read still verifies", async () => {
+  // Corroboration is an improvement where a second endpoint exists, not a new
+  // hard requirement that would break a single-endpoint deployment.
+  const result = await run({ corroborate: undefined });
+  assert.equal(result.requests[0].trust, "verified");
+});

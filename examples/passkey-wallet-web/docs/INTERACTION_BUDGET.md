@@ -68,6 +68,13 @@ as the draft changes, so the send stays two clicks. A separate confirmation step
 would have added a click without adding information, which is the opposite of
 what a review is for.
 
+**Scanning a recipient replaces typing, and refuses what it cannot honour.** A
+code for another network, or one asking for a token transfer this screen cannot
+set up, is rejected with a reason rather than reduced to whatever address it
+contains. The camera starts only on an explicit press, stops on every exit path,
+and decodes in the page — no frame is uploaded and no decoding service is
+contacted.
+
 **Publishing on chain is deliberately not the cheapest path.** It costs two more
 clicks than sharing privately because the second is a warning the guardian must
 read past: publication is permanent, and an abandoned recovery leaves them
@@ -81,10 +88,10 @@ no attempt was made to reduce them here.
 
 | Goal | Clicks | Text | Passkey | Chain ops | Notes |
 |---|---|---|---|---|---|
-| Send an ERC-20 | 3 | 2 | 1 | 1 | one extra click to pick the asset |
+| Send an ERC-20 | 3 from the quick action, 2 from its token row | 2 | 1 | 1 | the extra click is choosing the asset, and the token row already preselects it |
 | Accept a guardian invitation | 1 | 1 | 0 | 0 | paste the link, review |
 | Configure guardians | varies | 1 per guardian | 1 | 1 | plus the account's own three-day config delay |
-| Start a recovery | 5 | 2 | 2 | 1 | address, check, passkey, publish the validator |
+| Start a recovery | 4 | 2 | 1 by the recovering person | 1 | one ceremony creates the passkey; publishing the validator needs a gas payer, which may be another wallet's ceremony, an external wallet, or a copied transaction |
 | Import one guardian response | 1 | 1 | 0 | 0 | repeated per guardian |
 | Propose the recovery | 1 | 0 | 0 | 1 | permissionless; submitted through an injected browser wallet, which adds its own confirmation |
 | Execute after the delay | 1 | 0 | 0 | 1 | readiness is re-read automatically on open; the manual re-check is optional |
@@ -113,12 +120,21 @@ touched, or state that it touched none.
 Named so the next change has a target, and so the table is not read as a
 finished result:
 
-- Sending an ERC-20 costs an extra click purely to select the asset; arriving
-  from a token row already preselects it, but arriving from the quick action
-  does not.
+- Sending an ERC-20 from the quick action costs a click to choose the asset.
+  That is not avoidable friction: every token row and collectible already has a
+  Send button that preselects, so the extra click only appears when the person
+  has not yet said what they want to send. Preselecting a guess — the largest
+  balance, the most recent — would risk sending the wrong asset, which is worse
+  than a click.
 - Importing guardian responses is one paste each. Responses published on chain
   are now discoverable, but privately shared ones still arrive by hand.
-- Starting a recovery still costs two authenticator ceremonies: one to create
-  the replacement passkey and one to publish its validator.
-- Recipients must be typed or pasted; there is no camera or QR scan on the send
-  screen, so an address copied from a phone still travels by hand.
+- Publishing the replacement validator needs someone to pay gas, and the
+  guardians cannot approve until it exists — they verify its deployed bytecode
+  before signing. Paying with another saved Loom wallet costs that wallet's own
+  ceremony; an external wallet or a copied transaction costs none. The ordering
+  is a guardian check, not a UI step, so it cannot be collapsed without dropping
+  that check.
+- Scanning a recipient needs a browser with `BarcodeDetector`; where it is
+  absent the button is not shown and the address is typed or pasted. Reaching
+  the remaining browsers would mean adding a decoding library to a wallet's
+  signing path, which is a supply-chain cost this has not paid.
