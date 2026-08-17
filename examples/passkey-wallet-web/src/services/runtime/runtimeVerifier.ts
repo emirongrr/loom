@@ -25,12 +25,10 @@ export function createRuntimeVerifier(input: {
       }
       const cacheKey = `${config.rpcUrl}:${config.verificationRpcUrl}:${config.bundlerUrl}:${deploymentFingerprint(deployment)}`;
       if (verified.has(cacheKey)) return;
-      const clients = [
-        input.publicClients.forEndpoint(config.rpcUrl),
-        input.publicClients.forEndpoint(config.verificationRpcUrl)
-      ] as const;
+      const endpoints = [config.rpcUrl, config.verificationRpcUrl] as const;
+      const clients = endpoints.map(endpoint => input.publicClients.forEndpoint(endpoint));
       const [chainIds, supportedEntryPoints] = await Promise.all([
-        Promise.all(clients.map(client => client.getChainId())),
+        Promise.all(clients.map((client, index) => reachable(endpoints[index]!, () => client.getChainId()))),
         readSupportedEntryPoints(request, config.bundlerUrl)
       ]);
       if (chainIds.some(chainId => chainId !== deployment.chainId)) throw configurationError("RPC chain does not match the deployment manifest.", { expectedChainId: deployment.chainId, primaryChainId: chainIds[0]!, verificationChainId: chainIds[1]! });
@@ -47,7 +45,8 @@ export function createRuntimeVerifier(input: {
         [...new Set(commitments.map(([address]) => address.toLowerCase()))]
           .map(async address => [
             address,
-            await Promise.all(clients.map(client => client.getCode({ address: address as Address })))
+            await Promise.all(clients.map((client, index) =>
+              reachable(endpoints[index]!, () => client.getCode({ address: address as Address }))))
           ] as const)
       ));
       // Checked in commitment order, so the first mismatch reported is the same
@@ -64,6 +63,33 @@ export function createRuntimeVerifier(input: {
       verified.add(cacheKey);
     }
   });
+}
+
+/**
+ * Turn an unreachable endpoint into an answer the reader can act on.
+ *
+ * Both outcomes stop the operation, but they are not the same finding and the
+ * remedies are opposite. Bytecode that does not match the profile says the
+ * chain is not what this build trusts. An endpoint that does not answer says
+ * nothing about the chain at all -- and a raw transport error, which is what
+ * this used to surface, reads like the former.
+ *
+ * Only the host is reported: an endpoint URL can carry an API key, and this
+ * string is shown and logged.
+ */
+async function reachable<T>(endpoint: string, read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    throw configurationError(
+      `The wallet could not reach ${hostOf(endpoint)} to verify this deployment. Both endpoints have to answer before anything is signed, so nothing was assumed about the chain. Retry, or change the endpoint in network settings.`,
+      { endpoint: hostOf(endpoint) }
+    );
+  }
+}
+
+function hostOf(endpoint: string): string {
+  try { return new URL(endpoint).host; } catch { return "the configured endpoint"; }
 }
 
 function deploymentFingerprint(deployment: WalletDeployment): string {
