@@ -125,7 +125,12 @@
     "release:packages": "node tools/release/pack-packages.mjs",
     "release:packages:test": "node --test tools/release/pack-packages.test.mjs",
     "e2e:clean-room": "node tools/e2e/clean-room-minimal-account.mjs",
-    "e2e:bundler-devnet": "npm run sdk:build && npm run passkey:build && npm --prefix packages/cli ci && npm --prefix monitoring ci && node tools/e2e/bundler-devnet.mjs",
+    "e2e:bundler-devnet": "npm run sdk:build && npm run passkey:build && npm --prefix packages/cli ci && npm --prefix monitoring ci && npm run wallet-lab:build && node tools/e2e/bundler-devnet.mjs",
+    "wallet-lab:build": "tsc -p tools/wallet-lab/tsconfig.json",
+    "wallet-lab:test": "npm run wallet-lab:build && node --test tools/wallet-lab/test/*.test.mjs",
+    "wallet-lab:run": "npm run sdk:build && npm run passkey:build && npm --prefix packages/cli ci && npm --prefix monitoring ci && npm --prefix examples/passkey-wallet-web ci && npm run wallet-lab:build && node tools/wallet-lab/run.mjs",
+    "wallet-lab:serve": "npm run wallet-lab:build && node tools/wallet-lab/serve.mjs",
+    "wallet-lab:replay": "npm run sdk:build && npm run passkey:build && npm --prefix packages/cli ci && npm --prefix monitoring ci && npm --prefix examples/passkey-wallet-web ci && npm run wallet-lab:build && node tools/wallet-lab/replay.mjs",
     "e2e:devnet": "npm run core:build && node tools/e2e/devnet-lifecycle.mjs",
     "e2e:guardian-devnet": "npm run core:build && node tools/e2e/devnet-guardian-lifecycle.mjs",
     "e2e:social-recovery": "npm run core:build && node tools/e2e/devnet-social-recovery.mjs",
@@ -137,6 +142,7 @@
   },
   "devDependencies": {
     "js-sha3": "0.12.0",
+    "playwright-core": "1.62.1",
     "solc": "0.8.36",
     "typescript": "7.0.2"
   },

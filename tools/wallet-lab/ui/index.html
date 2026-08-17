@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Loom Wallet Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <div>
+          <p class="eyebrow">WALLET TEST LAB</p>
+          <h1>Wallet Lab</h1>
+        </div>
+      </div>
+      <div class="run-identity">
+        <p id="run-summary">Waiting for a run artifact...</p>
+        <div id="run-status" class="status waiting" role="status" aria-live="polite">Waiting</div>
+      </div>
+    </header>
+
+    <main>
+      <section id="deployment-gateway" class="deployment-gateway" aria-labelledby="gateway-title">
+        <div class="gateway-copy"><p class="eyebrow">INSPECTION TARGET</p><h2 id="gateway-title">Choose an inspection target</h2><p>Wallet Lab only makes claims supported by the selected deployment and its observed chain evidence.</p></div>
+        <div class="target-grid">
+          <button type="button" class="target-card" data-deployment-choice="local"><span class="target-icon local">L</span><span><strong>Local deterministic deployment</strong><small>Anvil + Loom + Alto with complete operation, RPC, and EVM trace evidence.</small></span><em>Full lab evidence</em></button>
+          <article class="target-card sepolia-connect-card"><span class="target-icon sepolia">S</span><span><strong>Connect Sepolia deployment</strong><small>The bundled manifest is checked against every contract's live runtime code before Wallet Lab opens it.</small></span><div class="sepolia-connect-controls"><label for="sepolia-provider">Public RPC preset</label><select id="sepolia-provider" aria-describedby="sepolia-choice-status"><option value="">Loading public RPCs...</option></select><button type="button" id="connect-sepolia">Connect and verify</button></div><em id="sepolia-choice-status" role="status" aria-live="polite">Checking availability</em></article>
+        </div>
+      </section>
+
+      <div id="lab-workspace" hidden>
+        <section class="deployment-source-bar">
+          <div class="active-deployment"><span>Connected deployment</span><strong id="active-deployment-name">Local deterministic deployment</strong></div>
+          <div id="deployment-verification" class="deployment-verification waiting" role="status" aria-live="polite"><strong>Local evidence</strong><span>Captured by the deterministic Wallet Lab run.</span></div>
+          <button type="button" id="change-deployment" class="secondary-action">Change target</button>
+        </section>
+
+        <section class="run-strip" aria-label="Run summary">
+          <div><span>Scenario outcome</span><strong id="metric-result">Waiting for evidence</strong><small id="metric-result-context">No scenario loaded yet.</small></div><div><span>Execution environment</span><strong id="metric-network">Not connected</strong><small id="metric-chain">Chain identity is unavailable.</small></div><div><span>Independent evidence</span><strong id="metric-checks">No checks yet</strong><small id="metric-checks-context">Receipt, state, and operation checks appear here.</small></div><div><span>End-to-end runtime</span><strong id="metric-duration">-</strong><small id="metric-duration-context">Measured from startup through final evidence.</small></div>
+        </section>
+
+        <nav class="workspace-tabs" role="tablist" aria-label="Wallet Lab panels">
+          <button type="button" role="tab" id="tab-architecture" aria-controls="panel-architecture" aria-selected="true" data-tab="architecture">System architecture <span id="contract-count">0</span></button>
+          <button type="button" role="tab" id="tab-operations" aria-controls="panel-operations" aria-selected="false" data-tab="operations">Observed operations</button>
+          <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">RPC by operation <span id="network-count">0</span></button>
+          <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">EVM trace</button>
+        </nav>
+
+        <div id="failure-panel" class="failure-banner" hidden><span>First failing boundary</span><strong id="failure"></strong></div>
+
+        <section id="panel-architecture" class="workspace-panel" role="tabpanel" aria-labelledby="tab-architecture">
+          <div id="architecture-summary" class="architecture-summary"></div>
+          <div id="account-model-explainer" class="account-model-explainer"></div>
+          <div class="architecture-browser">
+            <article class="surface graph-surface"><div class="section-title graph-heading"><div><p class="eyebrow">DEPLOYMENT TOPOLOGY</p><h2>Contracts, modules, and authority flow</h2><p>Static architecture explains what may connect. The trace overlay shows what one captured transaction actually called.</p></div><div class="graph-tools" aria-label="Graph view controls"><button type="button" id="trace-overlay-toggle" aria-pressed="false">Show observed trace</button><button type="button" id="graph-zoom-out" aria-label="Zoom out">−</button><strong id="graph-zoom-level">100%</strong><button type="button" id="graph-zoom-in" aria-label="Zoom in">+</button><button type="button" id="graph-reset-view">Reset view</button></div></div><div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div><div class="architecture-legend"><span class="core">Core</span><span class="transport-required">ERC-4337 transport</span><span class="profile-required">Current profile</span><span class="optional">Optional module</span><span class="test-only">Test only</span></div><div class="graph-legend" aria-label="Relationship legend"><span><i class="edge-authority"></i>Authority / validation</span><span><i class="edge-call"></i>Static architecture</span><span><i class="edge-create"></i>Creation / binding</span><span><i class="edge-observed"></i>Observed EVM call</span></div></article>
+            <aside class="contract-sidebar"><article id="contract-dossier" class="surface contract-dossier empty">Select a topology node to inspect its role, fields, and relationships.</article><article class="surface abi-catalog"><div id="contract-heading" class="section-title"><div><p class="eyebrow">ABI SURFACE</p><h2>Contract interface</h2></div></div><label class="compact-search"><span>Filter ABI</span><input id="function-search" type="search" placeholder="Function, constant, event, error..." /></label><div id="abi-groups" class="abi-groups empty">Select a contract.</div></article><article id="function-inspector" class="surface function-inspector empty">Select a function to inspect why it exists and how it behaves.</article></aside>
+          </div>
+          <article id="execution-workspace" class="surface execution-workspace empty">Select a function to model its inputs and connect future execution evidence.</article>
+        </section>
+
+        <section id="panel-operations" class="workspace-panel" role="tabpanel" aria-labelledby="tab-operations" hidden>
+          <div id="operation-map" class="operation-map"></div>
+          <article id="journey-outcome" class="surface outcome-card"><p class="eyebrow">OBSERVED RESULT</p><h2>Waiting for a run</h2><p>Wallet Lab will explain each meaningful step here.</p></article><div id="journey-flow" class="journey-flow" aria-label="Wallet run stages"></div><div id="operation-inspector" class="empty-state">No wallet operation evidence is available yet.</div><div id="passkey-inspector" class="empty-state"><h2>What the passkey proved</h2><p>No passkey evidence is available yet.</p></div><article class="surface"><div class="section-title"><div><p class="eyebrow">INDEPENDENT CHECKS</p><h2>What was proven</h2></div></div><div id="proof-list" class="proof-list empty">No checks yet.</div></article><details class="surface technical-disclosure"><summary>All technical stages</summary><ol id="technical-events" class="technical-stage-list"></ol></details><details class="surface technical-disclosure"><summary>Technical details</summary><div class="technical-grid"><section><h3>Environment</h3><div id="environment" class="metric-grid empty">No environment manifest yet.</div></section><section><h3>Replay</h3><pre id="replay">Waiting for artifact...</pre></section><section class="span-two"><h3>State changes</h3><div id="state-diff" class="state-grid empty">State has not changed yet.</div></section></div></details>
+        </section>
+
+        <section id="panel-network" class="workspace-panel" role="tabpanel" aria-labelledby="tab-network" hidden>
+          <article class="surface network-intro"><p class="eyebrow">OBSERVED NETWORK</p><h2>Which operation made each call?</h2><p>Calls are grouped by the wallet operation that issued them and labeled by purpose. “Required” means required by this observed client flow, not a universal Loom protocol dependency.</p></article><div id="network-operation-groups" class="network-operation-groups"></div><div class="toolbar network-toolbar"><label><span>Search requests</span><input id="network-search" type="search" placeholder="Method, stage, reason..." /></label><label><span>Transport</span><select id="network-transport"><option value="all">RPC and bundler</option><option value="rpc">RPC</option><option value="bundler">Bundler</option></select></label></div><div class="network-layout"><div class="table-scroll"><table><thead><tr><th>#</th><th>Operation stage</th><th>Transport</th><th>Method</th><th>Requirement</th><th>Result</th></tr></thead><tbody id="network-rows"></tbody></table></div><article id="network-inspector" class="surface inspector-detail empty">Select a request to see why it happened and inspect its JSON-RPC evidence.</article></div>
+        </section>
+
+        <section id="panel-evm" class="workspace-panel" role="tabpanel" aria-labelledby="tab-evm" hidden><article class="surface evm-surface"><div class="section-title"><div><p class="eyebrow">OBSERVED EXECUTION</p><h2>EVM execution debugger</h2></div><span id="evm-trace-summary">No trace captured</span></div><div id="evm-trace" class="evm-trace empty">Local evidence is required to inspect a transaction trace.</div></article></section>
+      </div>
+    </main>
+    <div id="copy-status" class="sr-only" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
