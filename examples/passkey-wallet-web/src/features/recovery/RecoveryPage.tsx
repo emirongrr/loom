@@ -20,6 +20,7 @@ import type { AccountHandle } from "../../types";
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation } from "./recoveryDraft";
+import { RecoveryLookupPanel } from "./RecoveryLookupPanel";
 import { RecoveryStepper, recoveryViewStage } from "./RecoveryStepper";
 import { useRecoverySetupController } from "./useRecoverySetupController";
 
@@ -315,6 +316,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       {message && <p className="callout warning" role="status">{message}</p>}
     </section>
 
+    <RecoveryLookupPanel />
     <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}
