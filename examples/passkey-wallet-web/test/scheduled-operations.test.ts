@@ -184,14 +184,10 @@ function chain(input: {
   explorerLogsStatus?: number;
   scheduledReadFailures?: string[];
 }): typeof fetch {
-  return async (target, init) => {
-    if (String(target).startsWith(CONFIG.explorerUrl)) {
-      if (input.explorerLogsStatus && input.explorerLogsStatus !== 200) {
-        return new Response("rate limited", { status: input.explorerLogsStatus });
-      }
-      return Response.json({ items: input.logs.map(log => ({ topics: log.topics, transaction_hash: log.transactionHash })) });
-    }
-    const body = JSON.parse(String(init?.body ?? "{}"));
+  // The transport batches, so one HTTP request can carry several calls. Answer
+  // each and return them as an array, the way a real endpoint does; a mock that
+  // only understood a single call would pass while the app sent something else.
+  const handleOne = async (body: { id?: unknown; method?: string; params?: readonly unknown[] }): Promise<Response> => {
     const respond = (result: unknown) => Response.json({ jsonrpc: "2.0", id: body.id, result });
     if (body.method === "eth_getBlockByNumber") {
       const blockNumber = input.blockNumber ?? 1n;
@@ -252,7 +248,7 @@ function chain(input: {
     }
     if (body.method === "eth_call") {
       // scheduledOperations(bytes32): the id is the single argument word.
-      const data = String(body.params?.[0]?.data ?? "");
+      const data = String((body.params?.[0] as { data?: string } | undefined)?.data ?? "");
       const operationId = `0x${data.slice(10, 74)}`;
       if (input.scheduledReadFailures?.some(candidate => candidate.toLowerCase() === operationId.toLowerCase())) {
         return Response.json({ jsonrpc: "2.0", id: body.id, error: { code: -32000, message: "state read unavailable" } });
@@ -261,6 +257,19 @@ function chain(input: {
       return respond(`0x${readyAt.toString(16).padStart(64, "0")}`);
     }
     return respond("0x");
+  };
+
+  return async (target, init) => {
+    if (String(target).startsWith(CONFIG.explorerUrl)) {
+      if (input.explorerLogsStatus && input.explorerLogsStatus !== 200) {
+        return new Response("rate limited", { status: input.explorerLogsStatus });
+      }
+      return Response.json({ items: input.logs.map(log => ({ topics: log.topics, transaction_hash: log.transactionHash })) });
+    }
+    const parsed = JSON.parse(String(init?.body ?? "{}"));
+    if (!Array.isArray(parsed)) return handleOne(parsed);
+    const answers = await Promise.all(parsed.map(async entry => (await handleOne(entry)).json()));
+    return Response.json(answers);
   };
 }
 

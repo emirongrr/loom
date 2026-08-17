@@ -158,3 +158,43 @@ test("the first mismatching commitment is still the one reported", async () => {
     (error: unknown) => error instanceof AppError && error.userMessage.startsWith("Account factory")
   );
 });
+
+// An endpoint that does not answer and bytecode that does not match both stop
+// the operation, but they are opposite findings: one says the chain is not what
+// this build trusts, the other says nothing about the chain at all. Surfacing a
+// raw transport error made the second read like the first.
+test("an unreachable endpoint is reported as unreachable, not as code drift", async () => {
+  const client = {
+    getChainId: async () => deployment.chainId,
+    getCode: async () => { throw new TypeError("Failed to fetch"); }
+  };
+  const request = (async () => new Response(JSON.stringify({ result: [ENTRY_POINT] }), {
+    status: 200, headers: { "content-type": "application/json" }
+  })) as typeof fetch;
+  const subject = createRuntimeVerifier({ publicClients: { forEndpoint: () => client as never }, request });
+
+  const error = await subject.verify(config, deployment).then(() => null, issue => issue as AppError);
+  assert.ok(error instanceof AppError, "verification must fail closed when an endpoint cannot be reached");
+  assert.equal(error.code, "CONFIGURATION_ERROR");
+  assert.match(error.userMessage, /could not reach/);
+  assert.doesNotMatch(error.userMessage, /does not match the trusted deployment profile/);
+});
+
+// Endpoint URLs carry API keys often enough that the message must not repeat
+// one back into the interface or the logs.
+test("an unreachable endpoint is named by host, never by full URL", async () => {
+  const client = {
+    getChainId: async () => { throw new Error("boom"); },
+    getCode: async () => CODE
+  };
+  const request = (async () => new Response(JSON.stringify({ result: [ENTRY_POINT] }), {
+    status: 200, headers: { "content-type": "application/json" }
+  })) as typeof fetch;
+  const subject = createRuntimeVerifier({ publicClients: { forEndpoint: () => client as never }, request });
+  const secret = { ...config, rpcUrl: "https://rpc.example/v1/super-secret-key" };
+
+  const error = await subject.verify(secret, deployment).then(() => null, issue => issue as AppError);
+  assert.ok(error instanceof AppError);
+  assert.match(error.userMessage, /rpc\.example/);
+  assert.doesNotMatch(error.userMessage, /super-secret-key/);
+});
