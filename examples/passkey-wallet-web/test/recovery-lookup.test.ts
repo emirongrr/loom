@@ -4,6 +4,7 @@ import { encodeAbiParameters, keccak256 } from "viem";
 import {
   classifyRecoveryLookup,
   executionBlockers,
+  selectLocalInitData,
   verifyExecutionArguments,
   type PendingRecoveryRecord
 } from "../src/features/recovery/recoveryLookup.ts";
@@ -120,4 +121,27 @@ test("empty init data verifies when that is what was approved", () => {
   const stored = record({ initDataHash: keccak256("0x") });
   assert.equal(verifyExecutionArguments({ record: stored, oldValidators: [VALIDATOR], initData: "0x" }).ok, true);
   assert.equal(verifyExecutionArguments({ record: stored, oldValidators: [VALIDATOR], initData: INIT_DATA }).ok, false);
+});
+
+test("local execution data is chosen by hash, not by being present", () => {
+  const stored = record();
+  assert.equal(selectLocalInitData({ record: stored, candidates: [] }), null);
+  assert.equal(selectLocalInitData({ record: stored, candidates: ["0xdeadbeee", "0x00"] }), null, "near misses are not accepted");
+  assert.equal(selectLocalInitData({ record: stored, candidates: ["0xdeadbeee", INIT_DATA] }), INIT_DATA);
+});
+
+// A device can hold several drafts for the same account. Only the one the
+// guardians approved may be used.
+test("a stale draft for the same account is not mistaken for the live one", () => {
+  const stale = "0xabcdef" as const;
+  const stored = record();
+  assert.notEqual(keccak256(stale), stored.initDataHash);
+  assert.equal(selectLocalInitData({ record: stored, candidates: [stale] }), null);
+});
+
+test("malformed stored values are skipped rather than throwing", () => {
+  assert.equal(
+    selectLocalInitData({ record: record(), candidates: ["not-hex" as `0x${string}`, "0xzz" as `0x${string}`, INIT_DATA] }),
+    INIT_DATA
+  );
 });
