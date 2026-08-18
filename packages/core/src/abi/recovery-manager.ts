@@ -229,11 +229,6 @@ export const RecoveryManagerAbi = [
         "name": "oldValidators",
         "type": "address[]",
         "internalType": "address[]"
-      },
-      {
-        "name": "initData",
-        "type": "bytes",
-        "internalType": "bytes"
       }
     ],
     "outputs": [],

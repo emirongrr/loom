@@ -171,12 +171,14 @@ contract RecoveryManager is ILoomModule {
         _cancel(account, pending);
     }
 
-    function executeRecovery(address account, address[] calldata oldValidators, bytes calldata initData) external {
+    /// @dev Takes no initializer. The validator was initialized when it was
+    /// deployed, and its address commits to that key (ADR-0025), so there is
+    /// nothing left for a caller to supply or to have kept.
+    function executeRecovery(address account, address[] calldata oldValidators) external {
         PendingRecovery memory pending = pendingRecoveries[account];
-        if (
-            pending.readyAt == 0 || keccak256(abi.encode(oldValidators)) != pending.oldValidatorsHash
-                || keccak256(initData) != pending.initDataHash
-        ) revert InvalidRecovery();
+        if (pending.readyAt == 0 || keccak256(abi.encode(oldValidators)) != pending.oldValidatorsHash) {
+            revert InvalidRecovery();
+        }
         // Timestamp drift is negligible relative to the multi-day recovery delay.
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < pending.readyAt) revert RecoveryNotReady();
@@ -189,7 +191,7 @@ contract RecoveryManager is ILoomModule {
         recoveryNonces[account] = pending.nonce + 1;
         ILoomAccount(account)
             .recoverConfiguration(
-                oldValidators, pending.newValidator, initData, pending.newGuardianRoot, pending.newGuardianThreshold
+                oldValidators, pending.newValidator, "", pending.newGuardianRoot, pending.newGuardianThreshold
             );
         emit RecoveryExecuted(account, recoveryId, pending.newValidator);
     }

@@ -342,15 +342,20 @@ async function main() {
     abi: P256ValidatorAbi, functionName: "initialize",
     args: [newKey.x, newKey.y, rpIdHash, originHash, policyHook]
   });
-  // Recovery installs a *fresh* validator instance; on devnet we reuse the same
-  // P256Validator contract is not allowed (isModuleInstalled would be true), so
-  // deploy a second P256Validator via the factory-independent path.
+  // Recovery installs a *fresh* validator instance; reusing the installed
+  // P256Validator is rejected (isModuleInstalled would be true), so deploy a
+  // second one outside the recovery factory.
+  //
+  // Recovery no longer forwards an initializer (ADR-0025), so this plain
+  // validator is installed without a key. That is what this rehearsal covers:
+  // the validator swap itself. The path that ends with a usable key is the
+  // recovery factory, exercised by devnet-social-recovery.mjs.
   const secondValidator = await deploySecondValidator(rpc, validator);
   console.log(`    fresh validator ${secondValidator}`);
 
   const recoveryAbi = parseAbi([
     "function proposeRecovery(address account, address[] oldValidators, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, (address verifier, bytes32 keyCommitment, bytes32 salt, bytes signature, bytes32[] proof)[] guardianApprovals) returns (bytes32)",
-    "function executeRecovery(address account, address[] oldValidators, bytes initData)",
+    "function executeRecovery(address account, address[] oldValidators)",
     "function proposalDigest(address account, bytes32 oldValidatorsHash, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, uint64 configVersion, uint64 nonce) view returns (bytes32)",
     "function recoveryNonces(address) view returns (uint64)"
   ]);
@@ -377,7 +382,7 @@ async function main() {
   console.log("\n==> Advancing past the 3-day recovery delay");
   await increaseTime(rpc, 3 * DAY + 60);
 
-  const execData = encodeFunctionData({ abi: recoveryAbi, functionName: "executeRecovery", args: [account, oldValidators, newValidatorInit] });
+  const execData = encodeFunctionData({ abi: recoveryAbi, functionName: "executeRecovery", args: [account, oldValidators] });
   await sendFromDeployer(rpc, recoveryManager, execData, "0x5b8d80", { assert: true });
   const hasNew = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "isModuleInstalled", args: [1n, secondValidator] })));
   const hasOld = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "isModuleInstalled", args: [1n, validator] })));

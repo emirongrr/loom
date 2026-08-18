@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { P256RecoveryValidatorFactoryAbi } from "@loom/core/abi";
-import { encodeFunctionData } from "viem";
+import { P256RecoveryValidatorFactoryAbi, P256ValidatorAbi } from "@loom/core/abi";
+import { encodeFunctionData, keccak256 } from "viem";
 
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "../src/features/recovery/recoveryGasPayer.ts";
 import type { AccountHandle } from "../src/types.ts";
@@ -10,11 +10,24 @@ const CHAIN_ID = 11155111;
 const TARGET = "0x1111111111111111111111111111111111111111";
 const PAYER = "0x2222222222222222222222222222222222222222";
 const FACTORY = "0x3333333333333333333333333333333333333333";
-const INIT_DATA_HASH = `0x${"77".repeat(32)}` as const;
+// The factory takes the key fields (ADR-0025), so the reviewed commitment is
+// derived from the same bytes rather than passed alongside them.
+const KEY = {
+  x: `0x${"11".repeat(32)}`,
+  y: `0x${"22".repeat(32)}`,
+  rpIdHash: `0x${"33".repeat(32)}`,
+  originHash: `0x${"44".repeat(32)}`,
+  policyHook: "0x4444444444444444444444444444444444444444"
+} as const;
+const INIT_DATA_HASH = keccak256(encodeFunctionData({
+  abi: P256ValidatorAbi,
+  functionName: "initialize",
+  args: [KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
+}));
 const DEPLOY_DATA = encodeFunctionData({
   abi: P256RecoveryValidatorFactoryAbi,
   functionName: "deploy",
-  args: [TARGET, 4n, INIT_DATA_HASH]
+  args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
 });
 
 function account(address: `0x${string}`, chainId = CHAIN_ID): AccountHandle {
@@ -91,10 +104,34 @@ test("gas payer refuses a different target, account, or passkey factory call", a
   const otherAccountData = encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi,
     functionName: "deploy",
-    args: [PAYER, 4n, INIT_DATA_HASH]
+    args: [PAYER, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
   });
   await assert.rejects(publishRecoveryValidatorWithLoomWallet({
     ...base,
     deploy: { to: FACTORY, data: otherAccountData, value: 0n, permissionless: true }
+  }), /reviewed account and passkey/u);
+
+  // The key fields are what bind the passkey now, so a call that swaps one has
+  // to be refused even though the account and factory are right.
+  const otherKeyData = encodeFunctionData({
+    abi: P256RecoveryValidatorFactoryAbi,
+    functionName: "deploy",
+    args: [TARGET, 4n, `0x${"99".repeat(32)}`, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
+  });
+  await assert.rejects(publishRecoveryValidatorWithLoomWallet({
+    ...base,
+    deploy: { to: FACTORY, data: otherKeyData, value: 0n, permissionless: true }
+  }), /reviewed account and passkey/u);
+
+  // Swapping only the policy hook keeps every key field intact, and must still
+  // be refused: it is part of what the commitment covers.
+  const otherHookData = encodeFunctionData({
+    abi: P256RecoveryValidatorFactoryAbi,
+    functionName: "deploy",
+    args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, PAYER]
+  });
+  await assert.rejects(publishRecoveryValidatorWithLoomWallet({
+    ...base,
+    deploy: { to: FACTORY, data: otherHookData, value: 0n, permissionless: true }
   }), /reviewed account and passkey/u);
 });

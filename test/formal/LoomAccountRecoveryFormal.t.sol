@@ -153,8 +153,8 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         bytes32 guardianRootBefore = account.guardianRoot();
         uint8 guardianThresholdBefore = account.guardianThreshold();
 
-        (bool early, bytes memory revertData) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), oldValidators, bytes(""))));
+        (bool early, bytes memory revertData) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), oldValidators)));
         assert(!early);
         _assertRevert(revertData, RecoveryManager.RecoveryNotReady.selector);
         _assertPendingRecoveryUnchanged(recovery, address(account), pendingBefore);
@@ -195,7 +195,7 @@ contract LoomAccountRecoveryFormal is FormalAccountBase {
         );
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), oldValidators, "");
+        recovery.executeRecovery(address(account), oldValidators);
         assert(account.validatorCount() == 1);
         assert(account.isModuleInstalled(ModuleType.VALIDATOR, address(newValidator)));
         assert(!account.isModuleInstalled(ModuleType.VALIDATOR, address(oldValidator)));

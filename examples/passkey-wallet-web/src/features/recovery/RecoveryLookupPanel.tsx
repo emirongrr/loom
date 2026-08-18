@@ -2,25 +2,23 @@ import { useEffect, useState } from "react";
 import { encodeFunctionData, getAddress, isAddress, type Address, type Hex } from "viem";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
-import { executionBlockers, selectLocalInitData, verifyExecutionArguments } from "./recoveryLookup";
-import { createRecoverySessionRepository } from "./recoverySession";
-import { createRecoveryDraftRepository } from "./recoveryDraft";
+import { executionBlockers, verifyExecutionArguments } from "./recoveryLookup";
 import { encodeExecuteRecovery, lookupRecovery, type RecoveryLookupResult } from "./recoveryLookupClient";
-import type { PendingRecoveryRecord } from "./recoveryLookup";
 import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 
 /**
- * Look up a recovery for any account, from nothing but its address.
+ * Look up a recovery for any account, and finish it, from nothing but its
+ * address.
  *
  * The rest of this page works from a session held on the device that started
- * the recovery. Someone who lost that device still needs to see whether their
- * recovery is alive and, if the initialization data can be produced, finish it.
- * The manager's state is public, so this asks the chain directly.
+ * the recovery. That device is no longer required to finish one: the validator
+ * is initialized when it is deployed (ADR-0025), so execution carries no
+ * initializer and nothing has to survive anywhere. Anyone with gas can complete
+ * an approved, matured recovery.
  *
- * It never invents the one thing the chain does not hold. Only the hash of the
- * new validator's initialization data is on chain, so the data itself has to be
- * supplied, and it is checked against that hash before anything is offered.
+ * What this cannot do is decide that a recovery is legitimate. It reports what
+ * the chain says and refuses to offer a call the manager would reject.
  */
 export function RecoveryLookupPanel() {
   const { config } = useNetwork();
@@ -29,7 +27,6 @@ export function RecoveryLookupPanel() {
   const [deploymentError, setDeploymentError] = useState("");
   const [address, setAddress] = useState("");
   const [result, setResult] = useState<RecoveryLookupResult | null>(null);
-  const [initData, setInitData] = useState<Hex | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<Hex | "">("");
@@ -55,30 +52,9 @@ export function RecoveryLookupPanel() {
   const found = result && result.lookup.kind !== "none" ? result.lookup : null;
   const record = found?.record ?? null;
 
-  const argumentCheck = record && initData
-    ? verifyExecutionArguments({ record, oldValidators: result!.oldValidators, initData })
-    : null;
+  const argumentCheck = record ? verifyExecutionArguments({ record, oldValidators: result!.oldValidators }) : null;
 
-  const blockers = result
-    ? executionBlockers({ lookup: result.lookup, hasInitData: Boolean(argumentCheck?.ok) })
-    : [];
-  const otherBlockers = blockers.filter(reason => !reason.includes("initialization data"));
-
-  // Everything this device could legitimately hold for a pending recovery: the
-  // sessions it started and the drafts it prepared. Matched by hash, so a stale
-  // record for the same account cannot stand in for the approved one.
-  const localInitData = async (record: PendingRecoveryRecord) => {
-    const candidates: Hex[] = [];
-    try {
-      const sessions = await createRecoverySessionRepository().inspect();
-      for (const session of sessions.sessions) if (session.local?.initData) candidates.push(session.local.initData);
-    } catch { /* an unreadable store is not a reason to claim the data is absent */ }
-    try {
-      const drafts = await createRecoveryDraftRepository().inspect();
-      for (const draft of drafts.drafts) if (draft.preparation?.initData) candidates.push(draft.preparation.initData);
-    } catch { /* same */ }
-    return selectLocalInitData({ record, candidates });
-  };
+  const blockers = result ? executionBlockers({ lookup: result.lookup }) : [];
 
   const look = async () => {
     setError(""); setResult(null); setSent("");
@@ -92,7 +68,6 @@ export function RecoveryLookupPanel() {
         account: getAddress(address.trim())
       });
       setResult(found);
-      setInitData(found.lookup.kind === "none" ? "" : (await localInitData(found.lookup.record)) ?? "");
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The lookup failed.");
     } finally { setBusy(false); }
@@ -115,14 +90,10 @@ export function RecoveryLookupPanel() {
         setError("The recovery is no longer executable. The refreshed state is shown above.");
         return;
       }
-      const recheck = verifyExecutionArguments({
-        record: fresh.lookup.record, oldValidators: fresh.oldValidators, initData: initData as Hex
-      });
+      const recheck = verifyExecutionArguments({ record: fresh.lookup.record, oldValidators: fresh.oldValidators });
       if (!recheck.ok) { setResult(fresh); setError(recheck.problems.join(" ")); return; }
 
-      const call = encodeExecuteRecovery({
-        account: fresh.account, oldValidators: fresh.oldValidators, initData: initData as Hex
-      });
+      const call = encodeExecuteRecovery({ account: fresh.account, oldValidators: fresh.oldValidators });
       const hash = await sendEip1193Transaction({
         provider,
         chainId: deployment!.chainId,
@@ -178,21 +149,9 @@ export function RecoveryLookupPanel() {
         </p>
       </div>
 
-      {argumentCheck?.ok
-        ? <p className="callout success">
-          The execution data for this recovery was found on this device and matches what the guardians approved.
-        </p>
-        : <p className="callout">
-          <strong>This recovery can only be completed on the device that started it.</strong>
-          <span> The new validator's initialization data is not published -- only its hash is -- and it is not stored
-            here. It also would not be enough on its own: it carries the new passkey's public key, and that passkey
-            exists only on the device that created it, so the account would still be unusable. Start a new recovery
-            instead.</span>
-        </p>}
+      {argumentCheck && !argumentCheck.ok && <p className="callout warning">{argumentCheck.problems.join(" ")}</p>}
 
-      {/* The missing-data case has its own explanation above; repeating it here
-          would say the same thing twice and bury the reasons that differ. */}
-      {otherBlockers.length > 0 && <ul className="form-note">{otherBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      {blockers.length > 0 && <ul className="form-note">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
 
       <button className="primary" disabled={busy || blockers.length > 0} onClick={() => void execute()}>
         {busy ? "Working…" : "Execute recovery"}

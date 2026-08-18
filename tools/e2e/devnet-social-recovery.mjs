@@ -225,7 +225,7 @@ async function main() {
 
   const recoveryAbi = parseAbi([
     "function proposeRecovery(address account, address[] oldValidators, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, (address verifier, bytes32 keyCommitment, bytes32 salt, bytes signature, bytes32[] proof)[] guardianApprovals) returns (bytes32)",
-    "function executeRecovery(address account, address[] oldValidators, bytes initData)",
+    "function executeRecovery(address account, address[] oldValidators)",
     "function proposalDigest(address account, bytes32 oldValidatorsHash, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, uint64 configVersion, uint64 nonce) view returns (bytes32)",
     "function recoveryNonces(address) view returns (uint64)"
   ]);
@@ -249,7 +249,7 @@ async function main() {
     data: encodeFunctionData({
       abi: P256RecoveryValidatorFactoryAbi,
       functionName: "deploy",
-      args: [account, recoveryNonce, initDataHash]
+      args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook]
     }),
     gas: "0x4c4b40"
   }]);
@@ -298,7 +298,7 @@ async function main() {
   console.log("\n==> Advancing past the 3-day recovery delay");
   await increaseTime(rpc, 3 * DAY + 60);
   await sendFromDeployer(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "executeRecovery",
-    args: [account, oldValidators, newValidatorInit] }), "0x5b8d80", { assert: true });
+    args: [account, oldValidators] }), "0x5b8d80", { assert: true });
 
   const hasNew = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "isModuleInstalled", args: [1n, newValidator] })));
   const hasOld = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "isModuleInstalled", args: [1n, validator] })));
