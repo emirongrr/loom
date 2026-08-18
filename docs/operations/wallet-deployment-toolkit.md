@@ -60,6 +60,15 @@ The example bootstrap deploys Loom contracts, then calls its
 `connect-deployment.mjs` wrapper, which uses the shared toolkit to write and
 verify `deployment/sepolia.manifest.json` plus `.env.local`.
 
+The wrapper needs `--recovery-validator` (or `SEPOLIA_RECOVERY_VALIDATOR`): the
+address of a deployed `P256RecoveryValidator` child, whose runtime code hash the
+manifest pins. It cannot be inferred from the deployment. `P256Validator` is a
+different contract -- the child adds reservation storage and a closed
+initializer -- so pinning the passkey validator's hash would pin one no real
+child can match, and a consumer checking a child against it would reject a good
+one. There is no child until a recovery is provisioned, so on a fresh deployment
+this address comes from the first `P256RecoveryValidatorFactory.deploy`.
+
 Production apps should keep live manifests local until reviewed. Public,
 reviewed evidence can live with the app that consumes it, while generic tooling
 and validators remain in Loom core.

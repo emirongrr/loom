@@ -100,10 +100,14 @@ export async function buildWalletDeploymentManifest(options) {
     options.p256Verifier ?? (p256VerifierMode === "native-precompile" ? NATIVE_P256_PRECOMPILE : undefined),
     "p256Verifier"
   );
-  const recoveryValidator = requireAddress(
-    options.recoveryValidator ?? parsed.addresses.passkeyValidator,
-    "recoveryValidator"
-  );
+  // No fallback. `P256RecoveryValidator` is a different contract from
+  // `P256Validator` -- it carries the reservation storage and a closed
+  // initializer, and its runtime code is 409 bytes longer -- so sampling the
+  // passkey validator here pinned a hash that no deployed recovery child can
+  // ever match. Consumers verifying a child against it would reject a perfectly
+  // good one, which fails closed and is therefore quiet: a recovery that stops
+  // working for a reason nobody is told. The caller knows which child it means.
+  const recoveryValidator = requireAddress(options.recoveryValidator, "recoveryValidator");
 
   const codehashes = {
     accountFactory: await codehash(rpc, parsed.addresses.accountFactory, "LoomAccountFactory"),

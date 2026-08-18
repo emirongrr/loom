@@ -164,6 +164,7 @@ test("rejects missing broadcast components and missing chain code", async () => 
       broadcast: broadcast(),
       rpc: async () => "0x",
       entryPoint: ENTRYPOINT,
+      recoveryValidator: RECOVERY_CHILD,
       probeP256: async () => ({ supported: true })
     }),
     /has no code on chain/
@@ -396,4 +397,38 @@ test("deployment gas report attributes CREATE gas by transaction hash", async ()
   const excluded = deploymentGasReport(broadcast, { exclude: ["Helper"] });
   assert.deepEqual(excluded.contracts.map(c => c.contractName), ["Factory"]);
   assert.equal(excluded.totalGas, 1000);
+});
+
+// `P256RecoveryValidator` is not `P256Validator`: it adds reservation storage
+// and a closed initializer, so its runtime code differs. Defaulting to the
+// passkey validator pinned a hash no deployed child can match, and a consumer
+// checking a child against it would reject a good one -- quietly, because
+// failing closed looks like caution rather than a bug.
+test("the recovery child address must be given, never guessed from the passkey validator", async () => {
+  await assert.rejects(
+    buildWalletDeploymentManifest({
+      broadcast: broadcast(),
+      rpc: rpcFor(),
+      entryPoint: ENTRYPOINT,
+      p256VerifierMode: "native-precompile",
+      probeP256: async () => ({ supported: true })
+    }),
+    /recoveryValidator/u
+  );
+});
+
+test("a supplied recovery child is what gets pinned", async () => {
+  const manifest = await buildWalletDeploymentManifest({
+    broadcast: broadcast(),
+    rpc: rpcFor(),
+    entryPoint: ENTRYPOINT,
+    recoveryValidator: RECOVERY_CHILD,
+    p256VerifierMode: "native-precompile",
+    probeP256: async () => ({ supported: true })
+  });
+  assert.equal(
+    manifest.recoveryValidatorProvisioner.validatorRuntimeCodeHash,
+    `0x${keccak256(Buffer.from("p256-recovery-child-code"))}`,
+    "the child's own code hash, not the passkey validator's"
+  );
 });
