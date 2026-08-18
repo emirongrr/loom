@@ -1004,7 +1004,7 @@
         "cancelRecovery(address)": "0xc90db447",
         "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x96fb52df",
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x816aa48e",
-        "executeRecovery(address,address[],bytes)": "0x3ecc40f9",
+        "executeRecovery(address,address[])": "0x5fc489a7",
         "isModuleType(uint256)": "0xecd05961",
         "pendingRecoveries(address)": "0xe452cf4a",
         "proposalDigest(address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64)": "0x0f3ae07e",
@@ -1037,7 +1037,7 @@
         "cancelRecovery(address)": [],
         "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
-        "executeRecovery(address,address[],bytes)": [],
+        "executeRecovery(address,address[])": [],
         "isModuleType(uint256)": [
           "bool"
         ],
@@ -1076,7 +1076,7 @@
         "cancelRecovery(address)": "nonpayable",
         "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
-        "executeRecovery(address,address[],bytes)": "nonpayable",
+        "executeRecovery(address,address[])": "nonpayable",
         "isModuleType(uint256)": "pure",
         "pendingRecoveries(address)": "view",
         "proposalDigest(address,bytes32,address,bytes32,bytes32,uint8,uint64,uint64)": "view",
@@ -1894,17 +1894,18 @@
     "src/validators/P256RecoveryValidatorFactory.sol:P256RecoveryValidatorFactory": {
       "functions": {
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": "0x3dacb2ec",
-        "deploy(address,uint64,bytes32)": "0x08baff78",
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": "0xd5f5fe67",
         "deploymentSalt(address,uint64,bytes32)": "0xde882ea8",
         "fallbackVerifier()": "0xfe3c90b0",
         "getAddress(address,uint64,bytes32)": "0x1362ce13",
+        "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": "0x12dde144",
         "validatorInitCodeHash()": "0x08e573d8"
       },
       "functionOutputs": {
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": [
           "bytes32"
         ],
-        "deploy(address,uint64,bytes32)": [
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": [
           "address"
         ],
         "deploymentSalt(address,uint64,bytes32)": [
@@ -1916,16 +1917,20 @@
         "getAddress(address,uint64,bytes32)": [
           "address"
         ],
+        "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": [
+          "bytes32"
+        ],
         "validatorInitCodeHash()": [
           "bytes32"
         ]
       },
       "functionMutability": {
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": "view",
-        "deploy(address,uint64,bytes32)": "nonpayable",
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": "nonpayable",
         "deploymentSalt(address,uint64,bytes32)": "pure",
         "fallbackVerifier()": "view",
         "getAddress(address,uint64,bytes32)": "view",
+        "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": "pure",
         "validatorInitCodeHash()": "view"
       },
       "events": {

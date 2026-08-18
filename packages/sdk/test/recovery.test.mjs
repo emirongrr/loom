@@ -7,8 +7,7 @@ import {
   encodeFunctionResult,
   keccak256,
   parseAbiParameters,
-  stringToHex
-} from "viem";
+  stringToHex, getAddress } from "viem";
 import { ECDSAGuardianVerifierAbi, LoomAccountAbi, P256RecoveryValidatorFactoryAbi, P256ValidatorAbi, RecoveryManagerAbi } from "@loom/core/abi";
 import {
   GuardianRecoveryError,
@@ -89,7 +88,22 @@ test("recovery validator provisioning verifies the factory and prepares one dete
   const pending = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });
   assert.equal(pending.validator, validator);
   assert.equal(pending.alreadyDeployed, false);
-  assert.deepEqual(decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: pending.deploy.data }).args, [account, 3n, keccak256(initData)]);
+  // The factory takes the key fields and derives the commitment itself
+  // (ADR-0025). They are read back out of the same initializer the hash covers,
+  // so the deployment call cannot describe a different key than the proposal.
+  assert.deepEqual(
+    decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: pending.deploy.data }).args,
+    [account, 3n, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, `0x${"44".repeat(32)}`, getAddress(policyHook)]
+  );
+  assert.equal(pending.initDataHash, keccak256(initData), "the commitment still covers the whole initializer");
+
+  await assert.rejects(
+    prepareP256RecoveryValidator({
+      account, recoveryNonce: 3n, initData: "0xdeadbeef", profile, stateTransport: transport
+    }),
+    /initialization data/u,
+    "calldata that is not a validator initializer must not reach the factory"
+  );
 
   validatorDeployed = true;
   const existing = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });

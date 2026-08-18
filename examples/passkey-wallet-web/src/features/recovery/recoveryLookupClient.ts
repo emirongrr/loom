@@ -89,18 +89,17 @@ export async function lookupRecovery(input: {
 /**
  * Encode the execution call.
  *
- * The arguments are checked against the stored hashes by `verifyExecutionArguments`
- * before this is offered, and the manager checks them again. This only encodes;
- * it does not decide that the call is safe to send.
+ * It takes no initializer: the validator was initialized when it was deployed
+ * (ADR-0025), so a matured recovery can be finished by anyone with gas, from any
+ * device.
  */
 export function encodeExecuteRecovery(input: {
   readonly account: Address;
   readonly oldValidators: readonly Address[];
-  readonly initData: Hex;
 }) {
   return {
     abi: RecoveryManagerAbi,
     functionName: "executeRecovery" as const,
-    args: [input.account, input.oldValidators.map(address => getAddress(address)), input.initData] as const
+    args: [input.account, input.oldValidators.map(address => getAddress(address))] as const
   };
 }

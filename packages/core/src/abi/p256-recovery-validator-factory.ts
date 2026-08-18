@@ -40,9 +40,29 @@ export const P256RecoveryValidatorFactoryAbi = [
         "internalType": "uint64"
       },
       {
-        "name": "initDataHash",
+        "name": "x",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "y",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "rpIdHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "originHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "policyHook",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [
@@ -124,6 +144,45 @@ export const P256RecoveryValidatorFactoryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "initDataHashFor",
+    "inputs": [
+      {
+        "name": "x",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "y",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "rpIdHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "originHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "policyHook",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",

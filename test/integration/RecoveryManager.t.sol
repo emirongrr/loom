@@ -81,12 +81,12 @@ contract RecoveryManagerTest {
         require(readyAt > block.timestamp && expiresAt > readyAt, "recovery timing missing");
         require(version == account.configVersion() && nonce == 0 && recoveryId != bytes32(0), "wrong snapshot");
 
-        (bool early,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), oldValidators, initData)));
+        (bool early,) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), oldValidators)));
         require(!early, "recovery executed early");
 
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), oldValidators, initData);
+        recovery.executeRecovery(address(account), oldValidators);
         require(account.validatorCount() == 1, "compromised validators remained");
         require(account.validatorAt(0) == address(newValidator), "new validator missing");
         require(!account.isModuleInstalled(ModuleType.VALIDATOR, oldValidators[0]), "first validator remained");
@@ -101,11 +101,11 @@ contract RecoveryManagerTest {
         address policyHook = address(0xBEEF);
         bytes32 x = P256TestKeys.x(1);
         bytes32 y = P256TestKeys.y(1);
-        bytes memory initData = abi.encodeCall(
-            P256Validator.initialize, (x, y, keccak256("localhost"), keccak256("http://localhost:5174"), policyHook)
-        );
+        bytes32 rpIdHash = keccak256("localhost");
+        bytes32 originHash = keccak256("http://localhost:5174");
+        bytes memory initData = abi.encodeCall(P256Validator.initialize, (x, y, rpIdHash, originHash, policyHook));
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, keccak256(initData));
+        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
         address[] memory oldValidators = _sortedValidators();
         GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovalsFor(provisioned, oldValidators, initData, 0, account.configVersion());
@@ -115,7 +115,7 @@ contract RecoveryManagerTest {
         );
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), oldValidators, initData);
+        recovery.executeRecovery(address(account), oldValidators);
 
         require(account.validatorCount() == 1, "recovery did not replace validator set");
         require(account.validatorAt(0) == provisioned, "provisioned validator not installed");
@@ -125,18 +125,14 @@ contract RecoveryManagerTest {
 
     function testProvisionedValidatorRejectsWrongEarlyInitializationAndRecoveryStillSucceeds() public {
         address policyHook = address(0xBEEF);
-        bytes memory intendedInitData = abi.encodeCall(
-            P256Validator.initialize,
-            (
-                P256TestKeys.x(1),
-                P256TestKeys.y(1),
-                keccak256("localhost"),
-                keccak256("http://localhost:5174"),
-                policyHook
-            )
-        );
+        bytes32 x = P256TestKeys.x(1);
+        bytes32 y = P256TestKeys.y(1);
+        bytes32 rpIdHash = keccak256("localhost");
+        bytes32 originHash = keccak256("http://localhost:5174");
+        bytes memory intendedInitData =
+            abi.encodeCall(P256Validator.initialize, (x, y, rpIdHash, originHash, policyHook));
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, keccak256(intendedInitData));
+        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
         bytes memory wrongInitData = abi.encodeCall(
             P256Validator.initialize,
             (
@@ -155,8 +151,11 @@ contract RecoveryManagerTest {
                 )
             );
         require(!poisoned, "wrong initializer consumed the reserved recovery validator");
+        // The key was written when the validator was deployed (ADR-0025), so the
+        // property is that a rejected initializer left it exactly as provisioned,
+        // not that the validator is still empty.
         (bytes32 earlyX,,,) = P256Validator(provisioned).publicKeys(address(account));
-        require(earlyX == bytes32(0), "rejected initializer changed recovery validator state");
+        require(earlyX == x, "rejected initializer changed recovery validator state");
 
         address[] memory oldValidators = _sortedValidators();
         GuardianVerificationLib.Approval[] memory approvals =
@@ -166,57 +165,21 @@ contract RecoveryManagerTest {
         );
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), oldValidators, intendedInitData);
+        recovery.executeRecovery(address(account), oldValidators);
 
         require(account.validatorAt(0) == provisioned, "reserved recovery validator was not installed");
         (bytes32 storedX, bytes32 storedY,,) = P256Validator(provisioned).publicKeys(address(account));
         require(storedX == P256TestKeys.x(1) && storedY == P256TestKeys.y(1), "wrong passkey survived recovery");
     }
 
-    function testExactEarlyInitializationIsIdempotentAndCannotBlockRecovery() public {
-        address policyHook = address(0xBEEF);
-        bytes memory initData = abi.encodeCall(
-            P256Validator.initialize,
-            (
-                P256TestKeys.x(1),
-                P256TestKeys.y(1),
-                keccak256("localhost"),
-                keccak256("http://localhost:5174"),
-                policyHook
-            )
-        );
-        P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, keccak256(initData));
-
-        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(provisioned, 0, initData)));
-
-        address[] memory oldValidators = _sortedValidators();
-        GuardianVerificationLib.Approval[] memory approvals =
-            _proposalApprovalsFor(provisioned, oldValidators, initData, 0, account.configVersion());
-        recovery.proposeRecovery(
-            address(account), oldValidators, provisioned, keccak256(initData), NEW_GUARDIAN_ROOT, 1, approvals
-        );
-        (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
-        vm.warp(readyAt);
-        recovery.executeRecovery(address(account), oldValidators, initData);
-
-        require(account.validatorCount() == 1, "exact early initialization blocked recovery");
-        require(account.validatorAt(0) == provisioned, "exactly initialized validator was not installed");
-    }
-
     function testProvisionedValidatorRejectsScheduledKeyMutationBeforeInstallation() public {
-        bytes memory initData = abi.encodeCall(
-            P256Validator.initialize,
-            (
-                P256TestKeys.x(1),
-                P256TestKeys.y(1),
-                keccak256("localhost"),
-                keccak256("http://localhost:5174"),
-                address(0xBEEF)
-            )
-        );
+        address policyHook = address(0xBEEF);
+        bytes32 x = P256TestKeys.x(1);
+        bytes32 y = P256TestKeys.y(1);
+        bytes32 rpIdHash = keccak256("localhost");
+        bytes32 originHash = keccak256("http://localhost:5174");
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, keccak256(initData));
+        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
         bytes memory mutate = abi.encodeCall(
             P256Validator.setKey,
             (P256TestKeys.x(2), P256TestKeys.y(2), keccak256("wrong.example"), keccak256("https://wrong.example"))
@@ -232,7 +195,7 @@ contract RecoveryManagerTest {
         require(!mutated, "uninstalled recovery validator accepted scheduled key mutation");
         require(account.configVersion() == versionBefore, "rejected mutation changed account configuration");
         (bytes32 storedX,,,) = P256Validator(provisioned).publicKeys(address(account));
-        require(storedX == bytes32(0), "rejected mutation changed the reserved passkey");
+        require(storedX == x, "rejected mutation changed the reserved passkey");
     }
 
     function testGuardianlessAccountCannotProposeRecovery() public {
@@ -526,7 +489,7 @@ contract RecoveryManagerTest {
             address(account).call(abi.encodeCall(LoomAccount.executeScheduled, (address(account), 0, bump)));
         require(!bumped, "frozen account executed the scheduled config bump");
 
-        recovery.executeRecovery(address(account), validators, initData);
+        recovery.executeRecovery(address(account), validators);
         require(account.validatorCount() == 1, "recovery did not replace validators during freeze");
         require(account.validatorAt(0) == address(newValidator), "new validator missing after race");
         require(account.guardianRoot() == NEW_GUARDIAN_ROOT, "guardian root not rotated during freeze");
@@ -585,7 +548,7 @@ contract RecoveryManagerTest {
         // Recovery becomes executable while the freeze still holds, and its own
         // configuration advance retires the attacker's operation for good.
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), validators, initData);
+        recovery.executeRecovery(address(account), validators);
         require(account.validatorAt(0) == address(newValidator), "recovery did not replace the validator set");
 
         vm.warp(uint256(account.frozenUntil()) + 1);
@@ -649,7 +612,7 @@ contract RecoveryManagerTest {
         _propose(initData);
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), _sortedValidators(), initData);
+        recovery.executeRecovery(address(account), _sortedValidators());
         require(account.validatorAt(0) == address(newValidator), "recovery did not complete after cancellation");
     }
 
@@ -717,7 +680,7 @@ contract RecoveryManagerTest {
         require(!migratedWhileFrozen, "frozen account executed pending migration");
         require(target.value() == 0, "migration mutated target during freeze");
 
-        recovery.executeRecovery(address(account), validators, initData);
+        recovery.executeRecovery(address(account), validators);
         require(account.validatorCount() == 1, "recovery did not replace validators in composite state");
         require(account.validatorAt(0) == address(newValidator), "new validator missing in composite state");
 
@@ -737,8 +700,8 @@ contract RecoveryManagerTest {
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)));
         vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
         account.executeScheduled(address(account), 0, guardianUpdate);
-        (bool stale,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, initData)));
+        (bool stale,) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators)));
         require(!stale, "stale config recovery executed");
     }
 
@@ -772,16 +735,20 @@ contract RecoveryManagerTest {
         require(!invalidProposal, "uninstalled recovery module proposed");
     }
 
-    function testRecoveryReentrantValidatorInitializationRollsBack() public {
+    /// Recovery used to forward an initializer to the new validator, which gave
+    /// that validator a call back into the account mid-installation. It no
+    /// longer calls the new validator at all (ADR-0025), so a module that would
+    /// re-enter never gets the opportunity; `isModuleType` is a `view`, so it
+    /// cannot change state either.
+    function testRecoveryNeverCallsIntoTheNewValidator() public {
         ReentrantModule reentrantValidator = new ReentrantModule();
         address[] memory validators = _sortedValidators();
-        bytes memory initData = abi.encodeCall(ReentrantModule.initialize, ());
         uint64 nonce = recovery.recoveryNonces(address(account));
         bytes32 digest = recovery.proposalDigest(
             address(account),
             keccak256(abi.encode(validators)),
             address(reentrantValidator),
-            keccak256(initData),
+            keccak256(""),
             NEW_GUARDIAN_ROOT,
             1,
             account.configVersion(),
@@ -791,7 +758,7 @@ contract RecoveryManagerTest {
             address(account),
             validators,
             address(reentrantValidator),
-            keccak256(initData),
+            keccak256(""),
             NEW_GUARDIAN_ROOT,
             1,
             _guardianApprovals(digest)
@@ -799,15 +766,13 @@ contract RecoveryManagerTest {
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));
         vm.warp(readyAt);
 
-        (bool executed,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, initData)));
+        // `ReentrantModule.initialize` re-enters `execute`, which would revert
+        // under the account's reentrancy guard. Recovery completing is the proof
+        // that it was never invoked.
+        recovery.executeRecovery(address(account), validators);
 
-        require(!executed, "reentrant recovery succeeded");
-        require(account.validatorCount() == validators.length, "validator set changed");
-        require(!account.isModuleInstalled(ModuleType.VALIDATOR, address(reentrantValidator)), "attacker installed");
-        require(account.guardianRoot() == guardianLeaf, "failed recovery changed guardian root");
-        (,,,,, readyAt,,,) = recovery.pendingRecoveries(address(account));
-        require(readyAt != 0, "failed recovery did not roll back");
+        require(account.validatorCount() == 1, "recovery did not replace the validator set");
+        require(account.validatorAt(0) == address(reentrantValidator), "the proposed validator was not installed");
     }
 
     function testRecoveryRequiresFreshValidGuardianConfiguration() public {
@@ -842,14 +807,14 @@ contract RecoveryManagerTest {
             );
         require(!unauthorizedCancel, "external cancellation accepted");
 
-        (bool wrongPayload,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, bytes("wrong"))));
+        (bool wrongPayload,) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators)));
         require(!wrongPayload, "wrong recovery payload accepted");
 
         RecoveryManager.PendingRecovery memory pending = _pending();
         vm.warp(pending.expiresAt + 1);
-        (bool expired,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, initData)));
+        (bool expired,) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators)));
         require(!expired, "expired recovery executed");
     }
 

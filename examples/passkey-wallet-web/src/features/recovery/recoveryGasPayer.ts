@@ -1,6 +1,6 @@
-import type { Hex } from "@loom/core";
-import { P256RecoveryValidatorFactoryAbi } from "@loom/core/abi";
-import { decodeFunctionData } from "viem";
+import type { Address, Hex } from "@loom/core";
+import { P256RecoveryValidatorFactoryAbi, P256ValidatorAbi } from "@loom/core/abi";
+import { decodeFunctionData, encodeFunctionData, keccak256 } from "viem";
 import type { NetworkConfig } from "../../config/network";
 import type { AccountHandle } from "../../types";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
@@ -63,10 +63,22 @@ export async function publishRecoveryValidatorWithLoomWallet(input: {
   let decoded: { readonly functionName: string; readonly args: readonly unknown[] };
   try { decoded = decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: input.deploy.data }); }
   catch { throw new Error("Recovery validator publication calldata is invalid."); }
+  // The factory now takes the key fields rather than their hash (ADR-0025), so
+  // the passkey is bound by re-deriving the commitment from the very bytes this
+  // wallet would sign. Comparing a field would only prove the call mentions
+  // something familiar; this proves it deploys the reviewed key.
+  const keyFields = decoded.args.slice(2, 7);
+  const committed = keyFields.length === 5
+    ? keccak256(encodeFunctionData({
+      abi: P256ValidatorAbi,
+      functionName: "initialize",
+      args: keyFields as [Hex, Hex, Hex, Hex, Address]
+    }))
+    : "0x";
   if (
     decoded.functionName !== "deploy"
     || String(decoded.args[0]).toLowerCase() !== input.recoveryAccount.toLowerCase()
-    || String(decoded.args[2]).toLowerCase() !== input.initDataHash.toLowerCase()
+    || committed.toLowerCase() !== input.initDataHash.toLowerCase()
   ) throw new Error("Recovery validator publication does not match the reviewed account and passkey.");
   const code = await input.readCode(input.payer.account);
   if (!code || code === "0x") {

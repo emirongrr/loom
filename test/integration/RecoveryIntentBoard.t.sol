@@ -303,7 +303,7 @@ contract RecoveryIntentBoardTest is RecoveryIntentBoardHarness {
         require(readyAt != 0, "announcements blocked a legitimate proposal");
 
         vm.warp(readyAt);
-        recovery.executeRecovery(address(account), validators, "");
+        recovery.executeRecovery(address(account), validators);
         require(
             account.validatorCount() == 1 && account.validatorAt(0) == address(newValidator),
             "recovery did not complete"

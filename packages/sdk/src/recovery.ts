@@ -478,6 +478,36 @@ export interface PreparedP256RecoveryValidator {
 }
 
 /**
+ * The key fields inside a validator initializer, in the order the factory takes
+ * them.
+ *
+ * The factory writes the key when it deploys (ADR-0025), so it needs the fields
+ * rather than their hash. Reading them back out of the same bytes the hash is
+ * taken over means the address, the commitment, and the key written cannot
+ * describe three different things -- and an initializer that is not the one
+ * this path expects fails here rather than deploying something unintended.
+ */
+function decodeRecoveryInitializer(initData: Hex): readonly [Hex, Hex, Hex, Hex, Address] {
+  let decoded;
+  try {
+    decoded = decodeFunctionData({ abi: P256ValidatorAbi, data: initData });
+  } catch {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "validator initialization data is not a validator call");
+  }
+  if (decoded.functionName !== "initialize" || !decoded.args || decoded.args.length !== 5) {
+    fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "validator initialization data is not an initializer");
+  }
+  const [x, y, rpIdHash, originHash, policyHook] = decoded.args as readonly [Hex, Hex, Hex, Hex, Address];
+  return Object.freeze([
+    bytes32(x, "recovery key x"),
+    bytes32(y, "recovery key y"),
+    bytes32(rpIdHash, "recovery relying party hash"),
+    bytes32(originHash, "recovery origin hash"),
+    address(policyHook, "recovery policy hook")
+  ] as const);
+}
+
+/**
  * Verify a manifest-pinned permissionless factory and prepare the deterministic
  * validator deployment for one exact recovery nonce and passkey initializer.
  */
@@ -528,7 +558,11 @@ export async function prepareP256RecoveryValidator(input: {
     alreadyDeployed: false,
     deploy: Object.freeze({
       to: factory,
-      data: encodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, functionName: "deploy", args: [account, recoveryNonce, initDataHash] }),
+      data: encodeFunctionData({
+        abi: P256RecoveryValidatorFactoryAbi,
+        functionName: "deploy",
+        args: [account, recoveryNonce, ...decodeRecoveryInitializer(initData)]
+      }),
       value: 0n,
       permissionless: true
     })
@@ -847,7 +881,7 @@ export function createGuardianRecoveryClient(options: {
         || pending.newGuardianThreshold !== prepared.newGuardianSet.threshold
         || pending.nonce !== prepared.nonce
       ) fail("RECOVERY_CONFIG_VERSION_MISMATCH", "pending recovery does not match the reviewed recovery");
-      const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "executeRecovery", args: [account, prepared.oldValidators, prepared.initData] });
+      const data = encodeFunctionData({ abi: RECOVERY_MANAGER_ABI, functionName: "executeRecovery", args: [account, prepared.oldValidators] });
       return submit(recoveryManager, data, prepared.review, true);
     }
   });

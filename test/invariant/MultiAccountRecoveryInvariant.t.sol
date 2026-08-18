@@ -259,8 +259,8 @@ contract MultiAccountRecoveryHandler {
         });
         vm.warp(pending.readyAt);
 
-        (bool ok,) = address(recovery)
-            .call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators, bytes(""))));
+        (bool ok,) =
+            address(recovery).call(abi.encodeCall(RecoveryManager.executeRecovery, (address(account), validators)));
         _checkExecution(account, other, ok, expected);
         if (ok) ++successfulExecutions;
         _observeNonces();
