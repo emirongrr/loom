@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { GuardianRecoveryError, createRecoveryRequest, parseRecoveryRequest, parseRecoveryResponse, serializeRecoveryProtocol, type GuardianApprovalTuple, type RecoveryRequestV1 } from "@loom/sdk/recovery";
+import { RecoveryManagerAbi } from "@loom/core/abi";
 import { getAddress, isAddress } from "viem";
 import { useAppServices } from "../../app/AppServices";
 import { useNetwork } from "../../config/NetworkContext";
@@ -20,6 +21,7 @@ import type { AccountHandle } from "../../types";
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation } from "./recoveryDraft";
+import { classifyExistingPublications, readPublishedRecoveryValidators, type ExistingPublications } from "./existingPublications";
 import { RecoveryLookupPanel } from "./RecoveryLookupPanel";
 import { RecoveryStepper, recoveryViewStage } from "./RecoveryStepper";
 import { useRecoverySetupController } from "./useRecoverySetupController";
@@ -45,6 +47,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [issues, setIssues] = useState<readonly RecoverySessionIssue[]>([]);
   const [message, setMessage] = useState("");
   const [passkeyLabel, setPasskeyLabel] = useState("Recovered wallet");
+  const [publications, setPublications] = useState<ExistingPublications>({ kind: "none" });
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
   const selected = path.startsWith("/recover/") ? sessions.find(session => session.id === selectedId) : undefined;
@@ -85,11 +88,13 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       // passkey, so this advances rather than asking for a click that
       // decides nothing. The provisioning notice moves with it.
       if (deployment.recoveryValidatorProvisioner) setShowPasskey(true);
+      setPublications({ kind: "none" });
       const drafts = (await draftRepository.inspect()).drafts.filter(draft =>
         draft.chainId === deployment.chainId
         && draft.account.toLowerCase() === account.toLowerCase()
         && draft.configVersion === state.configVersion.toString()
       );
+      let restoredValidator: `0x${string}` | undefined;
       for (const draft of drafts) {
         try {
           const local = restoreRecoveryDraftPreparation(draft);
@@ -99,9 +104,29 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           setPasskeyPreparation(Object.freeze({ ...local, ...checked }));
           setShowPasskey(true);
           setPasskeyStatus(checked.alreadyDeployed ? "published" : "prepared");
+          restoredValidator = checked.validator;
           setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
           break;
         } catch { /* A stale draft cannot hide another healthy draft or the live account state. */ }
+      }
+
+      // Publishing costs gas and only one recovery can be proposed per nonce, so
+      // an earlier publication this device cannot continue has to be said out
+      // loud rather than left for the user to discover on an explorer.
+      const provisioner = deployment.recoveryValidatorProvisioner;
+      if (provisioner && deployment.recoveryModule) {
+        const publicClient = publicClients.forEndpoint(config.rpcUrl);
+        const recoveryNonce = await publicClient.readContract({
+          address: deployment.recoveryModule, abi: RecoveryManagerAbi, functionName: "recoveryNonces",
+          args: [getAddress(account)]
+        }) as bigint;
+        const scan = await readPublishedRecoveryValidators({
+          publicClient, factory: provisioner.address, account: getAddress(account), recoveryNonce
+        });
+        setPublications(classifyExistingPublications({
+          published: scan.published,
+          ...(restoredValidator ? { restored: restoredValidator } : {})
+        }));
       }
     } catch (error) {
       setInspection({ status: "blocked", message: safeRecoveryMessage(error) });
@@ -304,6 +329,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       {inspection.status === "protected" && showPasskey && <div className="recovery-passkey-stage">
         <p className="eyebrow">Step 2 of 4</p><h2>Create a new recovery passkey</h2>
         <p>This passkey becomes authoritative only after guardian approval, the on-chain delay, and recovery execution. Your current validators remain unchanged now.</p>
+        {publications.kind === "orphaned" && <p className="callout warning"><strong>A recovery passkey was already published for this account.</strong> {publications.message}</p>}
         {!passkeyPreparation && <><p className="callout warning">A validator deployment alone cannot restore its passkey metadata. If this recovery was started before encrypted drafts were supported, create one new recovery passkey; this attempt will be saved before any factory transaction and will resume after reload.</p><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
         {passkeyPreparation && <><div className="callout"><strong>Recovery validator</strong><p className="breakable">{passkeyPreparation.validator}</p></div>
           {passkeyStatus !== "published" ? <><p className="form-note">Publishing this exact factory call is permissionless and grants no account authority. The publishing wallet only pays network gas.</p>
