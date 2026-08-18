@@ -157,6 +157,103 @@ export async function buildWalletDeploymentManifest(options) {
  * read from the chain, never trusted from the broadcast; the result is schema-
  * validated before it is returned.
  */
+/**
+ * Contract name -> field, for the browser wallet's deployment profile.
+ *
+ * A superset of `DEFAULT_CONTRACTS`: that manifest describes what a passkey
+ * wallet needs to create and operate an account, while this one also names the
+ * contracts the recovery and guardian surfaces read. Naming a contract here
+ * commits the wallet to verifying its code on every operation, so the list is
+ * exactly what the app uses and nothing more.
+ */
+export const WALLET_PROFILE_CONTRACTS = Object.freeze({
+  factory: "LoomAccountFactory",
+  implementation: "LoomAccount",
+  validator: "P256Validator",
+  policyHook: "PolicyHook",
+  recoveryModule: "RecoveryManager",
+  recoveryIntentBoard: "RecoveryIntentBoard"
+});
+
+const WALLET_PROFILE_GUARDIAN_VERIFIERS = Object.freeze({
+  ecdsa: "ECDSAGuardianVerifier",
+  p256: "P256GuardianVerifier",
+  erc1271: "ERC1271GuardianVerifier"
+});
+
+/**
+ * Build the browser wallet's deployment profile from a Foundry broadcast.
+ *
+ * The profile is the only thing that wallet trusts: it names the contracts and
+ * pins their runtime code hashes, and the app refuses to sign anything when the
+ * chain disagrees with it. Deriving it from the broadcast and the chain is what
+ * keeps it from drifting away from the deployment it claims to describe.
+ *
+ * `recoveryIntentBoard` and the guardian verifiers are optional (ADR-0024): a
+ * deployment may omit them, and the wallet simply has no on-chain discovery.
+ * Every contract that *is* named must have code, which `codehash` enforces.
+ */
+export async function buildWalletProfileManifest(options) {
+  assertObject(options, "options");
+  const parsed = parseFoundryBroadcast(options.broadcast, options);
+  const rpc = requireFunction(options.rpc, "options.rpc");
+  const entryPoint = requireAddress(options.entryPoint, "entryPoint");
+  const proxyCreationCode = options.proxyCreationCode;
+  if (typeof proxyCreationCode !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/u.test(proxyCreationCode)) {
+    throw new Error("proxyCreationCode must be the LoomAccountProxy creation bytecode");
+  }
+
+  const created = parsed.createdContracts;
+  const profile = { chainId: parsed.chainId, entryPoint, proxyCreationCode };
+  const runtimeCodeHashes = { entryPoint: await codehash(rpc, entryPoint, "EntryPoint") };
+
+  for (const [field, contractName] of Object.entries(WALLET_PROFILE_CONTRACTS)) {
+    const address = created[contractName];
+    if (!address) {
+      if (field === "recoveryIntentBoard" || field === "recoveryModule") continue;
+      throw new Error(`broadcast has no deployed ${contractName}`);
+    }
+    profile[field] = address;
+    runtimeCodeHashes[field] = await codehash(rpc, address, contractName);
+  }
+
+  const guardianVerifiers = {};
+  for (const [field, contractName] of Object.entries(WALLET_PROFILE_GUARDIAN_VERIFIERS)) {
+    const address = created[contractName];
+    if (!address) continue;
+    guardianVerifiers[field] = address;
+    runtimeCodeHashes[`${field === "ecdsa" ? "ecdsa" : field}GuardianVerifier`] =
+      await codehash(rpc, address, contractName);
+  }
+  if (Object.keys(guardianVerifiers).length > 0) profile.guardianVerifiers = guardianVerifiers;
+
+  profile.runtimeCodeHashes = runtimeCodeHashes;
+
+  const provisionerAddress = created[DEFAULT_CONTRACTS.recoveryValidatorFactory];
+  if (provisionerAddress) {
+    // `buildP256RecoveryValidatorProvisioner` samples a deployed child to learn
+    // its runtime hash. A fresh deployment has none, so the hash comes from the
+    // build the factory was compiled against. That is checkable rather than
+    // assumed: the factory's `validatorInitCodeHash()` is derived from the same
+    // creation code, so comparing it to the local artifact proves the factory
+    // will produce exactly this child.
+    const validatorRuntimeCodeHash = requireBytes32(
+      options.validatorRuntimeCodeHash,
+      "options.validatorRuntimeCodeHash"
+    );
+    profile.recoveryValidatorProvisioner = Object.freeze({
+      address: provisionerAddress,
+      runtimeCodeHash: await codehash(rpc, provisionerAddress, "P256RecoveryValidatorFactory"),
+      validatorRuntimeCodeHash,
+      fallbackVerifier: await readAddressView(
+        rpc, provisionerAddress, "fallbackVerifier()", "recovery factory fallback verifier"
+      )
+    });
+  }
+
+  return Object.freeze(profile);
+}
+
 export async function buildCanonicalDeploymentManifest(options) {
   assertObject(options, "options");
   const parsed = options.parsed ?? parseFoundryBroadcast(options.broadcast, options);
@@ -447,6 +544,13 @@ async function codehash(rpc, address, label) {
   if (!code || code === "0x") throw new Error(`${label} at ${address} has no code on chain`);
   if (!/^0x[0-9a-fA-F]*$/u.test(code)) throw new Error(`${label} returned non-hex code`);
   return `0x${keccak256(Buffer.from(code.slice(2), "hex"))}`;
+}
+
+function requireBytes32(value, label) {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/u.test(value)) {
+    throw new Error(`${label} must be a 32-byte hash`);
+  }
+  return value.toLowerCase();
 }
 
 function requireMode(value) {

@@ -15,6 +15,7 @@ import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValid
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
 import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {VaultHook} from "../src/hooks/VaultHook.sol";
+import {RecoveryIntentBoard} from "../src/recovery/RecoveryIntentBoard.sol";
 import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
 
 /// A trivial call target for the lifecycle test to write to and read back,
@@ -48,6 +49,7 @@ contract DeployDevnet is Script {
         address exactCallSessionValidator,
         address granularSessionValidator,
         address recoveryManager,
+        address recoveryIntentBoard,
         address target
     );
 
@@ -73,6 +75,8 @@ contract DeployDevnet is Script {
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
         RecoveryManager recoveryManager = new RecoveryManager();
+        // ADR-0024: without it guardian discovery has nothing to read.
+        RecoveryIntentBoard recoveryIntentBoard = new RecoveryIntentBoard();
         DevnetTarget target = new DevnetTarget();
 
         LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](2);
@@ -105,6 +109,7 @@ contract DeployDevnet is Script {
             address(exactCallSessionValidator),
             address(granularSessionValidator),
             address(recoveryManager),
+            address(recoveryIntentBoard),
             address(target)
         );
 
