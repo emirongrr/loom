@@ -16,6 +16,7 @@ import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValid
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
 import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {VaultHook} from "../src/hooks/VaultHook.sol";
+import {RecoveryIntentBoard} from "../src/recovery/RecoveryIntentBoard.sol";
 import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
 import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
 import {P256GuardianVerifier} from "../src/recovery/P256GuardianVerifier.sol";
@@ -51,6 +52,7 @@ contract DeploySepolia is Script {
         address exactCallSessionValidator,
         address granularSessionValidator,
         address recoveryManager,
+        address recoveryIntentBoard,
         address ecdsaGuardianVerifier,
         address p256GuardianVerifier,
         address erc1271GuardianVerifier
@@ -84,6 +86,9 @@ contract DeploySepolia is Script {
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
         RecoveryManager recoveryManager = new RecoveryManager();
+        // ADR-0024. Optional per deployment and never installed as a module, but a
+        // deployment that omits it leaves guardian discovery permanently inert.
+        RecoveryIntentBoard recoveryIntentBoard = new RecoveryIntentBoard();
         ECDSAGuardianVerifier ecdsaGuardianVerifier = new ECDSAGuardianVerifier();
         P256GuardianVerifier p256GuardianVerifier = new P256GuardianVerifier(
             p256Selection.mode == P256VerifierMode.NativePrecompile ? address(0) : p256Selection.verifier
@@ -135,6 +140,7 @@ contract DeploySepolia is Script {
             address(exactCallSessionValidator),
             address(granularSessionValidator),
             address(recoveryManager),
+            address(recoveryIntentBoard),
             address(ecdsaGuardianVerifier),
             address(p256GuardianVerifier),
             address(erc1271GuardianVerifier)

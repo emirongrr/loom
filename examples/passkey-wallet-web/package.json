@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run test:domain && npm run test:components",
     "test:domain": "node --experimental-strip-types --test test/*.test.ts",
-    "test:components": "vitest run"
+    "test:components": "vitest run",
+    "deploy:connect": "node scripts/connect-deployment.mjs"
   },
   "dependencies": {
     "@loom/core": "file:../../packages/core",
@@ -23,6 +24,7 @@
     "viem": "^2.55.1"
   },
   "devDependencies": {
+    "@loom/deployment": "file:../../packages/deployment",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "19.1.9",

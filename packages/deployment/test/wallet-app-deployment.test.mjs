@@ -9,6 +9,7 @@ import {
   buildCanonicalDeploymentManifest,
   buildP256RecoveryValidatorProvisioner,
   buildWalletDeploymentManifest,
+  buildWalletProfileManifest,
   connectWalletAppDeployment,
   envForWalletDeployment,
   parseFoundryBroadcast,
@@ -430,5 +431,125 @@ test("a supplied recovery child is what gets pinned", async () => {
     manifest.recoveryValidatorProvisioner.validatorRuntimeCodeHash,
     `0x${keccak256(Buffer.from("p256-recovery-child-code"))}`,
     "the child's own code hash, not the passkey validator's"
+  );
+});
+
+// --- Browser wallet profile ------------------------------------------------
+//
+// The profile is the only thing the browser wallet trusts, and it names more
+// contracts than the mobile manifest: the recovery and guardian surfaces read
+// them too. These cover what must be in it, what may be absent, and what must
+// never be claimed without code behind it.
+
+const POLICY_HOOK = address("policy-hook");
+const RECOVERY_MANAGER = address("recovery-manager");
+const INTENT_BOARD = address("recovery-intent-board");
+const ECDSA_GUARDIAN = address("ecdsa-guardian-verifier");
+const CHILD_RUNTIME_HASH = `0x${keccak256("child-runtime")}`;
+
+function profileBroadcast(over = []) {
+  return {
+    chain: 11155111,
+    transactions: [
+      { transactionType: "CREATE", contractName: "LoomAccountFactory", contractAddress: FACTORY },
+      { transactionType: "CREATE", contractName: "LoomAccount", contractAddress: ACCOUNT },
+      { transactionType: "CREATE", contractName: "P256Validator", contractAddress: P256 },
+      { transactionType: "CREATE", contractName: "PolicyHook", contractAddress: POLICY_HOOK },
+      { transactionType: "CREATE", contractName: "RecoveryManager", contractAddress: RECOVERY_MANAGER },
+      { transactionType: "CREATE", contractName: "RecoveryIntentBoard", contractAddress: INTENT_BOARD },
+      { transactionType: "CREATE", contractName: "ECDSAGuardianVerifier", contractAddress: ECDSA_GUARDIAN },
+      { transactionType: "CREATE", contractName: "P256RecoveryValidatorFactory", contractAddress: RECOVERY_FACTORY },
+      ...over
+    ]
+  };
+}
+
+function profileRpc(extraCodes = {}) {
+  const codes = new Map([
+    [ENTRYPOINT.toLowerCase(), "entrypoint-code"],
+    [FACTORY.toLowerCase(), "factory-code"],
+    [ACCOUNT.toLowerCase(), "account-code"],
+    [P256.toLowerCase(), "p256-code"],
+    [POLICY_HOOK.toLowerCase(), "policy-hook-code"],
+    [RECOVERY_MANAGER.toLowerCase(), "recovery-manager-code"],
+    [INTENT_BOARD.toLowerCase(), "intent-board-code"],
+    [ECDSA_GUARDIAN.toLowerCase(), "ecdsa-guardian-code"],
+    [RECOVERY_FACTORY.toLowerCase(), "recovery-factory-code"],
+    ...Object.entries(extraCodes)
+  ]);
+  return async (method, params) => {
+    if (method === "eth_call") return `0x${"0".repeat(64)}`;
+    assert.equal(method, "eth_getCode");
+    return hexText(codes.get(String(params[0]).toLowerCase()) ?? "");
+  };
+}
+
+const profileOptions = (over = {}) => ({
+  broadcast: profileBroadcast(),
+  rpc: profileRpc(),
+  entryPoint: ENTRYPOINT,
+  proxyCreationCode: hexText("proxy-creation"),
+  validatorRuntimeCodeHash: CHILD_RUNTIME_HASH,
+  ...over
+});
+
+test("the wallet profile names every contract the browser wallet reads, with hashes from the chain", async () => {
+  const profile = await buildWalletProfileManifest(profileOptions());
+
+  assert.equal(profile.chainId, 11155111);
+  assert.equal(profile.factory, FACTORY);
+  assert.equal(profile.implementation, ACCOUNT);
+  assert.equal(profile.validator, P256);
+  assert.equal(profile.policyHook, POLICY_HOOK);
+  assert.equal(profile.recoveryModule, RECOVERY_MANAGER);
+  assert.equal(profile.recoveryIntentBoard, INTENT_BOARD);
+  assert.equal(profile.guardianVerifiers.ecdsa, ECDSA_GUARDIAN);
+  assert.equal(profile.runtimeCodeHashes.policyHook, `0x${keccak256(Buffer.from("policy-hook-code"))}`);
+  assert.equal(profile.runtimeCodeHashes.recoveryIntentBoard, `0x${keccak256(Buffer.from("intent-board-code"))}`);
+  assert.equal(profile.recoveryValidatorProvisioner.validatorRuntimeCodeHash, CHILD_RUNTIME_HASH);
+});
+
+// ADR-0024: the board is optional. A deployment without it is valid, and the
+// wallet simply has no on-chain discovery.
+test("a deployment without the board still produces a profile", async () => {
+  const withoutBoard = profileBroadcast();
+  withoutBoard.transactions = withoutBoard.transactions.filter(t => t.contractName !== "RecoveryIntentBoard");
+  const profile = await buildWalletProfileManifest(profileOptions({ broadcast: withoutBoard }));
+  assert.equal(profile.recoveryIntentBoard, undefined);
+  assert.equal(profile.runtimeCodeHashes.recoveryIntentBoard, undefined);
+});
+
+test("a broadcast missing a contract the wallet must have is refused", async () => {
+  const withoutValidator = profileBroadcast();
+  withoutValidator.transactions = withoutValidator.transactions.filter(t => t.contractName !== "P256Validator");
+  await assert.rejects(
+    buildWalletProfileManifest(profileOptions({ broadcast: withoutValidator })),
+    /no deployed P256Validator/u
+  );
+});
+
+// A profile naming an address with no code can never pass the wallet's runtime
+// verification, so producing one is the failure.
+test("a named contract with no code on chain is refused", async () => {
+  const rpc = async (method, params) => {
+    if (method === "eth_call") return `0x${"0".repeat(64)}`;
+    return String(params[0]).toLowerCase() === INTENT_BOARD.toLowerCase() ? "0x" : hexText("code");
+  };
+  await assert.rejects(buildWalletProfileManifest(profileOptions({ rpc })), /has no code on chain/u);
+});
+
+test("the proxy creation code must be real bytecode", async () => {
+  await assert.rejects(
+    buildWalletProfileManifest(profileOptions({ proxyCreationCode: "not-hex" })),
+    /proxyCreationCode/u
+  );
+});
+
+// The child's hash cannot be sampled from a fresh deployment, so it is supplied
+// -- and must be a hash, not whatever the caller happened to have.
+test("the recovery child runtime hash must be a 32-byte hash", async () => {
+  await assert.rejects(
+    buildWalletProfileManifest(profileOptions({ validatorRuntimeCodeHash: "0x1234" })),
+    /must be a 32-byte hash/u
   );
 });
