@@ -40,6 +40,11 @@ const broadcastPath = path.resolve(
 const rpcUrl = arg("rpc", process.env.SEPOLIA_RPC_URL);
 const entryPoint = arg("entrypoint", process.env.SEPOLIA_ENTRYPOINT);
 const p256VerifierMode = arg("p256-mode", "native-precompile");
+// A deployed recovery validator child, whose runtime hash the manifest pins.
+// It used to default to the passkey validator, which is a different contract:
+// the pinned hash could never match a real child. There is no child on a fresh
+// deployment, so this has to be named rather than guessed.
+const recoveryValidator = arg("recovery-validator", process.env.SEPOLIA_RECOVERY_VALIDATOR);
 const p256Verifier = arg(
   "p256-verifier",
   p256VerifierMode === "native-precompile" ? NATIVE_P256_PRECOMPILE : process.env.SEPOLIA_P256_FALLBACK_VERIFIER
@@ -51,6 +56,12 @@ if (p256VerifierMode !== "native-precompile" && p256VerifierMode !== "fallback-c
   fail("--p256-mode must be native-precompile or fallback-contract.");
 }
 if (!p256Verifier) fail("Missing --p256-verifier (or SEPOLIA_P256_FALLBACK_VERIFIER) for fallback-contract mode.");
+if (!recoveryValidator) {
+  fail(
+    "Missing --recovery-validator (or SEPOLIA_RECOVERY_VALIDATOR): the address of a deployed"
+    + " P256RecoveryValidator child. It cannot be inferred -- the passkey validator is a different contract."
+  );
+}
 
 console.log("Connecting deployment with Loom wallet deployment tooling...");
 const rpc = createJsonRpcClient(rpcUrl);
@@ -64,6 +75,7 @@ try {
     entryPoint,
     p256VerifierMode,
     p256Verifier,
+    recoveryValidator,
     probeP256: () => probeP256Precompile(rpc)
   });
 
