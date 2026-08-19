@@ -160,3 +160,18 @@ test("addresses match by value, not by casing", () => {
   });
   assert.equal(requests.length, 1);
 });
+
+// Found on a devnet with a real proposal: the validator was both published and
+// proposed, and the publication claimed it first -- so the panel reported
+// "published elsewhere, nothing you can do" about a recovery the guardians had
+// already approved and that only needed its delay.
+test("a proposed recovery outranks the publication of the same validator", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base, sessions: [],
+    published: [{ validator: THEIRS, initDataHash: `0x${"11".repeat(32)}`, blockNumber: 17n }],
+    pending: { pending: true, newValidator: THEIRS, status: "delay-active", readyAt: 10n, expiresAt: 20n }
+  });
+  assert.equal(requests.length, 1);
+  assert.match(requests[0]!.title, /proposed on chain/);
+  assert.match(requests[0]!.status, /Delay running/);
+});

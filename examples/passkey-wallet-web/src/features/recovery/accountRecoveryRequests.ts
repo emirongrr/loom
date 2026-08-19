@@ -155,6 +155,30 @@ export function collectAccountRecoveryRequests(input: {
     }));
   }
 
+  if (input.pending?.pending) {
+    const validator = input.pending.newValidator.toLowerCase();
+    // Claimed before the publication loop runs, so a validator that is both
+    // published and proposed is reported as the proposal. The proposal is the
+    // stronger fact -- guardians have already approved it and it only needs
+    // the delay -- and reporting it as "published elsewhere" buried the one
+    // thing the reader could act on.
+    if (!claimed.has(validator)) {
+      claimed.add(validator);
+      requests.push(Object.freeze({
+        id: `pending:${validator}`,
+        title: "Recovery proposed on chain",
+        status: onChainStatus(input.pending.status),
+        detail: `The guardians have already approved a recovery to ${short(input.pending.newValidator)}. Anyone can`
+          + ` execute it once the delay elapses; no session on this device is required.`,
+        next: {
+          kind: "blocked" as const,
+          reason: "Finish this recovery below. Execution needs no session and no passkey here -- only gas."
+        },
+        primary: false
+      }));
+    }
+  }
+
   for (const entry of input.published ?? []) {
     const validator = entry.validator.toLowerCase();
     if (claimed.has(validator)) continue;
@@ -177,26 +201,6 @@ export function collectAccountRecoveryRequests(input: {
       },
       primary: false
     }));
-  }
-
-  if (input.pending?.pending) {
-    const validator = input.pending.newValidator.toLowerCase();
-    // A pending record whose validator already has a session is the same
-    // recovery seen from the chain, and saying it twice would read as two.
-    if (!claimed.has(validator)) {
-      requests.push(Object.freeze({
-        id: `pending:${validator}`,
-        title: "Recovery proposed on chain",
-        status: onChainStatus(input.pending.status),
-        detail: `The guardians have already approved a recovery to ${short(input.pending.newValidator)}. Anyone can`
-          + ` execute it once the delay elapses; no session on this device is required.`,
-        next: {
-          kind: "blocked" as const,
-          reason: "Finish this recovery below. Execution needs no session and no passkey here -- only gas."
-        },
-        primary: false
-      }));
-    }
   }
 
   return Object.freeze(requests);

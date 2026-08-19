@@ -118,6 +118,9 @@ export function classifyExistingPublications(input: {
   }
 
   const plural = orphans.length === 1 ? "" : "s";
+  // "1 recovery passkey were" reached the running app because the test that was
+  // meant to catch it accepted either verb.
+  const verb = orphans.length === 1 ? "was" : "were";
   const listed = orphans.map(entry => short(entry.validator)).join(", ");
   const bounded = (input.complete ? "" : ` The scan reached back only to block ${scannedFrom}, so there may be more.`)
     + (input.consistent === false
@@ -128,18 +131,18 @@ export function classifyExistingPublications(input: {
 
   let message: string;
   if (match) {
-    message = `${orphans.length} earlier recovery passkey${plural} were published for this account and cannot be`
+    message = `${orphans.length} earlier recovery passkey${plural} ${verb} published for this account and cannot be`
       + ` continued from this device. Only the one this device holds can be proposed; the rest are abandoned,`
       + ` and the gas spent on them is not recoverable. Abandoned: ${listed}.${bounded}`;
   } else if (held > 0) {
     const draftPlural = held === 1 ? "" : "s";
-    message = `${orphans.length} recovery passkey${plural} were already published for this account (${listed}).`
+    message = `${orphans.length} recovery passkey${plural} ${verb} already published for this account (${listed}).`
       + ` This device holds ${held} saved recovery draft${draftPlural} for it, but none could be opened and`
       + ` matched to a published validator -- so the passkey may still be on this device even though its draft`
       + ` is unreadable. Look at that before paying to publish another: only one recovery can ever be proposed`
       + ` for this account.${bounded}`;
   } else {
-    message = `${orphans.length} recovery passkey${plural} were already published for this account (${listed}),`
+    message = `${orphans.length} recovery passkey${plural} ${verb} already published for this account (${listed}),`
       + ` and this device holds none of them. Creating another costs gas again, and only one recovery can ever`
       + ` be proposed for this account. Continue only if the earlier passkey is genuinely lost.${bounded}`;
   }

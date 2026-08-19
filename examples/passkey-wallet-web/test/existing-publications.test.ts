@@ -138,8 +138,11 @@ test("publications are ordered by block, so the earliest reads first", () => {
 test("the singular case does not read as plural", () => {
   const one = classifyExistingPublications({ published: [entry(FIRST, 1n)], complete: true });
   if (one.kind !== "orphaned") throw new Error("unreachable");
-  assert.match(one.message, /1 recovery passkey were|1 recovery passkey was|1 recovery passkey /);
+  // This alternation used to accept "were" too, so the app shipped
+  // "1 recovery passkey were already published" and the test stayed green.
+  assert.match(one.message, /\b1 recovery passkey was already published\b/);
   assert.doesNotMatch(one.message, /passkeys/);
+  assert.doesNotMatch(one.message, /passkey were/);
 });
 
 // A bounded scan appends its reach to the warning rather than replacing it: the
