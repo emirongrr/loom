@@ -1,0 +1,191 @@
+import type { Address } from "@loom/core";
+import type { RecoverySession } from "./recoverySession";
+import type { PublishedRecoveryValidator } from "./existingPublications";
+
+/**
+ * Every recovery in flight for one account, gathered from the places they
+ * actually live, with the next step each one is waiting on.
+ *
+ * A recovery is not one object in one place. Part of it is an encrypted session
+ * on this device, part is a validator published on chain by whoever paid the
+ * gas, and part is a record the manager only writes once guardians have
+ * approved. The interface used to show each of those in a different corner --
+ * a warning paragraph in the passkey step, an unfiltered session list, a manual
+ * lookup box -- and left the reader to work out that they were the same
+ * recovery, or three different ones.
+ *
+ * Collecting them means a reader who enters an account address is told what is
+ * already underway for it, and can carry the right one forward instead of
+ * starting a fourth.
+ *
+ * Nothing here reads the chain or touches storage. It is given what the page
+ * already fetched and decides only what is true and what comes next, so the
+ * decision can be tested without a network.
+ */
+
+/** What this request is waiting for, expressed as the action that unblocks it. */
+export type RecoveryNextStep =
+  /** A local session exists: open it to collect approvals, propose, or execute. */
+  | { readonly kind: "open-session"; readonly sessionId: string; readonly label: string }
+  /** A published validator this device can still turn into a guardian request. */
+  | { readonly kind: "request-approvals"; readonly label: string }
+  /** A prepared passkey whose validator is not on chain yet. */
+  | { readonly kind: "publish-validator"; readonly label: string }
+  /** Nothing this device can do, and why. */
+  | { readonly kind: "blocked"; readonly reason: string };
+
+export interface AccountRecoveryRequest {
+  readonly id: string;
+  readonly title: string;
+  /** Where this recovery has got to, in the reader's terms. */
+  readonly status: string;
+  readonly detail: string;
+  readonly next: RecoveryNextStep;
+  /** True when this is the entry the reader is most likely to want. */
+  readonly primary: boolean;
+}
+
+const SESSION_STAGE: Readonly<Record<RecoverySession["stage"], string>> = Object.freeze({
+  "request-created": "Request ready to send",
+  collecting: "Collecting guardian approvals",
+  "ready-to-propose": "Threshold reached",
+  "delay-active": "Security delay running",
+  "ready-to-execute": "Ready to execute",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  expired: "Expired",
+  blocked: "Blocked"
+});
+
+/** Stages that are over. They are still shown, but never as the thing to do next. */
+const FINISHED = new Set<RecoverySession["stage"]>(["completed", "cancelled", "expired"]);
+
+const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
+
+export interface OnChainPendingRecovery {
+  readonly pending: boolean;
+  readonly newValidator: Address;
+  readonly status: "none" | "unknown" | "delay-active" | "ready" | "expired";
+  readonly readyAt: bigint;
+  readonly expiresAt: bigint;
+}
+
+/**
+ * Order matters more than completeness here. The reader wants the one thing
+ * they can act on, so anything actionable sorts above anything finished, and
+ * a session this device can drive sorts above a publication it cannot.
+ */
+export function collectAccountRecoveryRequests(input: {
+  readonly chainId: number;
+  readonly account: Address;
+  readonly sessions: readonly RecoverySession[];
+  readonly published?: readonly PublishedRecoveryValidator[];
+  /** The validator a local draft resolved to, when one did. */
+  readonly restoredValidator?: Address;
+  /** True when that draft's validator is already on chain. */
+  readonly restoredIsPublished?: boolean;
+  readonly pending?: OnChainPendingRecovery;
+}): readonly AccountRecoveryRequest[] {
+  const account = input.account.toLowerCase();
+  const requests: AccountRecoveryRequest[] = [];
+
+  const mine = input.sessions.filter(session =>
+    session.request.chainId === input.chainId && session.request.account.toLowerCase() === account
+  );
+  const claimed = new Set<string>();
+
+  for (const session of mine) {
+    claimed.add(session.request.newValidator.toLowerCase());
+    const finished = FINISHED.has(session.stage);
+    const approvals = `${session.responses.length} of ${session.request.guardianThreshold} guardian approvals`;
+    requests.push(Object.freeze({
+      id: `session:${session.id}`,
+      title: `Recovery ${session.request.humanCode}`,
+      status: SESSION_STAGE[session.stage],
+      detail: finished
+        ? `New validator ${short(session.request.newValidator)}.`
+        : `${approvals}. New validator ${short(session.request.newValidator)}.`,
+      next: finished
+        ? { kind: "blocked" as const, reason: "This request is closed. Nothing further can be done with it." }
+        : {
+          kind: "open-session" as const,
+          sessionId: session.id,
+          label: session.stage === "request-created" || session.stage === "collecting"
+            ? "Send to guardians"
+            : "Open"
+        },
+      primary: !finished
+    }));
+  }
+
+  // A published validator this device holds the draft for, with no session yet:
+  // the gas is already spent and the only thing missing is the request the
+  // guardians sign. Offering that directly is the difference between finishing
+  // a recovery and paying to start another.
+  const restored = input.restoredValidator?.toLowerCase();
+  if (restored && !claimed.has(restored)) {
+    claimed.add(restored);
+    requests.push(Object.freeze({
+      id: `draft:${restored}`,
+      title: "Recovery passkey on this device",
+      status: input.restoredIsPublished ? "Published, no request created yet" : "Prepared, not published yet",
+      detail: input.restoredIsPublished
+        ? `Validator ${short(input.restoredValidator!)} is live on chain. It needs a guardian request before it can be proposed.`
+        : `Validator ${short(input.restoredValidator!)} is prepared. Publishing it is permissionless and grants no account authority.`,
+      next: input.restoredIsPublished
+        ? { kind: "request-approvals" as const, label: "Create guardian request" }
+        : { kind: "publish-validator" as const, label: "Publish validator" },
+      primary: true
+    }));
+  }
+
+  for (const entry of input.published ?? []) {
+    const validator = entry.validator.toLowerCase();
+    if (claimed.has(validator)) continue;
+    claimed.add(validator);
+    requests.push(Object.freeze({
+      id: `published:${validator}`,
+      title: "Recovery passkey published elsewhere",
+      status: "Cannot be continued from this device",
+      detail: `Validator ${short(entry.validator)} was published at block ${entry.blockNumber}, and this device does`
+        + ` not hold its passkey. Only the device that created it can turn it into a guardian request.`,
+      next: {
+        kind: "blocked" as const,
+        reason: "The passkey that made this publication is not on this device."
+      },
+      primary: false
+    }));
+  }
+
+  if (input.pending?.pending) {
+    const validator = input.pending.newValidator.toLowerCase();
+    // A pending record whose validator already has a session is the same
+    // recovery seen from the chain, and saying it twice would read as two.
+    if (!claimed.has(validator)) {
+      requests.push(Object.freeze({
+        id: `pending:${validator}`,
+        title: "Recovery proposed on chain",
+        status: onChainStatus(input.pending.status),
+        detail: `The guardians have already approved a recovery to ${short(input.pending.newValidator)}. Anyone can`
+          + ` execute it once the delay elapses; no session on this device is required.`,
+        next: {
+          kind: "blocked" as const,
+          reason: "Use the lookup panel below to execute it from any device with gas."
+        },
+        primary: false
+      }));
+    }
+  }
+
+  return Object.freeze(requests);
+}
+
+function onChainStatus(status: OnChainPendingRecovery["status"]): string {
+  return ({
+    none: "No pending record",
+    unknown: "Pending, timing unread",
+    "delay-active": "Security delay running",
+    ready: "Ready to execute",
+    expired: "Execution window closed"
+  })[status];
+}

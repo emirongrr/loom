@@ -14,6 +14,7 @@ import {
   prepareNewRecoveryPasskey, publishRecoveryValidator, sendEip1193Transaction, type Eip1193Provider
 } from "./recoveryPasskey";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
+import { createQrGeometry } from "../../components/qrCode";
 import { planGuardianChange, withFreshSalts } from "../security/guardianPlan";
 import { rosterMatchesRoot } from "../security/guardianStatus";
 import { assertPendingRecoveryMatchesPrepared, assertPreparedRecoveryMatchesRequest, assertSuccessfulTransactionReceipt, restorePreparedRecovery, verifyRecoveryResponseForProposal } from "./recoveryProposal";
@@ -21,7 +22,9 @@ import type { AccountHandle } from "../../types";
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation } from "./recoveryDraft";
-import { classifyExistingPublications, readPublishedRecoveryValidators, type ExistingPublications } from "./existingPublications";
+import { classifyExistingPublications, readPublishedRecoveryValidators, type ExistingPublications, type PublishedRecoveryValidator } from "./existingPublications";
+import { collectAccountRecoveryRequests, type AccountRecoveryRequest, type OnChainPendingRecovery } from "./accountRecoveryRequests";
+import { AccountRecoveryRequestsPanel } from "./AccountRecoveryRequestsPanel";
 import { RecoveryLookupPanel } from "./RecoveryLookupPanel";
 import { RecoveryStepper, recoveryViewStage } from "./RecoveryStepper";
 import { useRecoverySetupController } from "./useRecoverySetupController";
@@ -48,6 +51,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [message, setMessage] = useState("");
   const [passkeyLabel, setPasskeyLabel] = useState("Recovered wallet");
   const [publications, setPublications] = useState<ExistingPublications>({ kind: "none" });
+  // What the chain and this device already hold for the account under
+  // inspection, gathered on the same pass that checks it.
+  const [onChainPublished, setOnChainPublished] = useState<readonly PublishedRecoveryValidator[]>([]);
+  const [onChainPending, setOnChainPending] = useState<OnChainPendingRecovery | null>(null);
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
   const selected = path.startsWith("/recover/") ? sessions.find(session => session.id === selectedId) : undefined;
@@ -56,6 +63,22 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
     : [];
   const preferredGasPayer = accounts.find(candidate => candidate.id === preferredGasPayerId);
   const selectedGasPayer = selectRecoveryGasPayer(gasPayers, gasPayerId || preferredGasPayerId);
+
+  // Gathered rather than fetched again: everything below already came back
+  // with the account check, so the panel cannot disagree with the page.
+  const accountRequests: readonly AccountRecoveryRequest[] = inspection.status === "protected"
+    ? collectAccountRecoveryRequests({
+      chainId: inspection.deployment.chainId,
+      account: inspection.account,
+      sessions,
+      published: onChainPublished,
+      ...(passkeyPreparation ? {
+        restoredValidator: passkeyPreparation.validator,
+        restoredIsPublished: passkeyPreparation.alreadyDeployed
+      } : {}),
+      ...(onChainPending ? { pending: onChainPending } : {})
+    })
+    : [];
 
   const refresh = async () => {
     const snapshot = await repository.inspect();
@@ -89,6 +112,18 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       // decides nothing. The provisioning notice moves with it.
       if (deployment.recoveryValidatorProvisioner) setShowPasskey(true);
       setPublications({ kind: "none" });
+      setOnChainPublished([]);
+      setOnChainPending(null);
+      try {
+        // A proposal already approved by guardians needs no session here, but a
+        // reader who cannot see it has no way to know that.
+        const chainPending = await client.readPendingRecovery();
+        setOnChainPending({
+          pending: chainPending.pending, newValidator: chainPending.newValidator,
+          status: pendingStatus(chainPending.status),
+          readyAt: chainPending.readyAt, expiresAt: chainPending.expiresAt
+        });
+      } catch { /* The pending record is additional context, not a precondition. */ }
       const drafts = (await draftRepository.inspect()).drafts.filter(draft =>
         draft.chainId === deployment.chainId
         && draft.account.toLowerCase() === account.toLowerCase()
@@ -134,6 +169,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           verificationClient: publicClients.forEndpoint(config.verificationRpcUrl),
           factory: provisioner.address, account: getAddress(account), recoveryNonce
         });
+        setOnChainPublished(scan.published);
         setPublications(classifyExistingPublications({
           published: scan.published,
           complete: scan.complete,
@@ -361,6 +397,14 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       {message && <p className="callout warning" role="status">{message}</p>}
     </section>
 
+    {inspection.status === "protected" && <AccountRecoveryRequestsPanel
+      requests={accountRequests}
+      busy={passkeyStatus === "publishing" || passkeyStatus === "creating"}
+      onOpenSession={sessionId => onNavigate(`/recover/${encodeURIComponent(sessionId)}`)}
+      onRequestApprovals={() => void prepareGuardianRequest()}
+      onPublish={() => { setShowPasskey(true); }}
+    />}
+
     <RecoveryLookupPanel />
     <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
@@ -383,6 +427,10 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
   const [message, setMessage] = useState("");
   const [responseArtifact, setResponseArtifact] = useState("");
   const [busy, setBusy] = useState(false);
+  // The link is generated on the device, never fetched, and only while the
+  // request is still collecting. Rendering it as a QR is what makes handing it
+  // to a guardian standing next to you possible at all.
+  const [shareLink, setShareLink] = useState("");
 
   const rebuild = async (submitTransport?: Parameters<typeof createAccountGuardianClient>[0]["submitTransport"]) => {
     if (!session.local) throw new Error("This device has no encrypted execution material for this recovery request.");
@@ -558,6 +606,13 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
     try { await navigator.clipboard.writeText(serializeRecoveryProtocol(session.request)); setMessage("Recovery request copied."); }
     catch { setMessage("Clipboard access is unavailable. Export the request file instead."); }
   };
+  const showShareQr = async () => {
+    try {
+      const delivered = await createEncryptedLinkTransport<RecoveryRequestV1>({ origin: window.location.origin }).deliver(session.request);
+      setShareLink(delivered.value);
+      setMessage("The QR carries its own decryption key. Anyone who scans it can read the request, so show it only to the guardian it is meant for.");
+    } catch { setMessage("A shareable link could not be produced. Export the request file instead."); }
+  };
   const copyEncryptedLink = async () => {
     try {
       const delivered = await createEncryptedLinkTransport<RecoveryRequestV1>({ origin: window.location.origin }).deliver(session.request);
@@ -570,7 +625,26 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
   }, [session.id, session.stage]);
 
   const canCollect = session.stage === "request-created" || session.stage === "collecting";
-  return <main className="wallet-landing lock-layout"><section className="landing-panel"><div className="landing-brand"><span className="brand-mark">L</span><strong>Loom</strong></div><p className="eyebrow">Recovery session · {session.request.humanCode}</p><h1>{shortStage(session.stage)}</h1><p className="breakable">{session.request.account} · Chain {session.request.chainId}</p><div className="permission-grid"><div><span>Approvals</span><strong>{session.responses.length} of {session.request.guardianThreshold}</strong></div><div><span>Config version</span><strong>{session.request.configVersion}</strong></div><div><span>Created</span><strong>{new Date(session.createdAt).toLocaleString()}</strong></div><div><span>Expires</span><strong>{new Date(session.request.expiresAt * 1000).toLocaleString()}</strong></div></div><p className="callout">Compare the six-digit code with every guardian over an independent channel before accepting a response. Every response is checked against live verifier bytecode, the active guardian root, and the exact recovery digest.</p>{message && <p className="callout" role="status">{message}</p>}{canCollect && <div className="recovery-response-import"><label className="field"><span>Guardian response</span><textarea rows={6} value={responseArtifact} onChange={event => setResponseArtifact(event.target.value)} placeholder='{"format":"loom.recovery-response",…}' /></label><button className="secondary" disabled={busy || !responseArtifact.trim()} onClick={() => void importResponse()}>Verify and add response</button></div>}{session.stage === "ready-to-propose" && <div className="callout warning"><strong>Guardian threshold reached.</strong><p>The browser wallet only publishes the permissionless proposal and pays gas. It receives no recovery authority.</p><button className="primary" disabled={busy} onClick={() => void propose()}>{busy ? "Revalidating approvals…" : "Propose recovery on chain"}</button></div>}{session.transactionHash && <div className="callout success"><strong>On-chain recovery proposal</strong><p className="breakable">Proposal transaction {session.transactionHash}</p>{session.readyAt && <p>Ready after {new Date(Number(BigInt(session.readyAt) * 1_000n)).toLocaleString()}</p>}{session.expiresAt && <p>Execution expires {new Date(Number(BigInt(session.expiresAt) * 1_000n)).toLocaleString()}</p>}</div>}{session.stage === "delay-active" && <button className="secondary" disabled={busy} onClick={() => void checkPending()}>{busy ? "Reading chain state…" : "Check on-chain readiness"}</button>}{session.stage === "ready-to-execute" && <div className="callout warning"><strong>Recovery is executable.</strong><p>The contract-enforced delay has elapsed. Execution will atomically replace the validator set and rotate the guardian root.</p><button className="primary" disabled={busy} onClick={() => void execute()}>{busy ? "Verifying pending recovery…" : "Execute recovery"}</button></div>}{session.executionTransactionHash && <div className="callout success"><strong>Recovery executed</strong><p className="breakable">Execution transaction {session.executionTransactionHash}</p><button className="secondary" disabled={busy} onClick={() => void saveRecoveredWallet().then(() => setMessage("Recovered wallet saved.")).catch(error => setMessage(error instanceof Error ? error.message : "Recovered wallet could not be saved."))}>Save recovered wallet</button></div>}<div className="guardian-actions"><button className="secondary" onClick={onBack}>All sessions</button><button className="secondary" onClick={() => void copyRequest()}>Copy request</button><button className="secondary" onClick={() => void copyEncryptedLink()}>Copy bearer link</button><button className="primary" onClick={download}>Export file</button></div></section></main>;
+  return <main className="wallet-landing lock-layout"><section className="landing-panel"><div className="landing-brand"><span className="brand-mark">L</span><strong>Loom</strong></div><p className="eyebrow">Recovery session · {session.request.humanCode}</p><h1>{shortStage(session.stage)}</h1><p className="breakable">{session.request.account} · Chain {session.request.chainId}</p><div className="permission-grid"><div><span>Approvals</span><strong>{session.responses.length} of {session.request.guardianThreshold}</strong></div><div><span>Config version</span><strong>{session.request.configVersion}</strong></div><div><span>Created</span><strong>{new Date(session.createdAt).toLocaleString()}</strong></div><div><span>Expires</span><strong>{new Date(session.request.expiresAt * 1000).toLocaleString()}</strong></div></div><p className="callout">Compare the six-digit code with every guardian over an independent channel before accepting a response. Every response is checked against live verifier bytecode, the active guardian root, and the exact recovery digest.</p>{message && <p className="callout" role="status">{message}</p>}{canCollect && <div className="recovery-response-import"><label className="field"><span>Guardian response</span><textarea rows={6} value={responseArtifact} onChange={event => setResponseArtifact(event.target.value)} placeholder='{"format":"loom.recovery-response",…}' /></label><button className="secondary" disabled={busy || !responseArtifact.trim()} onClick={() => void importResponse()}>Verify and add response</button></div>}{session.stage === "ready-to-propose" && <div className="callout warning"><strong>Guardian threshold reached.</strong><p>The browser wallet only publishes the permissionless proposal and pays gas. It receives no recovery authority.</p><button className="primary" disabled={busy} onClick={() => void propose()}>{busy ? "Revalidating approvals…" : "Propose recovery on chain"}</button></div>}{session.transactionHash && <div className="callout success"><strong>On-chain recovery proposal</strong><p className="breakable">Proposal transaction {session.transactionHash}</p>{session.readyAt && <p>Ready after {new Date(Number(BigInt(session.readyAt) * 1_000n)).toLocaleString()}</p>}{session.expiresAt && <p>Execution expires {new Date(Number(BigInt(session.expiresAt) * 1_000n)).toLocaleString()}</p>}</div>}{session.stage === "delay-active" && <button className="secondary" disabled={busy} onClick={() => void checkPending()}>{busy ? "Reading chain state…" : "Check on-chain readiness"}</button>}{session.stage === "ready-to-execute" && <div className="callout warning"><strong>Recovery is executable.</strong><p>The contract-enforced delay has elapsed. Execution will atomically replace the validator set and rotate the guardian root.</p><button className="primary" disabled={busy} onClick={() => void execute()}>{busy ? "Verifying pending recovery…" : "Execute recovery"}</button></div>}{session.executionTransactionHash && <div className="callout success"><strong>Recovery executed</strong><p className="breakable">Execution transaction {session.executionTransactionHash}</p><button className="secondary" disabled={busy} onClick={() => void saveRecoveredWallet().then(() => setMessage("Recovered wallet saved.")).catch(error => setMessage(error instanceof Error ? error.message : "Recovered wallet could not be saved."))}>Save recovered wallet</button></div>}{canCollect && <div className="callout"><strong>Send this request to your guardians.</strong><p>Each guardian signs it on their own device and sends a response back. The request carries no authority on its own: {session.request.guardianThreshold} approvals are required, and every response is checked against live state before it counts.</p><div className="guardian-actions"><button className="secondary" onClick={() => void copyRequest()}>Copy request</button><button className="secondary" onClick={() => void copyEncryptedLink()}>Copy bearer link</button><button className="secondary" onClick={() => void showShareQr()}>{shareLink ? "Regenerate QR" : "Show QR"}</button><button className="primary" onClick={download}>Export file</button></div>{shareLink && <ShareQr value={shareLink} />}</div>}<div className="guardian-actions"><button className="secondary" onClick={onBack}>All sessions</button></div></section></main>;
+}
+
+/**
+ * The recovery request as a QR, encoded here rather than by any service.
+ *
+ * Falls back to the text when the value will not fit a code, because a link a
+ * guardian can copy beats a blank square.
+ */
+function ShareQr({ value }: { readonly value: string }) {
+  const geometry = createQrGeometry(value);
+  if (!geometry) return <p className="breakable form-note">{value}</p>;
+  return <div className="recovery-share-qr">
+    <svg viewBox={`0 0 ${geometry.size} ${geometry.size}`} width="220" height="220" role="img"
+      aria-label="Recovery request bearer link as a QR code">
+      <rect width={geometry.size} height={geometry.size} fill="#ffffff" />
+      <path d={geometry.path} fill="#000000" />
+    </svg>
+    <p className="form-note">Scanning this opens the request on the guardian's device.</p>
+  </div>;
 }
 
 function shortStage(stage: RecoverySession["stage"]): string {
@@ -582,6 +656,18 @@ function shortAddress(address: string): string { return `${address.slice(0, 6)}�
 function safeRecoveryMessage(error: unknown): string {
   if (error instanceof GuardianRecoveryError) return error.safeMessage;
   return "Recovery state could not be verified. Check the account, network, and RPC, then retry.";
+}
+
+/**
+ * Narrow the manager status the SDK widened to `string`.
+ *
+ * An unrecognised value is reported as unknown rather than trusted through:
+ * this drives what the reader is told about a recovery's timing.
+ */
+function pendingStatus(value: string): OnChainPendingRecovery["status"] {
+  return value === "none" || value === "delay-active" || value === "ready" || value === "expired"
+    ? value
+    : "unknown";
 }
 
 function sessionIdFromPath(path: string): string {
