@@ -163,8 +163,9 @@ export function collectAccountRecoveryRequests(input: {
       id: `published:${validator}`,
       title: "Recovery passkey published elsewhere",
       status: "Not on this device",
-      detail: `Validator ${short(entry.validator)} was published at block ${entry.blockNumber}, and this device does`
-        + ` not hold its passkey. Only the device that created it can turn it into a guardian request.`,
+      detail: `Validator ${short(entry.validator)} was published at block ${entry.blockNumber}. The gas for it is`
+        + ` already spent, and it can still be turned into a guardian request -- but only from a device that can`
+        + ` name it.`,
       next: {
         kind: "blocked" as const,
         reason: unreadable > 0

@@ -409,7 +409,13 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       onPublish={() => { setShowPasskey(true); }}
     />}
 
-    <RecoveryLookupPanel secondary={inspection.status === "protected"} />
+    {/* Only when there is something to finish. Checking an account already
+        lists everything underway for it, so a standing lookup box repeated
+        that; what it uniquely offers -- executing an approved, matured
+        recovery -- appears exactly when the chain says one exists. */}
+    {inspection.status === "protected" && onChainPending?.pending
+      && <RecoveryLookupPanel fixedAccount={inspection.account} />}
+    {inspection.status !== "protected" && <RecoveryLookupPanel />}
     <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}

@@ -22,12 +22,12 @@ import { RecoveryManagerAbi } from "@loom/core/abi";
  * What this cannot do is decide that a recovery is legitimate. It reports what
  * the chain says and refuses to offer a call the manager would reject.
  */
-export function RecoveryLookupPanel({ secondary = false }: { readonly secondary?: boolean } = {}) {
+export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: Address } = {}) {
   const { config } = useNetwork();
   const { publicClients, runtime } = useAppServices();
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [deploymentError, setDeploymentError] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<string>(fixedAccount ?? "");
   const [result, setResult] = useState<RecoveryLookupResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -130,25 +130,35 @@ export function RecoveryLookupPanel({ secondary = false }: { readonly secondary?
     } finally { setBusy(false); }
   };
 
-  // Once an account has been checked, its own recoveries are already listed
-  // beside it and repeating them here reads as a second set. What this panel
-  // still does that nothing else can is read and finish a recovery for an
-  // account the reader does not hold: execution needs no session and no
-  // passkey, only gas (ADR-0025). So it steps back rather than disappearing.
+  // Driven by the account already being recovered when one is given, so the
+  // reader never types the same address twice. Execution needs no session and
+  // no passkey on this device -- an approved recovery whose delay has elapsed
+  // can be finished by anyone willing to pay the gas (ADR-0025) -- which is
+  // why this stays reachable even though nothing else here requires it.
+  useEffect(() => {
+    if (fixedAccount && manager && !result && !busy) void look();
+  }, [fixedAccount, manager]);
+
   const body = <>
     <p className="form-note">
-      {secondary
-        ? "Any account, not just the one above. Execution needs no session and no passkey on this device -- an approved recovery whose delay has elapsed can be finished by anyone willing to pay the gas."
-        : "Anyone can read whether an account has a recovery pending. A pending request is itself proof that the guardians approved it, because the manager verifies the threshold before it records one."}
+      Anyone can read whether an account has a recovery pending. A pending request is itself proof that the
+      guardians approved it, because the manager verifies the threshold before it records one. Finishing one
+      grants the publisher no authority: it only pays the gas.
     </p>
 
-    <label className="field"><span>Account address</span>
-      <input value={address} disabled={busy} spellCheck={false} autoComplete="off" placeholder="0x…"
-        onChange={event => setAddress(event.target.value)} />
-    </label>
-    <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
-      {busy ? "Reading…" : "Look up"}
-    </button>
+    {fixedAccount
+      ? <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
+        {busy ? "Reading…" : "Re-read chain state"}
+      </button>
+      : <>
+        <label className="field"><span>Account address</span>
+          <input value={address} disabled={busy} spellCheck={false} autoComplete="off" placeholder="0x…"
+            onChange={event => setAddress(event.target.value)} />
+        </label>
+        <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
+          {busy ? "Reading…" : "Look up"}
+        </button>
+      </>}
 
     {deploymentError && <p className="callout warning">{deploymentError}</p>}
     {error && <p className="callout warning">{error}</p>}
@@ -209,11 +219,9 @@ export function RecoveryLookupPanel({ secondary = false }: { readonly secondary?
   return <section className="section-card" aria-labelledby="recovery-lookup-title">
     <div className="section-heading"><div>
       <p className="eyebrow">Read from the chain</p>
-      <h2 id="recovery-lookup-title">{secondary ? "Look up any other account" : "Look up a recovery by address"}</h2>
+      <h2 id="recovery-lookup-title">{fixedAccount ? "Finish this recovery" : "Look up a recovery by address"}</h2>
     </div></div>
-    {secondary
-      ? <details><summary>Read or finish a recovery for a different account</summary>{body}</details>
-      : body}
+    {body}
   </section>;
 }
 

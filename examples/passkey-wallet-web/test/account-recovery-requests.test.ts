@@ -112,7 +112,7 @@ test("a publication this device cannot continue is shown, and says why", () => {
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.next.kind, "blocked");
   assert.match(requests[0]!.detail, /block 11512033/);
-  assert.match(requests[0]!.detail, /does not hold its passkey/);
+  assert.match(requests[0]!.detail, /gas for it is already spent/);
   assert.equal(requests[0]?.primary, false);
 });
 
