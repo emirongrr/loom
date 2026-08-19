@@ -131,3 +131,16 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
   border-radius: 14px;
   background: #fff;
 }
+
+/* Recovery requests stack as short articles: the detail is a sentence that has
+   to wrap, unlike the single-line wallet labels `.wallet-list-item` is built
+   for. Its `small` rule ellipsizes to one nowrap line, which pushed this text
+   out of its own box. */
+.recovery-request-list { display: grid; gap: 10px; margin-top: 20px; }
+.recovery-request { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface-soft); }
+.recovery-request > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.recovery-request > header strong { min-width: 0; font-size: 14px; }
+.recovery-request > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.recovery-request > button { justify-self: start; }
+.recovery-share-qr { display: grid; justify-items: center; gap: 8px; margin-top: 14px; }
+.recovery-share-qr svg { border-radius: 10px; }

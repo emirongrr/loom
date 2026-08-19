@@ -55,6 +55,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   // inspection, gathered on the same pass that checks it.
   const [onChainPublished, setOnChainPublished] = useState<readonly PublishedRecoveryValidator[]>([]);
   const [onChainPending, setOnChainPending] = useState<OnChainPendingRecovery | null>(null);
+  const [unreadableDrafts, setUnreadableDrafts] = useState(0);
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
   const selected = path.startsWith("/recover/") ? sessions.find(session => session.id === selectedId) : undefined;
@@ -72,6 +73,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       account: inspection.account,
       sessions,
       published: onChainPublished,
+      unreadableDrafts,
       ...(passkeyPreparation ? {
         restoredValidator: passkeyPreparation.validator,
         restoredIsPublished: passkeyPreparation.alreadyDeployed
@@ -114,6 +116,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       setPublications({ kind: "none" });
       setOnChainPublished([]);
       setOnChainPending(null);
+      setUnreadableDrafts(0);
       try {
         // A proposal already approved by guardians needs no session here, but a
         // reader who cannot see it has no way to know that.
@@ -133,7 +136,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       // A draft that fails to open is not the same as no draft at all, and the
       // difference decides whether the reader should hunt for their passkey or
       // pay to publish a new one.
-      let unreadableDrafts = 0;
+      let unreadable = 0;
       for (const draft of drafts) {
         try {
           const local = restoreRecoveryDraftPreparation(draft);
@@ -150,7 +153,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           // A stale draft cannot hide another healthy draft or the live account
           // state, but it is still counted: silence here is what told a user
           // holding drafts that this device held nothing.
-          unreadableDrafts += 1;
+          unreadable += 1;
         }
       }
 
@@ -169,13 +172,14 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           verificationClient: publicClients.forEndpoint(config.verificationRpcUrl),
           factory: provisioner.address, account: getAddress(account), recoveryNonce
         });
+        setUnreadableDrafts(unreadable);
         setOnChainPublished(scan.published);
         setPublications(classifyExistingPublications({
           published: scan.published,
           complete: scan.complete,
           consistent: scan.consistent,
           scannedFromBlock: scan.scannedFromBlock,
-          heldDrafts: unreadableDrafts,
+          heldDrafts: unreadable,
           ...(restoredValidator ? { restored: restoredValidator } : {})
         }));
       }
@@ -405,7 +409,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       onPublish={() => { setShowPasskey(true); }}
     />}
 
-    <RecoveryLookupPanel />
+    <RecoveryLookupPanel secondary={inspection.status === "protected"} />
     <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}

@@ -8,6 +8,10 @@ import type { AccountRecoveryRequest } from "./accountRecoveryRequests";
  * is on a device, the validator is on chain, the request is in a file -- and
  * the cost of guessing wrong is a second publication they pay for and can
  * never propose.
+ *
+ * Laid out as stacked rows rather than reusing `.wallet-list-item`: that class
+ * ellipsizes its `small` to a single nowrap line, which is right for a wallet
+ * label and wrong for a sentence explaining why a publication is stuck.
  */
 export function AccountRecoveryRequestsPanel({ requests, busy, onOpenSession, onRequestApprovals, onPublish }: {
   readonly requests: readonly AccountRecoveryRequest[];
@@ -30,31 +34,37 @@ export function AccountRecoveryRequestsPanel({ requests, busy, onOpenSession, on
         <h3>Nothing in progress</h3>
         <p>No recovery request, published recovery passkey, or on-chain proposal was found for this account.</p>
       </div>
-      : <div className="wallet-list">
-        {requests.map(request => <div key={request.id} className="wallet-list-item recovery-request-item">
-          <span className="identicon" />
-          <span>
+      : <div className="recovery-request-list">
+        {requests.map(request => <article key={request.id} className="recovery-request">
+          <header>
             <strong>{request.title}</strong>
-            <small>{request.status}</small>
-            <small className="breakable">{request.detail}</small>
-          </span>
+            <span className={request.primary ? "pill pending" : "pill"}>{request.status}</span>
+          </header>
+          <p className="breakable">{request.detail}</p>
+
           {request.next.kind === "open-session" && <button
             className={request.primary ? "primary" : "secondary"}
             disabled={busy}
-            onClick={() => onOpenSession(request.next.kind === "open-session" ? request.next.sessionId : "")}
+            onClick={() => onOpenSession(sessionIdOf(request))}
           >{request.next.label}</button>}
+
           {request.next.kind === "request-approvals" && <button
             className="primary" disabled={busy} onClick={onRequestApprovals}
           >{request.next.label}</button>}
+
           {request.next.kind === "publish-validator" && <button
             className="secondary" disabled={busy} onClick={onPublish}
           >{request.next.label}</button>}
+
           {/* A request nobody here can move is still worth showing: it is the
               publication the reader would otherwise pay to duplicate. The
-              reason is a sentence, not a status chip -- `.pill` capitalises
-              every word, which turned it into a headline. */}
-          {request.next.kind === "blocked" && <small className="form-note">{request.next.reason}</small>}
-        </div>)}
+              reason is a sentence, so it wraps like one. */}
+          {request.next.kind === "blocked" && <p className="form-note">{request.next.reason}</p>}
+        </article>)}
       </div>}
   </section>;
+}
+
+function sessionIdOf(request: AccountRecoveryRequest): string {
+  return request.next.kind === "open-session" ? request.next.sessionId : "";
 }

@@ -52,7 +52,7 @@ test("a collecting session offers sending it to guardians", () => {
   if (request?.next.kind !== "open-session") throw new Error("unreachable");
   assert.equal(request.next.label, "Send to guardians");
   assert.equal(request.next.sessionId, "session-1");
-  assert.match(request.status, /Collecting guardian approvals/);
+  assert.match(request.status, /Collecting approvals/);
   assert.match(request.detail, /1 of 2 guardian approvals/);
   assert.equal(request.primary, true);
 });
@@ -82,7 +82,7 @@ test("a published validator this device holds offers the guardian request", () =
     ...base, sessions: [], restoredValidator: MINE, restoredIsPublished: true
   });
   assert.equal(request?.next.kind, "request-approvals");
-  assert.match(request!.status, /Published, no request created yet/);
+  assert.match(request!.status, /Needs a request/);
   assert.equal(request?.primary, true);
 });
 
@@ -91,7 +91,7 @@ test("a prepared but unpublished validator offers publication instead", () => {
     ...base, sessions: [], restoredValidator: MINE, restoredIsPublished: false
   });
   assert.equal(request?.next.kind, "publish-validator");
-  assert.match(request!.status, /not published yet/);
+  assert.match(request!.status, /Not published/);
 });
 
 // One recovery must not appear as two just because it is visible from two
@@ -131,7 +131,7 @@ test("an on-chain proposal is reported even with no local session", () => {
     pending: { pending: true, newValidator: THEIRS, status: "delay-active", readyAt: 10n, expiresAt: 20n }
   });
   assert.equal(requests.length, 1);
-  assert.match(requests[0]!.status, /Security delay running/);
+  assert.match(requests[0]!.status, /Delay running/);
   assert.match(requests[0]!.detail, /guardians have already approved/);
 });
 

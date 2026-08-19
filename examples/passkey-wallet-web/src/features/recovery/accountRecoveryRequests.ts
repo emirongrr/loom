@@ -45,11 +45,15 @@ export interface AccountRecoveryRequest {
   readonly primary: boolean;
 }
 
+/**
+ * Short by design: these render as chips, and the chip style capitalises every
+ * word. A sentence there becomes a headline shouting at the reader.
+ */
 const SESSION_STAGE: Readonly<Record<RecoverySession["stage"], string>> = Object.freeze({
-  "request-created": "Request ready to send",
-  collecting: "Collecting guardian approvals",
+  "request-created": "Ready to send",
+  collecting: "Collecting approvals",
   "ready-to-propose": "Threshold reached",
-  "delay-active": "Security delay running",
+  "delay-active": "Delay running",
   "ready-to-execute": "Ready to execute",
   completed: "Completed",
   cancelled: "Cancelled",
@@ -85,8 +89,20 @@ export function collectAccountRecoveryRequests(input: {
   /** True when that draft's validator is already on chain. */
   readonly restoredIsPublished?: boolean;
   readonly pending?: OnChainPendingRecovery;
+  /**
+   * Encrypted drafts this device holds for the account that would not open.
+   *
+   * Matching a publication to a passkey needs the draft that produced it: the
+   * validator address is derived from its init data, and the passkey sitting in
+   * the browser's own store proves nothing about which validator it made. So a
+   * device with unreadable drafts is not a device without the passkey, and
+   * saying "not on this device" there sends the reader to pay for another
+   * publication to work around a storage problem.
+   */
+  readonly unreadableDrafts?: number;
 }): readonly AccountRecoveryRequest[] {
   const account = input.account.toLowerCase();
+  const unreadable = input.unreadableDrafts ?? 0;
   const requests: AccountRecoveryRequest[] = [];
 
   const mine = input.sessions.filter(session =>
@@ -128,7 +144,7 @@ export function collectAccountRecoveryRequests(input: {
     requests.push(Object.freeze({
       id: `draft:${restored}`,
       title: "Recovery passkey on this device",
-      status: input.restoredIsPublished ? "Published, no request created yet" : "Prepared, not published yet",
+      status: input.restoredIsPublished ? "Needs a request" : "Not published",
       detail: input.restoredIsPublished
         ? `Validator ${short(input.restoredValidator!)} is live on chain. It needs a guardian request before it can be proposed.`
         : `Validator ${short(input.restoredValidator!)} is prepared. Publishing it is permissionless and grants no account authority.`,
@@ -146,12 +162,17 @@ export function collectAccountRecoveryRequests(input: {
     requests.push(Object.freeze({
       id: `published:${validator}`,
       title: "Recovery passkey published elsewhere",
-      status: "Cannot be continued from this device",
+      status: "Not on this device",
       detail: `Validator ${short(entry.validator)} was published at block ${entry.blockNumber}, and this device does`
         + ` not hold its passkey. Only the device that created it can turn it into a guardian request.`,
       next: {
         kind: "blocked" as const,
-        reason: "The passkey that made this publication is not on this device."
+        reason: unreadable > 0
+          ? `This device holds ${unreadable} saved recovery draft${unreadable === 1 ? "" : "s"} for this account`
+            + ` that could not be opened, so none could be matched to this publication. The passkey may still be`
+            + ` here; the draft that names it is what is missing.`
+          : "No encrypted draft on this device names this validator. Matching a publication needs the draft that"
+            + " produced it, not the passkey alone."
       },
       primary: false
     }));
@@ -183,9 +204,9 @@ export function collectAccountRecoveryRequests(input: {
 function onChainStatus(status: OnChainPendingRecovery["status"]): string {
   return ({
     none: "No pending record",
-    unknown: "Pending, timing unread",
-    "delay-active": "Security delay running",
+    unknown: "Timing unread",
+    "delay-active": "Delay running",
     ready: "Ready to execute",
-    expired: "Execution window closed"
+    expired: "Window closed"
   })[status];
 }

@@ -22,7 +22,7 @@ import { RecoveryManagerAbi } from "@loom/core/abi";
  * What this cannot do is decide that a recovery is legitimate. It reports what
  * the chain says and refuses to offer a call the manager would reject.
  */
-export function RecoveryLookupPanel() {
+export function RecoveryLookupPanel({ secondary = false }: { readonly secondary?: boolean } = {}) {
   const { config } = useNetwork();
   const { publicClients, runtime } = useAppServices();
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
@@ -130,14 +130,16 @@ export function RecoveryLookupPanel() {
     } finally { setBusy(false); }
   };
 
-  return <section className="section-card" aria-labelledby="recovery-lookup-title">
-    <div className="section-heading"><div>
-      <p className="eyebrow">Read from the chain</p>
-      <h2 id="recovery-lookup-title">Look up a recovery by address</h2>
-    </div></div>
+  // Once an account has been checked, its own recoveries are already listed
+  // beside it and repeating them here reads as a second set. What this panel
+  // still does that nothing else can is read and finish a recovery for an
+  // account the reader does not hold: execution needs no session and no
+  // passkey, only gas (ADR-0025). So it steps back rather than disappearing.
+  const body = <>
     <p className="form-note">
-      Anyone can read whether an account has a recovery pending. A pending request is itself proof that the
-      guardians approved it, because the manager verifies the threshold before it records one.
+      {secondary
+        ? "Any account, not just the one above. Execution needs no session and no passkey on this device -- an approved recovery whose delay has elapsed can be finished by anyone willing to pay the gas."
+        : "Anyone can read whether an account has a recovery pending. A pending request is itself proof that the guardians approved it, because the manager verifies the threshold before it records one."}
     </p>
 
     <label className="field"><span>Account address</span>
@@ -202,6 +204,16 @@ export function RecoveryLookupPanel() {
       </p>
       {sent && <p className="callout success breakable">Submitted: {sent}</p>}
     </>}
+  </>;
+
+  return <section className="section-card" aria-labelledby="recovery-lookup-title">
+    <div className="section-heading"><div>
+      <p className="eyebrow">Read from the chain</p>
+      <h2 id="recovery-lookup-title">{secondary ? "Look up any other account" : "Look up a recovery by address"}</h2>
+    </div></div>
+    {secondary
+      ? <details><summary>Read or finish a recovery for a different account</summary>{body}</details>
+      : body}
   </section>;
 }
 
