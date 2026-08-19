@@ -191,7 +191,7 @@ Security claims are valid only under the assumptions listed here and in
 17. Expo's Metro build pipeline still resolves `image-size`, whose latest
     release has no fix for `GHSA-w3rx-r6r6-pgpr` or
     `GHSA-5p2g-fcmc-qvqq`. A fail-closed exception pins the complete audit
-    graph and expires on 2026-08-23. Its isolation test requires `image-size`
+    graph and expires on 2026-09-02. Its isolation test requires `image-size`
     to remain reachable only through Metro and rejects application-runtime
     imports of Metro or the parser. Remove the exception as soon as a
     compatible upstream release exists; remote wallet input must never become
