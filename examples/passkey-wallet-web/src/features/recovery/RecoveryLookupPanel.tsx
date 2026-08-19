@@ -6,6 +6,8 @@ import { executionBlockers, verifyExecutionArguments } from "./recoveryLookup";
 import { encodeExecuteRecovery, lookupRecovery, type RecoveryLookupResult } from "./recoveryLookupClient";
 import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
+import { readPublishedRecoveryValidators, type PublicationScan } from "./existingPublications";
+import { RecoveryManagerAbi } from "@loom/core/abi";
 
 /**
  * Look up a recovery for any account, and finish it, from nothing but its
@@ -30,6 +32,11 @@ export function RecoveryLookupPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<Hex | "">("");
+  // Publishing a recovery passkey and proposing a recovery are separate steps,
+  // and only the second one writes the record this panel reads. An account
+  // stranded between them looks identical to an account that never started,
+  // which reads as the chain having lost the publication it was paid for.
+  const [published, setPublished] = useState<PublicationScan | null>(null);
 
   // Load the profile and check the deployed bytecode against it before offering
   // anything. Reading a recovery from a manager this build does not recognise
@@ -57,17 +64,31 @@ export function RecoveryLookupPanel() {
   const blockers = result ? executionBlockers({ lookup: result.lookup }) : [];
 
   const look = async () => {
-    setError(""); setResult(null); setSent("");
+    setError(""); setResult(null); setSent(""); setPublished(null);
     if (!manager) { setError("The deployment profile has not loaded, so there is no recovery manager to ask."); return; }
     if (!isAddress(address.trim())) { setError("Enter a valid account address."); return; }
     setBusy(true);
     try {
-      const found = await lookupRecovery({
-        publicClient: publicClients.forEndpoint(config.rpcUrl),
-        recoveryManager: manager,
-        account: getAddress(address.trim())
-      });
+      const publicClient = publicClients.forEndpoint(config.rpcUrl);
+      const account = getAddress(address.trim());
+      const found = await lookupRecovery({ publicClient, recoveryManager: manager, account });
       setResult(found);
+
+      // Nothing pending is not the same as nothing happened. Ask the
+      // provisioner's log whether a recovery passkey was published for this
+      // account, so the answer separates "never started" from "started and
+      // never proposed".
+      const provisioner = deployment?.recoveryValidatorProvisioner;
+      if (found.lookup.kind === "none" && provisioner) {
+        const recoveryNonce = await publicClient.readContract({
+          address: manager, abi: RecoveryManagerAbi, functionName: "recoveryNonces", args: [account]
+        }) as bigint;
+        setPublished(await readPublishedRecoveryValidators({
+          publicClient,
+          verificationClient: publicClients.forEndpoint(config.verificationRpcUrl),
+          factory: provisioner.address, account, recoveryNonce
+        }));
+      }
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The lookup failed.");
     } finally { setBusy(false); }
@@ -130,9 +151,29 @@ export function RecoveryLookupPanel() {
     {deploymentError && <p className="callout warning">{deploymentError}</p>}
     {error && <p className="callout warning">{error}</p>}
 
-    {result && result.lookup.kind === "none" && <p className="callout">
-      No recovery is pending for this account at block {String(result.blockNumber)}.
-    </p>}
+    {result && result.lookup.kind === "none" && <div className="callout">
+      <p>No recovery is pending for this account at block {String(result.blockNumber)}.</p>
+      {published && published.published.length > 0 && <>
+        <p>
+          A recovery passkey <strong>was</strong> published for this account. Publishing the validator and
+          proposing the recovery are separate steps, and only the proposal creates the record this lookup
+          reads. The recovery is waiting on guardian approvals, from the device holding that passkey.
+        </p>
+        <ul>
+          {published.published.map(entry => <li key={entry.validator} className="breakable">
+            {entry.validator} · block {String(entry.blockNumber)}
+          </li>)}
+        </ul>
+      </>}
+      {published && !published.consistent && <p>
+        The two endpoints disagreed about this account's publication history, so the list above is the union of
+        both reads and may still be short. Confirm on an explorer before publishing another recovery passkey.
+      </p>}
+      {published && published.published.length === 0 && !published.complete && <p>
+        Whether a recovery passkey was ever published could not be settled: the log scan reached back only to
+        block {String(published.scannedFromBlock)} before the endpoint stopped serving it.
+      </p>}
+    </div>}
 
     {result && found && record && <>
       <div className="callout">

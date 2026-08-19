@@ -95,6 +95,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         && draft.configVersion === state.configVersion.toString()
       );
       let restoredValidator: `0x${string}` | undefined;
+      // A draft that fails to open is not the same as no draft at all, and the
+      // difference decides whether the reader should hunt for their passkey or
+      // pay to publish a new one.
+      let unreadableDrafts = 0;
       for (const draft of drafts) {
         try {
           const local = restoreRecoveryDraftPreparation(draft);
@@ -107,7 +111,12 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           restoredValidator = checked.validator;
           setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
           break;
-        } catch { /* A stale draft cannot hide another healthy draft or the live account state. */ }
+        } catch {
+          // A stale draft cannot hide another healthy draft or the live account
+          // state, but it is still counted: silence here is what told a user
+          // holding drafts that this device held nothing.
+          unreadableDrafts += 1;
+        }
       }
 
       // Publishing costs gas and only one recovery can be proposed per nonce, so
@@ -121,10 +130,16 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           args: [getAddress(account)]
         }) as bigint;
         const scan = await readPublishedRecoveryValidators({
-          publicClient, factory: provisioner.address, account: getAddress(account), recoveryNonce
+          publicClient,
+          verificationClient: publicClients.forEndpoint(config.verificationRpcUrl),
+          factory: provisioner.address, account: getAddress(account), recoveryNonce
         });
         setPublications(classifyExistingPublications({
           published: scan.published,
+          complete: scan.complete,
+          consistent: scan.consistent,
+          scannedFromBlock: scan.scannedFromBlock,
+          heldDrafts: unreadableDrafts,
           ...(restoredValidator ? { restored: restoredValidator } : {})
         }));
       }
@@ -330,6 +345,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         <p className="eyebrow">Step 2 of 4</p><h2>Create a new recovery passkey</h2>
         <p>This passkey becomes authoritative only after guardian approval, the on-chain delay, and recovery execution. Your current validators remain unchanged now.</p>
         {publications.kind === "orphaned" && <p className="callout warning"><strong>A recovery passkey was already published for this account.</strong> {publications.message}</p>}
+        {/* A scan that could not reach the start of the chain has found nothing
+            and proved nothing. Rendering that as silence would let the reader
+            believe the check ran when it only ran partway. */}
+        {publications.kind === "unknown" && <p className="callout"><strong>This check could not read the whole chain.</strong> {publications.message}</p>}
         {!passkeyPreparation && <><p className="callout warning">A validator deployment alone cannot restore its passkey metadata. If this recovery was started before encrypted drafts were supported, create one new recovery passkey; this attempt will be saved before any factory transaction and will resume after reload.</p><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
         {passkeyPreparation && <><div className="callout"><strong>Recovery validator</strong><p className="breakable">{passkeyPreparation.validator}</p></div>
           {passkeyStatus !== "published" ? <><p className="form-note">Publishing this exact factory call is permissionless and grants no account authority. The publishing wallet only pays network gas.</p>
