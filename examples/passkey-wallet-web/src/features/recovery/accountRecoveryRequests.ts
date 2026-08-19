@@ -192,7 +192,7 @@ export function collectAccountRecoveryRequests(input: {
           + ` execute it once the delay elapses; no session on this device is required.`,
         next: {
           kind: "blocked" as const,
-          reason: "Use the lookup panel below to execute it from any device with gas."
+          reason: "Finish this recovery below. Execution needs no session and no passkey here -- only gas."
         },
         primary: false
       }));
