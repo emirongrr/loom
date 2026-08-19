@@ -105,6 +105,10 @@ jobs:
         run: |
           set -o pipefail
           npm run e2e:session-keys 2>&1 | tee artifacts/devnet/session-keys.log
+      - name: Vault spending limits devnet
+        run: |
+          set -o pipefail
+          npm run e2e:vault-limits 2>&1 | tee artifacts/devnet/vault-limits.log
       - name: Atomic first send devnet
         run: |
           set -o pipefail
