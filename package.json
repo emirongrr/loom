@@ -134,7 +134,8 @@
     "deployment:gas": "node tools/deployment/deployment-gas-report.mjs",
     "passkey:build": "npm run core:build && tsc -p packages/passkey/tsconfig.json",
     "passkey:test": "npm run passkey:build && npm --prefix packages/passkey test",
-    "e2e:session-keys": "npm run core:build && node tools/e2e/devnet-session-keys.mjs"
+    "e2e:session-keys": "npm run core:build && node tools/e2e/devnet-session-keys.mjs",
+    "e2e:vault-limits": "npm run core:build && node tools/e2e/devnet-vault-limits.mjs"
   },
   "devDependencies": {
     "js-sha3": "0.13.0",
