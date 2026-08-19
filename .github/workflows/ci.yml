@@ -101,6 +101,10 @@ jobs:
         run: |
           set -o pipefail
           npm run e2e:intent-board 2>&1 | tee artifacts/devnet/intent-board.log
+      - name: Session keys devnet
+        run: |
+          set -o pipefail
+          npm run e2e:session-keys 2>&1 | tee artifacts/devnet/session-keys.log
       - name: Atomic first send devnet
         run: |
           set -o pipefail
