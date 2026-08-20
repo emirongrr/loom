@@ -23,7 +23,8 @@ const sepolia = sepoliaRpcUrl ? {
   rpc: createJsonRpc(sepoliaRpcUrl),
   endpointOrigin: rpcEndpointOrigin(sepoliaRpcUrl)
 } : undefined;
-const server = createWalletLabServer({ artifactPath, port, sepolia, sepoliaProfile });
+const localExecution = { rpc: createJsonRpc("http://127.0.0.1:8545"), chainId: 31337, sender: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" };
+const server = createWalletLabServer({ artifactPath, port, localExecution, sepolia, sepoliaProfile });
 const listening = await server.start();
 
 process.env.LOOM_WALLET_LAB_ARTIFACT = artifactPath;
@@ -32,6 +33,7 @@ process.env.LOOM_WALLET_LAB_TRACE_ID = traceId;
 process.env.LOOM_WALLET_LAB_GIT_COMMIT = commit;
 process.env.LOOM_WALLET_LAB_GIT_DIRTY = String(dirty);
 process.env.LOOM_WALLET_LAB_BROWSER_FLOW = "true";
+process.env.LOOM_WALLET_LAB_KEEP_DEVNET = "true";
 
 console.log(`Loom Wallet Lab: ${listening.url}`);
 console.log(`Run artifact: ${artifactPath}`);
@@ -49,8 +51,15 @@ console.log(exitCode === 0 ? "Wallet Lab scenario completed. Press Ctrl+C to sto
 process.exitCode = exitCode;
 await new Promise(resolve => {
   const stop = async () => {
-    await server.stop();
-    resolve();
+    try {
+      await server.stop();
+      const { down, status } = await import("../../packages/cli/src/devnet.mjs");
+      const ownedStartedAt = process.env.LOOM_WALLET_LAB_OWNED_DEVNET_STARTED_AT;
+      const current = await status();
+      if (ownedStartedAt && current.running && current.startedAt === ownedStartedAt) down();
+    } finally {
+      resolve();
+    }
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);

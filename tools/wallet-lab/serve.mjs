@@ -20,7 +20,8 @@ const sepolia = rpcUrl ? {
   rpc: createJsonRpc(rpcUrl),
   endpointOrigin: rpcEndpointOrigin(rpcUrl)
 } : undefined;
-const server = createWalletLabServer({ artifactPath, port: Number(process.env.LOOM_WALLET_LAB_PORT ?? 4173), sepolia, sepoliaProfile });
+const localExecution = { rpc: createJsonRpc("http://127.0.0.1:8545"), chainId: 31337, sender: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" };
+const server = createWalletLabServer({ artifactPath, port: Number(process.env.LOOM_WALLET_LAB_PORT ?? 4173), localExecution, sepolia, sepoliaProfile });
 const listening = await server.start();
 console.log(`Loom Wallet Lab: ${listening.url}`);
 console.log(`Artifact: ${artifactPath}`);

@@ -15,7 +15,7 @@ const generatedDeployment = join(exampleRoot, "public", "wallet-lab.deployment.j
 const browserOutput = join(repoRoot, ".loom", "wallet-lab");
 const RECIPIENT = "0x000000000000000000000000000000000000bEEF";
 const RP_ID = "localhost";
-const ORIGIN = "http://localhost:5174";
+const ORIGIN = "http://localhost:5175";
 const ZERO32 = `0x${"00".repeat(32)}`;
 
 function browserExecutable() {
@@ -110,7 +110,7 @@ export async function runBrowserWalletFlow(input) {
   const browserRpcUrl = `${ORIGIN}/wallet-lab/rpc`;
   const browserBundlerUrl = `${ORIGIN}/wallet-lab/bundler`;
   writeFileSync(generatedDeployment, `${JSON.stringify(deployment, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  const vite = spawn(process.execPath, [join(exampleRoot, "node_modules", "vite", "bin", "vite.js"), exampleRoot, "--host", "127.0.0.1", "--port", "5174", "--strictPort"], {
+  const vite = spawn(process.execPath, [join(exampleRoot, "node_modules", "vite", "bin", "vite.js"), exampleRoot, "--host", "localhost", "--port", "5175", "--strictPort"], {
     cwd: exampleRoot,
     env: {
       ...process.env,
@@ -126,7 +126,7 @@ export async function runBrowserWalletFlow(input) {
   let context;
   let page;
   try {
-    await waitForUrl("http://127.0.0.1:5174/", vite);
+    await waitForUrl(`${ORIGIN}/`, vite);
     browser = await chromium.launch({ executablePath: browserExecutable(), headless: true });
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     const deterministic = deterministicBrowserHandle(deployment);

@@ -94,6 +94,17 @@ test("Wallet Lab presents wallet evidence as a plain-language journey", () => {
   assert.doesNotMatch(functionInspectorSource, /HYPOTHETICAL INPUT/u);
   assert.match(executionWorkspaceSource, /HYPOTHETICAL INPUT/u);
   assert.match(executionWorkspaceSource, /Contract calls, EVM frames, and bounded opcode evidence/u);
+  assert.match(script, /function runExecutionSimulation\(/u);
+  assert.match(script, /function runLocalExecution\(/u);
+  assert.match(script, /function sendSepoliaExecution\(/u);
+  assert.match(script, /freshSimulation/u);
+  assert.match(script, /from: accounts\[0\]/u);
+  assert.match(script, /nothing was sent/u);
+  assert.match(script, /function inspectSepoliaExecution\(/u);
+  assert.match(script, /SIMULATION ONLY/u);
+  assert.match(script, /MINED TRANSACTION/u);
+  assert.match(script, /State changes/u);
+  assert.match(script, /Connected wallet approval/u);
   assert.match(script, /function renderEvmTrace\(/u);
   assert.match(script, /function flattenTraceFrames\(/u);
   assert.match(script, /function renderTraceWaterfall\(/u);
