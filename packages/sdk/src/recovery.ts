@@ -812,6 +812,28 @@ export function createGuardianRecoveryClient(options: {
     async verifyRecoveryApproval(prepared: PreparedRecovery, input: { guardian: GuardianSetMember; signature: Hex }) {
       return verifyApproval(input.guardian, prepared.digest, input.signature);
     },
+    /**
+     * Which member of a set produced a signature, if any did.
+     *
+     * Lets a guardian help without holding a capability: they return only a
+     * signature, and the set the recovering party already holds supplies the
+     * verifier, key commitment, salt and proof that complete it.
+     *
+     * The answer is the verifier contract's, asked once per candidate, so a
+     * signature from outside the set matches nobody and is worth nothing --
+     * which is what makes it safe to accept one from anyone. Members are tried
+     * in order and the first match wins; a set cannot hold the same key
+     * commitment twice, so at most one can answer for a given key.
+     */
+    async matchRecoverySignature(prepared: PreparedRecovery, set: GuardianSet, signature: Hex) {
+      const attempt = hexBytes(signature, "guardian signature", 16_384);
+      for (const guardian of set.guardians) {
+        if (await verifyApproval(guardian, prepared.digest, attempt)) {
+          return deepFreeze({ guardian, proof: createGuardianProof(set, guardian.leaf) });
+        }
+      }
+      return undefined;
+    },
     async collectRecoveryApproval(prepared: PreparedRecovery, set: GuardianSet, approvals: readonly { leaf: Hex; signature: Hex }[]) {
       return assembleGuardianApprovals({ set, approvals, threshold: set.threshold, digest: prepared.digest, verify: ({ guardian, signature }) => verifyApproval(guardian, prepared.digest, signature) });
     },

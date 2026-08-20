@@ -23,6 +23,9 @@ import {
   createRecoveryId,
   createRecoveryRequest,
   createRecoveryResponse,
+  createRecoverySignature,
+  parseRecoverySignature,
+  completeRecoverySignature,
   createRecoveryProposalDigest,
   createScheduledOperationId,
   parseGuardianInvite,
@@ -374,6 +377,54 @@ test("manual recovery request and response artifacts are strict, bounded, and mu
     expiresAt: request.expiresAt
   });
   assert.equal(parseRecoveryResponse(serializeRecoveryProtocol(response), request, { now: 1_900_000_101 }).requestId, request.requestId);
+
+  // A guardian who was never invited holds none of the five capability fields a
+  // response carries, so the artifact they can produce carries only what is
+  // actually theirs: the signature. Everything else is rebuilt by the
+  // recovering side from the roster it already holds.
+  const bare = createRecoverySignature({
+    requestId: request.requestId,
+    chainId: request.chainId,
+    account: request.account,
+    recoveryDigest: `0x${"61".repeat(32)}`,
+    signature: "0x1234",
+    signedAt: 1_900_000_100,
+    expiresAt: request.expiresAt
+  });
+  const decodedSignature = parseRecoverySignature(serializeRecoveryProtocol(bare), request, { now: 1_900_000_101 });
+  assert.equal(decodedSignature.signature, "0x1234");
+  assert.equal(Object.hasOwn(decodedSignature, "proof"), false, "a bare signature must not carry set membership");
+  assert.equal(Object.hasOwn(decodedSignature, "salt"), false, "a bare signature must not carry set membership");
+
+  // Completed, it is the same response the proposal path already takes, so
+  // nothing downstream has to know which route a guardian used.
+  const completed = completeRecoverySignature({
+    signature: decodedSignature,
+    guardian: { leaf: `0x${"71".repeat(32)}`, verifier: verifierA, keyCommitment: `0x${"81".repeat(32)}`, salt },
+    proof: [`0x${"92".repeat(32)}`]
+  });
+  assert.deepEqual({ ...completed, integrity: null }, { ...response, integrity: null });
+
+  // Bound to its request exactly as a full response is: the digest commits to
+  // the account, the new validator, the rotated set, the config version and the
+  // nonce, so a signature cannot be carried to another recovery.
+  assert.throws(
+    () => parseRecoverySignature(serializeRecoveryProtocol(bare), { ...request, requestId: `0x${"aa".repeat(32)}` }, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(serializeRecoveryProtocol(bare), request, { now: request.expiresAt }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(JSON.stringify({ ...bare, unexpected: true }), request, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(JSON.stringify({ ...bare, signature: "0xdead" }), request, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE",
+    "an altered signature must fail the integrity digest"
+  );
 
   assert.throws(
     () => parseRecoveryRequest(JSON.stringify({ ...request, unexpected: true }), { now: 1_900_000_001 }),
