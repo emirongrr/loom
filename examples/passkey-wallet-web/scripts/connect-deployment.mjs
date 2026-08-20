@@ -17,8 +17,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { buildWalletProfileManifest, createJsonRpcClient } from "@loom/deployment";
-import { keccak256 } from "viem";
+import { buildWalletProfileManifest, createJsonRpcClient, recoveryValidatorRuntimeCodeHash } from "@loom/deployment";
+import { parseFoundryBroadcast } from "@loom/deployment";
 
 const exampleRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(exampleRoot, "..", "..");
@@ -44,6 +44,12 @@ function artifactField(relative, pick, label) {
   return value;
 }
 
+function artifact(relative, label) {
+  const file = path.join(repoRoot, "out", relative);
+  if (!existsSync(file)) throw new Error(`${label} artifact is missing; run forge build first`);
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+
 async function main() {
   const broadcastPath = arg(
     "broadcast",
@@ -55,9 +61,19 @@ async function main() {
   if (!entryPoint) throw new Error("no EntryPoint: pass --entrypoint or set SEPOLIA_ENTRYPOINT");
 
   const broadcast = JSON.parse(await readFile(broadcastPath, "utf8"));
+  const rpc = createJsonRpcClient(rpcUrl);
+
+  // The child's immutables are its factory and the fallback verifier, so both
+  // have to be known before its runtime hash can be computed. The factory comes
+  // from the same broadcast the profile is built from; the verifier is read
+  // from the factory itself, which is where the child gets it too.
+  const created = parseFoundryBroadcast(broadcast).createdContracts;
+  const recoveryFactory = created.P256RecoveryValidatorFactory;
+  if (!recoveryFactory) throw new Error("this broadcast has no P256RecoveryValidatorFactory");
+
   const profile = await buildWalletProfileManifest({
     broadcast,
-    rpc: createJsonRpcClient(rpcUrl),
+    rpc,
     entryPoint,
     proxyCreationCode: artifactField(
       "LoomAccountProxy.sol/LoomAccountProxy.json",
@@ -65,15 +81,23 @@ async function main() {
       "LoomAccountProxy"
     ),
     // No recovery validator child exists on a fresh deployment, so its runtime
-    // hash comes from the build. That is checkable rather than assumed: the
-    // deployed factory's `validatorInitCodeHash` derives from the same creation
-    // code, so a mismatch there would mean the factory produces something other
-    // than what this pins.
-    validatorRuntimeCodeHash: keccak256(artifactField(
-      "P256RecoveryValidator.sol/P256RecoveryValidator.json",
-      json => json?.deployedBytecode?.object,
-      "P256RecoveryValidator"
-    ))
+    // hash is computed from the build -- with the immutables filled in.
+    //
+    // Hashing the artifact's `deployedBytecode` directly was wrong and shipped:
+    // the child declares immutables, Solidity leaves them zeroed in the
+    // artifact and writes them at construction, so the artifact's hash can
+    // never equal a deployed child's. A profile pinned to it makes every
+    // recovery on that deployment fail closed with "deployed recovery validator
+    // code does not match the trusted deployment profile" -- a manifest error
+    // reported as a lost passkey.
+    validatorRuntimeCodeHash: recoveryValidatorRuntimeCodeHash({
+      artifact: artifact("P256RecoveryValidator.sol/P256RecoveryValidator.json", "P256RecoveryValidator"),
+      baseArtifacts: [artifact("P256Validator.sol/P256Validator.json", "P256Validator")],
+      values: {
+        recoveryValidatorFactory: recoveryFactory,
+        fallbackVerifier: await readFallbackVerifier(rpc, recoveryFactory)
+      }
+    })
   });
 
   const out = path.join(exampleRoot, "public", "sepolia.deployment.json");
@@ -83,6 +107,15 @@ async function main() {
   if (!profile.recoveryIntentBoard) {
     console.warn("note: this broadcast has no RecoveryIntentBoard, so on-chain guardian discovery will be inert");
   }
+}
+
+async function readFallbackVerifier(rpc, factory) {
+  const selector = "0xfe3c90b0"; // fallbackVerifier()
+  const result = await rpc("eth_call", [{ to: factory, data: selector }, "latest"]);
+  if (typeof result !== "string" || result.length !== 66) {
+    throw new Error("the recovery validator factory did not return a fallback verifier");
+  }
+  return `0x${result.slice(26)}`;
 }
 
 await main();

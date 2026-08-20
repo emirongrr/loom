@@ -28,7 +28,7 @@
   "recoveryValidatorProvisioner": {
     "address": "0x02e1d96947bbc6e5b3c94f6ab1753da7a8b0b48f",
     "runtimeCodeHash": "0x5f8055ba132971724d6f7bec890b2af22e5e2c39d75e3bacac3691215d62f4a5",
-    "validatorRuntimeCodeHash": "0x2137e73228c67bff1017e0119b989e650b3430c124ccbaee21b661d8b0896dcf",
+    "validatorRuntimeCodeHash": "0x748be854f0cbfc14cf8581e1de10e4f5ea0541d55d5a96d50782d55b161cbd17",
     "fallbackVerifier": "0x0000000000000000000000000000000000000000"
   }
 }
