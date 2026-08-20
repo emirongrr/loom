@@ -125,10 +125,14 @@ test("the recovery review section is present before any invitation is accepted, 
 
   await panel.findByRole("heading", { name: "Review a recovery request" });
   await panel.findByText(/No accepted invitation for this account yet/iu);
-  // Stated, not merely implied: the invitation is a different artefact from the
-  // request, which is the confusion that produced the silent failure.
-  expect(panel.getByText(/it is a different link from the recovery request/iu)).toBeTruthy();
+  // A guardian who was never invited is not turned away: the capability-free
+  // path is named here, and is on the page.
+  expect(panel.getAllByText(/Sign without an invitation/iu).length).toBeGreaterThan(0);
+  await panel.findByRole("heading", { name: "Sign without an invitation" });
 
-  const paste = panel.getByPlaceholderText(/loom\.recovery-request/iu) as HTMLTextAreaElement;
-  expect(paste.disabled).toBe(true);
+  // One route is closed and one is open, which is the whole point: the
+  // capability path needs an invitation, the signature path does not.
+  const boxes = panel.getAllByPlaceholderText(/loom\.recovery-request/iu) as HTMLTextAreaElement[];
+  expect(boxes.some(box => box.disabled)).toBe(true);
+  expect(boxes.some(box => !box.disabled)).toBe(true);
 });

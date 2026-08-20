@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { GuardianRecoveryError, createRecoveryRequest, parseRecoveryRequest, parseRecoveryResponse, serializeRecoveryProtocol, type GuardianApprovalTuple, type RecoveryRequestV1 } from "@loom/sdk/recovery";
+import { GuardianRecoveryError, completeRecoverySignature, createRecoveryRequest, parseRecoveryRequest, parseRecoveryResponse, parseRecoverySignature, serializeRecoveryProtocol, type GuardianApprovalTuple, type RecoveryRequestV1 } from "@loom/sdk/recovery";
 import { RecoveryManagerAbi } from "@loom/core/abi";
 import { getAddress, isAddress } from "viem";
 import { useAppServices } from "../../app/AppServices";
@@ -667,10 +667,17 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
   const importResponse = async () => {
     setBusy(true); setMessage("");
     try {
-      const response = responseArtifact.trim().startsWith("{")
-        ? parseRecoveryResponse(responseArtifact, session.request)
-        : parseRecoveryResponse(await createEncryptedLinkTransport<ReturnType<typeof parseRecoveryResponse>>({ origin: window.location.origin, path: "/recover" }).receive(responseArtifact), session.request);
+      const payload = responseArtifact.trim().startsWith("{")
+        ? JSON.parse(responseArtifact) as Record<string, unknown>
+        : await createEncryptedLinkTransport<Record<string, unknown>>({ origin: window.location.origin, path: "/recover" }).receive(responseArtifact);
       const context = await rebuild();
+      // A guardian who holds no capability can only send a signature. The five
+      // fields a full response adds describe membership of the current set,
+      // which this device holds, so they are supplied here rather than asked of
+      // someone who has no way to know them.
+      const response = payload?.format === "loom.recovery-signature"
+        ? await completeGuardianSignature(payload, context)
+        : parseRecoveryResponse(payload, session.request);
       await verifyResponse(response, context);
       const updated = transitionRecoverySession(session, { type: "response-added", response });
       await repository.write(updated);
@@ -709,6 +716,26 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
       setMessage(`Recovery proposed on chain: ${transactionHash}`);
     } catch (error) { setMessage(safeRecoveryMessage(error)); }
     finally { setBusy(false); }
+  };
+
+  /**
+   * Turn a bare guardian signature into the response the rest of this page
+   * takes, by finding which member of the live guardian set produced it.
+   *
+   * A signature matching nobody is refused here and nothing is stored: it
+   * proves no membership, so there is nothing to record and nothing to poison.
+   */
+  const completeGuardianSignature = async (payload: unknown, context: Awaited<ReturnType<typeof rebuild>>) => {
+    const signature = parseRecoverySignature(payload, session.request);
+    const accountId = `${session.request.chainId}:${session.request.account.toLowerCase()}`;
+    const roster = await createBrowserGuardianRoster().read(accountId);
+    if (!rosterMatchesRoot({ entries: roster.entries, threshold: session.request.guardianThreshold, root: session.request.guardianRoot })) {
+      throw new Error("This device does not hold the guardian list this request was made against, so a bare signature cannot be matched to a guardian. Ask for a full response instead.");
+    }
+    const current = planGuardianChange({ current: [], next: roster.entries, threshold: session.request.guardianThreshold }).set;
+    const matched = await context.client.matchRecoverySignature(context.prepared, current, signature.signature);
+    if (!matched) throw new Error("That signature does not belong to any guardian of this account. Nothing was saved.");
+    return completeRecoverySignature({ signature, guardian: matched.guardian, proof: matched.proof });
   };
 
   const download = () => {
