@@ -22,6 +22,7 @@ import type { AccountHandle } from "../../types";
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation } from "./recoveryDraft";
+import { describeDraftFailure, summarizeDraftFailures, type DraftFailure } from "./draftDiagnosis";
 import { classifyExistingPublications, readPublishedRecoveryValidators, type ExistingPublications, type PublishedRecoveryValidator } from "./existingPublications";
 import { collectAccountRecoveryRequests, type AccountRecoveryRequest, type OnChainPendingRecovery } from "./accountRecoveryRequests";
 import { AccountRecoveryRequestsPanel } from "./AccountRecoveryRequestsPanel";
@@ -56,6 +57,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [onChainPublished, setOnChainPublished] = useState<readonly PublishedRecoveryValidator[]>([]);
   const [onChainPending, setOnChainPending] = useState<OnChainPendingRecovery | null>(null);
   const [unreadableDrafts, setUnreadableDrafts] = useState(0);
+  const [draftFailures, setDraftFailures] = useState<readonly DraftFailure[]>([]);
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
   const selected = path.startsWith("/recover/") ? sessions.find(session => session.id === selectedId) : undefined;
@@ -117,6 +119,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       setOnChainPublished([]);
       setOnChainPending(null);
       setUnreadableDrafts(0);
+      setDraftFailures([]);
       try {
         // A proposal already approved by guardians needs no session here, but a
         // reader who cannot see it has no way to know that.
@@ -137,11 +140,28 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       // difference decides whether the reader should hunt for their passkey or
       // pay to publish a new one.
       let unreadable = 0;
+      const failures: DraftFailure[] = [];
       for (const draft of drafts) {
+        // Each stage is separated so a failure says how far the draft got.
+        // Collapsed into one try, "could not be opened" covered a corrupt
+        // record, an RPC that would not answer, and a draft that simply named
+        // a different validator -- three different problems with three
+        // different answers.
+        let local: ReturnType<typeof restoreRecoveryDraftPreparation>;
         try {
-          const local = restoreRecoveryDraftPreparation(draft);
+          local = restoreRecoveryDraftPreparation(draft);
+        } catch (error) {
+          unreadable += 1;
+          failures.push(describeDraftFailure({ stage: "decode", label: draft.label, error }));
+          continue;
+        }
+        try {
           const checked = await client.prepareRecoveryValidator({ initData: local.initData });
-          if (checked.validator !== local.validator || checked.initDataHash !== local.initDataHash) continue;
+          if (checked.validator !== local.validator || checked.initDataHash !== local.initDataHash) {
+            unreadable += 1;
+            failures.push(describeDraftFailure({ stage: "mismatch", label: draft.label }));
+            continue;
+          }
           setPasskeyLabel(draft.label);
           setPasskeyPreparation(Object.freeze({ ...local, ...checked }));
           setShowPasskey(true);
@@ -149,13 +169,15 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           restoredValidator = checked.validator;
           setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
           break;
-        } catch {
+        } catch (error) {
           // A stale draft cannot hide another healthy draft or the live account
-          // state, but it is still counted: silence here is what told a user
+          // state, but it is still reported: silence here is what told a user
           // holding drafts that this device held nothing.
           unreadable += 1;
+          failures.push(describeDraftFailure({ stage: "derive", label: draft.label, error }));
         }
       }
+      setDraftFailures(failures);
 
       // Publishing costs gas and only one recovery can be proposed per nonce, so
       // an earlier publication this device cannot continue has to be said out
@@ -388,6 +410,11 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         {/* A scan that could not reach the start of the chain has found nothing
             and proved nothing. Rendering that as silence would let the reader
             believe the check ran when it only ran partway. */}
+        {draftFailures.length > 0 && <p className="callout warning">
+          <strong>This device holds recovery drafts it could not use.</strong> {summarizeDraftFailures(draftFailures)}
+          {" "}A draft that fails here is a storage problem, not a lost passkey — publishing another validator
+          would cost gas without addressing it.
+        </p>}
         {publications.kind === "unknown" && <p className="callout"><strong>This check could not read the whole chain.</strong> {publications.message}</p>}
         {!passkeyPreparation && <><p className="callout warning">A validator deployment alone cannot restore its passkey metadata. If this recovery was started before encrypted drafts were supported, create one new recovery passkey; this attempt will be saved before any factory transaction and will resume after reload.</p><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
         {passkeyPreparation && <><div className="callout"><strong>Recovery validator</strong><p className="breakable">{passkeyPreparation.validator}</p></div>
