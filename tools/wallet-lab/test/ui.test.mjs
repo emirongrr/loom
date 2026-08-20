@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const uiRoot = new URL("../ui/", import.meta.url);
+
+test("Wallet Lab browser entrypoint is valid ECMAScript module syntax", () => {
+  const script = readFileSync(new URL("app.js", uiRoot), "utf8");
+  const result = spawnSync(process.execPath, ["--input-type=module", "--check", "-"], {
+    encoding: "utf8",
+    input: script
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+});
 
 test("Wallet Lab presents wallet evidence as a plain-language journey", () => {
   const html = readFileSync(new URL("index.html", uiRoot), "utf8");
