@@ -26,13 +26,29 @@ const state = {
   traceSearch: "",
   traceType: "all",
   functionValues: {},
-  functionCallValue: "0"
+  functionCallValue: "0",
+  functionCaller: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  executionStatus: "idle",
+  executionResult: null,
+  executionError: null,
+  executionSepoliaConfirmed: false,
+  executionTransactionHash: ""
 };
+
+const LOCAL_TEST_SENDER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 const escapeHtml = value => String(value ?? EMPTY).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 const format = value => typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
 const short = (value, front = 10, back = 8) => value && String(value).length > front + back + 3 ? `${String(value).slice(0, front)}...${String(value).slice(-back)}` : value ?? EMPTY;
 const titleCase = value => String(value ?? "").split("-").map(part => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
+
+function resetExecutionState() {
+  state.executionStatus = "idle";
+  state.executionResult = null;
+  state.executionError = null;
+  state.executionSepoliaConfirmed = false;
+  state.executionTransactionHash = "";
+}
 
 function statusClass(status) {
   if (["success", "finalized", "confirmed", "included", "pass", "healthy"].includes(status)) return "success";
@@ -501,6 +517,7 @@ function selectArchitectureContract(contractId) {
   state.selectedContractId = contractId;
   state.selectedFunctionSelector = null;
   state.functionValues = {};
+  resetExecutionState();
   renderDeployment(state.artifact?.events ?? []);
 }
 
@@ -781,6 +798,25 @@ function renderFunctionInspector(contract, fn, tracePayload) {
   root.innerHTML = `<div class="inspector-heading"><div><p class="eyebrow">FUNCTION BEHAVIOR</p><h2>${escapeHtml(fn.name)}</h2><code>${escapeHtml(fn.signature)}</code></div><span class="mutability ${escapeHtml(fn.stateMutability)}">${escapeHtml(fn.stateMutability)}</span></div><section class="function-purpose-detail"><strong>Why this function exists</strong><p>${escapeHtml(fn.purpose ?? fn.behavior)}</p></section><p class="lead">${escapeHtml(fn.behavior)}</p><div class="selector-line">${field("Contract", contract.address, { code: true, short: true })}${field("Selector", fn.selector, { code: true })}${field("Outputs", fn.outputs.length ? fn.outputs.map(output => output.type).join(", ") : "none", { code: true })}</div>${renderFunctionInteractions(contract, fn, tracePayload)}${renderSourceExcerpt(contract, fn)}<div class="behavior-flow">${steps.map((step, index) => `<article class="behavior-step ${step.status}"><span>${index + 1}</span><div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.text)}</p></div></article>`).join("")}</div><div class="call-shape"><span>Call shape</span><code>${escapeHtml(contract.address)} . ${escapeHtml(fn.selector)} + ABI.encode(${escapeHtml(fn.inputs.map(input => input.name || input.type).join(", "))})</code></div>`;
 }
 
+function renderExecutionTrace(trace) {
+  const frames = flattenTraceFrames(trace);
+  if (!frames.length) return `<p class="empty">This RPC did not provide a call trace.</p>`;
+  return `<ol class="execution-trace">${frames.map(frame => `<li style="--execution-depth:${Math.min(frame.depth, 7)}"><span class="trace-type ${escapeHtml(String(frame.type ?? "call").toLowerCase())}">${escapeHtml(frame.type ?? "CALL")}</span><div><strong>${escapeHtml(frame.contractName ?? short(frame.to, 10, 8))}</strong><code>${escapeHtml(traceLabel(frame))}</code></div><small>${escapeHtml(formatTraceNumber(frame.gasUsed))} gas</small><em class="${frame.error ? "error" : "success"}">${frame.error ? "reverted" : "returned"}</em></li>`).join("")}</ol>`;
+}
+
+function renderExecutionStateDiff(diff) {
+  if (!diff?.accounts?.length) return `<p class="empty">No state changes were reported. The RPC may not expose prestate tracing, or the call did not write state.</p>`;
+  return `<div class="execution-state-list">${diff.accounts.map(account => `<article><header><code>${escapeHtml(short(account.address, 12, 10))}</code><span>${account.storage.length} storage slot${account.storage.length === 1 ? "" : "s"}</span></header>${account.balance.before !== account.balance.after ? `<p><strong>Balance</strong><code>${escapeHtml(account.balance.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.balance.after ?? "unchanged")}</code></p>` : ""}${account.nonce.before !== account.nonce.after ? `<p><strong>Nonce</strong><code>${escapeHtml(account.nonce.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.nonce.after ?? "unchanged")}</code></p>` : ""}${account.storage.map(slot => `<p><strong title="${escapeHtml(slot.slot)}">${escapeHtml(short(slot.slot, 10, 8))}</strong><code>${escapeHtml(short(slot.before ?? "empty", 12, 10))}</code><i>→</i><code>${escapeHtml(short(slot.after ?? "empty", 12, 10))}</code></p>`).join("")}</article>`).join("")}${diff.truncated ? `<p class="evidence-note">The state diff exceeded the bounded display limit and was truncated.</p>` : ""}</div>`;
+}
+
+function renderExecutionResult(result) {
+  if (!result) return "";
+  const transaction = result.kind === "transaction";
+  const opcodeCounts = Object.entries(result.opcodeProfile?.opcodeCounts ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 16);
+  const events = result.events ?? [];
+  return `<section class="execution-result" aria-live="polite"><div class="execution-result-heading"><div><p class="eyebrow">${transaction ? "MINED TRANSACTION" : "SIMULATION ONLY"}</p><h2>${result.status === "success" ? transaction ? "Transaction changed chain state" : "Call completed without committing state" : "Execution reverted"}</h2><p>${transaction ? "This result is bound to a mined receipt, not a finality claim. State, events, gas, and trace evidence come from that transaction." : "eth_call and debug_traceCall evaluated the selected inputs at the latest block. No transaction was published and no state was committed."}</p></div><span class="status ${escapeHtml(statusClass(result.status))}">${escapeHtml(result.status)}</span></div><div class="execution-result-metrics">${field("Network", networkLabel(result.chainId))}${field(transaction ? "Transaction" : "Target", transaction ? result.transactionHash : result.contract?.address, { code: true, short: true })}${field("Function", result.function?.signature, { code: true })}${field("Gas used", transaction ? formatTraceNumber(result.gasUsed) : formatTraceNumber(result.trace?.gasUsed), { code: true })}${field("Call frames", result.traceSummary?.calls ?? "Unavailable", { code: true })}${field("Opcode steps", result.opcodeProfile?.totalSteps ?? "Unavailable", { code: true })}</div>${result.revert ? `<div class="execution-revert"><strong>${escapeHtml(result.revert.name ?? "Execution reverted")}</strong><code>${escapeHtml(result.revert.data ?? "No revert data")}</code><p>The revert is part of the result. It often identifies a missing caller, EntryPoint, validator, self-call, timing, or policy precondition.</p></div>` : ""}<div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">INPUT / OUTPUT</p><h3>Encoded call</h3></div></div>${field("Caller", result.transaction?.from ?? "RPC default caller", { code: true, short: true })}${field("Value (wei)", result.transaction?.value ?? "0x0", { code: true })}<details><summary>Calldata</summary>${jsonBlock(result.transaction?.data ?? "0x", "Execution calldata")}</details><details open><summary>Decoded output</summary>${jsonBlock(result.output?.decoded ?? result.output?.raw ?? "No return value", "Execution output")}</details></section><section><div class="section-title"><div><p class="eyebrow">CONTRACT MOVEMENT</p><h3>Call tree</h3></div><span>${escapeHtml(result.capabilities?.callTrace ?? "unavailable")}</span></div>${renderExecutionTrace(result.trace)}</section></div><div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">STORAGE / BALANCE / NONCE</p><h3>State changes</h3></div><span>${escapeHtml(result.capabilities?.stateDiff ?? "unavailable")}</span></div>${renderExecutionStateDiff(result.stateDiff)}</section><section><div class="section-title"><div><p class="eyebrow">OPCODES</p><h3>What the EVM executed</h3></div><span>${escapeHtml(result.capabilities?.opcodeTrace ?? "unavailable")}</span></div>${opcodeCounts.length ? `<div class="execution-opcodes">${opcodeCounts.map(([opcode, count]) => `<span class="${opcodeGroup(opcode)}"><code>${escapeHtml(opcode)}</code><strong>${escapeHtml(count)}</strong></span>`).join("")}</div>` : `<p class="empty">Opcode evidence is unavailable from this RPC.</p>`}<p class="evidence-note">Opcode counts are bounded diagnostic evidence. Stack, memory, and raw storage payloads are not collected.</p></section></div>${transaction ? `<section class="execution-events"><div class="section-title"><div><p class="eyebrow">EVENTS</p><h3>Receipt logs</h3></div><span>${events.length}</span></div>${events.length ? events.map(event => `<article><div><strong>${escapeHtml(event.name ?? "Unknown event")}</strong><code>${escapeHtml(event.contractId ?? short(event.address, 10, 8))}</code></div>${jsonBlock(event.args ?? { topics: event.topics, data: event.data }, "Decoded event")}</article>`).join("") : `<p class="empty">The transaction emitted no logs.</p>`}</section>` : ""}<details class="execution-technical"><summary>Complete execution evidence</summary>${jsonBlock(result, "Execution evidence")}</details></section>`;
+}
+
 function renderExecutionWorkspace(contract, fn, tracePayload) {
   const root = $("#execution-workspace");
   if (!contract || !fn) {
@@ -795,8 +831,114 @@ function renderExecutionWorkspace(contract, fn, tracePayload) {
   }).join("");
   const observedFrames = flattenTrace(tracePayload?.trace).filter(call => call.contractId === contract.id && call.selector === fn.selector);
   const opcodeSteps = tracePayload?.opcodeProfile?.totalSteps;
+  const isRead = ["view", "pure"].includes(fn.stateMutability);
+  const busy = ["simulating", "broadcasting", "confirming"].includes(state.executionStatus);
+  const simulationReady = state.executionResult?.kind === "simulation" && state.executionResult.status === "success";
+  const networkName = state.deploymentSource === "sepolia" ? "Verified Sepolia" : "Local Anvil devnet";
+  const writeAction = isRead ? "" : state.deploymentSource === "local"
+    ? `<button type="button" id="execute-local" class="execution-primary"${busy ? " disabled" : "}>Execute on local devnet</button>`
+    : `<label class="execution-consent"><input type="checkbox" id="sepolia-execution-consent"${state.executionSepoliaConfirmed ? " checked" : ""} /><span><strong>Connected wallet approval</strong>I reviewed the exact target, calldata, value, and Sepolia gas responsibility.</span></label><button type="button" id="execute-sepolia" class="execution-primary"${busy || !simulationReady || !state.executionSepoliaConfirmed ? " disabled" : "}>Send with connected wallet</button>`;
+  const inspectSepolia = state.deploymentSource === "sepolia" && !isRead ? `<div class="execution-import"><label><span>Sepolia transaction hash</span><input id="execution-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x..." /></label><button type="button" id="inspect-sepolia"${busy || !state.executionTransactionHash ? " disabled" : "}>Inspect mined transaction</button></div>` : "";
   root.className = "surface execution-workspace";
-  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h2>Execution workspace</h2><p>Model the selected call without broadcasting it. Contract calls, EVM frames, and bounded opcode evidence will meet here when a matching execution is available.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code></span></div><div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><h3>Input values</h3><p>Values remain in this browser and only update the preview.</p></div><span>Preview only - never broadcast</span></div><div class="execution-input-grid"><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "This function may receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div></section><aside class="execution-evidence"><p class="eyebrow">EXECUTION EVIDENCE</p><h3>${observedFrames.length ? `${observedFrames.length} matching EVM frame${observedFrames.length === 1 ? "" : "s"}` : "No matching execution yet"}</h3><p>${observedFrames.length ? "The recorded run contains this selector. Use the EVM trace to inspect caller, nested calls, gas, and return status." : "Input modeling is available now. Run or load a matching transaction to connect its contract interactions and EVM trace."}</p><div class="execution-scope"><span>Contract calls</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} opcode steps in run` : "Opcodes"}</span></div></aside></div>`;
+  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run, trace, and explain a contract function</h2><p>Try every ABI function against ${escapeHtml(networkName)}. Contract calls, EVM frames, and bounded opcode evidence are correlated without treating simulation as final chain state.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code><small>${escapeHtml(networkName)}</small></span></div><div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h3>Input values</h3><p>Values remain in this browser until you explicitly simulate or publish.</p></div><span>${escapeHtml(fn.stateMutability)}</span></div><div class="execution-input-grid"><label class="argument-field"><span>Caller <code>address</code></span><input type="text" id="function-caller" value="${escapeHtml(state.functionCaller)}" placeholder="Optional eth_call sender" /><small>${state.deploymentSource === "local" ? `Local writes use the fixed Anvil test actor ${short(LOCAL_TEST_SENDER, 8, 6)}.` : "Simulation caller only; the connected wallet controls the real transaction sender."}</small></label><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "This function may receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div><div class="execution-actions"><button type="button" id="simulate-execution"${busy ? " disabled" : "}>${state.executionStatus === "simulating" ? "Simulating..." : "Simulate without sending"}</button>${writeAction}</div>${state.executionError ? `<div class="execution-error" role="alert"><strong>Execution could not be completed</strong><p>${escapeHtml(state.executionError)}</p></div>` : ""}${inspectSepolia}</section><aside class="execution-evidence"><p class="eyebrow">EVIDENCE MODE</p><h3>${state.executionResult ? state.executionResult.kind === "transaction" ? "Mined transaction evidence" : "Simulation evidence" : observedFrames.length ? `${observedFrames.length} matching recorded frame${observedFrames.length === 1 ? "" : "s"}` : "Ready to simulate"}</h3><p>${state.executionResult ? state.executionResult.kind === "transaction" ? "Receipt-bound evidence may include state changes, logs, gas, call frames, and opcodes depending on RPC capabilities." : "Simulation explains behavior at the latest block but never claims that state changed." : "Choose inputs and simulate first. Write functions can then use the isolated local actor or an explicitly connected Sepolia wallet."}</p><div class="execution-scope"><span>Input + output</span><span>Contract calls</span><span>State diff</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} recorded opcode steps` : "Opcodes"}</span></div></aside></div>${renderExecutionResult(state.executionResult)}`;
+}
+
+function executionRequestBody(contract, fn) {
+  return {
+    network: state.deploymentSource,
+    contractId: contract.id,
+    selector: fn.selector,
+    args: fn.inputs.map((_, index) => state.functionValues[index] ?? ""),
+    valueWei: state.functionCallValue || "0",
+    ...(state.functionCaller ? { from: state.functionCaller } : {})
+  };
+}
+
+async function requestExecution(path, body, status) {
+  state.executionStatus = status;
+  state.executionError = null;
+  renderDeployment(state.artifact?.events ?? []);
+  try {
+    const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message ?? "Execution request was rejected");
+    state.executionResult = payload;
+    state.executionStatus = payload.status;
+    return payload;
+  } catch (error) {
+    state.executionStatus = "error";
+    state.executionError = error?.message ?? "Execution request failed";
+    return null;
+  } finally {
+    renderDeployment(state.artifact?.events ?? []);
+  }
+}
+
+async function runExecutionSimulation() {
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const contract = selectedContract(deployment);
+  const fn = selectedFunction(contract);
+  if (!contract || !fn) return;
+  await requestExecution("/api/execution/simulate", executionRequestBody(contract, fn), "simulating");
+}
+
+async function runLocalExecution() {
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const contract = selectedContract(deployment);
+  const fn = selectedFunction(contract);
+  if (!contract || !fn || state.deploymentSource !== "local") return;
+  await requestExecution("/api/execution/local", executionRequestBody(contract, fn), "broadcasting");
+}
+
+async function inspectSepoliaExecution() {
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const contract = selectedContract(deployment);
+  const fn = selectedFunction(contract);
+  if (!contract || !fn || state.deploymentSource !== "sepolia" || !state.executionTransactionHash) return;
+  await requestExecution("/api/execution/sepolia/inspect", { contractId: contract.id, selector: fn.selector, transactionHash: state.executionTransactionHash }, "confirming");
+}
+
+async function sendSepoliaExecution() {
+  if (!state.executionResult?.transaction || state.deploymentSource !== "sepolia" || !state.executionSepoliaConfirmed) return;
+  const provider = globalThis.ethereum;
+  if (!provider?.request) {
+    state.executionError = "No EIP-1193 wallet is connected to this browser. Copy the exact transaction request from the simulation, publish it with an independent wallet, then paste its transaction hash here.";
+    renderDeployment(state.artifact?.events ?? []);
+    return;
+  }
+  state.executionStatus = "broadcasting";
+  state.executionError = null;
+  renderDeployment(state.artifact?.events ?? []);
+  try {
+    let chainId = await provider.request({ method: "eth_chainId" });
+    if (String(chainId).toLowerCase() !== "0xaa36a7") {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xaa36a7" }] });
+      chainId = await provider.request({ method: "eth_chainId" });
+    }
+    if (String(chainId).toLowerCase() !== "0xaa36a7") throw new Error("Connected wallet did not switch to Ethereum Sepolia");
+    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    if (!accounts?.[0]) throw new Error("Connected wallet did not expose a sender account");
+    const deployment = currentDeployment(state.artifact?.events ?? []);
+    const contract = selectedContract(deployment);
+    const fn = selectedFunction(contract);
+    if (!contract || !fn) throw new Error("The selected deployment function is no longer available");
+    const freshSimulation = await requestExecution(
+      "/api/execution/simulate",
+      { ...executionRequestBody(contract, fn), from: accounts[0] },
+      "simulating"
+    );
+    if (!freshSimulation || freshSimulation.status !== "success") throw new Error("The exact call reverted for the connected Sepolia account; nothing was sent");
+    const transaction = freshSimulation.transaction;
+    const transactionHash = await provider.request({ method: "eth_sendTransaction", params: [{ from: accounts[0], to: transaction.to, data: transaction.data, value: transaction.value }] });
+    state.functionCaller = accounts[0];
+    state.executionTransactionHash = transactionHash;
+    state.executionStatus = "confirming";
+    await inspectSepoliaExecution();
+  } catch (error) {
+    state.executionStatus = "error";
+    state.executionError = error?.message ?? "Connected wallet rejected the transaction";
+    renderDeployment(state.artifact?.events ?? []);
+  }
 }
 
 function traceBigInt(value) {
@@ -1009,6 +1151,7 @@ $("#panel-architecture").addEventListener("click", event => {
   if (functionButton) {
     state.selectedFunctionSelector = functionButton.dataset.functionSelector;
     state.functionValues = {};
+    resetExecutionState();
     renderDeployment(events);
     return;
   }
@@ -1034,6 +1177,7 @@ $("#panel-evm").addEventListener("click", event => {
   if (traceButton.dataset.traceContract) state.selectedContractId = traceButton.dataset.traceContract;
   state.selectedFunctionSelector = traceButton.dataset.traceSelector || null;
   state.functionValues = {};
+  resetExecutionState();
   renderEvmTrace(currentTrace(state.artifact?.events ?? []));
 });
 
@@ -1060,13 +1204,39 @@ $("#deployment-graph").addEventListener("keydown", event => {
   selectArchitectureContract(node.dataset.contractId);
 });
 
+$("#execution-workspace").addEventListener("input", event => {
+  if (event.target.id === "execution-transaction-hash") {
+    state.executionTransactionHash = event.target.value.trim();
+    return;
+  }
+  if (event.target.id === "sepolia-execution-consent") {
+    state.executionSepoliaConfirmed = event.target.checked;
+    return;
+  }
+  if (event.target.id === "function-caller") state.functionCaller = event.target.value.trim();
+  if (event.target.id === "function-call-value") state.functionCallValue = event.target.value;
+  if (event.target.dataset.argumentIndex !== undefined) state.functionValues[Number(event.target.dataset.argumentIndex)] = event.target.value;
+});
+
 $("#execution-workspace").addEventListener("change", event => {
   const events = state.artifact?.events ?? [];
+  if (event.target.id === "sepolia-execution-consent") state.executionSepoliaConfirmed = event.target.checked;
+  if (event.target.id === "execution-transaction-hash") state.executionTransactionHash = event.target.value.trim();
+  if (event.target.id === "function-caller") state.functionCaller = event.target.value.trim();
   if (event.target.id === "function-call-value") state.functionCallValue = event.target.value;
   if (event.target.dataset.argumentIndex !== undefined) state.functionValues[Number(event.target.dataset.argumentIndex)] = event.target.value;
   const deployment = currentDeployment(events);
   const contract = selectedContract(deployment);
   renderExecutionWorkspace(contract, selectedFunction(contract), currentTrace(events));
+});
+
+$("#execution-workspace").addEventListener("click", event => {
+  const button = event.target.closest("button");
+  if (!button || button.disabled) return;
+  if (button.id === "simulate-execution") runExecutionSimulation();
+  if (button.id === "execute-local") runLocalExecution();
+  if (button.id === "execute-sepolia") sendSepoliaExecution();
+  if (button.id === "inspect-sepolia") inspectSepoliaExecution();
 });
 
 function showDeploymentWorkspace(source) {
@@ -1087,6 +1257,8 @@ function chooseDeployment(source) {
   state.selectedTracePath = "0";
   state.graphTransform = { x: 0, y: 0, scale: 1 };
   state.graphNodeOffsets = {};
+  state.functionCaller = source === "local" ? LOCAL_TEST_SENDER : "";
+  resetExecutionState();
   showDeploymentWorkspace(source);
   renderDeployment(state.artifact?.events ?? []);
   renderEvmTrace(currentTrace(state.artifact?.events ?? []));

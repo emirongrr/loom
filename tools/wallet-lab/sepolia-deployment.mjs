@@ -60,7 +60,13 @@ export function createJsonRpc(endpoint, { fetchImpl = fetch, timeoutMs = 8_000 }
       const text = await response.text();
       if (Buffer.byteLength(text, "utf8") > MAX_RPC_RESPONSE_BYTES) throw new Error("Sepolia RPC response exceeded the size limit");
       const payload = JSON.parse(text);
-      if (payload?.error || !("result" in (payload ?? {}))) throw new Error("Sepolia RPC returned an invalid response");
+      if (payload?.error) {
+        const rpcError = new Error("RPC rejected the requested operation");
+        rpcError.rpcCode = payload.error.code;
+        rpcError.rpcData = typeof payload.error.data === "string" ? payload.error.data : null;
+        throw rpcError;
+      }
+      if (!("result" in (payload ?? {}))) throw new Error("Sepolia RPC returned an invalid response");
       return payload.result;
     } catch (error) {
       if (error?.name === "AbortError") throw new Error("Sepolia RPC request timed out");

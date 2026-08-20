@@ -60,6 +60,9 @@ let labRecorder;
 try {
   console.log("==> loom devnet up (anvil + Loom + Alto)");
   state = await up({ stepsTracing: Boolean(labArtifactPath) });
+  if (process.env.LOOM_WALLET_LAB_KEEP_DEVNET === "true") {
+    process.env.LOOM_WALLET_LAB_OWNED_DEVNET_STARTED_AT = state.startedAt;
+  }
   console.log(`    rpc ${state.rpcUrl} · bundler ${state.bundlerUrl} · alto ${state.alto}`);
 
   const { rpcUrl, bundlerUrl, addresses } = state;
@@ -786,7 +789,7 @@ try {
   throw error;
 } finally {
   try {
-    if (state) {
+    if (state && process.env.LOOM_WALLET_LAB_KEEP_DEVNET !== "true") {
       console.log("==> loom devnet down");
       down();
     }
