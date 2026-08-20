@@ -105,7 +105,9 @@ contract RecoveryManagerTest {
         bytes32 originHash = keccak256("http://localhost:5174");
         bytes memory initData = abi.encodeCall(P256Validator.initialize, (x, y, rpIdHash, originHash, policyHook));
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
+        address provisioned = provisioner.deploy(
+            address(account), 0, x, y, rpIdHash, originHash, policyHook, NEW_GUARDIAN_ROOT, 1
+        );
         address[] memory oldValidators = _sortedValidators();
         GuardianVerificationLib.Approval[] memory approvals =
             _proposalApprovalsFor(provisioned, oldValidators, initData, 0, account.configVersion());
@@ -132,7 +134,9 @@ contract RecoveryManagerTest {
         bytes memory intendedInitData =
             abi.encodeCall(P256Validator.initialize, (x, y, rpIdHash, originHash, policyHook));
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
+        address provisioned = provisioner.deploy(
+            address(account), 0, x, y, rpIdHash, originHash, policyHook, NEW_GUARDIAN_ROOT, 1
+        );
         bytes memory wrongInitData = abi.encodeCall(
             P256Validator.initialize,
             (
@@ -179,7 +183,9 @@ contract RecoveryManagerTest {
         bytes32 rpIdHash = keccak256("localhost");
         bytes32 originHash = keccak256("http://localhost:5174");
         P256RecoveryValidatorFactory provisioner = new P256RecoveryValidatorFactory(address(0));
-        address provisioned = provisioner.deploy(address(account), 0, x, y, rpIdHash, originHash, policyHook);
+        address provisioned = provisioner.deploy(
+            address(account), 0, x, y, rpIdHash, originHash, policyHook, NEW_GUARDIAN_ROOT, 1
+        );
         bytes memory mutate = abi.encodeCall(
             P256Validator.setKey,
             (P256TestKeys.x(2), P256TestKeys.y(2), keccak256("wrong.example"), keccak256("https://wrong.example"))

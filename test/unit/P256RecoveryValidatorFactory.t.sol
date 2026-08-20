@@ -18,6 +18,10 @@ contract P256RecoveryValidatorFactoryTest is Test {
     address internal constant POLICY_HOOK = address(0xBEEF);
     bytes32 internal constant RP_ID_HASH = keccak256("localhost");
     bytes32 internal constant ORIGIN_HASH = keccak256("http://localhost:5174");
+    /// The guardian set this recovery rotates to. Part of the address since
+    /// ADR-0026, so every prediction here has to name it.
+    bytes32 internal constant NEW_ROOT = keccak256("loom.test.rotated-guardian-root");
+    uint8 internal constant NEW_THRESHOLD = 2;
 
     function _x() internal pure returns (bytes32) {
         return P256TestKeys.x(1);
@@ -32,14 +36,16 @@ contract P256RecoveryValidatorFactoryTest is Test {
     }
 
     function _deploy(P256RecoveryValidatorFactory factory, address account, uint64 nonce) internal returns (address) {
-        return factory.deploy(account, nonce, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK);
+        return factory.deploy(
+            account, nonce, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD
+        );
     }
 
     function testDeploysThePredictedValidatorAndWritesItsKey() public {
         OZP256Verifier verifier = new OZP256Verifier();
         P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(verifier));
 
-        address predicted = factory.getAddress(ACCOUNT, 7, _hash(factory));
+        address predicted = factory.getAddress(ACCOUNT, 7, _hash(factory), NEW_ROOT, NEW_THRESHOLD);
         address deployed = _deploy(factory, ACCOUNT, 7);
 
         require(deployed == predicted, "unexpected recovery validator address");
@@ -85,7 +91,9 @@ contract P256RecoveryValidatorFactoryTest is Test {
                         P256TestKeys.y(2),
                         RP_ID_HASH,
                         ORIGIN_HASH,
-                        POLICY_HOOK
+                        POLICY_HOOK,
+                        NEW_ROOT,
+                        NEW_THRESHOLD
                     )
                 )
             );
@@ -98,18 +106,18 @@ contract P256RecoveryValidatorFactoryTest is Test {
     function testAddressBindsAccountNonceAndKey() public {
         P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
         bytes32 hash = _hash(factory);
-        address base = factory.getAddress(ACCOUNT, 7, hash);
+        address base = factory.getAddress(ACCOUNT, 7, hash, NEW_ROOT, NEW_THRESHOLD);
 
-        require(factory.getAddress(address(0xB0B), 7, hash) != base, "account was not bound");
-        require(factory.getAddress(ACCOUNT, 8, hash) != base, "recovery nonce was not bound");
+        require(factory.getAddress(address(0xB0B), 7, hash, NEW_ROOT, NEW_THRESHOLD) != base, "account was not bound");
+        require(factory.getAddress(ACCOUNT, 8, hash, NEW_ROOT, NEW_THRESHOLD) != base, "recovery nonce was not bound");
 
         bytes32 otherKey =
             factory.initDataHashFor(P256TestKeys.x(2), P256TestKeys.y(2), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK);
-        require(factory.getAddress(ACCOUNT, 7, otherKey) != base, "key was not bound");
+        require(factory.getAddress(ACCOUNT, 7, otherKey, NEW_ROOT, NEW_THRESHOLD) != base, "key was not bound");
 
         bytes32 otherOrigin =
             factory.initDataHashFor(_x(), _y(), RP_ID_HASH, keccak256("https://evil.example"), POLICY_HOOK);
-        require(factory.getAddress(ACCOUNT, 7, otherOrigin) != base, "relying party was not bound");
+        require(factory.getAddress(ACCOUNT, 7, otherOrigin, NEW_ROOT, NEW_THRESHOLD) != base, "relying party was not bound");
     }
 
     /// A different key must produce a different address, or approving an address
@@ -129,7 +137,7 @@ contract P256RecoveryValidatorFactoryTest is Test {
 
         assertTrue(left != right, "two keys shared a commitment");
         assertTrue(
-            factory.getAddress(ACCOUNT, 0, left) != factory.getAddress(ACCOUNT, 0, right), "two keys shared an address"
+            factory.getAddress(ACCOUNT, 0, left, NEW_ROOT, NEW_THRESHOLD) != factory.getAddress(ACCOUNT, 0, right, NEW_ROOT, NEW_THRESHOLD), "two keys shared an address"
         );
     }
 
@@ -140,7 +148,7 @@ contract P256RecoveryValidatorFactoryTest is Test {
     ) public {
         vm.assume(account != address(0));
         P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
-        address predicted = factory.getAddress(account, recoveryNonce, _hash(factory));
+        address predicted = factory.getAddress(account, recoveryNonce, _hash(factory), NEW_ROOT, NEW_THRESHOLD);
 
         vm.prank(publisher);
         address deployed = _deploy(factory, account, recoveryNonce);
@@ -158,20 +166,20 @@ contract P256RecoveryValidatorFactoryTest is Test {
             .call(
                 abi.encodeCall(
                     P256RecoveryValidatorFactory.deploy,
-                    (address(0), 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK)
+                    (address(0), 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD)
                 )
             );
         (bool zeroHook,) = address(factory)
             .call(
                 abi.encodeCall(
-                    P256RecoveryValidatorFactory.deploy, (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, address(0))
+                    P256RecoveryValidatorFactory.deploy, (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, address(0), NEW_ROOT, NEW_THRESHOLD)
                 )
             );
         (bool invalidKey,) = address(factory)
             .call(
                 abi.encodeCall(
                     P256RecoveryValidatorFactory.deploy,
-                    (ACCOUNT, 0, bytes32(0), bytes32(0), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK)
+                    (ACCOUNT, 0, bytes32(0), bytes32(0), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD)
                 )
             );
         (bool invalidFallback,) =
@@ -186,4 +194,76 @@ contract P256RecoveryValidatorFactoryTest is Test {
     function deployFactory(address verifier) external returns (P256RecoveryValidatorFactory) {
         return new P256RecoveryValidatorFactory(verifier);
     }
+
+    /// The commitment ADR-0026 adds: a device that only has the address can read
+    /// the set this recovery rotates to, without the roster that chose it.
+    function testThePublicationCarriesTheRotatedGuardianSet() public {
+        P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
+        address validator = _deploy(factory, ACCOUNT, 3);
+
+        require(P256RecoveryValidator(validator).recoveryGuardianRoot() == NEW_ROOT, "rotated root not committed");
+        require(
+            P256RecoveryValidator(validator).recoveryGuardianThreshold() == NEW_THRESHOLD,
+            "rotated threshold not committed"
+        );
+    }
+
+    /// Why the salt has to bind it. Publication is permissionless and an intent
+    /// can only be provisioned once per address, so a root outside the salt
+    /// would let anyone deploy the address first with a set of their choosing
+    /// and occupy it permanently. Inside the salt, their choice is a different
+    /// address and the legitimate one is untouched.
+    function testARotatedSetIsPartOfTheAddress() public {
+        P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
+        bytes32 hash = _hash(factory);
+        address mine = factory.getAddress(ACCOUNT, 3, hash, NEW_ROOT, NEW_THRESHOLD);
+
+        require(
+            factory.getAddress(ACCOUNT, 3, hash, keccak256("someone.else.root"), NEW_THRESHOLD) != mine,
+            "guardian root was not bound to the address"
+        );
+        require(
+            factory.getAddress(ACCOUNT, 3, hash, NEW_ROOT, NEW_THRESHOLD + 1) != mine,
+            "guardian threshold was not bound to the address"
+        );
+
+        // And the occupied address really is a different one: deploying theirs
+        // leaves mine free.
+        factory.deploy(
+            ACCOUNT, 3, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, keccak256("someone.else.root"), NEW_THRESHOLD
+        );
+        require(mine.code.length == 0, "a hostile publication occupied the honest address");
+        require(_deploy(factory, ACCOUNT, 3) == mine, "the honest publication could not be made");
+    }
+
+    /// A rotation nobody could satisfy is not worth committing to, and a
+    /// threshold of zero would leave a recovered account recoverable by no one.
+    function testRefusesARotationNobodyCouldSatisfy() public {
+        P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
+
+        (bool zeroRoot,) = address(factory).call(
+            abi.encodeCall(
+                P256RecoveryValidatorFactory.deploy,
+                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, bytes32(0), NEW_THRESHOLD)
+            )
+        );
+        require(!zeroRoot, "an empty guardian root was accepted");
+
+        (bool zeroThreshold,) = address(factory).call(
+            abi.encodeCall(
+                P256RecoveryValidatorFactory.deploy,
+                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(0))
+            )
+        );
+        require(!zeroThreshold, "a zero guardian threshold was accepted");
+
+        (bool tooHigh,) = address(factory).call(
+            abi.encodeCall(
+                P256RecoveryValidatorFactory.deploy,
+                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(33))
+            )
+        );
+        require(!tooHigh, "a threshold above the guardian maximum was accepted");
+    }
+
 }
