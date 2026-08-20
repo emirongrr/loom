@@ -32,7 +32,9 @@ export type RecoveryNextStep =
   /** A prepared passkey whose validator is not on chain yet. */
   | { readonly kind: "publish-validator"; readonly label: string }
   /** Nothing this device can do, and why. */
-  | { readonly kind: "blocked"; readonly reason: string };
+  | { readonly kind: "blocked"; readonly reason: string }
+  /** A duplicate request that can be deleted without losing anything. */
+  | { readonly kind: "discard-session"; readonly sessionId: string; readonly label: string };
 
 export interface AccountRecoveryRequest {
   readonly id: string;
@@ -114,18 +116,38 @@ export function collectAccountRecoveryRequests(input: {
   );
   const claimed = new Set<string>();
 
+  // Two live requests for one validator are not two chances. Each rotates to a
+  // fresh guardian set, so their digests differ and an approval collected for
+  // one will not verify against the other; and the recovery nonce admits a
+  // single pending request, so only one could ever be proposed. The first is
+  // the one to keep -- any approvals already gathered belong to it.
+  const liveByValidator = new Map<string, string>();
+  for (const session of mine) {
+    if (FINISHED.has(session.stage)) continue;
+    const key = session.request.newValidator.toLowerCase();
+    if (!liveByValidator.has(key)) liveByValidator.set(key, session.id);
+  }
+
   for (const session of mine) {
     claimed.add(session.request.newValidator.toLowerCase());
     const finished = FINISHED.has(session.stage);
+    const duplicate = !finished
+      && liveByValidator.get(session.request.newValidator.toLowerCase()) !== session.id;
     const approvals = `${session.responses.length} of ${session.request.guardianThreshold} guardian approvals`;
     requests.push(Object.freeze({
       id: `session:${session.id}`,
       title: `Recovery ${session.request.humanCode}`,
-      status: SESSION_STAGE[session.stage],
-      detail: finished
-        ? `New validator ${short(session.request.newValidator)}.`
-        : `${approvals}. New validator ${short(session.request.newValidator)}.`,
-      next: finished
+      status: duplicate ? "Duplicate" : SESSION_STAGE[session.stage],
+      detail: duplicate
+        ? `A second request for validator ${short(session.request.newValidator)}. Only one recovery can be proposed,`
+          + ` and an approval given for one request does not verify against another, so this one cannot be used`
+          + ` alongside the first. It holds ${session.responses.length} approval(s).`
+        : finished
+          ? `New validator ${short(session.request.newValidator)}.`
+          : `${approvals}. New validator ${short(session.request.newValidator)}.`,
+      next: duplicate
+        ? { kind: "discard-session" as const, sessionId: session.id, label: "Discard this duplicate" }
+        : finished
         ? { kind: "blocked" as const, reason: "This request is closed. Nothing further can be done with it." }
         : {
           kind: "open-session" as const,
@@ -134,7 +156,7 @@ export function collectAccountRecoveryRequests(input: {
             ? "Send to guardians"
             : "Open"
         },
-      primary: !finished
+      primary: !finished && !duplicate
     }));
   }
 

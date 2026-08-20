@@ -13,12 +13,13 @@ import type { AccountRecoveryRequest } from "./accountRecoveryRequests";
  * ellipsizes its `small` to a single nowrap line, which is right for a wallet
  * label and wrong for a sentence explaining why a publication is stuck.
  */
-export function AccountRecoveryRequestsPanel({ requests, busy, onOpenSession, onRequestApprovals, onPublish }: {
+export function AccountRecoveryRequestsPanel({ requests, busy, onOpenSession, onRequestApprovals, onPublish, onDiscardSession }: {
   readonly requests: readonly AccountRecoveryRequest[];
   readonly busy?: boolean;
   readonly onOpenSession: (sessionId: string) => void;
   readonly onRequestApprovals: () => void;
   readonly onPublish: () => void;
+  readonly onDiscardSession: (sessionId: string) => void;
 }) {
   return <section className="saved-wallets" aria-labelledby="account-recoveries-title">
     <div className="section-heading">
@@ -50,6 +51,13 @@ export function AccountRecoveryRequestsPanel({ requests, busy, onOpenSession, on
 
           {request.next.kind === "request-approvals" && <button
             className="primary" disabled={busy} onClick={onRequestApprovals}
+          >{request.next.label}</button>}
+
+          {/* Deleting a duplicate loses nothing the account can use: its
+              approvals only ever verified against its own digest. */}
+          {request.next.kind === "discard-session" && <button
+            className="secondary" disabled={busy}
+            onClick={() => onDiscardSession(request.next.kind === "discard-session" ? request.next.sessionId : "")}
           >{request.next.label}</button>}
 
           {request.next.kind === "publish-validator" && <button

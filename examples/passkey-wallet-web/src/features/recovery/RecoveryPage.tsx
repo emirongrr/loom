@@ -333,6 +333,24 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const prepareGuardianRequest = async () => {
     if (inspection.status !== "protected" || !inspection.deployment.recoveryModule || !passkeyPreparation?.alreadyDeployed) return;
     setMessage("");
+
+    // A second request for the same validator is not a second chance, it is a
+    // different request: each one rotates to a fresh guardian set, so its
+    // digest differs and any approval already collected for the first no
+    // longer verifies. With one pending request per nonce, only one of them
+    // could ever be proposed anyway. So the existing one is opened instead.
+    const openRequest = sessions.find(candidate =>
+      candidate.request.chainId === inspection.deployment.chainId
+      && candidate.request.account.toLowerCase() === inspection.account.toLowerCase()
+      && candidate.request.newValidator.toLowerCase() === passkeyPreparation.validator.toLowerCase()
+      && !["completed", "cancelled", "expired"].includes(candidate.stage)
+    );
+    if (openRequest) {
+      setMessage("A recovery request for this validator is already open on this device. Continue with that one: a second request would rotate to a different guardian set, and approvals collected for the first would stop verifying.");
+      onNavigate(`/recover/${encodeURIComponent(openRequest.id)}`);
+      return;
+    }
+
     try {
       const client = recoveryClient();
       const live = await client.inspectAccount();
@@ -445,6 +463,11 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       onOpenSession={sessionId => onNavigate(`/recover/${encodeURIComponent(sessionId)}`)}
       onRequestApprovals={() => void prepareGuardianRequest()}
       onPublish={() => { setShowPasskey(true); }}
+      onDiscardSession={sessionId => void (async () => {
+        await repository.remove(sessionId);
+        await refresh();
+        setMessage("The duplicate recovery request was removed from this device. Nothing on chain changed.");
+      })().catch(() => setMessage("The duplicate request could not be removed."))}
     />}
 
     {/* One address drives everything. "Account to recover" already accepts any

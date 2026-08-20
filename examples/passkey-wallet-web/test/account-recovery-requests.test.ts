@@ -213,3 +213,61 @@ test("a publication covered by a held draft is not also called unreachable", () 
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.next.kind, "request-approvals");
 });
+
+// Reported from the running app: "Continue to guardian approvals" made a new
+// request every time it was pressed, five for one validator. Each rotates to a
+// fresh guardian set, so their digests differ -- an approval collected for one
+// does not verify against another -- and the recovery nonce admits a single
+// pending request, so only one could ever be proposed.
+test("a second live request for one validator is marked as a duplicate", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [
+      session({ id: "first", validator: MINE, stage: "collecting", responses: 1 }),
+      session({ id: "second", validator: MINE, stage: "request-created", responses: 0 })
+    ]
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0]?.next.kind, "open-session");
+  assert.equal(requests[0]?.primary, true);
+  assert.equal(requests[1]?.status, "Duplicate");
+  assert.equal(requests[1]?.next.kind, "discard-session");
+  assert.equal(requests[1]?.primary, false);
+  assert.match(requests[1]!.detail, /does not verify against another/);
+});
+
+// The first is the one to keep: any approvals already gathered belong to it.
+test("the duplicate offered for discard is the later one, not the one holding approvals", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [
+      session({ id: "keep", validator: MINE, responses: 2 }),
+      session({ id: "drop", validator: MINE, responses: 0 })
+    ]
+  });
+  if (requests[1]?.next.kind !== "discard-session") throw new Error("unreachable");
+  assert.equal(requests[1].next.sessionId, "drop");
+});
+
+// Different validators are different recoveries, not duplicates of each other.
+test("requests for different validators are not duplicates", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [session({ id: "a", validator: MINE }), session({ id: "b", validator: THEIRS })]
+  });
+  assert.equal(requests.filter(entry => entry.next.kind === "discard-session").length, 0);
+});
+
+// A finished request does not make a new one a duplicate: there is nothing left
+// to collide with.
+test("a closed request does not block a fresh one for the same validator", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [
+      session({ id: "old", validator: MINE, stage: "expired" }),
+      session({ id: "new", validator: MINE, stage: "collecting" })
+    ]
+  });
+  assert.equal(requests.filter(entry => entry.next.kind === "discard-session").length, 0);
+  assert.equal(requests[1]?.primary, true);
+});
