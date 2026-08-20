@@ -21,7 +21,7 @@ import { assertPendingRecoveryMatchesPrepared, assertPreparedRecoveryMatchesRequ
 import type { AccountHandle } from "../../types";
 import { publishRecoveryValidatorWithLoomWallet, recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
 import { submitAccountCalls } from "../wallet/accountClient";
-import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation } from "./recoveryDraft";
+import { createRecoveryDraft, createRecoveryDraftRepository, restoreRecoveryDraftPreparation, type RecoveryDraftRotation } from "./recoveryDraft";
 import { describeDraftFailure, summarizeDraftFailures, type DraftFailure } from "./draftDiagnosis";
 import { classifyExistingPublications, readPublishedRecoveryValidators, type ExistingPublications, type PublishedRecoveryValidator } from "./existingPublications";
 import { collectAccountRecoveryRequests, type AccountRecoveryRequest, type OnChainPendingRecovery } from "./accountRecoveryRequests";
@@ -59,6 +59,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [onChainPending, setOnChainPending] = useState<OnChainPendingRecovery | null>(null);
   const [unreadableDrafts, setUnreadableDrafts] = useState(0);
   const [draftFailures, setDraftFailures] = useState<readonly DraftFailure[]>([]);
+  // The rotation the published validator commits to. Chosen once, before
+  // publication, and reused for the proposal: choosing again would produce a
+  // different root, a different digest, and a validator nobody could propose.
+  const [rotation, setRotation] = useState<RecoveryDraftRotation | null>(null);
   const [restoredDrafts, setRestoredDrafts] = useState<readonly { readonly validator: `0x${string}`; readonly published: boolean }[]>([]);
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
@@ -134,6 +138,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       setUnreadableDrafts(0);
       setDraftFailures([]);
       setRestoredDrafts([]);
+      setRotation(null);
       try {
         // A proposal already approved by guardians needs no session here, but a
         // reader who cannot see it has no way to know that.
@@ -173,7 +178,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           continue;
         }
         try {
-          const checked = await client.prepareRecoveryValidator({ initData: local.initData });
+          const checked = await client.prepareRecoveryValidator({
+            initData: local.initData,
+            newGuardianSet: rotationSet(draft.rotation)
+          });
           if (checked.validator !== local.validator || checked.initDataHash !== local.initDataHash) {
             unreadable += 1;
             failures.push(describeDraftFailure({ stage: "mismatch", label: draft.label }));
@@ -186,6 +194,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           if (restored.length === 1) {
             setPasskeyLabel(draft.label);
             setPasskeyPreparation(Object.freeze({ ...local, ...checked }));
+            setRotation(draft.rotation);
             setShowPasskey(true);
             setPasskeyStatus(checked.alreadyDeployed ? "published" : "prepared");
             setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
@@ -256,21 +265,35 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       if (!live.recoveryConfigured || live.configVersion.toString() !== inspection.configVersion) {
         throw new GuardianRecoveryError("RECOVERY_CONFIG_VERSION_MISMATCH", "account recovery state changed; check it again");
       }
+      // The rotation has to exist before the address does, because the address
+      // commits to it. It also has to come from a roster that matches the live
+      // root, or the guardians being rotated away from could not approve.
+      const accountId = `${inspection.deployment.chainId}:${inspection.account.toLowerCase()}`;
+      const roster = await createBrowserGuardianRoster().read(accountId);
+      if (!rosterMatchesRoot({ entries: roster.entries, threshold: live.guardianThreshold, root: live.guardianRoot })) {
+        throw new Error("This device does not hold the current guardian roster, so it cannot choose the set this recovery rotates to. Restore its encrypted guardian backup first.");
+      }
+      const chosen: RecoveryDraftRotation = Object.freeze({
+        entries: withFreshSalts(roster.entries),
+        threshold: live.guardianThreshold
+      });
       const prepared = await prepareNewRecoveryPasskey({
         deployment: inspection.deployment,
         label: passkeyLabel,
         rpId: window.location.hostname,
         origin: window.location.origin,
         register: registerBrowserPasskey,
-        prepare: input => client.prepareRecoveryValidator(input)
+        prepare: input => client.prepareRecoveryValidator({ ...input, newGuardianSet: rotationSet(chosen) })
       });
       await draftRepository.write(createRecoveryDraft({
         chainId: inspection.deployment.chainId,
         account: inspection.account,
         configVersion: inspection.configVersion,
         label: passkeyLabel.trim(),
-        preparation: prepared
+        preparation: prepared,
+        rotation: chosen
       }));
+      setRotation(chosen);
       setPasskeyPreparation(prepared);
       setPasskeyStatus(prepared.alreadyDeployed ? "published" : "prepared");
     } catch (error) {
@@ -280,8 +303,11 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   };
 
   const verifyPublication = async () => {
-    if (!passkeyPreparation) return;
-    const checked = await recoveryClient().prepareRecoveryValidator({ initData: passkeyPreparation.initData });
+    if (!passkeyPreparation || !rotation) return;
+    const checked = await recoveryClient().prepareRecoveryValidator({
+      initData: passkeyPreparation.initData,
+      newGuardianSet: rotationSet(rotation)
+    });
     if (!checked.alreadyDeployed || checked.validator !== passkeyPreparation.validator) {
       throw new Error("The exact recovery validator is not published on chain yet.");
     }
@@ -373,8 +399,13 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       if (!rosterMatchesRoot({ entries: roster.entries, threshold: live.guardianThreshold, root: live.guardianRoot })) {
         throw new Error("This device does not hold the current guardian roster. Restore its encrypted guardian backup before creating a recovery request.");
       }
-      const freshGuardianEntries = withFreshSalts(roster.entries);
-      const newGuardianSet = planGuardianChange({ current: roster.entries, next: freshGuardianEntries, threshold: live.guardianThreshold }).set;
+      // The rotation was fixed when the validator was published: its address
+      // commits to it. Choosing fresh salts again here would produce a
+      // different root, a digest the guardians would sign against nothing, and
+      // a proposal naming a validator that does not exist.
+      if (!rotation) throw new Error("This device does not hold the rotation this publication committed to. Restore the recovery draft, or publish a new recovery passkey.");
+      const freshGuardianEntries = rotation.entries;
+      const newGuardianSet = planGuardianChange({ current: roster.entries, next: freshGuardianEntries, threshold: rotation.threshold }).set;
       const prepared = await client.prepareRecovery({
         newValidator: passkeyPreparation.validator,
         initData: passkeyPreparation.initData,
@@ -750,6 +781,12 @@ function pendingStatus(value: string): OnChainPendingRecovery["status"] {
   return value === "none" || value === "delay-active" || value === "ready" || value === "expired"
     ? value
     : "unknown";
+}
+
+/** The rotation as the SDK wants it: a root and a threshold. */
+function rotationSet(value: RecoveryDraftRotation): { root: `0x${string}`; threshold: number } {
+  const set = planGuardianChange({ current: [], next: value.entries, threshold: value.threshold }).set;
+  return { root: set.root, threshold: set.threshold };
 }
 
 function sessionIdFromPath(path: string): string {

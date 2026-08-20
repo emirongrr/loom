@@ -19,6 +19,7 @@ const KEY = {
   originHash: `0x${"44".repeat(32)}`,
   policyHook: "0x4444444444444444444444444444444444444444"
 } as const;
+const ROTATED_ROOT = `0x${"5c".repeat(32)}` as const;
 const INIT_DATA_HASH = keccak256(encodeFunctionData({
   abi: P256ValidatorAbi,
   functionName: "initialize",
@@ -27,7 +28,9 @@ const INIT_DATA_HASH = keccak256(encodeFunctionData({
 const DEPLOY_DATA = encodeFunctionData({
   abi: P256RecoveryValidatorFactoryAbi,
   functionName: "deploy",
-  args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
+  // The rotated guardian set is part of the deployment since ADR-0026: the
+  // validator's address commits to it.
+  args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook, ROTATED_ROOT, 2]
 });
 
 function account(address: `0x${string}`, chainId = CHAIN_ID): AccountHandle {
@@ -104,7 +107,7 @@ test("gas payer refuses a different target, account, or passkey factory call", a
   const otherAccountData = encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi,
     functionName: "deploy",
-    args: [PAYER, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
+    args: [PAYER, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook, ROTATED_ROOT, 2]
   });
   await assert.rejects(publishRecoveryValidatorWithLoomWallet({
     ...base,
@@ -116,7 +119,7 @@ test("gas payer refuses a different target, account, or passkey factory call", a
   const otherKeyData = encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi,
     functionName: "deploy",
-    args: [TARGET, 4n, `0x${"99".repeat(32)}`, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook]
+    args: [TARGET, 4n, `0x${"99".repeat(32)}`, KEY.y, KEY.rpIdHash, KEY.originHash, KEY.policyHook, ROTATED_ROOT, 2]
   });
   await assert.rejects(publishRecoveryValidatorWithLoomWallet({
     ...base,
@@ -128,7 +131,7 @@ test("gas payer refuses a different target, account, or passkey factory call", a
   const otherHookData = encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi,
     functionName: "deploy",
-    args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, PAYER]
+    args: [TARGET, 4n, KEY.x, KEY.y, KEY.rpIdHash, KEY.originHash, PAYER, ROTATED_ROOT, 2]
   });
   await assert.rejects(publishRecoveryValidatorWithLoomWallet({
     ...base,

@@ -44,7 +44,7 @@ export function RecoveryApprovalDialog({ request, capability, deployment, guardi
       if (!live.recoveryConfigured) throw new Error("The protected account no longer has guardian recovery.");
       const prepared = prepareGuardianRecoveryReview({ request, capability, live: { guardianRoot: live.guardianRoot, guardianThreshold: live.guardianThreshold, configVersion: live.configVersion, validators: live.validators } });
       const publicClient = publicClients.forEndpoint(config.rpcUrl);
-      const predicted = await publicClient.readContract({ address: deployment.recoveryValidatorProvisioner.address, abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress", args: [request.account, BigInt(request.nonce), request.initDataHash] });
+      const predicted = await publicClient.readContract({ address: deployment.recoveryValidatorProvisioner.address, abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress", args: [request.account, BigInt(request.nonce), request.initDataHash, request.newGuardianRoot, request.newGuardianThreshold] });
       if (predicted.toLowerCase() !== request.newValidator.toLowerCase()) throw new Error("The new validator is not the factory address committed by this request.");
       const [validatorCode, verifierCode] = await Promise.all([publicClient.getCode({ address: request.newValidator }), publicClient.getCode({ address: capability.guardian.verifier })]);
       if (!validatorCode || validatorCode === "0x" || keccak256(validatorCode) !== deployment.recoveryValidatorProvisioner.validatorRuntimeCodeHash) throw new Error("The proposed validator bytecode is not trusted.");
