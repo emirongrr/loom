@@ -85,7 +85,8 @@ test("recovery validator provisioning verifies the factory and prepares one dete
     allowedPolicyHooks: [policyHook]
   };
 
-  const pending = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });
+  const rotation = { root: `0x${"7c".repeat(32)}`, threshold: 2 };
+  const pending = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile, stateTransport: transport });
   assert.equal(pending.validator, validator);
   assert.equal(pending.alreadyDeployed, false);
   // The factory takes the key fields and derives the commitment itself
@@ -93,25 +94,32 @@ test("recovery validator provisioning verifies the factory and prepares one dete
   // so the deployment call cannot describe a different key than the proposal.
   assert.deepEqual(
     decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: pending.deploy.data }).args,
-    [account, 3n, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, `0x${"44".repeat(32)}`, getAddress(policyHook)]
+    [
+      account, 3n, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, `0x${"44".repeat(32)}`,
+      getAddress(policyHook),
+      // The rotated set travels with the deployment: the address commits to it
+      // (ADR-0026), so publishing without it would publish a validator that can
+      // never be proposed.
+      rotation.root, rotation.threshold
+    ]
   );
   assert.equal(pending.initDataHash, keccak256(initData), "the commitment still covers the whole initializer");
 
   await assert.rejects(
     prepareP256RecoveryValidator({
-      account, recoveryNonce: 3n, initData: "0xdeadbeef", profile, stateTransport: transport
+      account, recoveryNonce: 3n, initData: "0xdeadbeef", newGuardianSet: rotation, profile, stateTransport: transport
     }),
     /initialization data/u,
     "calldata that is not a validator initializer must not reach the factory"
   );
 
   validatorDeployed = true;
-  const existing = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });
+  const existing = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile, stateTransport: transport });
   assert.equal(existing.alreadyDeployed, true);
   assert.equal(existing.deploy, undefined);
 
   await assert.rejects(
-    prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile: { ...profile, runtimeCodeHash: `0x${"ff".repeat(32)}` }, stateTransport: transport }),
+    prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile: { ...profile, runtimeCodeHash: `0x${"ff".repeat(32)}` }, stateTransport: transport }),
     error => error instanceof GuardianRecoveryError && error.code === "UNSUPPORTED_RECOVERED_VALIDATOR_PATH"
   );
 });
@@ -587,7 +595,7 @@ test("the recovery client owns account inspection, freeze verification, and prop
       allowedPolicyHooks: [policyHook]
     }
   });
-  const factoryValidator = await factoryClient.prepareRecoveryValidator({ initData: validatorInitData });
+  const factoryValidator = await factoryClient.prepareRecoveryValidator({ initData: validatorInitData, newGuardianSet: freshSet });
   assert.equal(factoryValidator.validator, newValidator);
   assert.equal(factoryValidator.alreadyDeployed, true);
   const factoryRecovery = await factoryClient.prepareRecovery({ newValidator, initData: validatorInitData, newGuardianSet: freshSet });
