@@ -84,10 +84,14 @@ export function collectAccountRecoveryRequests(input: {
   readonly account: Address;
   readonly sessions: readonly RecoverySession[];
   readonly published?: readonly PublishedRecoveryValidator[];
-  /** The validator a local draft resolved to, when one did. */
-  readonly restoredValidator?: Address;
-  /** True when that draft's validator is already on chain. */
-  readonly restoredIsPublished?: boolean;
+  /**
+   * Every validator a local draft resolved to, not just the first.
+   *
+   * A device can hold more than one: publishing is permissionless and a reader
+   * who tried twice paid twice. Reporting only the first told them the other
+   * publication belonged to someone else's device.
+   */
+  readonly restored?: readonly { readonly validator: Address; readonly published: boolean }[];
   readonly pending?: OnChainPendingRecovery;
   /**
    * Encrypted drafts this device holds for the account that would not open.
@@ -134,24 +138,36 @@ export function collectAccountRecoveryRequests(input: {
     }));
   }
 
-  // A published validator this device holds the draft for, with no session yet:
+  // Published validators this device holds the draft for, with no session yet:
   // the gas is already spent and the only thing missing is the request the
   // guardians sign. Offering that directly is the difference between finishing
   // a recovery and paying to start another.
-  const restored = input.restoredValidator?.toLowerCase();
-  if (restored && !claimed.has(restored)) {
-    claimed.add(restored);
+  let offered = 0;
+  for (const entry of input.restored ?? []) {
+    const validator = entry.validator.toLowerCase();
+    if (claimed.has(validator)) continue;
+    claimed.add(validator);
+    // Only one recovery can ever be proposed for an account, so a second held
+    // validator is a real thing the reader owns and a real thing they cannot
+    // also use. Both halves have to be said.
+    const spare = offered > 0;
+    offered += 1;
     requests.push(Object.freeze({
-      id: `draft:${restored}`,
+      id: `draft:${validator}`,
       title: "Recovery passkey on this device",
-      status: input.restoredIsPublished ? "Needs a request" : "Not published",
-      detail: input.restoredIsPublished
-        ? `Validator ${short(input.restoredValidator!)} is live on chain. It needs a guardian request before it can be proposed.`
-        : `Validator ${short(input.restoredValidator!)} is prepared. Publishing it is permissionless and grants no account authority.`,
-      next: input.restoredIsPublished
-        ? { kind: "request-approvals" as const, label: "Create guardian request" }
-        : { kind: "publish-validator" as const, label: "Publish validator" },
-      primary: true
+      status: spare ? "Held, cannot also be used" : entry.published ? "Needs a request" : "Not published",
+      detail: spare
+        ? `Validator ${short(entry.validator)} is also on this device. Only one recovery can be proposed for this`
+          + ` account, so proposing the one above leaves this one unused and its gas unrecoverable.`
+        : entry.published
+          ? `Validator ${short(entry.validator)} is live on chain. It needs a guardian request before it can be proposed.`
+          : `Validator ${short(entry.validator)} is prepared. Publishing it is permissionless and grants no account authority.`,
+      next: spare
+        ? { kind: "blocked" as const, reason: "Nothing to do with this one unless the recovery above is abandoned." }
+        : entry.published
+          ? { kind: "request-approvals" as const, label: "Create guardian request" }
+          : { kind: "publish-validator" as const, label: "Publish validator" },
+      primary: !spare
     }));
   }
 

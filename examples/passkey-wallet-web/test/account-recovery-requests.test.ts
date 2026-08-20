@@ -79,7 +79,7 @@ test("a finished session is still listed, but never as something to do", () => {
 // is the difference between finishing and paying to start again.
 test("a published validator this device holds offers the guardian request", () => {
   const [request] = collectAccountRecoveryRequests({
-    ...base, sessions: [], restoredValidator: MINE, restoredIsPublished: true
+    ...base, sessions: [], restored: [{ validator: MINE, published: true }]
   });
   assert.equal(request?.next.kind, "request-approvals");
   assert.match(request!.status, /Needs a request/);
@@ -88,7 +88,7 @@ test("a published validator this device holds offers the guardian request", () =
 
 test("a prepared but unpublished validator offers publication instead", () => {
   const [request] = collectAccountRecoveryRequests({
-    ...base, sessions: [], restoredValidator: MINE, restoredIsPublished: false
+    ...base, sessions: [], restored: [{ validator: MINE, published: false }]
   });
   assert.equal(request?.next.kind, "publish-validator");
   assert.match(request!.status, /Not published/);
@@ -98,7 +98,7 @@ test("a prepared but unpublished validator offers publication instead", () => {
 // places. The session already covers this validator.
 test("a draft whose session already exists is not listed twice", () => {
   const requests = collectAccountRecoveryRequests({
-    ...base, sessions: [session({ validator: MINE })], restoredValidator: MINE, restoredIsPublished: true
+    ...base, sessions: [session({ validator: MINE })], restored: [{ validator: MINE, published: true }]
   });
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.next.kind, "open-session");
@@ -174,4 +174,42 @@ test("a proposed recovery outranks the publication of the same validator", () =>
   assert.equal(requests.length, 1);
   assert.match(requests[0]!.title, /proposed on chain/);
   assert.match(requests[0]!.status, /Delay running/);
+});
+
+// Reported from the running app: two drafts, both valid, and the restore loop
+// stopped at the first. The second publication was then described as belonging
+// to another device, when the device held its draft all along.
+test("every held draft is listed, not just the first", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base, sessions: [],
+    restored: [{ validator: MINE, published: true }, { validator: THEIRS, published: true }]
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0]?.next.kind, "request-approvals");
+  assert.equal(requests[0]?.primary, true);
+});
+
+// Owning two is not the same as being able to use two: the recovery nonce
+// admits one pending request, so the second is held and unusable at once.
+test("a second held validator says it cannot also be used", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base, sessions: [],
+    restored: [{ validator: MINE, published: true }, { validator: THEIRS, published: true }]
+  });
+  assert.equal(requests[1]?.next.kind, "blocked");
+  assert.equal(requests[1]?.primary, false);
+  assert.match(requests[1]!.detail, /Only one recovery can be proposed/);
+  assert.match(requests[1]!.detail, /gas unrecoverable/);
+});
+
+// A held draft covers its publication; the publication list must not repeat it
+// as something no device can continue.
+test("a publication covered by a held draft is not also called unreachable", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base, sessions: [],
+    restored: [{ validator: THEIRS, published: true }],
+    published: [{ validator: THEIRS, initDataHash: `0x${"11".repeat(32)}`, blockNumber: 11512033n }]
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.next.kind, "request-approvals");
 });

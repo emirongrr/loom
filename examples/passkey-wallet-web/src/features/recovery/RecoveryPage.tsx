@@ -58,6 +58,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [onChainPending, setOnChainPending] = useState<OnChainPendingRecovery | null>(null);
   const [unreadableDrafts, setUnreadableDrafts] = useState(0);
   const [draftFailures, setDraftFailures] = useState<readonly DraftFailure[]>([]);
+  const [restoredDrafts, setRestoredDrafts] = useState<readonly { readonly validator: `0x${string}`; readonly published: boolean }[]>([]);
   const [gasPayerId, setGasPayerId] = useState("");
   const selectedId = sessionIdFromPath(path);
   const selected = path.startsWith("/recover/") ? sessions.find(session => session.id === selectedId) : undefined;
@@ -76,10 +77,11 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       sessions,
       published: onChainPublished,
       unreadableDrafts,
-      ...(passkeyPreparation ? {
-        restoredValidator: passkeyPreparation.validator,
-        restoredIsPublished: passkeyPreparation.alreadyDeployed
-      } : {}),
+      restored: restoredDrafts.length > 0
+        ? restoredDrafts
+        : passkeyPreparation
+          ? [{ validator: passkeyPreparation.validator, published: passkeyPreparation.alreadyDeployed }]
+          : [],
       ...(onChainPending ? { pending: onChainPending } : {})
     })
     : [];
@@ -120,6 +122,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       setOnChainPending(null);
       setUnreadableDrafts(0);
       setDraftFailures([]);
+      setRestoredDrafts([]);
       try {
         // A proposal already approved by guardians needs no session here, but a
         // reader who cannot see it has no way to know that.
@@ -135,7 +138,10 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         && draft.account.toLowerCase() === account.toLowerCase()
         && draft.configVersion === state.configVersion.toString()
       );
-      let restoredValidator: `0x${string}` | undefined;
+      // Every draft is tried, not just the first that opens. Stopping at the
+      // first left a second held draft untried, and its publication was then
+      // reported as belonging to some other device.
+      const restored: { validator: `0x${string}`; published: boolean }[] = [];
       // A draft that fails to open is not the same as no draft at all, and the
       // difference decides whether the reader should hunt for their passkey or
       // pay to publish a new one.
@@ -162,13 +168,17 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
             failures.push(describeDraftFailure({ stage: "mismatch", label: draft.label }));
             continue;
           }
-          setPasskeyLabel(draft.label);
-          setPasskeyPreparation(Object.freeze({ ...local, ...checked }));
-          setShowPasskey(true);
-          setPasskeyStatus(checked.alreadyDeployed ? "published" : "prepared");
-          restoredValidator = checked.validator;
-          setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
-          break;
+          restored.push({ validator: checked.validator, published: checked.alreadyDeployed });
+          // The passkey step can only carry one, so it keeps the first that
+          // opened; the rest are still reported, because the reader paid for
+          // them and only one of them can ever be proposed.
+          if (restored.length === 1) {
+            setPasskeyLabel(draft.label);
+            setPasskeyPreparation(Object.freeze({ ...local, ...checked }));
+            setShowPasskey(true);
+            setPasskeyStatus(checked.alreadyDeployed ? "published" : "prepared");
+            setMessage(checked.alreadyDeployed ? "Your encrypted recovery draft matched the live validator deployment. Continue with guardian approvals." : "Your encrypted recovery passkey draft was restored. Publish its exact validator call to continue.");
+          }
         } catch (error) {
           // A stale draft cannot hide another healthy draft or the live account
           // state, but it is still reported: silence here is what told a user
@@ -178,6 +188,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         }
       }
       setDraftFailures(failures);
+      setRestoredDrafts(restored);
 
       // Publishing costs gas and only one recovery can be proposed per nonce, so
       // an earlier publication this device cannot continue has to be said out
@@ -202,7 +213,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           consistent: scan.consistent,
           scannedFromBlock: scan.scannedFromBlock,
           heldDrafts: unreadable,
-          ...(restoredValidator ? { restored: restoredValidator } : {})
+          ...(restored[0] ? { restored: restored[0].validator } : {})
         }));
       }
     } catch (error) {
