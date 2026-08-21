@@ -270,6 +270,98 @@ function networkExchanges(events = []) {
     : []);
 }
 
+const SDK_TO_CHAIN_STAGES = [
+  {
+    id: "intent",
+    layer: "Wallet intent",
+    title: "prepareCalls",
+    artifact: "Typed calls + review model",
+    phase: "call-construction",
+    rpc: "none",
+    contract: "LoomAccount",
+    consumer: "execute(bytes32,bytes)",
+    explanation: "Encodes the exact targets, values, calldata, authority requirements, and execution mode the user is asked to authorize."
+  },
+  {
+    id: "operation",
+    layer: "Loom SDK",
+    title: "fillUserOperation",
+    artifact: "ERC-4337 UserOperation",
+    phase: "gas-estimation",
+    rpc: "eth_estimateUserOperationGas",
+    contract: "EntryPoint",
+    consumer: "simulateValidation / handleOps",
+    explanation: "Resolves nonce, fees, deployment data, and gas fields without making the bundler an authority over the account."
+  },
+  {
+    id: "authorization",
+    layer: "Passkey boundary",
+    title: "createPasskeySigner",
+    artifact: "Validator signature envelope",
+    phase: "webauthn",
+    rpc: "WebAuthn ceremony",
+    contract: "P256Validator",
+    consumer: "validateUserOp",
+    explanation: "Binds the passkey assertion to the canonical UserOperation hash, RP ID, origin, and configured validator."
+  },
+  {
+    id: "publication",
+    layer: "Bundler transport",
+    title: "sendUserOperation",
+    artifact: "UserOperation hash",
+    phase: "bundler-submission",
+    rpc: "eth_sendUserOperation",
+    contract: "EntryPoint",
+    consumer: "handleOps",
+    explanation: "Publishes an already authorized operation. The bundler can delay or reject it but cannot rewrite the signed intent."
+  },
+  {
+    id: "execution",
+    layer: "On-chain authority",
+    title: "validate + execute",
+    artifact: "Receipt + state transition",
+    phase: "inclusion",
+    rpc: "eth_getUserOperationReceipt",
+    contract: "ObservedAccount",
+    consumer: "validateUserOp → execute",
+    explanation: "EntryPoint invokes the account, the installed validator checks authority, and the account applies hooks before touching the target."
+  },
+  {
+    id: "finality",
+    layer: "Independent chain read",
+    title: "verify finality",
+    artifact: "Block + invariant evidence",
+    phase: "finality",
+    rpc: "eth_getTransactionReceipt / eth_blockNumber",
+    contract: "EntryPoint",
+    consumer: "UserOperationEvent + receipt",
+    explanation: "Treats inclusion, receipt provenance, expected state, and later-block confirmation as separate checks."
+  }
+];
+
+function latestPhaseEvent(events, phase) {
+  return [...events].reverse().find(event => event.phase === phase) ?? null;
+}
+
+function renderSdkRpcLayer(events = []) {
+  const deployment = currentDeployment(events);
+  const exchanges = networkExchanges(events);
+  const nodes = deployment?.nodes ?? [];
+  const addressFor = name => nodes.find(node => node.id === name || node.name === name)?.address ?? null;
+  const flow = $("#sdk-boundary-flow");
+  flow.className = "sdk-boundary-flow";
+  flow.innerHTML = SDK_TO_CHAIN_STAGES.map((stage, index) => {
+    const evidence = latestPhaseEvent(events, stage.phase);
+    const observed = Boolean(evidence);
+    const address = addressFor(stage.contract);
+    return `<article class="sdk-stage ${observed ? statusClass(evidence.status) : "architectural"}"><header><span>${index + 1}</span><div><small>${escapeHtml(stage.layer)}</small><strong>${escapeHtml(stage.title)}</strong></div><em>${observed ? "Observed" : "Architecture"}</em></header><p>${escapeHtml(stage.explanation)}</p><dl><div><dt>Produces</dt><dd>${escapeHtml(stage.artifact)}</dd></div><div><dt>Boundary</dt><dd><code>${escapeHtml(stage.rpc)}</code></dd></div><div><dt>Consumed by</dt><dd>${escapeHtml(stage.contract)}${address ? ` · ${escapeHtml(short(address, 8, 6))}` : ""}</dd></div></dl></article>`;
+  }).join("");
+
+  const matrix = $("#sdk-contract-matrix");
+  matrix.className = "sdk-contract-matrix";
+  matrix.innerHTML = `<div class="section-title"><div><p class="eyebrow">SDK → RPC → CONTRACT</p><h2>Compatibility map</h2><p>This is the join point between off-chain construction and on-chain authority. SDK output is replaceable; only the configured contracts and valid signatures can authorize state changes.</p></div><span>${escapeHtml(exchanges.length)} captured exchanges</span></div><div class="sdk-matrix-scroll"><table><thead><tr><th>SDK stage</th><th>Produced artifact</th><th>RPC / boundary</th><th>Core consumer</th><th>Run evidence</th></tr></thead><tbody>${SDK_TO_CHAIN_STAGES.map(stage => { const evidence = latestPhaseEvent(events, stage.phase); return `<tr><td><strong>${escapeHtml(stage.title)}</strong><small>${escapeHtml(stage.layer)}</small></td><td>${escapeHtml(stage.artifact)}</td><td><code>${escapeHtml(stage.rpc)}</code></td><td><strong>${escapeHtml(stage.contract)}</strong><small>${escapeHtml(stage.consumer)}</small></td><td><span class="pill ${evidence ? statusClass(evidence.status) : "waiting"}">${evidence ? escapeHtml(titleCase(evidence.status)) : "Not captured"}</span></td></tr>`; }).join("")}</tbody></table></div>`;
+}
+
 function filteredNetwork(events) {
   return networkExchanges(events).filter(exchange => {
     const method = exchange.request?.method ?? "unknown";
@@ -320,6 +412,7 @@ function renderOperationMap(events = []) {
 }
 
 function renderNetwork(events = []) {
+  renderSdkRpcLayer(events);
   renderNetworkOperationGroups(events);
   const exchanges = filteredNetwork(events);
   const rows = $("#network-rows");
@@ -1217,9 +1310,34 @@ function renderOpcodeExplorer(profile) {
   return `<section class="opcode-explorer"><div class="section-title"><div><p class="eyebrow">OPCODE EXPLORER</p><h2>Instruction-level EVM movement</h2><p>Frequency explains what dominated the run; the ordered lane keeps instructions attached to their original program counter, depth, and gas cost.</p></div><span>${escapeHtml(profile.totalSteps)} total steps${profile.stepsTruncated ? ` / first ${escapeHtml(allSteps.length)} captured` : ""}</span></div>${renderOpcodePhaseFlow(profile)}<div class="opcode-view-filter" role="group" aria-label="Opcode detail"><button type="button" data-opcode-view="important" aria-pressed="${state.opcodeView === "important"}">State and calls · ${escapeHtml(importantSteps.length)}</button><button type="button" data-opcode-view="all" aria-pressed="${state.opcodeView === "all"}">All captured steps · ${escapeHtml(allSteps.length)}</button></div><div class="opcode-layout"><div><h3>Opcode frequency</h3><div class="opcode-frequency">${counts.map(([opcode, count]) => `<div title="${escapeHtml(opcodePurpose(opcode))}"><code>${escapeHtml(opcode)}</code><span><i class="${opcodeGroup(opcode)}" style="width:${Math.max(2, (count / maxCount) * 100)}%"></i></span><strong>${escapeHtml(count)}</strong></div>`).join("")}</div></div><div><h3>EVM program counter</h3><p class="opcode-column-help">${escapeHtml(viewDescription)} PC is the byte offset in deployed bytecode; depth identifies the active call frame.</p><div class="opcode-lanes" aria-label="EVM PROGRAM COUNTER">${selectedSteps.map(step => `<article class="opcode-step ${opcodeGroup(step.op)}" style="--opcode-indent:${Math.min(Number(step.depth ?? 0), 6) * .6}rem"><span>${escapeHtml(Number(step.index) + 1)}</span><strong>${escapeHtml(step.op)}</strong><code>pc ${escapeHtml(step.pc)}</code><code>depth ${escapeHtml(step.depth)}</code><div title="${escapeHtml(step.gasCost)} gas"><i style="width:${Math.max(2, (Number(step.gasCost ?? 0) / maxGasCost) * 100)}%"></i></div><small>${escapeHtml(step.gasCost)} gas</small><p>${escapeHtml(opcodePurpose(step.op))}</p></article>`).join("")}</div></div></div><div class="opcode-legend"><span class="call">Call</span><span class="read">Read</span><span class="write">Write</span><span class="control">Control</span><span class="crypto">Crypto</span><span class="exit">Exit</span></div><p class="evidence-note">Stack, memory, and raw storage payloads are intentionally excluded to keep evidence bounded and prevent accidental disclosure. Program counters, depth, gas cost, opcode order, call frames, and the separately bounded state diff remain available.</p></section>`;
 }
 
+function renderEvmBehaviorSummary(tracePayload) {
+  const root = $("#evm-behavior-summary");
+  if (!tracePayload?.trace) {
+    root.className = "evm-behavior-summary empty";
+    root.textContent = "Local trace evidence is required for an EVM behavior profile.";
+    return;
+  }
+  const frames = flattenTraceFrames(tracePayload.trace);
+  const counts = tracePayload.opcodeProfile?.opcodeCounts ?? {};
+  const count = names => names.reduce((total, name) => total + Number(counts[name] ?? 0), 0);
+  const metrics = [
+    { label: "State access", value: count(["SLOAD", "SSTORE", "TLOAD", "TSTORE"]), detail: `${count(["SLOAD", "TLOAD"])} reads · ${count(["SSTORE", "TSTORE"])} writes`, tone: "state" },
+    { label: "External calls", value: count(["CALL", "STATICCALL", "DELEGATECALL", "CALLCODE"]), detail: `${Math.max(0, frames.length - 1)} decoded child frames`, tone: "call" },
+    { label: "Event logs", value: count(["LOG0", "LOG1", "LOG2", "LOG3", "LOG4"]), detail: "LOG opcodes in this execution", tone: "event" },
+    { label: "Hashing", value: count(["KECCAK256", "SHA3"]), detail: "memory commitments and mapping keys", tone: "crypto" },
+    { label: "Control flow", value: count(["JUMP", "JUMPI", "JUMPDEST"]), detail: "branches and destinations", tone: "control" },
+    { label: "Exit / revert", value: count(["RETURN", "REVERT", "STOP", "INVALID", "SELFDESTRUCT"]), detail: `${frames.filter(frame => frame.error).length} reverted frames`, tone: "exit" }
+  ];
+  const maximum = Math.max(1, ...metrics.map(metric => metric.value));
+  const hotFrames = [...frames].sort((left, right) => Number(traceBigInt(right.gasUsed) - traceBigInt(left.gasUsed))).slice(0, 4);
+  root.className = "evm-behavior-summary";
+  root.innerHTML = `<div class="evm-behavior-heading"><div><p class="eyebrow">TRANSACTION BEHAVIOR MAP</p><h2>What this execution made the EVM do</h2><p>This profile is descriptive evidence for one transaction, not a gas promise for every input or account configuration.</p></div><button type="button" data-open-execution-studio>Model another function</button></div><div class="evm-behavior-grid">${metrics.map(metric => `<article class="${escapeHtml(metric.tone)}"><span>${escapeHtml(metric.label)}</span><strong>${escapeHtml(metric.value)}</strong><p>${escapeHtml(metric.detail)}</p><i><b style="width:${Math.max(2, metric.value / maximum * 100)}%"></b></i></article>`).join("")}</div><div class="evm-route-map"><div><span>1</span><strong>Calldata</strong><small>selector + ABI arguments</small></div><i>→</i><div><span>2</span><strong>Authority</strong><small>EntryPoint + validator checks</small></div><i>→</i><div><span>3</span><strong>Account execution</strong><small>hooks + policy + calls</small></div><i>→</i><div><span>4</span><strong>State and logs</strong><small>observable chain effects</small></div><i>→</i><div><span>5</span><strong>Receipt</strong><small>gas + status + provenance</small></div></div><section class="evm-hot-frames"><div class="section-title"><div><p class="eyebrow">GAS HOTSPOTS</p><h3>Most expensive inclusive call frames</h3></div><span>Child gas overlaps parent gas</span></div>${hotFrames.map((frame, index) => `<button type="button" data-trace-path="${escapeHtml(frame.path)}" data-trace-contract="${escapeHtml(frame.contractId ?? "")}" data-trace-selector="${escapeHtml(frame.selector ?? "")}"><span>${index + 1}</span><div><strong>${escapeHtml(frame.contractName ?? short(frame.to, 10, 8))}</strong><code>${escapeHtml(traceLabel(frame))}</code></div><em>${escapeHtml(formatTraceNumber(frame.gasUsed))} gas</em></button>`).join("")}</section>`;
+}
+
 function renderEvmTrace(tracePayload) {
   const root = $("#evm-trace");
   const summary = tracePayload?.summary;
+  renderEvmBehaviorSummary(tracePayload);
   if (!tracePayload?.trace) {
     root.className = "evm-trace empty";
     root.textContent = "Run the deterministic scenario to capture a transaction trace.";
@@ -1378,6 +1496,11 @@ $("#trace-overlay-toggle").addEventListener("click", () => {
 });
 
 $("#panel-evm").addEventListener("click", event => {
+  const openStudio = event.target.closest("[data-open-execution-studio]");
+  if (openStudio) {
+    switchTab("execution", true);
+    return;
+  }
   const opcodeView = event.target.closest("[data-opcode-view]");
   if (opcodeView) {
     state.opcodeView = opcodeView.dataset.opcodeView;

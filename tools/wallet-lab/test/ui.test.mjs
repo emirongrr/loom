@@ -37,7 +37,7 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /Local deterministic deployment/u);
   assert.match(html, /Connect Sepolia deployment/u);
   assert.match(html, /sepolia-provider/u);
-  assert.match(html, /System architecture/u);
+  assert.match(html, /Loom architecture/u);
   assert.match(html, /account-model-explainer/u);
   assert.match(html, /contract-dossier/u);
   assert.match(html, /abi-groups/u);
@@ -52,7 +52,11 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /Static architecture/u);
   assert.doesNotMatch(html, /Observed operations/u);
   assert.doesNotMatch(html, /panel-operations/u);
-  assert.match(html, /RPC by operation/u);
+  assert.match(html, /RPC &amp; SDK/u);
+  assert.match(html, /id="sdk-boundary-flow"/u);
+  assert.match(html, /id="sdk-contract-matrix"/u);
+  assert.match(script, /function renderSdkRpcLayer\(/u);
+  assert.match(script, /SDK_TO_CHAIN_STAGES/u);
   assert.doesNotMatch(html, /<details open[^>]*>\s*<summary>Technical details/u);
   assert.match(script, /function renderNetwork\(/u);
   assert.match(script, /function renderArchitectureSummary\(/u);
@@ -141,6 +145,9 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(script, /Observed state changes/u);
   assert.match(script, /Connected wallet approval/u);
   assert.match(script, /function renderEvmTrace\(/u);
+  assert.match(html, /id="evm-behavior-summary"/u);
+  assert.match(script, /function renderEvmBehaviorSummary\(/u);
+  assert.match(script, /State access/u);
   assert.match(script, /function flattenTraceFrames\(/u);
   assert.match(script, /function renderTraceWaterfall\(/u);
   assert.match(script, /function renderTraceFrameInspector\(/u);
