@@ -33,6 +33,7 @@ import { buildGuardianTree, guardianLeaf } from "../../packages/guardian/src/ind
 import {
   base64UrlEncode, deriveAccountAddress, encodeValidatorSignature, encodeWebAuthnSignature,
   EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256RecoveryValidatorFactoryAbi,
+  RecoveryIntentBoardAbi,
   P256ValidatorAbi, packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
 import { createRecoveryIntentBoardReader, reconcileRecoveryDiscovery } from "../../packages/sdk/dist/recovery.js";
@@ -281,6 +282,22 @@ async function main() {
     await send(rpc, GRIEFER_ADDRESS, board, encodeFunctionData({ abi: boardAbi, functionName: "announce",
       args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, BigInt(2_000_000_000 + i)] }), "0x2dc6c0");
   }
+  // The wallet encodes announcements with the generated ABI, this rehearsal with
+  // a hand-written one. Proving the board accepts one says nothing about the
+  // other unless they produce the same bytes, so that is checked rather than
+  // assumed -- an argument reordered in the generated ABI would otherwise ship
+  // an announcement nobody here ever sent.
+  const walletAnnounce = encodeFunctionData({
+    abi: RecoveryIntentBoardAbi, functionName: "announce",
+    args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, 2_000_000_000]
+  });
+  const rehearsalAnnounce = encodeFunctionData({
+    abi: boardAbi, functionName: "announce",
+    args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, 2_000_000_000]
+  });
+  if (walletAnnounce !== rehearsalAnnounce) fail("the wallet's announcement encoding differs from the one proven here");
+  ok("the wallet's generated ABI encodes the same announcement byte for byte");
+
   const pendingAfterFlood = await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "pendingRecoveries", args: [account] }));
   // Field 5 of PendingRecovery is readyAt; non-zero means a recovery is pending.
   if (BigInt(`0x${pendingAfterFlood.slice(2 + 64 * 5, 2 + 64 * 6)}`) !== 0n) fail("an announcement created a pending recovery");
