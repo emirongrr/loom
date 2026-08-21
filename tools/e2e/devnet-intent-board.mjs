@@ -248,16 +248,20 @@ async function main() {
   const newValidatorInit = encodeFunctionData({ abi: P256ValidatorAbi, functionName: "initialize",
     args: [newKey.x, newKey.y, rpIdHash, originHash, policyHook] });
   const initDataHash = keccak256(newValidatorInit);
+  // Chosen before the address exists, because the address commits to it
+  // (ADR-0026): the same key rotating to a different set is a different
+  // validator.
+  const newRoot = keccak256(stringToHex("loom.devnet.board.newroot"));
   const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
   const newValidator = `0x${(await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
-    abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress", args: [account, recoveryNonce, initDataHash] }))).slice(-40)}`;
+    abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress",
+    args: [account, recoveryNonce, initDataHash, newRoot, THRESHOLD] }))).slice(-40)}`;
   await send(rpc, DEPLOYER_ADDRESS, recoveryValidatorFactory, encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi, functionName: "deploy",
-    args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook] }), "0x4c4b40");
+    args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook, newRoot, THRESHOLD] }), "0x4c4b40");
 
   const oldValidators = [validator];
   const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
-  const newRoot = keccak256(stringToHex("loom.devnet.board.newroot"));
   const configVersion = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "configVersion" })));
   const digest = await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "proposalDigest",
     args: [account, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, configVersion, recoveryNonce] }));
