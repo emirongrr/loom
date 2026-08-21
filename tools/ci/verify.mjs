@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createServer } from "node:net";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -73,6 +74,8 @@ run("Account SDK build", npm, ["run", "account:build"]);
 run("Wallet engine E2E tests", process.execPath, ["--test", "test/e2e/wallet-engine.e2e.test.mjs"]);
 run("CI program structure", process.execPath, ["tools/ci/validate-ci-program.mjs"]);
 run("CI program structure tests", process.execPath, ["--test", "tools/ci/validate-ci-program.test.mjs"]);
+run("Workspace install staleness tests", process.execPath, ["--test", "tools/ci/install-if-stale.test.mjs"]);
+run("Devnet exclusivity tests", process.execPath, ["--test", "tools/e2e/exclusive-devnet.test.mjs"]);
 run("Critical guard mutation manifest", npm, ["run", "test:mutation:critical:self-test"]);
 run("Release nightly evidence tests", npm, ["run", "release:nightly:test"]);
 run("Certora program structure", process.execPath, ["tools/formal/validate-certora-program.mjs"]);
@@ -179,3 +182,42 @@ run("Contract tests", forge, ["test"]);
 if (full) run("CI fuzz and invariants", forge, ["test"], { FOUNDRY_PROFILE: "ci" });
 assertExperimentalAccountCryptoAbsentFromContracts();
 assertNoHardcodedPrivacyOrRpcDefaults();
+
+// The devnet rehearsals ran only in CI, which meant a contract ABI change could
+// pass every gate here and break there -- and did: the intent board rehearsal
+// still called the recovery factory with the arguments it had before the
+// rotated guardian set was added to them. Nothing local encodes a contract call
+// the way these do, so nothing local could catch it.
+//
+// Measured at 91s for the seven together, against a run already minutes long.
+// `e2e:bundler-devnet` stays out: it installs the CLI and monitoring trees
+// first, which is a different kind of cost and a different kind of failure.
+for (const rehearsal of [
+  "e2e:devnet",
+  "e2e:guardian-devnet",
+  "e2e:social-recovery",
+  "e2e:intent-board",
+  "e2e:session-keys",
+  "e2e:vault-limits",
+  "e2e:atomic-first-send"
+]) {
+  // On a port of its own, chosen now rather than fixed, so that verification
+  // does not fail merely because a devnet or wallet-lab session is already
+  // running on 8545 -- and, more importantly, does not quietly rehearse
+  // against it.
+  run(`Devnet rehearsal: ${rehearsal}`, npm, ["run", rehearsal], {
+    DEVNET_RPC_URL: `http://127.0.0.1:${await freePort()}`
+  });
+}
+
+/** A port the operating system says is free right now. */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}

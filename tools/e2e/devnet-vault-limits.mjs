@@ -33,9 +33,10 @@ import {
   packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
 import { encodeAbiParameters, encodeFunctionData, getAddress, keccak256, parseAbi, stringToHex } from "viem";
+import { devnetPort, requireExclusiveDevnet } from "./exclusive-devnet.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const RPC_URL = "http://127.0.0.1:8545";
+const RPC_URL = process.env.DEVNET_RPC_URL ?? "http://127.0.0.1:8545";
 const CHAIN_ID = 31337;
 const RP_ID = "localhost";
 const ORIGIN = "http://localhost:5173";
@@ -217,7 +218,8 @@ async function throughTimelock(rpc, { account, entryPoint, validator, key, targe
 
 async function main() {
   console.log("==> Starting anvil devnet");
-  anvil = spawn(bin("anvil"), ["--port", "8545", "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
+  await requireExclusiveDevnet(RPC_URL);
+  anvil = spawn(bin("anvil"), ["--port", devnetPort(RPC_URL), "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
   anvil.on("error", error => fail(`anvil failed to start: ${error.message}`));
   const rpc = createJsonRpcClient(RPC_URL);
   await waitForRpc(rpc);

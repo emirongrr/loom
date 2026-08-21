@@ -41,6 +41,7 @@ import {
   encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, serializeSignature, stringToHex
 } from "viem";
 import { privateKeyToAccount, sign } from "viem/accounts";
+import { devnetPort, requireExclusiveDevnet } from "./exclusive-devnet.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RPC_URL = process.env.DEVNET_RPC_URL ?? "http://127.0.0.1:8545";
@@ -184,7 +185,8 @@ const accountAbi = parseAbi([
 async function main() {
   const rpc = createJsonRpcClient(RPC_URL);
   console.log("==> Starting anvil devnet");
-  anvil = spawn(bin("anvil"), ["--port", "8545", "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
+  await requireExclusiveDevnet(RPC_URL);
+  anvil = spawn(bin("anvil"), ["--port", devnetPort(RPC_URL), "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
   anvil.on("error", e => fail(`anvil failed to start: ${e.message}`));
   await waitForRpc(rpc);
   if (!(await probeP256Precompile(rpc)).supported) fail("devnet P-256 precompile probe failed");
