@@ -772,7 +772,7 @@ function RecoveryProposalSessionView({ session, repository, onChanged, onRecover
       assertSuccessfulTransactionReceipt(await publicClients.forEndpoint(config.rpcUrl).waitForTransactionReceipt({ hash }));
       setAnnounced(hash);
       setAnnounceMessage("Announced. Guardians who hold an invitation for this account will now see this request in their own wallet.");
-    } catch (error) { setAnnounceMessage(safeRecoveryMessage(error)); }
+    } catch (error) { setAnnounceMessage(announceFailure(error)); }
     finally { setBusy(false); }
   };
 
@@ -890,6 +890,22 @@ function shortStage(stage: RecoverySession["stage"]): string {
 }
 
 function shortAddress(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
+
+/**
+ * Why an announcement did not go out, in the announcer's own terms.
+ *
+ * `safeRecoveryMessage` collapses everything into one sentence about the
+ * account, the network and the RPC, which is right where an error might carry
+ * something about the recovery itself. Nothing on this path does: every message
+ * here is written either by this repository -- the deployment loader, the
+ * runtime verifier -- or by the reader's own wallet telling them what it
+ * refused. Collapsing those hid the one thing that would let them fix it.
+ */
+function announceFailure(error: unknown): string {
+  if (error instanceof GuardianRecoveryError) return `${error.code}: ${error.safeMessage}`;
+  if (error instanceof Error && error.message) return error.message.slice(0, 400);
+  return safeRecoveryMessage(error);
+}
 
 function safeRecoveryMessage(error: unknown): string {
   if (error instanceof GuardianRecoveryError) return error.safeMessage;
