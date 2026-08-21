@@ -47,6 +47,7 @@
           <button type="button" role="tab" id="tab-operations" aria-controls="panel-operations" aria-selected="false" data-tab="operations">Observed operations</button>
           <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">RPC by operation <span id="network-count">0</span></button>
           <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">EVM trace</button>
+          <button type="button" role="tab" id="tab-execution" aria-controls="panel-execution" aria-selected="false" data-tab="execution">Execution studio</button>
         </nav>
 
         <div id="failure-panel" class="failure-banner" hidden><span>First failing boundary</span><strong id="failure"></strong></div>
@@ -58,7 +59,6 @@
             <article class="surface graph-surface"><div class="section-title graph-heading"><div><p class="eyebrow">DEPLOYMENT TOPOLOGY</p><h2>Contracts, modules, and authority flow</h2><p>Static architecture explains what may connect. The trace overlay shows what one captured transaction actually called.</p></div><div class="graph-tools" aria-label="Graph view controls"><button type="button" id="trace-overlay-toggle" aria-pressed="false">Show observed trace</button><button type="button" id="graph-zoom-out" aria-label="Zoom out">−</button><strong id="graph-zoom-level">100%</strong><button type="button" id="graph-zoom-in" aria-label="Zoom in">+</button><button type="button" id="graph-reset-view">Reset view</button></div></div><div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div><div class="architecture-legend"><span class="core">Core</span><span class="transport-required">ERC-4337 transport</span><span class="profile-required">Current profile</span><span class="optional">Optional module</span><span class="test-only">Test only</span></div><div class="graph-legend" aria-label="Relationship legend"><span><i class="edge-authority"></i>Authority / validation</span><span><i class="edge-call"></i>Static architecture</span><span><i class="edge-create"></i>Creation / binding</span><span><i class="edge-observed"></i>Observed EVM call</span></div></article>
             <aside class="contract-sidebar"><article id="contract-dossier" class="surface contract-dossier empty">Select a topology node to inspect its role, fields, and relationships.</article><article class="surface abi-catalog"><div id="contract-heading" class="section-title"><div><p class="eyebrow">ABI SURFACE</p><h2>Contract interface</h2></div></div><label class="compact-search"><span>Filter ABI</span><input id="function-search" type="search" placeholder="Function, constant, event, error..." /></label><div id="abi-groups" class="abi-groups empty">Select a contract.</div></article><article id="function-inspector" class="surface function-inspector empty">Select a function to inspect why it exists and how it behaves.</article></aside>
           </div>
-          <article id="execution-workspace" class="surface execution-workspace empty">Select a function to model its inputs and connect future execution evidence.</article>
         </section>
 
         <section id="panel-operations" class="workspace-panel" role="tabpanel" aria-labelledby="tab-operations" hidden>
@@ -71,6 +71,14 @@
         </section>
 
         <section id="panel-evm" class="workspace-panel" role="tabpanel" aria-labelledby="tab-evm" hidden><article class="surface evm-surface"><div class="section-title"><div><p class="eyebrow">OBSERVED EXECUTION</p><h2>EVM execution debugger</h2></div><span id="evm-trace-summary">No trace captured</span></div><div id="evm-trace" class="evm-trace empty">Local evidence is required to inspect a transaction trace.</div></article></section>
+
+        <section id="panel-execution" class="workspace-panel" role="tabpanel" aria-labelledby="tab-execution" hidden>
+          <article class="surface execution-studio-intro"><div><p class="eyebrow">EXECUTION STUDIO</p><h2>Execute a contract function and follow the EVM</h2><p>Select any contract and ABI function in this deployment. Wallet Lab binds inputs, calldata, output, call frames, storage deltas, gas, events, and opcode evidence to the same simulation or mined transaction.</p></div><div class="execution-studio-key"><span>Local</span><strong>Full debug trace</strong><span>Sepolia</span><strong>RPC-dependent evidence</strong></div></article>
+          <div class="execution-studio-layout">
+            <aside id="execution-contract-browser" class="surface execution-contract-browser">Loading deployment functions...</aside>
+            <article id="execution-workspace" class="surface execution-workspace empty">Select a function to model its inputs and inspect its execution evidence.</article>
+          </div>
+        </section>
       </div>
     </main>
     <div id="copy-status" class="sr-only" aria-live="polite"></div>
