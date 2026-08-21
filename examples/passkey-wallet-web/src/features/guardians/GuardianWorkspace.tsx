@@ -5,7 +5,6 @@ import { receiveGuardianInvite } from "../../transports/invitations";
 import { shorten } from "../../components/AccountHeader";
 import { useAppServices } from "../../app/AppServices";
 import { FreezeDialog } from "./FreezeDialog";
-import { SignWithoutInvitation } from "./SignWithoutInvitation";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import type { GuardianVaultIssue, GuardianVaultRecord } from "../../storage/guardianVault";
 import { GUARDIAN_ACCOUNT_LABEL } from "../security/guardianInvitation";
@@ -233,10 +232,8 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
       {/* This section used to disappear entirely without one, so a guardian who
           had not accepted their invitation yet found nowhere to paste and no
           reason given -- and tried the invitation box instead. */}
-      {reviewableRecords.length === 0 && <p className="callout warning"><strong>No accepted invitation for this account yet.</strong> Reviewing a request here needs the capability an invitation carries. If you were never sent one, use <em>Sign without an invitation</em> below instead — it produces the signature, and the person recovering the account supplies the rest.</p>}
+      {reviewableRecords.length === 0 && <p className="callout warning"><strong>No accepted invitation for this account yet.</strong> A guardian approves with the proof and salt their invitation carries, and the same capability is what lets an approval be published on chain, so the invitation has to come first. Ask the recovering person for it -- issuing one costs them nothing and needs no transaction -- and accept it above.</p>}
       <label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} disabled={reviewableRecords.length === 0} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim() || reviewableRecords.length === 0} onClick={() => void reviewRecovery()}>Review recovery request</button></section>
-    <SignWithoutInvitation account={account} />
-
     {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
       {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {

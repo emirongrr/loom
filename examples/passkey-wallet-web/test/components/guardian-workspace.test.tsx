@@ -125,14 +125,14 @@ test("the recovery review section is present before any invitation is accepted, 
 
   await panel.findByRole("heading", { name: "Review a recovery request" });
   await panel.findByText(/No accepted invitation for this account yet/iu);
-  // A guardian who was never invited is not turned away: the capability-free
-  // path is named here, and is on the page.
-  expect(panel.getAllByText(/Sign without an invitation/iu).length).toBeGreaterThan(0);
-  await panel.findByRole("heading", { name: "Sign without an invitation" });
+  // The invitation is the way in, and the reason is stated rather than left as
+  // a rule: the same capability that lets a guardian approve is what lets an
+  // approval be published on chain.
+  expect(panel.getByText(/published on chain/iu)).toBeTruthy();
+  expect(panel.getByText(/issuing one costs them nothing/iu)).toBeTruthy();
 
-  // One route is closed and one is open, which is the whole point: the
-  // capability path needs an invitation, the signature path does not.
+  // Closed until the invitation is accepted, rather than absent with no reason.
   const boxes = panel.getAllByPlaceholderText(/loom\.recovery-request/iu) as HTMLTextAreaElement[];
-  expect(boxes.some(box => box.disabled)).toBe(true);
-  expect(boxes.some(box => !box.disabled)).toBe(true);
+  expect(boxes.length).toBe(1);
+  expect(boxes[0]!.disabled).toBe(true);
 });
