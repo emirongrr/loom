@@ -1,3 +1,4 @@
+import { PendingRecoveryBanner } from "../wallet/PendingRecoveryBanner";
 import { useCallback, useEffect, useState } from "react";
 import { AccountHeader, type BalanceView } from "../../components/AccountHeader";
 import { SecurityStatus } from "../../components/SecurityStatus";
@@ -115,6 +116,10 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
   const openSend = (preselect?: SendableAsset) => setSend({ open: true, ...(preselect ? { preselect } : {}) });
 
   return <div className="page-stack">
+    {/* First on the screen: a recovery in flight replaces every validator on
+        this account, and the owner is the only person who can say whether it
+        is theirs. */}
+    <PendingRecoveryBanner account={account} />
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
 
     <div className="quick-actions">
