@@ -88,9 +88,26 @@ export async function sendEip1193Transaction(input: {
   readonly data: Hex;
   readonly value?: bigint;
 }): Promise<Hex> {
-  const liveChain = await input.provider.request({ method: "eth_chainId" });
-  if (typeof liveChain !== "string" || BigInt(liveChain) !== BigInt(input.chainId)) {
-    throw new Error(`Switch the publishing wallet to chain ${input.chainId}.`);
+  const onExpectedChain = async () => {
+    const live = await input.provider.request({ method: "eth_chainId" });
+    return typeof live === "string" && BigInt(live) === BigInt(input.chainId);
+  };
+  if (!await onExpectedChain()) {
+    // Ask, rather than refuse and leave the reader to find the setting. The
+    // wallet still prompts and the reader still decides; this only saves them
+    // reading a chain id out of an error message.
+    try {
+      await input.provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: `0x${input.chainId.toString(16)}` }]
+      });
+    } catch { /* Declined, or the wallet cannot switch. The check below says so. */ }
+    // Verified rather than assumed: a wallet may reject the request, or accept
+    // it and do nothing. Sending to a wallet that never moved would put this
+    // transaction on the wrong chain.
+    if (!await onExpectedChain()) {
+      throw new Error(`Switch the publishing wallet to chain ${input.chainId}.`);
+    }
   }
   const accounts = await input.provider.request({ method: "eth_requestAccounts" });
   if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(accounts[0])) {

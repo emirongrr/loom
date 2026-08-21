@@ -58,7 +58,10 @@ test("permissionless publication rejects the wrong chain and submits only the pr
   const methods: string[] = [];
   const wrongChain = { request: async ({ method }: { method: string }) => { methods.push(method); return "0x1"; } };
   await assert.rejects(publishRecoveryValidator({ provider: wrongChain, chainId: 11155111, deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true } }), /switch/iu);
-  assert.deepEqual(methods, ["eth_chainId"]);
+  // Asked to switch, then checked again rather than trusted: a wallet may
+  // reject the request, or accept it and stay where it was. Sending to one that
+  // never moved would put the transaction on the wrong chain.
+  assert.deepEqual(methods, ["eth_chainId", "wallet_switchEthereumChain", "eth_chainId"]);
 
   let transaction: unknown;
   const provider = { request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {
@@ -70,4 +73,35 @@ test("permissionless publication rejects the wrong chain and submits only the pr
   const hash = await publishRecoveryValidator({ provider, chainId: 11155111, deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true } });
   assert.equal(hash, `0x${"ab".repeat(32)}`);
   assert.deepEqual(transaction, { from: POLICY, to: FACTORY, data: "0x1234", value: "0x0" });
+});
+
+test("a wallet that switches when asked is not refused", async () => {
+  const methods: string[] = [];
+  let chain = "0x1";
+  const provider = { request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {
+    methods.push(method);
+    if (method === "eth_chainId") return chain;
+    if (method === "wallet_switchEthereumChain") { chain = "0xaa36a7"; return null; }
+    if (method === "eth_requestAccounts") return [POLICY];
+    void params;
+    return `0x${"cd".repeat(32)}`;
+  } };
+  const hash = await publishRecoveryValidator({
+    provider, chainId: 11155111, deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true }
+  });
+  assert.match(hash, /^0x[0-9a-f]{64}$/u);
+  assert.deepEqual(methods.slice(0, 3), ["eth_chainId", "wallet_switchEthereumChain", "eth_chainId"]);
+});
+
+// A wallet that accepts the request and stays put must not be sent a
+// transaction: it would land on whatever chain the wallet is actually on.
+test("a wallet that claims to switch but does not is still refused", async () => {
+  const provider = { request: async ({ method }: { method: string }) => {
+    if (method === "eth_chainId") return "0x1";
+    if (method === "wallet_switchEthereumChain") return null;
+    return `0x${"ef".repeat(32)}`;
+  } };
+  await assert.rejects(publishRecoveryValidator({
+    provider, chainId: 11155111, deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true }
+  }), /switch/iu);
 });
