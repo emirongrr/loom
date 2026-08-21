@@ -1,13 +1,6 @@
-import type { RecoverySessionStage } from "./recoverySession";
+import { ORDER, recoveryViewStage, type RecoveryViewStage } from "./recoveryProgress";
 
-export type RecoveryViewStage = "account-verification" | "validator-provisioning" | "guardian-approvals" | "delay-execution";
-
-export function recoveryViewStage(input: { showingPasskey?: boolean; sessionStage?: RecoverySessionStage }): RecoveryViewStage {
-  if (!input.sessionStage) return input.showingPasskey ? "validator-provisioning" : "account-verification";
-  return ["request-created", "collecting", "ready-to-propose"].includes(input.sessionStage)
-    ? "guardian-approvals"
-    : "delay-execution";
-}
+export { recoveryViewStage, type RecoveryViewStage };
 
 export function RecoveryStepper({ stage }: { stage: RecoveryViewStage }) {
   const steps: readonly [RecoveryViewStage, string][] = [
@@ -16,7 +9,14 @@ export function RecoveryStepper({ stage }: { stage: RecoveryViewStage }) {
     ["guardian-approvals", "Guardian approvals"],
     ["delay-execution", "Wait and execute"]
   ];
+  const current = ORDER.indexOf(stage);
   return <ol className="stepper" aria-label="Recovery stages">
-    {steps.map(([id, label], index) => <li key={id} className={stage === id ? "active" : ""} aria-current={stage === id ? "step" : undefined}><span>{index + 1}</span>{label}</li>)}
+    {steps.map(([id, label], index) => <li
+      key={id}
+      // Steps already passed are marked done rather than left looking pending,
+      // so the reader can see how far they are rather than only where they are.
+      className={index < current ? "done" : stage === id ? "active" : ""}
+      aria-current={stage === id ? "step" : undefined}
+    ><span>{index + 1}</span>{label}</li>)}
   </ol>;
 }

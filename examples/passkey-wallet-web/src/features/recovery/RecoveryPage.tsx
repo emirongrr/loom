@@ -466,7 +466,11 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       <h1 id="recovery-title">Recover account control</h1>
       <p>Recovery replaces account validators only after the existing guardian threshold approves, the on-chain delay completes, and the exact reviewed request still matches live state.</p>
       {preferredGasPayer && <div className="callout success"><strong>{sourceWalletOpen ? `${preferredGasPayer.label} remains open.` : `${preferredGasPayer.label} is selected as gas payer.`}</strong><p>You entered recovery from {shortAddress(preferredGasPayer.account)}. It is preselected to pay the factory gas when the recovery target is a different account, and its passkey will be requested only when publishing.</p></div>}
-      <RecoveryStepper stage={recoveryViewStage({ showingPasskey: showPasskey })} />
+      <RecoveryStepper stage={recoveryViewStage({
+        showingPasskey: showPasskey,
+        validatorPublished: onChainPublished.length > 0 || restoredDrafts.some(entry => entry.published),
+        pendingOnChain: onChainPending?.pending === true
+      })} />
       {!showPasskey && <><label className="field"><span>Account to recover</span><input value={account} onChange={event => { setAccount(event.target.value); setInspection({ status: "idle" }); setPasskeyPreparation(null); }} placeholder="0x…" spellCheck={false} /></label>
       <div className="landing-actions"><button className="secondary" onClick={onClose}>{preferredGasPayer && sourceWalletOpen ? `Return to ${preferredGasPayer.label}` : "Back to wallets"}</button><button className="primary" disabled={inspection.status === "loading"} onClick={() => void inspect()}>{inspection.status === "loading" ? "Checking live state…" : "Check recovery"}</button></div></>}
       {inspection.status === "protected" && <div className="callout success"><strong>Guardian recovery is active.</strong><p>{inspection.threshold} approvals required · config version {inspection.configVersion} · {inspection.validators} validator(s)</p></div>}
