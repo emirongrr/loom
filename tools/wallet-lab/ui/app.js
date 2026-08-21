@@ -1296,10 +1296,6 @@ function render(artifact) {
   $("#metric-duration-context").textContent = artifact.finishedAt ? "From environment startup through final evidence." : "The scenario is still collecting evidence.";
   $("#network-count").textContent = networkExchanges(artifact.events).length;
   $("#contract-count").textContent = currentDeployment(artifact.events)?.nodes?.length ?? 0;
-  renderOperationMap(artifact.events);
-  renderJourney(artifact);
-  renderOperation(artifact.events);
-  renderPasskeyProof(artifact.events);
   renderNetwork(artifact.events);
   renderDeployment(artifact.events);
   renderEvmTrace(currentTrace(artifact.events));
@@ -1345,15 +1341,6 @@ $("#network-operation-groups").addEventListener("click", event => {
   state.selectedNetworkOperation = button.dataset.networkOperation;
   state.selectedNetworkIndex = 0;
   renderNetwork(state.artifact.events);
-});
-
-$("#operation-map").addEventListener("click", event => {
-  const button = event.target.closest("[data-open-network-operation]");
-  if (!button || !state.artifact) return;
-  state.selectedNetworkOperation = button.dataset.openNetworkOperation;
-  state.selectedNetworkIndex = 0;
-  renderNetwork(state.artifact.events);
-  switchTab("network", true);
 });
 
 $("#panel-architecture").addEventListener("click", event => {

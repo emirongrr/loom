@@ -15,11 +15,11 @@ test("Wallet Lab browser entrypoint is valid ECMAScript module syntax", () => {
   assert.equal(result.status, 0, result.stderr);
 });
 
-test("Wallet Lab presents wallet evidence as a plain-language journey", () => {
+test("Wallet Lab presents architecture, network, EVM, and execution evidence without redundant panels", () => {
   const html = readFileSync(new URL("index.html", uiRoot), "utf8");
   const script = readFileSync(new URL("app.js", uiRoot), "utf8");
 
-  for (const panel of ["architecture", "operations", "network", "evm"]) {
+  for (const panel of ["architecture", "network", "evm", "execution"]) {
     assert.match(html, new RegExp(`id="tab-${panel}"[^>]+role="tab"|role="tab"[^>]+id="tab-${panel}"`, "u"));
     assert.match(html, new RegExp(`id="panel-${panel}"[^>]+role="tabpanel"|role="tabpanel"[^>]+id="panel-${panel}"`, "u"));
   }
@@ -50,15 +50,11 @@ test("Wallet Lab presents wallet evidence as a plain-language journey", () => {
   assert.match(html, /graph-reset-view/u);
   assert.match(html, /trace-overlay-toggle/u);
   assert.match(html, /Static architecture/u);
-  assert.match(html, /Observed operations/u);
+  assert.doesNotMatch(html, /Observed operations/u);
+  assert.doesNotMatch(html, /panel-operations/u);
   assert.match(html, /RPC by operation/u);
-  assert.match(html, /All technical stages/u);
   assert.doesNotMatch(html, /<details open[^>]*>\s*<summary>Technical details/u);
-  assert.match(script, /function renderJourney\(/u);
-  assert.match(script, /function renderOperation\(/u);
-  assert.match(script, /function renderPasskeyProof\(/u);
   assert.match(script, /function renderNetwork\(/u);
-  assert.match(script, /function renderOperationMap\(/u);
   assert.match(script, /function renderArchitectureSummary\(/u);
   assert.match(script, /function renderAccountModelExplainer\(/u);
   assert.match(script, /function runOutcomeLabel\(/u);
