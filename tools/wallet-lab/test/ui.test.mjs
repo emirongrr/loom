@@ -102,12 +102,16 @@ test("Wallet Lab presents wallet evidence as a plain-language journey", () => {
   assert.match(script, /function renderExecutionWorkspace\(/u);
   assert.match(script, /defaultExecutionArgument/u);
   assert.match(script, /restore-example-inputs/u);
-  assert.match(script, /Safe deterministic examples are filled in automatically/u);
+  assert.match(script, /Deployment- and scenario-aware examples are filled in automatically/u);
   assert.match(html, /data-tab="execution"/u);
   assert.match(html, /id="panel-execution"/u);
   assert.match(html, /id="execution-contract-browser"/u);
   assert.match(script, /function renderExecutionCatalog\(/u);
   assert.match(script, /function renderExecutionJourney\(/u);
+  assert.match(script, /function renderExecutionGraph\(/u);
+  assert.match(script, /EXECUTION GRAPH/u);
+  assert.match(script, /function renderOpcodePhaseFlow\(/u);
+  assert.match(script, /EVM PHASE FLOW/u);
   assert.match(script, /Selected call route/u);
   assert.match(script, /function opcodePurpose\(/u);
   assert.match(html, /EXECUTION STUDIO/u);

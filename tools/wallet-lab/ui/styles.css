@@ -445,6 +445,24 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .execution-result-grid > section, .execution-events { min-width: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: #0b100d; }
 .execution-state-panel { margin-top: .75rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: #0b100d; }
 .execution-result-grid .evidence-field { margin-top: .4rem; }
+.execution-graph-panel { margin-top: .85rem; padding: .85rem; border: 1px solid var(--line); border-radius: 10px; background: radial-gradient(circle at 50% 0, #122019 0, #0b100d 55%); }
+.execution-graph-panel .section-title p { max-width: 760px; margin: .32rem 0 0; color: var(--muted); font-size: .6rem; line-height: 1.45; }
+.execution-graph-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+.execution-graph-legend span { padding: .28rem .4rem; border-left: 2px solid var(--blue); background: var(--surface-soft); color: var(--muted); font: 700 .5rem ui-monospace, monospace; }
+.execution-graph-legend .writes { border-color: var(--amber); }.execution-graph-legend .error { border-color: var(--red); }
+.execution-graph-scroll { max-height: 620px; margin-top: .65rem; overflow: auto; border: 1px solid #1b2821; border-radius: 8px; background-color: #080d0a; background-image: radial-gradient(#253129 1px, transparent 1px); background-size: 18px 18px; }
+.execution-graph-scroll svg { display: block; width: 100%; min-width: 720px; min-height: 170px; }
+.execution-graph-edge { fill: none; stroke: #3d5d4a; stroke-width: 1.5; }
+#execution-arrow path { fill: #5b8c6d; }
+.execution-graph-node rect:first-child { fill: #111914; stroke: #426b51; stroke-width: 1.5; }
+.execution-graph-node .gas-share { fill: var(--blue); stroke: none; }
+.execution-graph-node.writes rect:first-child { stroke: var(--amber); }.execution-graph-node.writes .gas-share { fill: var(--amber); }
+.execution-graph-node.error rect:first-child { stroke: var(--red); }.execution-graph-node.error .gas-share { fill: var(--red); }
+.execution-graph-node text { pointer-events: none; font-family: ui-monospace, monospace; }
+.execution-graph-node .node-type { fill: #829489; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.execution-graph-node .node-contract { fill: #edf4ef; font-size: 10px; font-weight: 750; }
+.execution-graph-node .node-function { fill: #a9b7ae; font-size: 8px; }
+.execution-graph-node .node-write { fill: var(--amber); font-size: 7px; font-weight: 800; }
 .execution-trace { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
 .execution-trace li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: .45rem; align-items: center; margin-left: calc(var(--execution-depth) * .7rem); padding: .5rem; border-left: 2px solid var(--blue); background: var(--surface-soft); }
 .execution-trace li > div { min-width: 0; }
@@ -463,6 +481,14 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .execution-opcodes span { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem; border-left: 2px solid var(--line-strong); background: var(--surface-soft); }
 .execution-opcodes .call { border-color: var(--blue); }.execution-opcodes .read { border-color: var(--green); }.execution-opcodes .write { border-color: var(--red); }.execution-opcodes .control { border-color: var(--amber); }.execution-opcodes .crypto { border-color: #bd8cff; }.execution-opcodes .exit { border-color: #f1f4f2; }
 .execution-opcodes code, .execution-opcodes strong { font-size: .57rem; }
+.opcode-phase-flow { margin: .8rem 0; padding: .75rem; border: 1px solid var(--line); border-radius: 9px; background: #080d0a; }
+.opcode-phase-flow .section-title p { max-width: 720px; margin: .3rem 0 0; color: var(--muted); font-size: .58rem; line-height: 1.4; }
+.phase-lane { display: flex; gap: .25rem; margin-top: .65rem; padding: .45rem; overflow-x: auto; border-radius: 7px; background-image: linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 28px 100%; }
+.phase-lane article { flex: 0 0 calc(72px + var(--phase-weight) * 12px); min-width: 88px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .15rem .35rem; align-content: center; min-height: 58px; padding: .45rem; border-top: 3px solid #48554d; background: var(--surface-soft); }
+.phase-lane article > span { grid-row: 1 / 3; align-self: center; color: #69766e; font: 700 .48rem ui-monospace, monospace; }
+.phase-lane article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .56rem; }
+.phase-lane article small { color: var(--muted); font: .48rem ui-monospace, monospace; }
+.phase-lane .external-call { border-color: var(--blue); }.phase-lane .state { border-color: var(--amber); }.phase-lane .data-memory { border-color: var(--green); }.phase-lane .control { border-color: #d2a95c; }.phase-lane .crypto { border-color: #bd8cff; }.phase-lane .event { border-color: #6dbecf; }.phase-lane .exit { border-color: var(--red); }
 .execution-events { margin-top: .75rem; }
 .execution-events > article { display: grid; grid-template-columns: minmax(160px, .35fr) minmax(0, 1fr); gap: .65rem; padding: .6rem; border-top: 1px solid var(--line); }
 .execution-events > article strong, .execution-events > article code { display: block; overflow-wrap: anywhere; font-size: .6rem; }
@@ -536,6 +562,8 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .argument-field small { display: block; margin-top: .3rem; color: var(--muted); font-size: .62rem; line-height: 1.4; }
 .argument-field small.success { color: var(--green); }
 .argument-field small.error { color: var(--red); }
+.argument-field .example-source { display: flex; gap: .35rem; align-items: baseline; padding-top: .28rem; border-top: 1px solid #1c2720; color: #8f9d94; }
+.argument-field .example-source strong { flex: none; color: var(--blue); text-transform: uppercase; font: 750 .48rem ui-monospace, monospace; }
 .behavior-flow { position: relative; display: grid; gap: .5rem; margin-top: .85rem; }
 .behavior-step { display: grid; grid-template-columns: 1.7rem 1fr; gap: .65rem; padding: .7rem; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
 .behavior-step > span { width: 1.55rem; height: 1.55rem; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--muted); font: 700 .6rem ui-monospace, monospace; }

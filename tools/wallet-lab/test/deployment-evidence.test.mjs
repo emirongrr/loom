@@ -13,6 +13,7 @@ test("deployment catalog derives canonical selectors and conservative behavior",
   }]);
 
   assert.equal(functions[0].signature, "configure((address,uint256)[])");
+  assert.deepEqual(functions[0].inputs[0].components.map(component => component.name), ["target", "amount"]);
   assert.match(functions[0].selector, /^0x[0-9a-f]{8}$/u);
   assert.match(functions[0].behavior, /may change contract state/i);
 });

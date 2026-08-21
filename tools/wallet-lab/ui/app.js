@@ -1,5 +1,5 @@
 import { layoutDeploymentGraph } from "./graph-layout.mjs";
-import { defaultExecutionArgument } from "./execution-defaults.mjs";
+import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -37,7 +37,8 @@ const state = {
   executionSepoliaConfirmed: false,
   executionTransactionHash: "",
   executionSearch: "",
-  executionFunctionMode: "all"
+  executionFunctionMode: "all",
+  exampleNowSeconds: Math.floor(Date.now() / 1_000)
 };
 
 const LOCAL_TEST_SENDER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -831,6 +832,36 @@ function renderExecutionTrace(trace) {
   return `<ol class="execution-trace">${frames.map(frame => `<li style="--execution-depth:${Math.min(frame.depth, 7)}"><span class="trace-type ${escapeHtml(String(frame.type ?? "call").toLowerCase())}">${escapeHtml(frame.type ?? "CALL")}</span><div><strong>${escapeHtml(frame.contractName ?? short(frame.to, 10, 8))}</strong><code>${escapeHtml(traceLabel(frame))}</code></div><small>${escapeHtml(formatTraceNumber(frame.gasUsed))} gas</small><em class="${frame.error ? "error" : "success"}">${frame.error ? "reverted" : "returned"}</em></li>`).join("")}</ol>`;
 }
 
+function renderExecutionGraph(result) {
+  const frames = flattenTraceFrames(result?.trace);
+  if (!frames.length) return `<section class="execution-graph-panel"><div class="section-title"><div><p class="eyebrow">EXECUTION GRAPH</p><h2>Contract call movement</h2></div><span>Unavailable</span></div><p class="empty">This RPC did not expose call frames, so Wallet Lab will not infer a graph.</p></section>`;
+  const maxDepth = Math.max(...frames.map(frame => frame.depth));
+  const width = Math.max(760, 270 + maxDepth * 230);
+  const height = Math.max(150, 38 + frames.length * 92);
+  const rootGas = traceBigInt(frames[0]?.gasUsed);
+  const changed = new Set((result.stateDiff?.accounts ?? []).filter(account => account.storage?.length || account.balance?.before !== account.balance?.after || account.nonce?.before !== account.nonce?.after).map(account => account.address?.toLowerCase()));
+  const positions = new Map(frames.map((frame, index) => [frame.path, { x: 28 + frame.depth * 230, y: 24 + index * 92 }]));
+  const edges = frames.slice(1).map(frame => {
+    const child = positions.get(frame.path);
+    const parent = positions.get(frame.path.split(".").slice(0, -1).join("."));
+    if (!child || !parent) return "";
+    const startX = parent.x + 188;
+    const startY = parent.y + 31;
+    const endX = child.x;
+    const endY = child.y + 31;
+    const bend = Math.max(28, (endX - startX) / 2);
+    return `<path class="execution-graph-edge" d="M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}" marker-end="url(#execution-arrow)" />`;
+  }).join("");
+  const nodes = frames.map(frame => {
+    const position = positions.get(frame.path);
+    const gas = traceBigInt(frame.gasUsed);
+    const gasShare = rootGas > 0n ? Math.max(3, Number((gas * 100n) / rootGas)) : 3;
+    const writes = changed.has(frame.to?.toLowerCase());
+    return `<g class="execution-graph-node${frame.error ? " error" : ""}${writes ? " writes" : ""}" transform="translate(${position.x} ${position.y})"><rect width="188" height="62" rx="9" /><rect class="gas-share" y="58" width="${Math.min(188, 1.88 * gasShare)}" height="4" rx="2" /><text class="node-type" x="12" y="16">${escapeHtml(frame.type ?? "CALL")} · depth ${escapeHtml(frame.depth)}</text><text class="node-contract" x="12" y="34">${escapeHtml(short(frame.contractName ?? frame.to, 20, 6))}</text><text class="node-function" x="12" y="50">${escapeHtml(short(traceLabel(frame), 22, 8))}</text>${writes ? `<text class="node-write" x="176" y="16" text-anchor="end">STATE</text>` : ""}<title>${escapeHtml(`${frame.contractName ?? frame.to} · ${traceLabel(frame)} · ${formatTraceNumber(frame.gasUsed)} gas${frame.error ? ` · ${frame.revertReason ?? frame.error}` : ""}`)}</title></g>`;
+  }).join("");
+  return `<section class="execution-graph-panel"><div class="section-title"><div><p class="eyebrow">EXECUTION GRAPH</p><h2>Contract call movement</h2><p>Every node is an observed EVM call frame. Horizontal position is call depth; the lower edge shows inclusive gas relative to the root.</p></div><div class="execution-graph-legend"><span class="call">Call frame</span><span class="writes">State touched</span><span class="error">Reverted</span></div></div><div class="execution-graph-scroll"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Observed contract execution graph"><defs><marker id="execution-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" /></marker></defs>${edges}${nodes}</svg></div></section>`;
+}
+
 function renderExecutionStateDiff(diff) {
   if (!diff?.accounts?.length) return `<p class="empty">No state changes were reported. The RPC may not expose prestate tracing, or the call did not write state.</p>`;
   return `<div class="execution-state-list">${diff.accounts.map(account => `<article><header><code>${escapeHtml(short(account.address, 12, 10))}</code><span>${account.storage.length} storage slot${account.storage.length === 1 ? "" : "s"}</span></header>${account.balance.before !== account.balance.after ? `<p><strong>Balance</strong><code>${escapeHtml(account.balance.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.balance.after ?? "unchanged")}</code></p>` : ""}${account.nonce.before !== account.nonce.after ? `<p><strong>Nonce</strong><code>${escapeHtml(account.nonce.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.nonce.after ?? "unchanged")}</code></p>` : ""}${account.storage.map(slot => `<p><strong title="${escapeHtml(slot.slot)}">${escapeHtml(short(slot.slot, 10, 8))}</strong><code>${escapeHtml(short(slot.before ?? "empty", 12, 10))}</code><i>→</i><code>${escapeHtml(short(slot.after ?? "empty", 12, 10))}</code></p>`).join("")}</article>`).join("")}${diff.truncated ? `<p class="evidence-note">The state diff exceeded the bounded display limit and was truncated.</p>` : ""}</div>`;
@@ -909,7 +940,30 @@ function renderExecutionResult(result) {
   const receiptEvents = transaction
     ? `<section class="execution-events"><div class="section-title"><div><p class="eyebrow">EVENTS</p><h3>Receipt logs</h3></div><span>${events.length}</span></div>${events.length ? events.map(event => `<article><div><strong>${escapeHtml(event.name ?? "Unknown event")}</strong><code>${escapeHtml(event.contractId ?? short(event.address, 10, 8))}</code></div>${jsonBlock(event.args ?? { topics: event.topics, data: event.data }, "Decoded event")}</article>`).join("") : `<p class="empty">The transaction emitted no logs.</p>`}</section>`
     : "";
-  return `<section class="execution-result" aria-live="polite"><div class="execution-result-heading"><div><p class="eyebrow">${transaction ? "MINED TRANSACTION" : "SIMULATION ONLY"}</p><h2>${escapeHtml(headline)}</h2><p>${escapeHtml(explanation)}</p></div><span class="status ${escapeHtml(statusClass(result.status))}">${escapeHtml(result.status)}</span></div><div class="execution-result-metrics">${field("Network", networkLabel(result.chainId))}${field(transaction ? "Transaction" : "Target", transaction ? result.transactionHash : result.contract?.address, { code: true, short: true })}${field("Function", functionName, { code: true })}${field("Gas used", transaction ? formatTraceNumber(result.gasUsed) : formatTraceNumber(result.trace?.gasUsed), { code: true })}${field("Call frames", result.traceSummary?.calls ?? "Unavailable", { code: true })}${field("Opcode steps", result.opcodeProfile?.totalSteps ?? "Unavailable", { code: true })}</div>${renderExecutionJourney(result)}${renderTransactionProvenance(result)}${revert}<div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">INPUT / OUTPUT</p><h3>Encoded call</h3></div></div>${field("Caller", result.transaction?.from ?? "RPC default caller", { code: true, short: true })}${field("Value (wei)", result.transaction?.value ?? "0x0", { code: true })}<details><summary>Calldata</summary>${jsonBlock(result.transaction?.input ?? result.transaction?.data ?? "0x", "Execution calldata")}</details>${output}</section><section><div class="section-title"><div><p class="eyebrow">CONTRACT MOVEMENT</p><h3>Call tree</h3></div><span>${escapeHtml(result.capabilities?.callTrace ?? "unavailable")}</span></div>${renderExecutionTrace(result.trace)}</section></div><section class="execution-state-panel"><div class="section-title"><div><p class="eyebrow">STORAGE / BALANCE / NONCE</p><h3>${stateHeading}</h3><p>${transaction ? "Receipt-bound pre/post evidence from the selected RPC." : "The tracer evaluated these changes, then eth_call discarded them without altering the devnet."}</p></div><span>${escapeHtml(result.capabilities?.stateDiff ?? "unavailable")}</span></div>${renderExecutionStateDiff(result.stateDiff)}</section>${renderOpcodeExplorer(result.opcodeProfile)}${receiptEvents}<details class="execution-technical"><summary>Complete execution evidence</summary>${jsonBlock(result, "Execution evidence")}</details></section>`;
+  return `<section class="execution-result" aria-live="polite"><div class="execution-result-heading"><div><p class="eyebrow">${transaction ? "MINED TRANSACTION" : "SIMULATION ONLY"}</p><h2>${escapeHtml(headline)}</h2><p>${escapeHtml(explanation)}</p></div><span class="status ${escapeHtml(statusClass(result.status))}">${escapeHtml(result.status)}</span></div><div class="execution-result-metrics">${field("Network", networkLabel(result.chainId))}${field(transaction ? "Transaction" : "Target", transaction ? result.transactionHash : result.contract?.address, { code: true, short: true })}${field("Function", functionName, { code: true })}${field("Gas used", transaction ? formatTraceNumber(result.gasUsed) : formatTraceNumber(result.trace?.gasUsed), { code: true })}${field("Call frames", result.traceSummary?.calls ?? "Unavailable", { code: true })}${field("Opcode steps", result.opcodeProfile?.totalSteps ?? "Unavailable", { code: true })}</div>${renderExecutionJourney(result)}${renderTransactionProvenance(result)}${revert}${renderExecutionGraph(result)}<div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">INPUT / OUTPUT</p><h3>Encoded call</h3></div></div>${field("Caller", result.transaction?.from ?? "RPC default caller", { code: true, short: true })}${field("Value (wei)", result.transaction?.value ?? "0x0", { code: true })}<details><summary>Calldata</summary>${jsonBlock(result.transaction?.input ?? result.transaction?.data ?? "0x", "Execution calldata")}</details>${output}</section><section><div class="section-title"><div><p class="eyebrow">CALL FRAME INDEX</p><h3>Observed calls</h3></div><span>${escapeHtml(result.capabilities?.callTrace ?? "unavailable")}</span></div>${renderExecutionTrace(result.trace)}</section></div><section class="execution-state-panel"><div class="section-title"><div><p class="eyebrow">STORAGE / BALANCE / NONCE</p><h3>${stateHeading}</h3><p>${transaction ? "Receipt-bound pre/post evidence from the selected RPC." : "The tracer evaluated these changes, then eth_call discarded them without altering the devnet."}</p></div><span>${escapeHtml(result.capabilities?.stateDiff ?? "unavailable")}</span></div>${renderExecutionStateDiff(result.stateDiff)}</section>${renderOpcodeExplorer(result.opcodeProfile)}${receiptEvents}<details class="execution-technical"><summary>Complete execution evidence</summary>${jsonBlock(result, "Execution evidence")}</details></section>`;
+}
+
+function executionExampleContext(deployment) {
+  const nodes = deployment?.nodes ?? [];
+  const byName = name => nodes.find(node => node.name === name)?.address;
+  const observed = nodes.find(node => node.kind === "account" || node.layer === "account-instance")?.address;
+  const target = byName("DevnetTarget") ?? observed ?? byName("LoomAccount");
+  return {
+    caller: state.functionCaller,
+    chainId: state.deploymentSource === "sepolia" ? 11155111 : 31337,
+    nowSeconds: state.exampleNowSeconds,
+    addresses: {
+      account: observed ?? byName("LoomAccount"),
+      entryPoint: byName("EntryPoint"),
+      validator: byName("P256Validator") ?? byName("ECDSAValidator"),
+      recovery: byName("RecoveryManager"),
+      factory: byName("LoomAccountFactory"),
+      hook: byName("PolicyHook") ?? byName("VaultHook"),
+      verifier: byName("P256GuardianVerifier") ?? byName("ECDSAGuardianVerifier"),
+      target
+    },
+    targetSelector: nodes.find(node => node.name === "DevnetTarget")?.functions?.find(fn => fn.name === "setValue")?.selector
+  };
 }
 
 function renderExecutionWorkspace(contract, fn, tracePayload) {
@@ -922,10 +976,12 @@ function renderExecutionWorkspace(contract, fn, tracePayload) {
     root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run and explain Loom execution</h2><p>Analyze a complete mined transaction or exercise the deployment ABI before selecting one function for deep inspection.</p></div><span class="execution-selection"><strong>${escapeHtml(networkName)}</strong><small>Deployment-wide tools</small></span></div>${tools}<p class="empty">Select a contract function for exact calldata, full simulation, and explicit local execution.</p>${renderProbeResult(state.executionProbeResult)}${renderExecutionResult(state.executionResult)}`;
     return;
   }
+  const exampleContext = executionExampleContext(currentDeployment(state.artifact?.events ?? []));
   const inputFields = fn.inputs.map((input, index) => {
-    const value = state.functionValues[index] ?? defaultExecutionArgument(input, { caller: state.functionCaller });
+    const example = executionArgumentExample(input, exampleContext);
+    const value = state.functionValues[index] ?? example.value;
     const validation = validateArgument(input.type, value);
-    return `<label class="argument-field"><span>${escapeHtml(input.name || `arg${index}`)} <code>${escapeHtml(input.type)}</code></span><input type="text" data-argument-index="${index}" value="${escapeHtml(value)}" placeholder="${escapeHtml(input.type.endsWith("]") || input.type.startsWith("(") ? "JSON value" : input.type)}" aria-describedby="argument-help-${index}" /><small id="argument-help-${index}" class="${validation.status}">${escapeHtml(validation.text)} Suggested deterministic example; review it before execution.</small></label>`;
+    return `<label class="argument-field"><span>${escapeHtml(input.name || `arg${index}`)} <code>${escapeHtml(input.type)}</code></span><input type="text" data-argument-index="${index}" value="${escapeHtml(value)}" placeholder="${escapeHtml(input.type.endsWith("]") || input.type.startsWith("(") ? "JSON value" : input.type)}" aria-describedby="argument-help-${index}" /><small id="argument-help-${index}" class="${validation.status}">${escapeHtml(validation.text)}</small><small class="example-source"><strong>Example source</strong>${escapeHtml(example.source)}</small></label>`;
   }).join("");
   const observedFrames = flattenTrace(tracePayload?.trace).filter(call => call.contractId === contract.id && call.selector === fn.selector);
   const opcodeSteps = state.executionResult?.opcodeProfile?.totalSteps ?? tracePayload?.opcodeProfile?.totalSteps;
@@ -944,15 +1000,16 @@ function renderExecutionWorkspace(contract, fn, tracePayload) {
   const error = state.executionError ? `<div class="execution-error" role="alert"><strong>Execution could not be completed</strong><p>${escapeHtml(state.executionError)}</p></div>` : "";
   const routePreview = `<section class="execution-route-preview" aria-label="Selected call route"><div><span>1 · Caller</span><code>${escapeHtml(short(state.functionCaller || "RPC default", 10, 8))}</code></div><i aria-hidden="true">→</i><div><span>2 · Contract</span><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(short(contract.address, 10, 8))}</code></div><i aria-hidden="true">→</i><div><span>3 · Selector</span><code>${escapeHtml(fn.selector)}</code><small>${escapeHtml(fn.stateMutability)}</small></div><i aria-hidden="true">→</i><div><span>4 · EVM outcome</span><strong>${state.executionResult ? escapeHtml(titleCase(state.executionResult.status)) : "Not simulated"}</strong><small>${escapeHtml(fn.outputs.length ? fn.outputs.map(item => item.type).join(", ") : "no ABI output")}</small></div><p><strong>Why this function exists.</strong> ${escapeHtml(fn.purpose ?? fn.behavior)}</p></section>`;
   root.className = "surface execution-workspace";
-  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run, trace, and explain Loom execution</h2><p>Use deployment-wide evidence first, then inspect exact calldata and EVM behavior for ${escapeHtml(contract.name)}.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code><small>${escapeHtml(networkName)}</small></span></div>${tools}${routePreview}<div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h3>Input values</h3><p>Safe deterministic examples are filled in automatically. Review them before simulation or publication.</p></div><div><span>${escapeHtml(fn.stateMutability)}</span><button type="button" id="restore-example-inputs" class="subtle-action">Restore examples</button></div></div><div class="execution-input-grid"><label class="argument-field"><span>Caller <code>address</code></span><input type="text" id="function-caller" value="${escapeHtml(state.functionCaller)}" placeholder="Optional eth_call sender" /><small>${state.deploymentSource === "local" ? `Local writes use the fixed Anvil test actor ${short(LOCAL_TEST_SENDER, 8, 6)}.` : "Simulation caller only; the connected wallet controls the real transaction sender."}</small></label><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "Example value is zero; enter wei only when the function should receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div><div class="execution-actions"><button type="button" id="simulate-execution"${busy ? " disabled" : ""}>${state.executionStatus === "simulating" ? "Simulating..." : "Simulate without sending"}</button>${writeAction}</div>${error}</section><aside class="execution-evidence"><p class="eyebrow">EVIDENCE MODE</p><h3>${escapeHtml(evidenceTitle)}</h3><p>${escapeHtml(evidenceText)}</p><div class="execution-scope"><span>Input + output</span><span>Contract calls</span><span>State diff</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} recorded opcode steps` : "Opcodes"}</span></div></aside></div>${renderProbeResult(state.executionProbeResult)}${renderExecutionResult(state.executionResult)}`;
+  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run, trace, and explain Loom execution</h2><p>Use deployment-wide evidence first, then inspect exact calldata and EVM behavior for ${escapeHtml(contract.name)}.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code><small>${escapeHtml(networkName)}</small></span></div>${tools}${routePreview}<div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h3>Input values</h3><p>Deployment- and scenario-aware examples are filled in automatically. Review them before simulation or publication.</p></div><div><span>${escapeHtml(fn.stateMutability)}</span><button type="button" id="restore-example-inputs" class="subtle-action">Restore examples</button></div></div><div class="execution-input-grid"><label class="argument-field"><span>Caller <code>address</code></span><input type="text" id="function-caller" value="${escapeHtml(state.functionCaller)}" placeholder="Optional eth_call sender" /><small>${state.deploymentSource === "local" ? `Local writes use the fixed Anvil test actor ${short(LOCAL_TEST_SENDER, 8, 6)}.` : "Simulation caller only; the connected wallet controls the real transaction sender."}</small></label><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "Example value is zero; enter wei only when the function should receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div><div class="execution-actions"><button type="button" id="simulate-execution"${busy ? " disabled" : ""}>${state.executionStatus === "simulating" ? "Simulating..." : "Simulate without sending"}</button>${writeAction}</div>${error}</section><aside class="execution-evidence"><p class="eyebrow">EVIDENCE MODE</p><h3>${escapeHtml(evidenceTitle)}</h3><p>${escapeHtml(evidenceText)}</p><div class="execution-scope"><span>Input + output</span><span>Contract calls</span><span>State diff</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} recorded opcode steps` : "Opcodes"}</span></div></aside></div>${renderProbeResult(state.executionProbeResult)}${renderExecutionResult(state.executionResult)}`;
 }
 
 function executionRequestBody(contract, fn) {
+  const exampleContext = executionExampleContext(currentDeployment(state.artifact?.events ?? []));
   return {
     network: state.deploymentSource,
     contractId: contract.id,
     selector: fn.selector,
-    args: fn.inputs.map((input, index) => state.functionValues[index] ?? defaultExecutionArgument(input, { caller: state.functionCaller })),
+    args: fn.inputs.map((input, index) => state.functionValues[index] ?? defaultExecutionArgument(input, exampleContext)),
     valueWei: state.functionCallValue || "0",
     ...(state.functionCaller ? { from: state.functionCaller } : {})
   };
@@ -1117,6 +1174,37 @@ function opcodeGroup(opcode) {
   return "other";
 }
 
+function opcodePhase(opcode) {
+  if (["CALL", "CALLCODE", "STATICCALL", "DELEGATECALL", "CREATE", "CREATE2"].includes(opcode)) return "external-call";
+  if (["SLOAD", "TLOAD", "SSTORE", "TSTORE"].includes(opcode)) return "state";
+  if (["MLOAD", "MSTORE", "MSTORE8", "MSIZE", "CALLDATALOAD", "CALLDATACOPY", "CALLDATASIZE", "CODECOPY", "RETURNDATACOPY"].includes(opcode)) return "data-memory";
+  if (["JUMP", "JUMPI", "JUMPDEST"].includes(opcode)) return "control";
+  if (["KECCAK256", "SHA3", "ECRECOVER"].includes(opcode)) return "crypto";
+  if (opcode.startsWith("LOG")) return "event";
+  if (["RETURN", "REVERT", "STOP", "SELFDESTRUCT", "INVALID"].includes(opcode)) return "exit";
+  return "compute";
+}
+
+function renderOpcodePhaseFlow(profile) {
+  const steps = profile?.steps ?? profile?.importantSteps ?? [];
+  if (!steps.length) return `<p class="empty">No ordered opcode sequence is available for phase visualization.</p>`;
+  const phases = [];
+  for (const step of steps) {
+    const name = opcodePhase(step.op);
+    const previous = phases.at(-1);
+    if (previous?.name === name && previous.depth === step.depth) {
+      previous.steps += 1;
+      previous.gas += Number(step.gasCost ?? 0);
+      previous.end = Number(step.index) + 1;
+    } else {
+      phases.push({ name, depth: step.depth, steps: 1, gas: Number(step.gasCost ?? 0), start: Number(step.index) + 1, end: Number(step.index) + 1 });
+    }
+  }
+  const visible = phases.slice(0, 80);
+  const maxSteps = Math.max(...visible.map(phase => phase.steps), 1);
+  return `<section class="opcode-phase-flow"><div class="section-title"><div><p class="eyebrow">EVM PHASE FLOW</p><h3>How execution moved through the VM</h3><p>Consecutive instructions are grouped by behavior while preserving order and call depth.</p></div><span>${escapeHtml(phases.length)} phases</span></div><div class="phase-lane" aria-label="Ordered EVM execution phases">${visible.map((phase, index) => `<article class="${escapeHtml(phase.name)}" style="--phase-weight:${Math.max(1, Math.round((phase.steps / maxSteps) * 8))}" title="Steps ${phase.start}-${phase.end}; depth ${phase.depth}; ${phase.gas} gas"><span>${index + 1}</span><strong>${escapeHtml(titleCase(phase.name))}</strong><small>${escapeHtml(phase.steps)} op · depth ${escapeHtml(phase.depth)}</small></article>`).join("")}</div>${phases.length > visible.length ? `<p class="evidence-note">Showing the first ${visible.length} of ${phases.length} ordered phases. The complete instruction lane remains below.</p>` : ""}</section>`;
+}
+
 function renderOpcodeExplorer(profile) {
   if (!profile) return `<div class="empty">Opcode-level evidence was not captured.</div>`;
   const counts = Object.entries(profile.opcodeCounts ?? {}).sort((a, b) => b[1] - a[1]);
@@ -1126,7 +1214,7 @@ function renderOpcodeExplorer(profile) {
   const selectedSteps = state.opcodeView === "all" ? allSteps : importantSteps;
   const maxGasCost = selectedSteps.reduce((maximum, step) => Math.max(maximum, Number(step.gasCost ?? 0)), 1);
   const viewDescription = state.opcodeView === "all" ? "Every captured instruction in exact execution order." : "State access, calls, creation, hashing, logs, and frame exits in exact execution order.";
-  return `<section class="opcode-explorer"><div class="section-title"><div><p class="eyebrow">OPCODE EXPLORER</p><h2>Instruction-level EVM movement</h2><p>Frequency explains what dominated the run; the ordered lane keeps instructions attached to their original program counter, depth, and gas cost.</p></div><span>${escapeHtml(profile.totalSteps)} total steps${profile.stepsTruncated ? ` / first ${escapeHtml(allSteps.length)} captured` : ""}</span></div><div class="opcode-view-filter" role="group" aria-label="Opcode detail"><button type="button" data-opcode-view="important" aria-pressed="${state.opcodeView === "important"}">State and calls · ${escapeHtml(importantSteps.length)}</button><button type="button" data-opcode-view="all" aria-pressed="${state.opcodeView === "all"}">All captured steps · ${escapeHtml(allSteps.length)}</button></div><div class="opcode-layout"><div><h3>Opcode frequency</h3><div class="opcode-frequency">${counts.map(([opcode, count]) => `<div title="${escapeHtml(opcodePurpose(opcode))}"><code>${escapeHtml(opcode)}</code><span><i class="${opcodeGroup(opcode)}" style="width:${Math.max(2, (count / maxCount) * 100)}%"></i></span><strong>${escapeHtml(count)}</strong></div>`).join("")}</div></div><div><h3>EVM program counter</h3><p class="opcode-column-help">${escapeHtml(viewDescription)} PC is the byte offset in deployed bytecode; depth identifies the active call frame.</p><div class="opcode-lanes" aria-label="EVM PROGRAM COUNTER">${selectedSteps.map(step => `<article class="opcode-step ${opcodeGroup(step.op)}" style="--opcode-indent:${Math.min(Number(step.depth ?? 0), 6) * .6}rem"><span>${escapeHtml(Number(step.index) + 1)}</span><strong>${escapeHtml(step.op)}</strong><code>pc ${escapeHtml(step.pc)}</code><code>depth ${escapeHtml(step.depth)}</code><div title="${escapeHtml(step.gasCost)} gas"><i style="width:${Math.max(2, (Number(step.gasCost ?? 0) / maxGasCost) * 100)}%"></i></div><small>${escapeHtml(step.gasCost)} gas</small><p>${escapeHtml(opcodePurpose(step.op))}</p></article>`).join("")}</div></div></div><div class="opcode-legend"><span class="call">Call</span><span class="read">Read</span><span class="write">Write</span><span class="control">Control</span><span class="crypto">Crypto</span><span class="exit">Exit</span></div><p class="evidence-note">Stack, memory, and raw storage payloads are intentionally excluded to keep evidence bounded and prevent accidental disclosure. Program counters, depth, gas cost, opcode order, call frames, and the separately bounded state diff remain available.</p></section>`;
+  return `<section class="opcode-explorer"><div class="section-title"><div><p class="eyebrow">OPCODE EXPLORER</p><h2>Instruction-level EVM movement</h2><p>Frequency explains what dominated the run; the ordered lane keeps instructions attached to their original program counter, depth, and gas cost.</p></div><span>${escapeHtml(profile.totalSteps)} total steps${profile.stepsTruncated ? ` / first ${escapeHtml(allSteps.length)} captured` : ""}</span></div>${renderOpcodePhaseFlow(profile)}<div class="opcode-view-filter" role="group" aria-label="Opcode detail"><button type="button" data-opcode-view="important" aria-pressed="${state.opcodeView === "important"}">State and calls · ${escapeHtml(importantSteps.length)}</button><button type="button" data-opcode-view="all" aria-pressed="${state.opcodeView === "all"}">All captured steps · ${escapeHtml(allSteps.length)}</button></div><div class="opcode-layout"><div><h3>Opcode frequency</h3><div class="opcode-frequency">${counts.map(([opcode, count]) => `<div title="${escapeHtml(opcodePurpose(opcode))}"><code>${escapeHtml(opcode)}</code><span><i class="${opcodeGroup(opcode)}" style="width:${Math.max(2, (count / maxCount) * 100)}%"></i></span><strong>${escapeHtml(count)}</strong></div>`).join("")}</div></div><div><h3>EVM program counter</h3><p class="opcode-column-help">${escapeHtml(viewDescription)} PC is the byte offset in deployed bytecode; depth identifies the active call frame.</p><div class="opcode-lanes" aria-label="EVM PROGRAM COUNTER">${selectedSteps.map(step => `<article class="opcode-step ${opcodeGroup(step.op)}" style="--opcode-indent:${Math.min(Number(step.depth ?? 0), 6) * .6}rem"><span>${escapeHtml(Number(step.index) + 1)}</span><strong>${escapeHtml(step.op)}</strong><code>pc ${escapeHtml(step.pc)}</code><code>depth ${escapeHtml(step.depth)}</code><div title="${escapeHtml(step.gasCost)} gas"><i style="width:${Math.max(2, (Number(step.gasCost ?? 0) / maxGasCost) * 100)}%"></i></div><small>${escapeHtml(step.gasCost)} gas</small><p>${escapeHtml(opcodePurpose(step.op))}</p></article>`).join("")}</div></div></div><div class="opcode-legend"><span class="call">Call</span><span class="read">Read</span><span class="write">Write</span><span class="control">Control</span><span class="crypto">Crypto</span><span class="exit">Exit</span></div><p class="evidence-note">Stack, memory, and raw storage payloads are intentionally excluded to keep evidence bounded and prevent accidental disclosure. Program counters, depth, gas cost, opcode order, call frames, and the separately bounded state diff remain available.</p></section>`;
 }
 
 function renderEvmTrace(tracePayload) {
