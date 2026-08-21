@@ -36,9 +36,7 @@ contract P256RecoveryValidatorFactoryTest is Test {
     }
 
     function _deploy(P256RecoveryValidatorFactory factory, address account, uint64 nonce) internal returns (address) {
-        return factory.deploy(
-            account, nonce, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD
-        );
+        return factory.deploy(account, nonce, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD);
     }
 
     function testDeploysThePredictedValidatorAndWritesItsKey() public {
@@ -117,7 +115,9 @@ contract P256RecoveryValidatorFactoryTest is Test {
 
         bytes32 otherOrigin =
             factory.initDataHashFor(_x(), _y(), RP_ID_HASH, keccak256("https://evil.example"), POLICY_HOOK);
-        require(factory.getAddress(ACCOUNT, 7, otherOrigin, NEW_ROOT, NEW_THRESHOLD) != base, "relying party was not bound");
+        require(
+            factory.getAddress(ACCOUNT, 7, otherOrigin, NEW_ROOT, NEW_THRESHOLD) != base, "relying party was not bound"
+        );
     }
 
     /// A different key must produce a different address, or approving an address
@@ -137,7 +137,9 @@ contract P256RecoveryValidatorFactoryTest is Test {
 
         assertTrue(left != right, "two keys shared a commitment");
         assertTrue(
-            factory.getAddress(ACCOUNT, 0, left, NEW_ROOT, NEW_THRESHOLD) != factory.getAddress(ACCOUNT, 0, right, NEW_ROOT, NEW_THRESHOLD), "two keys shared an address"
+            factory.getAddress(ACCOUNT, 0, left, NEW_ROOT, NEW_THRESHOLD)
+                != factory.getAddress(ACCOUNT, 0, right, NEW_ROOT, NEW_THRESHOLD),
+            "two keys shared an address"
         );
     }
 
@@ -172,7 +174,8 @@ contract P256RecoveryValidatorFactoryTest is Test {
         (bool zeroHook,) = address(factory)
             .call(
                 abi.encodeCall(
-                    P256RecoveryValidatorFactory.deploy, (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, address(0), NEW_ROOT, NEW_THRESHOLD)
+                    P256RecoveryValidatorFactory.deploy,
+                    (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, address(0), NEW_ROOT, NEW_THRESHOLD)
                 )
             );
         (bool invalidKey,) = address(factory)
@@ -241,29 +244,31 @@ contract P256RecoveryValidatorFactoryTest is Test {
     function testRefusesARotationNobodyCouldSatisfy() public {
         P256RecoveryValidatorFactory factory = new P256RecoveryValidatorFactory(address(0));
 
-        (bool zeroRoot,) = address(factory).call(
-            abi.encodeCall(
-                P256RecoveryValidatorFactory.deploy,
-                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, bytes32(0), NEW_THRESHOLD)
-            )
-        );
+        (bool zeroRoot,) = address(factory)
+            .call(
+                abi.encodeCall(
+                    P256RecoveryValidatorFactory.deploy,
+                    (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, bytes32(0), NEW_THRESHOLD)
+                )
+            );
         require(!zeroRoot, "an empty guardian root was accepted");
 
-        (bool zeroThreshold,) = address(factory).call(
-            abi.encodeCall(
-                P256RecoveryValidatorFactory.deploy,
-                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(0))
-            )
-        );
+        (bool zeroThreshold,) = address(factory)
+            .call(
+                abi.encodeCall(
+                    P256RecoveryValidatorFactory.deploy,
+                    (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(0))
+                )
+            );
         require(!zeroThreshold, "a zero guardian threshold was accepted");
 
-        (bool tooHigh,) = address(factory).call(
-            abi.encodeCall(
-                P256RecoveryValidatorFactory.deploy,
-                (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(33))
-            )
-        );
+        (bool tooHigh,) = address(factory)
+            .call(
+                abi.encodeCall(
+                    P256RecoveryValidatorFactory.deploy,
+                    (ACCOUNT, 0, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, uint8(33))
+                )
+            );
         require(!tooHigh, "a threshold above the guardian maximum was accepted");
     }
-
 }

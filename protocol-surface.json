@@ -1894,10 +1894,10 @@
     "src/validators/P256RecoveryValidatorFactory.sol:P256RecoveryValidatorFactory": {
       "functions": {
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": "0x3dacb2ec",
-        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": "0xd5f5fe67",
-        "deploymentSalt(address,uint64,bytes32)": "0xde882ea8",
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address,bytes32,uint8)": "0x27c70d31",
+        "deploymentSalt(address,uint64,bytes32,bytes32,uint8)": "0xd8b5db2f",
         "fallbackVerifier()": "0xfe3c90b0",
-        "getAddress(address,uint64,bytes32)": "0x1362ce13",
+        "getAddress(address,uint64,bytes32,bytes32,uint8)": "0xf74a18e6",
         "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": "0x12dde144",
         "validatorInitCodeHash()": "0x08e573d8"
       },
@@ -1905,16 +1905,16 @@
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": [
           "bytes32"
         ],
-        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": [
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address,bytes32,uint8)": [
           "address"
         ],
-        "deploymentSalt(address,uint64,bytes32)": [
+        "deploymentSalt(address,uint64,bytes32,bytes32,uint8)": [
           "bytes32"
         ],
         "fallbackVerifier()": [
           "address"
         ],
-        "getAddress(address,uint64,bytes32)": [
+        "getAddress(address,uint64,bytes32,bytes32,uint8)": [
           "address"
         ],
         "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": [
@@ -1926,23 +1926,25 @@
       },
       "functionMutability": {
         "RECOVERY_VALIDATOR_SALT_DOMAIN()": "view",
-        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address)": "nonpayable",
-        "deploymentSalt(address,uint64,bytes32)": "pure",
+        "deploy(address,uint64,bytes32,bytes32,bytes32,bytes32,address,bytes32,uint8)": "nonpayable",
+        "deploymentSalt(address,uint64,bytes32,bytes32,uint8)": "pure",
         "fallbackVerifier()": "view",
-        "getAddress(address,uint64,bytes32)": "view",
+        "getAddress(address,uint64,bytes32,bytes32,uint8)": "view",
         "initDataHashFor(bytes32,bytes32,bytes32,bytes32,address)": "pure",
         "validatorInitCodeHash()": "view"
       },
       "events": {
-        "RecoveryValidatorDeployed(address,uint64,bytes32,address)": "0x8fd448b44e0b966302d6cf13ddc48d2c3922716b79c513563500a4f6b8b3dd7f"
+        "RecoveryValidatorDeployed(address,uint64,bytes32,address,bytes32,uint8)": "0x44ce0831a64b4412cca447bf7ac24d0de4ba887769635a9e50ba66660a570cc1"
       },
       "eventLayouts": {
-        "RecoveryValidatorDeployed(address,uint64,bytes32,address)": {
+        "RecoveryValidatorDeployed(address,uint64,bytes32,address,bytes32,uint8)": {
           "anonymous": false,
           "indexed": [
             true,
             true,
             true,
+            false,
+            false,
             false
           ]
         }

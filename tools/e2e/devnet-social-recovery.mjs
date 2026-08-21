@@ -236,11 +236,14 @@ async function main() {
   ]);
 
   const initDataHash = keccak256(newValidatorInit);
+  // The set this recovery rotates to, chosen before publication because the
+  // validator's address commits to it (ADR-0026).
+  const newRoot = keccak256(stringToHex("loom.devnet.social.newroot"));
   const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
   const predicted = await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi,
     functionName: "getAddress",
-    args: [account, recoveryNonce, initDataHash]
+    args: [account, recoveryNonce, initDataHash, newRoot, THRESHOLD]
   }));
   const newValidator = `0x${predicted.slice(-40)}`;
   const provisionTx = await rpc("eth_sendTransaction", [{
@@ -249,16 +252,39 @@ async function main() {
     data: encodeFunctionData({
       abi: P256RecoveryValidatorFactoryAbi,
       functionName: "deploy",
-      args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook]
+      args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook, newRoot, THRESHOLD]
     }),
     gas: "0x4c4b40"
   }]);
   await waitForReceipt(rpc, provisionTx);
   if ((await rpc("eth_getCode", [newValidator, "latest"])) === "0x") fail("recovery validator not provisioned");
 
+  // What ADR-0026 buys: the publication carries the rotation, so a device with
+  // nothing but this address can rebuild the whole proposal.
+  const childAbi = parseAbi([
+    "function recoveryGuardianRoot() view returns (bytes32)",
+    "function recoveryGuardianThreshold() view returns (uint8)"
+  ]);
+  const committedRoot = await ethCall(rpc, newValidator, encodeFunctionData({ abi: childAbi, functionName: "recoveryGuardianRoot" }));
+  const committedThreshold = BigInt(await ethCall(rpc, newValidator, encodeFunctionData({ abi: childAbi, functionName: "recoveryGuardianThreshold" })));
+  if (committedRoot !== newRoot) fail(`publication did not commit the rotated root (${committedRoot})`);
+  if (committedThreshold !== BigInt(THRESHOLD)) fail(`publication did not commit the rotated threshold (${committedThreshold})`);
+  console.log("    ok  the publication carries the guardian set the recovery rotates to");
+
+  // And why the salt has to bind it: a different rotation is a different
+  // address, so nobody can occupy this one by publishing first with their own.
+  const hostile = await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
+    abi: P256RecoveryValidatorFactoryAbi,
+    functionName: "getAddress",
+    args: [account, recoveryNonce, initDataHash, keccak256(stringToHex("someone.else")), THRESHOLD]
+  }));
+  if (`0x${hostile.slice(-40)}`.toLowerCase() === newValidator.toLowerCase()) {
+    fail("a different rotation shared the honest address");
+  }
+  console.log("    ok  a different rotation is a different address, so the honest one cannot be occupied");
+
   const oldValidators = [validator];
   const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
-  const newRoot = keccak256(stringToHex("loom.devnet.social.newroot"));
   const configVersion = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "configVersion" })));
 
   // The one digest everyone signs. It commits to the new key, so a guardian who
@@ -286,6 +312,21 @@ async function main() {
   if (!singleRevert || singleRevert === "0x") fail("a single approval should have reverted");
 
   // --- two of the three, chosen independently: guardians 1 and 3 ------------
+  // What makes a bare signature safe to accept from anyone: membership is not
+  // something the signer asserts. The proof, salt and key commitment come from
+  // the recovering side's own set, and a signature that did not come from that
+  // member's key simply fails the verifier.
+  console.log("\n==> Someone who is not a guardian signs the same digest");
+  const outsiderKey = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba";
+  const outsider = await sign({ hash: digest, privateKey: outsiderKey });
+  const stolenSeat = { ...(await approvalFor(0)), signature: serializeSignature(outsider) };
+  const outsiderRevert = await rawRevertData(recoveryManager, encodeFunctionData({
+    abi: recoveryAbi, functionName: "proposeRecovery",
+    args: [account, oldValidators, newValidator, initDataHash, newRoot, THRESHOLD, [stolenSeat, await approvalFor(2)]]
+  }));
+  if (!outsiderRevert || outsiderRevert === "0x") fail("a non-guardian signature was accepted");
+  console.log("    ok  refused — a signature from outside the set matches no seat in it");
+
   console.log("\n==> Guardians 1 and 3 approve independently (guardian 2 does nothing)");
   const two = [await approvalFor(0), await approvalFor(2)]
     // proposeRecovery requires approvals ordered by strictly increasing leaf.
@@ -304,6 +345,15 @@ async function main() {
   const hasOld = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "isModuleInstalled", args: [1n, validator] })));
   if (hasNew !== 1n || hasOld === 1n) fail(`validator not swapped (new=${hasNew}, old=${hasOld})`);
   console.log("    ok  the account now answers to the new key — same address, recovered");
+
+  // The claim ADR-0026 rests on, checked end to end: the guardian set the
+  // account ends up with is the one the publication committed to, days before
+  // any guardian signed anything.
+  const rotatedRoot = await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "guardianRoot" }));
+  if (rotatedRoot !== committedRoot) {
+    fail(`the executed guardian root is not the published one (${rotatedRoot} vs ${committedRoot})`);
+  }
+  console.log("    ok  the guardian root it rotated to is the one the publication committed to");
 
   // --- prove the account works under the new key ----------------------------
   console.log("\n==> The new passkey drives the account");

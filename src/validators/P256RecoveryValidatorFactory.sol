@@ -50,7 +50,9 @@ contract P256RecoveryValidatorFactory {
         bytes32 newGuardianRoot,
         uint8 newGuardianThreshold
     ) public pure returns (bytes32) {
-        if (account == address(0) || initDataHash == bytes32(0)) revert InvalidRecoveryValidatorInput();
+        if (account == address(0) || initDataHash == bytes32(0)) {
+            revert InvalidRecoveryValidatorInput();
+        }
         if (newGuardianRoot == bytes32(0) || newGuardianThreshold == 0) revert InvalidRecoveryValidatorInput();
         return keccak256(
             abi.encode(
@@ -121,7 +123,9 @@ contract P256RecoveryValidatorFactory {
 
         P256RecoveryValidator deployed = new P256RecoveryValidator{
             salt: deploymentSalt(account, recoveryNonce, initDataHash, newGuardianRoot, newGuardianThreshold)
-        }(fallbackVerifier);
+        }(
+            fallbackVerifier
+        );
         validator = address(deployed);
         if (validator != predicted) revert UnexpectedValidatorAddress();
         deployed.provisionRecoveryIntent(
