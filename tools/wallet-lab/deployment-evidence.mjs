@@ -410,28 +410,32 @@ const IMPORTANT_OPCODES = new Set([
   "LOG0", "LOG1", "LOG2", "LOG3", "LOG4", "REVERT", "RETURN", "SELFDESTRUCT"
 ]);
 
-export function compactOpcodeTrace(rawTrace, limit = 400) {
+export function compactOpcodeTrace(rawTrace, limit = 400, stepLimit = 1_200) {
   const logs = Array.isArray(rawTrace?.structLogs) ? rawTrace.structLogs : [];
   const opcodeCounts = {};
   for (const step of logs) opcodeCounts[step.op] = (opcodeCounts[step.op] ?? 0) + 1;
+  const compactStep = (step, index) => ({
+    index,
+    pc: step.pc,
+    op: step.op,
+    depth: step.depth,
+    gas: step.gas,
+    gasCost: step.gasCost
+  });
+  const steps = logs.slice(0, stepLimit).map(compactStep);
   const importantSteps = logs
+    .map(compactStep)
     .filter(step => IMPORTANT_OPCODES.has(step.op))
-    .slice(0, limit)
-    .map((step, index) => ({
-      index,
-      pc: step.pc,
-      op: step.op,
-      depth: step.depth,
-      gas: step.gas,
-      gasCost: step.gasCost
-    }));
+    .slice(0, limit);
   return {
     totalSteps: logs.length,
     failed: Boolean(rawTrace?.failed),
     gas: rawTrace?.gas ?? null,
     returnValue: rawTrace?.returnValue ?? null,
     truncated: importantSteps.length < logs.filter(step => IMPORTANT_OPCODES.has(step.op)).length,
+    stepsTruncated: steps.length < logs.length,
     opcodeCounts,
+    steps,
     importantSteps
   };
 }

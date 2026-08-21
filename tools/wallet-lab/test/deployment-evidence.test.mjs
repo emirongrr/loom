@@ -32,7 +32,10 @@ test("opcode evidence is bounded and excludes stack memory and storage payloads"
   const compact = compactOpcodeTrace(raw, 2);
 
   assert.equal(compact.totalSteps, 4);
+  assert.equal(compact.steps.length, 4);
+  assert.deepEqual(compact.steps.map(step => step.index), [0, 1, 2, 3]);
   assert.equal(compact.importantSteps.length, 2);
+  assert.deepEqual(compact.importantSteps.map(step => step.index), [1, 2]);
   assert.equal(compact.truncated, true);
   assert.equal(JSON.stringify(compact).includes("secret"), false);
   assert.deepEqual(compact.opcodeCounts, { PUSH1: 1, SLOAD: 1, SSTORE: 1, RETURN: 1 });
