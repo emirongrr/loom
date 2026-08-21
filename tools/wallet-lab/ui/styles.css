@@ -354,6 +354,11 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .execution-selection strong { font-size: .68rem; }
 .execution-selection code { max-width: 420px; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: .58rem; }
 .execution-selection small { color: var(--green); text-transform: uppercase; font: 700 .5rem ui-monospace, monospace; }
+.execution-lab-tools { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 1rem; align-items: end; margin-top: 1rem; padding: .85rem; border: 1px solid var(--line-strong); border-radius: 10px; background: linear-gradient(135deg, #0b100d, #0d1512); }
+.execution-lab-tools h3 { margin: 0; font-size: .82rem; }
+.execution-lab-tools > div > p:not(.eyebrow) { max-width: 760px; margin: .4rem 0 0; color: var(--muted); font-size: .64rem; line-height: 1.55; }
+.execution-lab-tools .execution-import, .execution-lab-tools .execution-actions { margin: 0; padding: 0; border: 0; }
+.execution-lab-tools > .evidence-note { grid-column: 1 / -1; margin: 0; }
 .execution-workspace-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr); gap: .75rem; margin-top: .9rem; }
 .execution-workspace .argument-editor { margin: 0; }
 .execution-input-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .7rem; }
@@ -408,6 +413,25 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .execution-events > article strong, .execution-events > article code { display: block; overflow-wrap: anywhere; font-size: .6rem; }
 .execution-events pre { max-height: 12rem; margin: 0; }
 .execution-technical { margin-top: .75rem; }
+.probe-result, .transaction-provenance { margin-top: 1rem; padding: .85rem; border: 1px solid var(--line); border-radius: 10px; background: #0b100d; }
+.probe-result .section-title p, .transaction-provenance .section-title p { max-width: 760px; margin: .35rem 0 0; color: var(--muted); font-size: .62rem; line-height: 1.5; }
+.probe-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; margin-top: .7rem; }
+.probe-table { margin-top: .7rem; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.probe-head, .probe-row { display: grid; grid-template-columns: minmax(260px, 1.7fr) minmax(90px, .45fr) minmax(100px, .5fr) minmax(100px, .5fr); gap: .55rem; align-items: center; }
+.probe-head { padding: .45rem .6rem; background: var(--surface-soft); color: var(--muted); text-transform: uppercase; font: 700 .5rem ui-monospace, monospace; }
+.probe-row { width: 100%; padding: .55rem .6rem; border: 0; border-top: 1px solid var(--line); background: transparent; color: #edf4ef; text-align: left; }
+.probe-row:hover { background: var(--green-soft); }
+.probe-row > span:first-child { min-width: 0; }
+.probe-row strong, .probe-row code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-row strong { font-size: .62rem; }.probe-row code, .probe-row > span:last-child { color: var(--muted); font-size: .55rem; }
+.provenance-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .45rem; margin-top: .7rem; }
+.provenance-checks article { display: grid; gap: .25rem; padding: .55rem; border-left: 2px solid var(--line-strong); background: var(--surface-soft); }
+.provenance-checks article.verified { border-color: var(--green); }.provenance-checks article.unverified, .provenance-checks article.not-observed { border-color: var(--amber); }
+.provenance-checks strong { font-size: .62rem; }.provenance-checks span { color: var(--muted); text-transform: uppercase; font: 700 .5rem ui-monospace, monospace; }.provenance-checks code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .52rem; }
+.touched-contracts { margin-top: .85rem; }
+.touched-contracts > article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .6rem; align-items: center; padding: .55rem 0; border-top: 1px solid var(--line); }
+.touched-contracts article > div { min-width: 0; }.touched-contracts strong, .touched-contracts code, .touched-contracts small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.touched-contracts strong { font-size: .63rem; }.touched-contracts code, .touched-contracts small, .touched-contracts article > span:last-child { color: var(--muted); font-size: .53rem; }
+.touch-role { padding: .25rem .35rem; border: 1px solid var(--line-strong); border-radius: 999px; text-transform: uppercase; font: 700 .48rem ui-monospace, monospace; }.touch-role.deployment, .touch-role.loom-account { border-color: var(--green); color: var(--green); }.touch-role.external { color: var(--muted); }
 .function-purpose { display: -webkit-box; margin-top: .3rem; overflow: hidden; color: #aab7ae; font-size: .57rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .function-purpose-detail { margin: .75rem 0; padding: .6rem 0 .6rem .7rem; border-left: 2px solid var(--green); }
 .function-purpose-detail strong { font-size: .66rem; }
@@ -568,6 +592,8 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
   .inspector-detail { position: static; max-height: none; }
   .trace-debugger, .opcode-layout { grid-template-columns: 1fr; }
   .execution-workspace-grid { grid-template-columns: 1fr; }
+  .execution-lab-tools { grid-template-columns: 1fr; }
+  .probe-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .execution-result-grid { grid-template-columns: 1fr; }
   .trace-frame-inspector { position: static; }
 }
@@ -584,6 +610,9 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
   .execution-selection { width: 100%; justify-items: start; }
   .execution-result-heading { flex-direction: column; }
   .execution-result-metrics { grid-template-columns: 1fr; }
+  .probe-head { display: none; }
+  .probe-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .probe-row > span:nth-child(3), .probe-row > span:nth-child(4) { grid-column: 1 / -1; }
   .execution-import { grid-template-columns: 1fr; }
   .execution-trace li { grid-template-columns: auto minmax(0, 1fr); }
   .execution-trace li small, .execution-trace li em { grid-column: 2; }

@@ -104,4 +104,10 @@ test("lab execution API is same-origin, deployment-scoped, and simulation-only b
   const unknown = await fetch(`${listening.url}api/execution/simulate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ network: "local", contractId: "Unknown", selector: "0x0f2c9329", args: [], valueWei: "0" }) });
   assert.equal(unknown.status, 400);
   assert.equal((await unknown.json()).code, "EXECUTION_REQUEST_REJECTED");
+
+  const probe = await fetch(`${listening.url}api/execution/local/probe`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ network: "local", contractIds: ["Example"] }) });
+  assert.equal(probe.status, 200);
+  const probeResult = await probe.json();
+  assert.deepEqual({ kind: probeResult.kind, attempted: probeResult.attempted, succeeded: probeResult.succeeded, published: probeResult.published }, { kind: "function-probe", attempted: 1, succeeded: 1, published: false });
+  assert.equal(methods.includes("eth_sendTransaction"), false);
 });
