@@ -66,6 +66,15 @@ function functionSignature(item) {
   return `${item.name}(${(item.inputs ?? []).map(canonicalType).join(",")})`;
 }
 
+function catalogAbiParameter(input) {
+  return {
+    name: input.name,
+    type: canonicalType(input),
+    internalType: input.internalType ?? input.type,
+    ...(input.components?.length ? { components: input.components.map(catalogAbiParameter) } : {})
+  };
+}
+
 function genericBehavior(contractName, item) {
   const key = `${contractName}.${item.name}`;
   if (BEHAVIORS[key]) return BEHAVIORS[key];
@@ -127,8 +136,8 @@ export function catalogFunctions(contractName, abi, ast = null) {
         signature,
         selector,
         stateMutability: item.stateMutability,
-        inputs: (item.inputs ?? []).map(input => ({ name: input.name, type: canonicalType(input), internalType: input.internalType ?? input.type })),
-        outputs: (item.outputs ?? []).map(output => ({ name: output.name, type: canonicalType(output), internalType: output.internalType ?? output.type })),
+        inputs: (item.inputs ?? []).map(catalogAbiParameter),
+        outputs: (item.outputs ?? []).map(catalogAbiParameter),
         behavior: genericBehavior(contractName, item),
         purpose: functionPurpose(contractName, item, source?.documentation),
         sourceRange: source?.sourceRange ?? null
