@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mergeApprovals } from "../src/features/recovery/boardApprovals.ts";
 
+/**
+ * How many guardian seats are filled, counting each guardian once however
+ * their approval arrived. The page uses the same rule to decide whether the
+ * proposal can be offered.
+ */
+const seatsFilled = (input: {
+  readonly responses: readonly { readonly guardianLeaf: string }[];
+  readonly published: readonly { readonly guardianLeaf: string }[];
+}): number => new Set([
+  ...input.responses.map(entry => entry.guardianLeaf.toLowerCase()),
+  ...input.published.map(entry => entry.guardianLeaf.toLowerCase())
+]).size;
+
 const leafA = `0x${"a1".repeat(32)}` as const;
 const leafB = `0x${"b2".repeat(32)}` as const;
 
@@ -70,4 +83,19 @@ test("a proposal can be assembled entirely from the board", () => {
     ]
   });
   assert.equal(merged.length, 2);
+});
+
+// Reported from the running app: two approvals were on the board, the proposal
+// already knew how to use them, and the step that reveals it counted only the
+// ones pasted in. The recovery was complete and looked stuck.
+test("approvals from the board fill guardian seats", () => {
+  assert.equal(seatsFilled({ responses: [], published: [{ guardianLeaf: leafA }, { guardianLeaf: leafB }] }), 2);
+});
+
+test("a guardian who used both routes fills one seat, not two", () => {
+  assert.equal(seatsFilled({ responses: [{ guardianLeaf: leafA }], published: [{ guardianLeaf: leafA }] }), 1);
+});
+
+test("seats count across routes", () => {
+  assert.equal(seatsFilled({ responses: [{ guardianLeaf: leafA }], published: [{ guardianLeaf: leafB }] }), 2);
 });
