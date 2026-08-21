@@ -91,15 +91,13 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
     })
     : [];
 
-  // Sessions for the account under inspection are listed above, with their
-  // duplicates marked and their next step named. Repeating them here showed the
-  // same five requests twice, the second time with no indication that four of
-  // them were duplicates. What this list still owns is every other account.
-  const otherSessions = inspection.status === "protected"
-    ? sessions.filter(session =>
-      session.request.chainId !== inspection.deployment.chainId
-      || session.request.account.toLowerCase() !== inspection.account.toLowerCase())
-    : sessions;
+  // Once an account is named, the page is about that account. Its own requests
+  // are listed beside it with their duplicates marked, and records belonging to
+  // other accounts are not merely redundant here -- shown next to a wallet they
+  // have nothing to do with, they read as that wallet's history. So this list
+  // only exists before an account is chosen, when resuming from a cold start is
+  // the whole point.
+  const showAllSessions = inspection.status !== "protected";
 
   const refresh = async () => {
     const snapshot = await repository.inspect();
@@ -519,12 +517,12 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         when the chain says there is something to finish. */}
     {inspection.status === "protected" && onChainPending?.pending
       && <RecoveryLookupPanel fixedAccount={inspection.account} />}
-    <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
-      <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">{inspection.status === "protected" ? "Recovery sessions for other accounts" : "Recovery sessions"}</h2></div><span className="pill">{otherSessions.length}</span></div>
+    {showAllSessions && <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
+      <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}
-      {otherSessions.length === 0 ? <div className="empty-state compact"><h3>{inspection.status === "protected" ? "Nothing here for another account" : "No recovery in progress"}</h3><p>{inspection.status === "protected" ? "Every request for the account above is listed with it, including any duplicates." : "A recovery session will remain here through approval collection, delay, execution, cancellation, or expiry."}</p></div> : <div className="wallet-list">{otherSessions.map(session => <button key={session.id} className="wallet-list-item" onClick={() => onNavigate(`/recover/${encodeURIComponent(session.id)}`)}><span className="identicon" /><span><strong>{shortStage(session.stage)}</strong><small>{session.request.humanCode} · {session.request.account}</small></span><span className="pill pending">Open</span></button>)}</div>}
+      {sessions.length === 0 ? <div className="empty-state compact"><h3>No recovery in progress</h3><p>A recovery session will remain here through approval collection, delay, execution, cancellation, or expiry.</p></div> : <div className="wallet-list">{sessions.map(session => <button key={session.id} className="wallet-list-item" onClick={() => onNavigate(`/recover/${encodeURIComponent(session.id)}`)}><span className="identicon" /><span><strong>{shortStage(session.stage)}</strong><small>{session.request.humanCode} · {session.request.account}</small></span><span className="pill pending">Open</span></button>)}</div>}
       <details><summary>Resume from a portable request</summary><p className="form-note">Paste a versioned recovery request received through a file, QR, clipboard, or bearer-link fragment. Unknown, altered, mismatched, and expired fields fail closed.</p><label className="field"><span>Recovery request</span><textarea rows={6} value={artifact} onChange={event => setArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="secondary" disabled={!artifact.trim()} onClick={() => void importRequest()}>Verify and save locally</button></details>
-    </section>
+    </section>}
   </main>;
 }
 
