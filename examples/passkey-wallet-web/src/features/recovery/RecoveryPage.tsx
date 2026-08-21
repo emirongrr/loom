@@ -1002,7 +1002,36 @@ function RecoveryProposalSessionView({ session, repository, accounts, onChanged,
     } catch { setMessage("Recovery link could not be copied. Export the request file instead."); }
   };
 
+  /**
+   * Let the local record catch up with the chain before anything is offered.
+   *
+   * A session proposed from another device -- or from this one, before a
+   * reload -- still reads "ready to send", so the page kept offering to send
+   * the request, invite guardians and announce, for a recovery the manager had
+   * already accepted. Patching each of those displays would leave the record
+   * itself wrong; this fixes the record, and they follow.
+   */
+  const reconcileWithChain = async () => {
+    if (!session.local?.oldValidators) return;
+    try {
+      const context = await restorePending();
+      const pending = await context.client.readPendingRecovery();
+      if (!pending.pending) return;
+      assertPendingRecoveryMatchesPrepared(pending, context.prepared);
+      await repository.write(transitionRecoverySession(session, {
+        type: "proposal-confirmed",
+        transactionHash: session.transactionHash ?? `0x${"00".repeat(32)}`,
+        readyAt: pending.readyAt,
+        expiresAt: pending.expiresAt
+      }));
+      await onChanged();
+    } catch { /* The chain is the authority, but being unable to read it changes nothing. */ }
+  };
+
   useEffect(() => {
+    if (session.stage === "request-created" || session.stage === "collecting" || session.stage === "ready-to-propose") {
+      void reconcileWithChain();
+    }
     if (session.stage === "delay-active") void checkPending();
   }, [session.id, session.stage]);
 

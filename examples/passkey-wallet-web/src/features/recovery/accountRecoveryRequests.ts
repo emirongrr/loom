@@ -128,24 +128,39 @@ export function collectAccountRecoveryRequests(input: {
     if (!liveByValidator.has(key)) liveByValidator.set(key, session.id);
   }
 
+  // The chain owns whether a recovery has been proposed, and a local record can
+  // be behind it: a session that was proposed still reads "ready to send" until
+  // this device happens to refresh it. Offering to send a request whose
+  // approvals the manager has already accepted -- it refuses to record one
+  // below the threshold -- sends guardians work that cannot count.
+  const proposedValidator = input.pending?.pending
+    ? input.pending.newValidator.toLowerCase()
+    : undefined;
+
   for (const session of mine) {
     claimed.add(session.request.newValidator.toLowerCase());
     const finished = FINISHED.has(session.stage);
-    const duplicate = !finished
+    const proposed = proposedValidator === session.request.newValidator.toLowerCase();
+    const duplicate = !finished && !proposed
       && liveByValidator.get(session.request.newValidator.toLowerCase()) !== session.id;
     const approvals = `${session.responses.length} of ${session.request.guardianThreshold} guardian approvals`;
     requests.push(Object.freeze({
       id: `session:${session.id}`,
       title: `Recovery ${session.request.humanCode}`,
-      status: duplicate ? "Duplicate" : SESSION_STAGE[session.stage],
-      detail: duplicate
+      status: proposed ? onChainStatus(input.pending!.status) : duplicate ? "Duplicate" : SESSION_STAGE[session.stage],
+      detail: proposed
+        ? `The guardians approved this and the manager recorded it, so the request is finished with. New validator`
+          + ` ${short(session.request.newValidator)}.`
+        : duplicate
         ? `A second request for validator ${short(session.request.newValidator)}. Only one recovery can be proposed,`
           + ` and an approval given for one request does not verify against another, so this one cannot be used`
           + ` alongside the first. It holds ${session.responses.length} approval(s).`
         : finished
           ? `New validator ${short(session.request.newValidator)}.`
           : `${approvals}. New validator ${short(session.request.newValidator)}.`,
-      next: duplicate
+      next: proposed
+        ? { kind: "open-session" as const, sessionId: session.id, label: "Open" }
+        : duplicate
         ? { kind: "discard-session" as const, sessionId: session.id, label: "Discard this duplicate" }
         : finished
         ? { kind: "blocked" as const, reason: "This request is closed. Nothing further can be done with it." }

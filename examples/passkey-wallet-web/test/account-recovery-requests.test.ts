@@ -271,3 +271,32 @@ test("a closed request does not block a fresh one for the same validator", () =>
   assert.equal(requests.filter(entry => entry.next.kind === "discard-session").length, 0);
   assert.equal(requests[1]?.primary, true);
 });
+
+// Reported from the running app: the recovery was proposed, the delay was
+// counting down, and the panel still said "Ready to send · 0 of 2 approvals"
+// and offered to send it to guardians. The manager refuses to record a proposal
+// below the threshold, so the chain had already proved those approvals existed.
+test("a proposed recovery is not offered for sending, whatever the local record says", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [session({ validator: MINE, stage: "request-created", responses: 0 })],
+    pending: { pending: true, newValidator: MINE, status: "delay-active", readyAt: 10n, expiresAt: 20n }
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.status, "Delay running");
+  if (requests[0]?.next.kind !== "open-session") throw new Error("unreachable");
+  assert.equal(requests[0].next.label, "Open");
+  assert.doesNotMatch(requests[0]!.detail, /guardian approvals/);
+});
+
+// The chain owning one fact does not make a stale local record a duplicate of
+// itself: there is one recovery here, and it is the proposed one.
+test("a proposed session is never marked a duplicate of itself", () => {
+  const requests = collectAccountRecoveryRequests({
+    ...base,
+    sessions: [session({ id: "a", validator: MINE }), session({ id: "b", validator: MINE })],
+    pending: { pending: true, newValidator: MINE, status: "ready", readyAt: 10n, expiresAt: 20n }
+  });
+  assert.equal(requests.filter(entry => entry.status === "Duplicate").length, 0);
+  assert.equal(requests[0]?.status, "Ready to execute");
+});
