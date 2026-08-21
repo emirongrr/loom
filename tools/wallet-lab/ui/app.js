@@ -30,6 +30,7 @@ const state = {
   functionCaller: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   executionStatus: "idle",
   executionResult: null,
+  executionProbeResult: null,
   executionError: null,
   executionSepoliaConfirmed: false,
   executionTransactionHash: ""
@@ -42,12 +43,15 @@ const format = value => typeof value === "string" ? value : JSON.stringify(value
 const short = (value, front = 10, back = 8) => value && String(value).length > front + back + 3 ? `${String(value).slice(0, front)}...${String(value).slice(-back)}` : value ?? EMPTY;
 const titleCase = value => String(value ?? "").split("-").map(part => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
 
-function resetExecutionState() {
+function resetExecutionState({ global = false } = {}) {
   state.executionStatus = "idle";
   state.executionResult = null;
   state.executionError = null;
   state.executionSepoliaConfirmed = false;
-  state.executionTransactionHash = "";
+  if (global) {
+    state.executionProbeResult = null;
+    state.executionTransactionHash = "";
+  }
 }
 
 function statusClass(status) {
@@ -809,19 +813,65 @@ function renderExecutionStateDiff(diff) {
   return `<div class="execution-state-list">${diff.accounts.map(account => `<article><header><code>${escapeHtml(short(account.address, 12, 10))}</code><span>${account.storage.length} storage slot${account.storage.length === 1 ? "" : "s"}</span></header>${account.balance.before !== account.balance.after ? `<p><strong>Balance</strong><code>${escapeHtml(account.balance.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.balance.after ?? "unchanged")}</code></p>` : ""}${account.nonce.before !== account.nonce.after ? `<p><strong>Nonce</strong><code>${escapeHtml(account.nonce.before ?? "unchanged")}</code><i>→</i><code>${escapeHtml(account.nonce.after ?? "unchanged")}</code></p>` : ""}${account.storage.map(slot => `<p><strong title="${escapeHtml(slot.slot)}">${escapeHtml(short(slot.slot, 10, 8))}</strong><code>${escapeHtml(short(slot.before ?? "empty", 12, 10))}</code><i>→</i><code>${escapeHtml(short(slot.after ?? "empty", 12, 10))}</code></p>`).join("")}</article>`).join("")}${diff.truncated ? `<p class="evidence-note">The state diff exceeded the bounded display limit and was truncated.</p>` : ""}</div>`;
 }
 
+function renderExecutionTools(contract, busy) {
+  if (state.deploymentSource === "sepolia") {
+    return `<section class="execution-lab-tools"><div><p class="eyebrow">MINED TRANSACTION ANALYZER</p><h3>Prove whether a Sepolia transaction used Loom</h3><p>Paste any mined transaction hash. Wallet Lab verifies the chain and receipt, detects trusted deployment code and Loom account proxies, then requests call, state, log, and opcode evidence from the selected RPC.</p></div><div class="execution-import"><label><span>Sepolia transaction hash</span><input id="execution-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x..." /></label><button type="button" id="inspect-sepolia"${busy || !state.executionTransactionHash ? " disabled" : ""}>Analyze transaction</button></div><p class="evidence-note">A shared EntryPoint call alone is not labeled as Loom. Positive provenance requires a verified Loom proxy runtime or observed trusted Loom deployment code. Public RPC presets may omit debug tracing; connect a trace-capable Sepolia RPC with <code>SEPOLIA_RPC_URL</code> or <code>--rpc-url</code> to add call, state, and opcode evidence.</p></section>`;
+  }
+  return `<section class="execution-lab-tools"><div><p class="eyebrow">LOCAL ABI COVERAGE</p><h3>Exercise the deployment without publishing state</h3><p>Deterministic type-safe inputs run every ABI entry point through <code>eth_call</code>. Successes, authorization reverts, decoded errors, and call frames remain separate evidence.</p></div><div class="execution-actions"><button type="button" id="probe-contract"${busy || !contract ? " disabled" : ""}>Probe ${escapeHtml(contract?.name ?? "selected contract")}</button><button type="button" id="probe-deployment" class="execution-primary"${busy ? " disabled" : ""}>Probe all deployment functions</button></div><p class="evidence-note">The matrix never calls <code>eth_sendTransaction</code>. Open a row for full simulation or an explicit local transaction.</p></section>`;
+}
+
+function renderProbeResult(result) {
+  if (!result) return "";
+  const rows = result.results ?? [];
+  return `<section class="probe-result" aria-live="polite"><div class="section-title"><div><p class="eyebrow">ABI EXECUTION MATRIX</p><h3>${escapeHtml(result.attempted)} functions attempted</h3><p>Each row records the current local-state outcome; a revert is useful authorization or precondition evidence, not a skipped function.</p></div><span>No transactions published</span></div><div class="probe-metrics">${field("Returned", result.succeeded, { code: true })}${field("Reverted", result.reverted, { code: true })}${field("Input fixture needed", result.unsupported, { code: true })}${field("Network", networkLabel(result.chainId))}</div><div class="probe-table"><div class="probe-head"><span>Contract / function</span><span>Mode</span><span>Result</span><span>Trace</span></div>${rows.map(item => `<button type="button" class="probe-row" data-probe-contract="${escapeHtml(item.contract.id)}" data-probe-selector="${escapeHtml(item.function.selector)}"><span><strong>${escapeHtml(item.contract.name)}</strong><code>${escapeHtml(item.function.signature)}</code></span><span class="mutability ${escapeHtml(item.function.stateMutability)}">${escapeHtml(item.function.stateMutability)}</span><span class="status ${escapeHtml(statusClass(item.status))}">${escapeHtml(item.status)}</span><span>${escapeHtml(item.traceSummary ? `${item.traceSummary.calls} frames` : "trace unavailable")}</span></button>`).join("")}</div></section>`;
+}
+
+function renderTransactionProvenance(result) {
+  if (!result?.provenance) return "";
+  const provenance = result.provenance;
+  const labels = {
+    "loom-confirmed": ["Loom involvement verified", "The receipt is bound to this transaction and the evidence reached trusted Loom deployment code or a runtime-verified Loom account."],
+    "erc4337-only": ["Only shared ERC-4337 transport observed", "The transaction reached EntryPoint, but available evidence does not prove that an included account is a Loom account."],
+    unrelated: ["No Loom execution observed", "The available call trace does not touch this verified Loom deployment."],
+    inconclusive: ["Loom provenance is inconclusive", "The RPC did not expose enough trace or account-runtime evidence to make a positive or negative claim."]
+  };
+  const [title, description] = labels[provenance.classification] ?? labels.inconclusive;
+  return `<section class="transaction-provenance"><div class="section-title"><div><p class="eyebrow">LOOM PROVENANCE</p><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div><span class="status ${escapeHtml(statusClass(provenance.classification === "loom-confirmed" ? "success" : provenance.classification === "unrelated" ? "error" : "waiting"))}">${escapeHtml(titleCase(provenance.basis))}</span></div><div class="provenance-checks">${(provenance.checks ?? []).map(check => `<article class="${escapeHtml(check.status)}"><strong>${escapeHtml(check.label)}</strong><span>${escapeHtml(titleCase(check.status))}</span><code title="${escapeHtml(check.detail)}">${escapeHtml(short(check.detail, 18, 12))}</code></article>`).join("")}</div><div class="touched-contracts"><div class="section-title"><div><p class="eyebrow">TOUCHED ADDRESSES</p><h3>What the transaction called or logged</h3></div><span>${escapeHtml(result.touchedContracts?.length ?? 0)}</span></div>${(result.touchedContracts ?? []).map(item => `<article><span class="touch-role ${escapeHtml(item.role)}">${escapeHtml(item.role)}</span><div><strong>${escapeHtml(item.name)}</strong><code>${escapeHtml(item.address)}</code>${item.functions?.length ? `<small>${escapeHtml(item.functions.join(" · "))}</small>` : ""}</div><span>${escapeHtml(item.calls)} calls<br />${escapeHtml(item.logs)} logs</span></article>`).join("") || `<p class="empty">No address-level evidence was returned.</p>`}</div></section>`;
+}
+
 function renderExecutionResult(result) {
   if (!result) return "";
-  const transaction = result.kind === "transaction";
+  const transaction = ["transaction", "transaction-analysis"].includes(result.kind);
   const opcodeCounts = Object.entries(result.opcodeProfile?.opcodeCounts ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 16);
   const events = result.events ?? [];
-  return `<section class="execution-result" aria-live="polite"><div class="execution-result-heading"><div><p class="eyebrow">${transaction ? "MINED TRANSACTION" : "SIMULATION ONLY"}</p><h2>${result.status === "success" ? transaction ? "Transaction changed chain state" : "Call completed without committing state" : "Execution reverted"}</h2><p>${transaction ? "This result is bound to a mined receipt, not a finality claim. State, events, gas, and trace evidence come from that transaction." : "eth_call and debug_traceCall evaluated the selected inputs at the latest block. No transaction was published and no state was committed."}</p></div><span class="status ${escapeHtml(statusClass(result.status))}">${escapeHtml(result.status)}</span></div><div class="execution-result-metrics">${field("Network", networkLabel(result.chainId))}${field(transaction ? "Transaction" : "Target", transaction ? result.transactionHash : result.contract?.address, { code: true, short: true })}${field("Function", result.function?.signature, { code: true })}${field("Gas used", transaction ? formatTraceNumber(result.gasUsed) : formatTraceNumber(result.trace?.gasUsed), { code: true })}${field("Call frames", result.traceSummary?.calls ?? "Unavailable", { code: true })}${field("Opcode steps", result.opcodeProfile?.totalSteps ?? "Unavailable", { code: true })}</div>${result.revert ? `<div class="execution-revert"><strong>${escapeHtml(result.revert.name ?? "Execution reverted")}</strong><code>${escapeHtml(result.revert.data ?? "No revert data")}</code><p>The revert is part of the result. It often identifies a missing caller, EntryPoint, validator, self-call, timing, or policy precondition.</p></div>` : ""}<div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">INPUT / OUTPUT</p><h3>Encoded call</h3></div></div>${field("Caller", result.transaction?.from ?? "RPC default caller", { code: true, short: true })}${field("Value (wei)", result.transaction?.value ?? "0x0", { code: true })}<details><summary>Calldata</summary>${jsonBlock(result.transaction?.data ?? "0x", "Execution calldata")}</details><details open><summary>Decoded output</summary>${jsonBlock(result.output?.decoded ?? result.output?.raw ?? "No return value", "Execution output")}</details></section><section><div class="section-title"><div><p class="eyebrow">CONTRACT MOVEMENT</p><h3>Call tree</h3></div><span>${escapeHtml(result.capabilities?.callTrace ?? "unavailable")}</span></div>${renderExecutionTrace(result.trace)}</section></div><div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">STORAGE / BALANCE / NONCE</p><h3>State changes</h3></div><span>${escapeHtml(result.capabilities?.stateDiff ?? "unavailable")}</span></div>${renderExecutionStateDiff(result.stateDiff)}</section><section><div class="section-title"><div><p class="eyebrow">OPCODES</p><h3>What the EVM executed</h3></div><span>${escapeHtml(result.capabilities?.opcodeTrace ?? "unavailable")}</span></div>${opcodeCounts.length ? `<div class="execution-opcodes">${opcodeCounts.map(([opcode, count]) => `<span class="${opcodeGroup(opcode)}"><code>${escapeHtml(opcode)}</code><strong>${escapeHtml(count)}</strong></span>`).join("")}</div>` : `<p class="empty">Opcode evidence is unavailable from this RPC.</p>`}<p class="evidence-note">Opcode counts are bounded diagnostic evidence. Stack, memory, and raw storage payloads are not collected.</p></section></div>${transaction ? `<section class="execution-events"><div class="section-title"><div><p class="eyebrow">EVENTS</p><h3>Receipt logs</h3></div><span>${events.length}</span></div>${events.length ? events.map(event => `<article><div><strong>${escapeHtml(event.name ?? "Unknown event")}</strong><code>${escapeHtml(event.contractId ?? short(event.address, 10, 8))}</code></div>${jsonBlock(event.args ?? { topics: event.topics, data: event.data }, "Decoded event")}</article>`).join("") : `<p class="empty">The transaction emitted no logs.</p>`}</section>` : ""}<details class="execution-technical"><summary>Complete execution evidence</summary>${jsonBlock(result, "Execution evidence")}</details></section>`;
+  const headline = result.status === "success"
+    ? transaction ? "Transaction evidence collected" : "Call completed without committing state"
+    : "Execution reverted";
+  const explanation = transaction
+    ? "This evidence is bound to a mined receipt, not a finality claim. Trace-dependent sections stay explicitly unavailable when the RPC does not expose them."
+    : "eth_call and debug_traceCall evaluated the selected inputs at the latest block. No transaction was published and no state was committed.";
+  const functionName = result.function?.signature ?? (result.kind === "transaction-analysis"
+    ? (result.capabilities?.callTrace === "available" ? "See decoded call tree" : "Unavailable without call trace")
+    : EMPTY);
+  const output = result.kind === "transaction-analysis" ? "" : `<details open><summary>Decoded output</summary>${jsonBlock(result.output?.decoded ?? result.output?.raw ?? "No return value", "Execution output")}</details>`;
+  const revert = result.revert ? `<div class="execution-revert"><strong>${escapeHtml(result.revert.name ?? "Execution reverted")}</strong><code>${escapeHtml(result.revert.data ?? "No revert data")}</code><p>The revert is part of the result and may identify a caller, EntryPoint, validator, timing, or policy precondition.</p></div>` : "";
+  const opcodes = opcodeCounts.length
+    ? `<div class="execution-opcodes">${opcodeCounts.map(([opcode, count]) => `<span class="${opcodeGroup(opcode)}"><code>${escapeHtml(opcode)}</code><strong>${escapeHtml(count)}</strong></span>`).join("")}</div>`
+    : `<p class="empty">Opcode evidence is unavailable from this RPC.</p>`;
+  const receiptEvents = transaction
+    ? `<section class="execution-events"><div class="section-title"><div><p class="eyebrow">EVENTS</p><h3>Receipt logs</h3></div><span>${events.length}</span></div>${events.length ? events.map(event => `<article><div><strong>${escapeHtml(event.name ?? "Unknown event")}</strong><code>${escapeHtml(event.contractId ?? short(event.address, 10, 8))}</code></div>${jsonBlock(event.args ?? { topics: event.topics, data: event.data }, "Decoded event")}</article>`).join("") : `<p class="empty">The transaction emitted no logs.</p>`}</section>`
+    : "";
+  return `<section class="execution-result" aria-live="polite"><div class="execution-result-heading"><div><p class="eyebrow">${transaction ? "MINED TRANSACTION" : "SIMULATION ONLY"}</p><h2>${escapeHtml(headline)}</h2><p>${escapeHtml(explanation)}</p></div><span class="status ${escapeHtml(statusClass(result.status))}">${escapeHtml(result.status)}</span></div><div class="execution-result-metrics">${field("Network", networkLabel(result.chainId))}${field(transaction ? "Transaction" : "Target", transaction ? result.transactionHash : result.contract?.address, { code: true, short: true })}${field("Function", functionName, { code: true })}${field("Gas used", transaction ? formatTraceNumber(result.gasUsed) : formatTraceNumber(result.trace?.gasUsed), { code: true })}${field("Call frames", result.traceSummary?.calls ?? "Unavailable", { code: true })}${field("Opcode steps", result.opcodeProfile?.totalSteps ?? "Unavailable", { code: true })}</div>${renderTransactionProvenance(result)}${revert}<div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">INPUT / OUTPUT</p><h3>Encoded call</h3></div></div>${field("Caller", result.transaction?.from ?? "RPC default caller", { code: true, short: true })}${field("Value (wei)", result.transaction?.value ?? "0x0", { code: true })}<details><summary>Calldata</summary>${jsonBlock(result.transaction?.input ?? result.transaction?.data ?? "0x", "Execution calldata")}</details>${output}</section><section><div class="section-title"><div><p class="eyebrow">CONTRACT MOVEMENT</p><h3>Call tree</h3></div><span>${escapeHtml(result.capabilities?.callTrace ?? "unavailable")}</span></div>${renderExecutionTrace(result.trace)}</section></div><div class="execution-result-grid"><section><div class="section-title"><div><p class="eyebrow">STORAGE / BALANCE / NONCE</p><h3>State changes</h3></div><span>${escapeHtml(result.capabilities?.stateDiff ?? "unavailable")}</span></div>${renderExecutionStateDiff(result.stateDiff)}</section><section><div class="section-title"><div><p class="eyebrow">OPCODES</p><h3>What the EVM executed</h3></div><span>${escapeHtml(result.capabilities?.opcodeTrace ?? "unavailable")}</span></div>${opcodes}<p class="evidence-note">Opcode counts are bounded diagnostic evidence. Stack, memory, and raw storage payloads are not collected.</p></section></div>${receiptEvents}<details class="execution-technical"><summary>Complete execution evidence</summary>${jsonBlock(result, "Execution evidence")}</details></section>`;
 }
 
 function renderExecutionWorkspace(contract, fn, tracePayload) {
   const root = $("#execution-workspace");
+  const busy = ["simulating", "broadcasting", "confirming", "probing"].includes(state.executionStatus);
+  const networkName = state.deploymentSource === "sepolia" ? "Verified Sepolia" : "Local Anvil devnet";
+  const tools = renderExecutionTools(contract, busy);
   if (!contract || !fn) {
-    root.className = "surface execution-workspace empty";
-    root.textContent = "Select a function to model its inputs and connect future execution evidence.";
+    root.className = "surface execution-workspace";
+    root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run and explain Loom execution</h2><p>Analyze a complete mined transaction or exercise the deployment ABI before selecting one function for deep inspection.</p></div><span class="execution-selection"><strong>${escapeHtml(networkName)}</strong><small>Deployment-wide tools</small></span></div>${tools}<p class="empty">Select a contract function for exact calldata, full simulation, and explicit local execution.</p>${renderProbeResult(state.executionProbeResult)}${renderExecutionResult(state.executionResult)}`;
     return;
   }
   const inputFields = fn.inputs.map((input, index) => {
@@ -832,15 +882,20 @@ function renderExecutionWorkspace(contract, fn, tracePayload) {
   const observedFrames = flattenTrace(tracePayload?.trace).filter(call => call.contractId === contract.id && call.selector === fn.selector);
   const opcodeSteps = tracePayload?.opcodeProfile?.totalSteps;
   const isRead = ["view", "pure"].includes(fn.stateMutability);
-  const busy = ["simulating", "broadcasting", "confirming"].includes(state.executionStatus);
   const simulationReady = state.executionResult?.kind === "simulation" && state.executionResult.status === "success";
-  const networkName = state.deploymentSource === "sepolia" ? "Verified Sepolia" : "Local Anvil devnet";
   const writeAction = isRead ? "" : state.deploymentSource === "local"
     ? `<button type="button" id="execute-local" class="execution-primary"${busy ? " disabled" : ""}>Execute on local devnet</button>`
     : `<label class="execution-consent"><input type="checkbox" id="sepolia-execution-consent"${state.executionSepoliaConfirmed ? " checked" : ""} /><span><strong>Connected wallet approval</strong>I reviewed the exact target, calldata, value, and Sepolia gas responsibility.</span></label><button type="button" id="execute-sepolia" class="execution-primary"${busy || !simulationReady || !state.executionSepoliaConfirmed ? " disabled" : ""}>Send with connected wallet</button>`;
-  const inspectSepolia = state.deploymentSource === "sepolia" && !isRead ? `<div class="execution-import"><label><span>Sepolia transaction hash</span><input id="execution-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x..." /></label><button type="button" id="inspect-sepolia"${busy || !state.executionTransactionHash ? " disabled" : ""}>Inspect mined transaction</button></div>` : "";
+  const resultKind = state.executionResult?.kind;
+  const evidenceTitle = state.executionResult
+    ? ["transaction", "transaction-analysis"].includes(resultKind) ? "Mined transaction evidence" : "Simulation evidence"
+    : observedFrames.length ? `${observedFrames.length} matching recorded frame${observedFrames.length === 1 ? "" : "s"}` : "Ready to simulate";
+  const evidenceText = state.executionResult
+    ? ["transaction", "transaction-analysis"].includes(resultKind) ? "Receipt-bound evidence may include state, logs, gas, calls, and opcodes depending on RPC capabilities." : "Simulation explains current behavior without claiming that state changed."
+    : "Choose inputs and simulate first. Write functions can then use the isolated local actor or an explicitly connected Sepolia wallet.";
+  const error = state.executionError ? `<div class="execution-error" role="alert"><strong>Execution could not be completed</strong><p>${escapeHtml(state.executionError)}</p></div>` : "";
   root.className = "surface execution-workspace";
-  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run, trace, and explain a contract function</h2><p>Try every ABI function against ${escapeHtml(networkName)}. Contract calls, EVM frames, and bounded opcode evidence are correlated without treating simulation as final chain state.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code><small>${escapeHtml(networkName)}</small></span></div><div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h3>Input values</h3><p>Values remain in this browser until you explicitly simulate or publish.</p></div><span>${escapeHtml(fn.stateMutability)}</span></div><div class="execution-input-grid"><label class="argument-field"><span>Caller <code>address</code></span><input type="text" id="function-caller" value="${escapeHtml(state.functionCaller)}" placeholder="Optional eth_call sender" /><small>${state.deploymentSource === "local" ? `Local writes use the fixed Anvil test actor ${short(LOCAL_TEST_SENDER, 8, 6)}.` : "Simulation caller only; the connected wallet controls the real transaction sender."}</small></label><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "This function may receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div><div class="execution-actions"><button type="button" id="simulate-execution"${busy ? " disabled" : ""}>${state.executionStatus === "simulating" ? "Simulating..." : "Simulate without sending"}</button>${writeAction}</div>${state.executionError ? `<div class="execution-error" role="alert"><strong>Execution could not be completed</strong><p>${escapeHtml(state.executionError)}</p></div>` : ""}${inspectSepolia}</section><aside class="execution-evidence"><p class="eyebrow">EVIDENCE MODE</p><h3>${state.executionResult ? state.executionResult.kind === "transaction" ? "Mined transaction evidence" : "Simulation evidence" : observedFrames.length ? `${observedFrames.length} matching recorded frame${observedFrames.length === 1 ? "" : "s"}` : "Ready to simulate"}</h3><p>${state.executionResult ? state.executionResult.kind === "transaction" ? "Receipt-bound evidence may include state changes, logs, gas, call frames, and opcodes depending on RPC capabilities." : "Simulation explains behavior at the latest block but never claims that state changed." : "Choose inputs and simulate first. Write functions can then use the isolated local actor or an explicitly connected Sepolia wallet."}</p><div class="execution-scope"><span>Input + output</span><span>Contract calls</span><span>State diff</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} recorded opcode steps` : "Opcodes"}</span></div></aside></div>${renderExecutionResult(state.executionResult)}`;
+  root.innerHTML = `<div class="execution-workspace-heading"><div><p class="eyebrow">EXECUTION WORKSPACE</p><h2>Run, trace, and explain Loom execution</h2><p>Use deployment-wide evidence first, then inspect exact calldata and EVM behavior for ${escapeHtml(contract.name)}.</p></div><span class="execution-selection"><strong>${escapeHtml(contract.name)}</strong><code>${escapeHtml(fn.signature)}</code><small>${escapeHtml(networkName)}</small></span></div>${tools}<div class="execution-workspace-grid"><section class="argument-editor"><div class="section-title"><div><p class="eyebrow">HYPOTHETICAL INPUT</p><h3>Input values</h3><p>Values remain in this browser until you explicitly simulate or publish.</p></div><span>${escapeHtml(fn.stateMutability)}</span></div><div class="execution-input-grid"><label class="argument-field"><span>Caller <code>address</code></span><input type="text" id="function-caller" value="${escapeHtml(state.functionCaller)}" placeholder="Optional eth_call sender" /><small>${state.deploymentSource === "local" ? `Local writes use the fixed Anvil test actor ${short(LOCAL_TEST_SENDER, 8, 6)}.` : "Simulation caller only; the connected wallet controls the real transaction sender."}</small></label><label class="argument-field"><span>Call value <code>uint256 wei</code></span><input type="text" id="function-call-value" value="${escapeHtml(state.functionCallValue)}" inputmode="numeric" /><small>${fn.stateMutability === "payable" ? "This function may receive native value." : "Non-payable functions require zero value."}</small></label>${inputFields || `<p class="empty">This function has no calldata arguments.</p>`}</div><div class="execution-actions"><button type="button" id="simulate-execution"${busy ? " disabled" : ""}>${state.executionStatus === "simulating" ? "Simulating..." : "Simulate without sending"}</button>${writeAction}</div>${error}</section><aside class="execution-evidence"><p class="eyebrow">EVIDENCE MODE</p><h3>${escapeHtml(evidenceTitle)}</h3><p>${escapeHtml(evidenceText)}</p><div class="execution-scope"><span>Input + output</span><span>Contract calls</span><span>State diff</span><span>EVM frames</span><span>${opcodeSteps ? `${escapeHtml(opcodeSteps)} recorded opcode steps` : "Opcodes"}</span></div></aside></div>${renderProbeResult(state.executionProbeResult)}${renderExecutionResult(state.executionResult)}`;
 }
 
 function executionRequestBody(contract, fn) {
@@ -890,12 +945,36 @@ async function runLocalExecution() {
   await requestExecution("/api/execution/local", executionRequestBody(contract, fn), "broadcasting");
 }
 
-async function inspectSepoliaExecution() {
+async function runLocalProbe(scope) {
+  if (state.deploymentSource !== "local") return;
   const deployment = currentDeployment(state.artifact?.events ?? []);
   const contract = selectedContract(deployment);
-  const fn = selectedFunction(contract);
-  if (!contract || !fn || state.deploymentSource !== "sepolia" || !state.executionTransactionHash) return;
-  await requestExecution("/api/execution/sepolia/inspect", { contractId: contract.id, selector: fn.selector, transactionHash: state.executionTransactionHash }, "confirming");
+  if (scope === "contract" && !contract) return;
+  state.executionStatus = "probing";
+  state.executionError = null;
+  state.executionProbeResult = null;
+  renderDeployment(state.artifact?.events ?? []);
+  try {
+    const response = await fetch("/api/execution/local/probe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ network: "local", ...(scope === "contract" ? { contractIds: [contract.id] } : {}) })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message ?? "Local function probe was rejected");
+    state.executionProbeResult = payload;
+    state.executionStatus = "success";
+  } catch (error) {
+    state.executionStatus = "error";
+    state.executionError = error?.message ?? "Local function probe failed";
+  } finally {
+    renderDeployment(state.artifact?.events ?? []);
+  }
+}
+
+async function inspectSepoliaExecution() {
+  if (state.deploymentSource !== "sepolia" || !state.executionTransactionHash) return;
+  await requestExecution("/api/execution/sepolia/analyze", { transactionHash: state.executionTransactionHash }, "confirming");
 }
 
 async function sendSepoliaExecution() {
@@ -1207,6 +1286,8 @@ $("#deployment-graph").addEventListener("keydown", event => {
 $("#execution-workspace").addEventListener("input", event => {
   if (event.target.id === "execution-transaction-hash") {
     state.executionTransactionHash = event.target.value.trim();
+    const analyze = $("#inspect-sepolia");
+    if (analyze) analyze.disabled = !state.executionTransactionHash || ["simulating", "broadcasting", "confirming", "probing"].includes(state.executionStatus);
     return;
   }
   if (event.target.id === "sepolia-execution-consent") {
@@ -1233,10 +1314,20 @@ $("#execution-workspace").addEventListener("change", event => {
 $("#execution-workspace").addEventListener("click", event => {
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
+  if (button.dataset.probeContract && button.dataset.probeSelector) {
+    state.selectedContractId = button.dataset.probeContract;
+    state.selectedFunctionSelector = button.dataset.probeSelector;
+    state.functionValues = {};
+    resetExecutionState();
+    renderDeployment(state.artifact?.events ?? []);
+    return;
+  }
   if (button.id === "simulate-execution") runExecutionSimulation();
   if (button.id === "execute-local") runLocalExecution();
   if (button.id === "execute-sepolia") sendSepoliaExecution();
   if (button.id === "inspect-sepolia") inspectSepoliaExecution();
+  if (button.id === "probe-contract") runLocalProbe("contract");
+  if (button.id === "probe-deployment") runLocalProbe("deployment");
 });
 
 function showDeploymentWorkspace(source) {
@@ -1258,7 +1349,7 @@ function chooseDeployment(source) {
   state.graphTransform = { x: 0, y: 0, scale: 1 };
   state.graphNodeOffsets = {};
   state.functionCaller = source === "local" ? LOCAL_TEST_SENDER : "";
-  resetExecutionState();
+  resetExecutionState({ global: true });
   showDeploymentWorkspace(source);
   renderDeployment(state.artifact?.events ?? []);
   renderEvmTrace(currentTrace(state.artifact?.events ?? []));

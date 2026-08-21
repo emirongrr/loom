@@ -3,7 +3,14 @@ import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertWalletLabArtifact } from "./dist/index.js";
-import { broadcastLocalDeploymentCall, inspectDeploymentTransaction, simulateDeploymentCall } from "./execution-engine.mjs";
+import {
+  analyzeDeploymentTransaction,
+  broadcastLocalDeploymentCall,
+  inspectDeploymentTransaction,
+  loomProxyRuntimeCodeHash,
+  probeDeploymentFunctions,
+  simulateDeploymentCall
+} from "./execution-engine.mjs";
 import { createJsonRpc, inspectSepoliaDeployment, rpcEndpointOrigin } from "./sepolia-deployment.mjs";
 
 const uiRoot = fileURLToPath(new URL("./ui/", import.meta.url));
@@ -74,7 +81,7 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
       response.end(JSON.stringify(payload));
     };
 
-    if (["/api/execution/simulate", "/api/execution/local", "/api/execution/sepolia/inspect"].includes(url.pathname)) {
+    if (["/api/execution/simulate", "/api/execution/local", "/api/execution/local/probe", "/api/execution/sepolia/inspect", "/api/execution/sepolia/analyze"].includes(url.pathname)) {
       if (request.method !== "POST") {
         response.writeHead(405, { allow: "POST" });
         response.end(JSON.stringify({ status: "error", message: "POST is required." }));
@@ -86,6 +93,20 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
       }
       try {
         const body = await readControlBody(request);
+        if (url.pathname === "/api/execution/sepolia/analyze") {
+          const report = await inspectSepolia();
+          if (report.status !== "verified") throw new Error("Sepolia deployment must be verified before analyzing a transaction");
+          const manifest = activeSepolia?.manifest;
+          const result = await analyzeDeploymentTransaction({
+            rpc: activeSepolia.rpc,
+            deployment: report.deployment,
+            chainId: report.chainId,
+            transactionHash: body.transactionHash,
+            loomProxyRuntimeCodeHash: loomProxyRuntimeCodeHash({ proxyCreationCode: manifest?.proxyCreationCode, implementation: manifest?.implementation })
+          });
+          writeJson(200, result);
+          return;
+        }
         if (url.pathname === "/api/execution/sepolia/inspect") {
           const report = await inspectSepolia();
           if (report.status !== "verified") throw new Error("Sepolia deployment must be verified before inspecting a transaction");
@@ -106,6 +127,12 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
           throw new Error("Execution network must be local or sepolia");
         }
         const input = { ...context, contractId: body.contractId, selector: body.selector, args: body.args, valueWei: body.valueWei, from: body.from };
+        if (url.pathname === "/api/execution/local/probe") {
+          if (network !== "local") throw new Error("Function probing cannot target Sepolia");
+          const result = await probeDeploymentFunctions({ ...context, from: local.sender ?? LOCAL_TEST_SENDER, contractIds: body.contractIds });
+          writeJson(200, result);
+          return;
+        }
         if (url.pathname === "/api/execution/local") {
           if (network !== "local") throw new Error("Local broadcast cannot target Sepolia");
           const result = await broadcastLocalDeploymentCall({ ...input, sender: local.sender ?? LOCAL_TEST_SENDER });

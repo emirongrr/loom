@@ -3,6 +3,7 @@ import {
   decodeEventLog,
   decodeFunctionResult,
   encodeFunctionData,
+  keccak256,
   parseAbiItem
 } from "viem";
 import { compactOpcodeTrace, normalizeCallTrace, summarizeCallTrace } from "./deployment-evidence.mjs";
@@ -12,6 +13,9 @@ const HASH = /^0x[0-9a-fA-F]{64}$/u;
 const MAX_VALUE_WEI = (1n << 256n) - 1n;
 const MAX_STATE_ACCOUNTS = 64;
 const MAX_STATE_SLOTS = 128;
+const MAX_PROBE_FUNCTIONS = 384;
+const PROBE_CONCURRENCY = 4;
+const PROXY_RUNTIME_MARKER = "fe608060405260043610";
 
 function jsonSafe(value) {
   if (typeof value === "bigint") return value.toString();
@@ -83,6 +87,24 @@ function resolveSelection(deployment, contractId, selector) {
   const fn = contract.functions?.find(candidate => candidate.selector.toLowerCase() === String(selector).toLowerCase());
   if (!fn) throw new Error("selected function is not part of this contract ABI");
   return { contract, fn };
+}
+
+export function materializeLoomProxyRuntime({ proxyCreationCode, implementation }) {
+  if (!/^0x(?:[0-9a-fA-F]{2})+$/u.test(String(proxyCreationCode))) throw new Error("proxy creation code must be hexadecimal bytes");
+  if (!ADDRESS.test(String(implementation))) throw new Error("proxy implementation must contain 20 bytes");
+  const creation = String(proxyCreationCode).slice(2).toLowerCase();
+  const marker = creation.indexOf(PROXY_RUNTIME_MARKER);
+  if (marker < 0) throw new Error("proxy creation code does not contain the trusted Loom runtime boundary");
+  const placeholder = `7f${"0".repeat(64)}`;
+  const replacement = `7f${String(implementation).slice(2).toLowerCase().padStart(64, "0")}`;
+  const template = creation.slice(marker + 2);
+  const matches = template.split(placeholder).length - 1;
+  if (matches !== 2) throw new Error("proxy runtime must contain exactly two implementation commitments");
+  return `0x${template.replaceAll(placeholder, replacement)}`;
+}
+
+export function loomProxyRuntimeCodeHash(input) {
+  return keccak256(materializeLoomProxyRuntime(input));
 }
 
 function errorData(error) {
@@ -201,6 +223,99 @@ export async function simulateDeploymentCall(input) {
   };
 }
 
+function probeDefault(parameter, sender) {
+  if (parameter.type.endsWith("]")) {
+    const match = /^(.*)\[(\d*)\]$/u.exec(parameter.type);
+    const length = match?.[2] ? Number(match[2]) : 0;
+    const child = { ...parameter, type: match?.[1] ?? parameter.type };
+    return Array.from({ length }, () => probeDefault(child, sender));
+  }
+  if (parameter.type === "tuple") return (parameter.components ?? []).map(component => probeDefault(component, sender));
+  if (parameter.type === "address") return sender;
+  if (parameter.type === "bool") return false;
+  if (parameter.type === "string") return "";
+  if (parameter.type === "function") return `0x${"0".repeat(48)}`;
+  if (/^bytes(?:\d+)?$/u.test(parameter.type)) {
+    const width = Number(/^bytes(\d+)$/u.exec(parameter.type)?.[1] ?? 0);
+    return `0x${"0".repeat(width * 2)}`;
+  }
+  if (/^u?int(?:\d+)?$/u.test(parameter.type)) return 0n;
+  throw new Error(`no deterministic probe value is available for ${parameter.type}`);
+}
+
+function probeResultBase(contract, fn, values) {
+  return {
+    contract: { id: contract.id, name: contract.name, address: contract.address },
+    function: { name: fn.name, signature: fn.signature, selector: fn.selector, stateMutability: fn.stateMutability },
+    arguments: jsonSafe(values)
+  };
+}
+
+async function mapBounded(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }));
+  return results;
+}
+
+export async function probeDeploymentFunctions({ rpc, deployment, chainId, from, contractIds } = {}) {
+  if (typeof rpc !== "function") throw new Error("local probe RPC is required");
+  if (!ADDRESS.test(String(from))) throw new Error("local probe caller must contain 20 bytes");
+  const observedChainId = Number(BigInt(await rpc("eth_chainId", [])));
+  if (observedChainId !== Number(chainId) || observedChainId !== 31337) throw new Error("function probing is restricted to the selected local devnet");
+  const requested = contractIds === undefined ? null : new Set(contractIds);
+  if (requested && (!Array.isArray(contractIds) || contractIds.some(id => typeof id !== "string"))) throw new Error("probe contract IDs must be an array of deployment identifiers");
+  const contracts = (deployment?.nodes ?? []).filter(contract => !requested || requested.has(contract.id));
+  if (requested && contracts.length !== requested.size) throw new Error("probe scope contains a contract outside this deployment");
+  const work = contracts.flatMap(contract => (contract.functions ?? []).map(fn => ({ contract, fn })));
+  if (!work.length) throw new Error("probe scope does not expose ABI functions");
+  if (work.length > MAX_PROBE_FUNCTIONS) throw new Error(`probe scope exceeds the ${MAX_PROBE_FUNCTIONS} function limit`);
+
+  const results = await mapBounded(work, PROBE_CONCURRENCY, async ({ contract, fn }) => {
+    let abi;
+    let values;
+    let prepared;
+    try {
+      abi = functionAbi(fn);
+      values = abi.inputs.map(parameter => probeDefault(parameter, from));
+      prepared = prepareDeploymentCall({ deployment, chainId, contractId: contract.id, selector: fn.selector, args: jsonSafe(values), valueWei: "0", from });
+    } catch (error) {
+      return { ...probeResultBase(contract, fn, values ?? []), status: "unsupported-input", message: error?.message ?? "deterministic probe input could not be generated", trace: null, traceSummary: null };
+    }
+    const callTrace = optionalRpc(rpc, "debug_traceCall", [prepared.transaction, "latest", { tracer: "callTracer" }]);
+    try {
+      const output = await rpc("eth_call", [prepared.transaction, "latest"]);
+      const resolvedTrace = await callTrace;
+      const trace = resolvedTrace.status === "available" ? normalizeCallTrace(resolvedTrace.value, deployment) : null;
+      let decoded = null;
+      if (fn.outputs?.length) {
+        try { decoded = jsonSafe(decodeFunctionResult({ abi: [abi], functionName: fn.name, data: output })); } catch { decoded = null; }
+      }
+      return { ...probeResultBase(contract, fn, values), status: "success", output: { raw: output, decoded }, trace, traceSummary: trace ? summarizeCallTrace(trace) : null };
+    } catch (error) {
+      const resolvedTrace = await callTrace;
+      const trace = resolvedTrace.status === "available" ? normalizeCallTrace(resolvedTrace.value, deployment) : null;
+      return { ...probeResultBase(contract, fn, values), status: "reverted", revert: decodeRevert(contract, errorData(error)), trace, traceSummary: trace ? summarizeCallTrace(trace) : null };
+    }
+  });
+  return {
+    kind: "function-probe",
+    chainId: observedChainId,
+    published: false,
+    attempted: results.length,
+    succeeded: results.filter(result => result.status === "success").length,
+    reverted: results.filter(result => result.status === "reverted").length,
+    unsupported: results.filter(result => result.status === "unsupported-input").length,
+    results
+  };
+}
+
 function eventAbi(contract) {
   return (contract.events ?? []).map(item => ({ type: "event", name: item.name, anonymous: item.anonymous, inputs: item.inputs ?? [] }));
 }
@@ -225,6 +340,139 @@ async function waitForReceipt(rpc, hash, attempts = 40) {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   throw new Error("transaction receipt was not available before the bounded confirmation timeout");
+}
+
+function flattenNormalizedTrace(trace, result = []) {
+  if (!trace) return result;
+  result.push(trace);
+  for (const child of trace.calls ?? []) flattenNormalizedTrace(child, result);
+  return result;
+}
+
+function annotateVerifiedAccounts(trace, accounts) {
+  if (!trace) return null;
+  const address = trace.to?.toLowerCase();
+  const account = address ? accounts.get(address) : null;
+  return {
+    ...trace,
+    ...(account && !trace.contractId ? { contractId: "ObservedAccount", contractName: "Verified Loom account", loomAccount: true } : {}),
+    calls: (trace.calls ?? []).map(child => annotateVerifiedAccounts(child, accounts))
+  };
+}
+
+function touchedContracts(deployment, trace, events, verifiedAccounts) {
+  const catalog = new Map((deployment?.nodes ?? []).map(node => [node.address.toLowerCase(), node]));
+  const touched = new Map();
+  const add = (address, source, frame = null) => {
+    if (!ADDRESS.test(String(address))) return;
+    const key = address.toLowerCase();
+    const contract = catalog.get(key);
+    const account = verifiedAccounts.get(key);
+    const current = touched.get(key) ?? {
+      address,
+      contractId: contract?.id ?? (account ? "ObservedAccount" : null),
+      name: contract?.name ?? (account ? "Verified Loom account" : "External contract"),
+      role: contract ? "deployment" : account ? "loom-account" : "external",
+      calls: 0,
+      logs: 0,
+      functions: []
+    };
+    if (source === "call") {
+      current.calls += 1;
+      if (frame?.functionSignature && !current.functions.includes(frame.functionSignature)) current.functions.push(frame.functionSignature);
+    } else current.logs += 1;
+    touched.set(key, current);
+  };
+  for (const frame of flattenNormalizedTrace(trace)) add(frame.to, "call", frame);
+  for (const event of events) add(event.address, "log");
+  return [...touched.values()];
+}
+
+function eventArgument(event, name, index) {
+  if (event?.args && !Array.isArray(event.args) && Object.prototype.hasOwnProperty.call(event.args, name)) return event.args[name];
+  return Array.isArray(event?.args) ? event.args[index] : null;
+}
+
+export async function analyzeDeploymentTransaction({ rpc, deployment, chainId, transactionHash, loomProxyRuntimeCodeHash: expectedProxyHash }) {
+  if (!HASH.test(String(transactionHash))) throw new Error("transaction hash must contain 32 bytes");
+  const observedChainId = Number(BigInt(await rpc("eth_chainId", [])));
+  if (observedChainId !== Number(chainId)) throw new Error("execution RPC chain does not match the selected deployment");
+  const transaction = await rpc("eth_getTransactionByHash", [transactionHash]);
+  if (!transaction) throw new Error("transaction is not available from the selected RPC");
+  const receipt = await waitForReceipt(rpc, transactionHash);
+  if (receipt.transactionHash && receipt.transactionHash.toLowerCase() !== transactionHash.toLowerCase()) throw new Error("transaction receipt hash does not match the requested transaction");
+
+  const callTrace = optionalRpc(rpc, "debug_traceTransaction", [transactionHash, { tracer: "callTracer" }]);
+  const opcodeTrace = optionalRpc(rpc, "debug_traceTransaction", [transactionHash, { disableMemory: true, disableStack: true, disableStorage: true }]);
+  const stateTrace = optionalRpc(rpc, "debug_traceTransaction", [transactionHash, { tracer: "prestateTracer", tracerConfig: { diffMode: true } }]);
+  const events = decodeLogs(deployment, receipt.logs);
+  const userOperations = events.filter(event => event.contractId === "EntryPoint" && event.name === "UserOperationEvent");
+  const uniqueSenders = [...new Set(userOperations.map(event => String(eventArgument(event, "sender", 1) ?? "").toLowerCase()).filter(address => ADDRESS.test(address)))];
+  const runtimeChecks = new Map(await Promise.all(uniqueSenders.map(async address => {
+    const historicalCode = await optionalRpc(rpc, "eth_getCode", [address, receipt.blockNumber]);
+    const code = historicalCode.status === "available" ? historicalCode : await optionalRpc(rpc, "eth_getCode", [address, "latest"]);
+    const observedHash = code.status === "available" && typeof code.value === "string" && code.value !== "0x" ? keccak256(code.value) : null;
+    const verified = Boolean(expectedProxyHash && observedHash?.toLowerCase() === expectedProxyHash.toLowerCase());
+    return [address, { address, runtime: verified ? "verified" : observedHash ? "mismatch" : "unavailable", observedCodeHash: observedHash, observedAt: historicalCode.status === "available" ? receipt.blockNumber : code.status === "available" ? "latest" : null }];
+  })));
+  const accounts = userOperations.map(event => {
+    const address = String(eventArgument(event, "sender", 1) ?? "");
+    const runtime = runtimeChecks.get(address.toLowerCase()) ?? { runtime: "unavailable" };
+    return {
+      address,
+      runtime: runtime.runtime,
+      userOperationHash: eventArgument(event, "userOpHash", 0),
+      success: eventArgument(event, "success", 4)
+    };
+  });
+  const verifiedAccounts = new Map([...runtimeChecks].filter(([, check]) => check.runtime === "verified"));
+  const [resolvedCallTrace, resolvedOpcodeTrace, resolvedStateTrace] = await Promise.all([callTrace, opcodeTrace, stateTrace]);
+  const evidence = traceEvidence(deployment, resolvedCallTrace, resolvedOpcodeTrace, resolvedStateTrace);
+  evidence.trace = annotateVerifiedAccounts(evidence.trace, verifiedAccounts);
+  evidence.traceSummary = evidence.trace ? summarizeCallTrace(evidence.trace) : null;
+  const frames = flattenNormalizedTrace(evidence.trace);
+  const entryPoint = deployment.nodes.find(node => node.id === "EntryPoint");
+  const direct = deployment.nodes.find(node => node.address.toLowerCase() === transaction.to?.toLowerCase());
+  const knownLoomFrames = frames.filter(frame => frame.contractId && frame.contractId !== "EntryPoint");
+  const entryPointTransport = Boolean(entryPoint && (transaction.to?.toLowerCase() === entryPoint.address.toLowerCase() || frames.some(frame => frame.contractId === "EntryPoint")));
+  const verifiedUserOperation = accounts.some(account => account.runtime === "verified");
+  const trustedDeploymentInteraction = Boolean((direct && direct.id !== "EntryPoint") || knownLoomFrames.length);
+  const classification = verifiedUserOperation || trustedDeploymentInteraction
+    ? "loom-confirmed"
+    : entryPointTransport
+      ? "erc4337-only"
+      : evidence.capabilities.callTrace === "available"
+        ? "unrelated"
+        : "inconclusive";
+  const basis = verifiedUserOperation ? "verified-account-user-operation" : trustedDeploymentInteraction ? "trusted-deployment-code" : entryPointTransport ? "shared-entrypoint-only" : "no-loom-evidence";
+  const touched = touchedContracts(deployment, evidence.trace, events, verifiedAccounts);
+
+  return {
+    kind: "transaction-analysis",
+    chainId: observedChainId,
+    status: receipt.status === "0x1" ? "success" : "reverted",
+    transactionHash,
+    blockHash: receipt.blockHash,
+    blockNumber: receipt.blockNumber,
+    gasUsed: receipt.gasUsed,
+    transaction,
+    events,
+    touchedContracts: touched,
+    provenance: {
+      classification,
+      basis,
+      entryPointTransport,
+      deploymentCodeObserved: trustedDeploymentInteraction,
+      accounts,
+      checks: [
+        { label: "Chain identity", status: "verified", detail: String(observedChainId) },
+        { label: "Receipt binding", status: "verified", detail: transactionHash },
+        { label: "Loom deployment code", status: trustedDeploymentInteraction ? "verified" : "not-observed", detail: knownLoomFrames.map(frame => frame.contractId).filter(Boolean).join(", ") || direct?.id || null },
+        { label: "Loom account runtime", status: verifiedUserOperation ? "verified" : accounts.length ? "unverified" : "not-observed", detail: accounts.map(account => `${account.address}:${account.runtime}`).join(", ") || null }
+      ]
+    },
+    ...evidence
+  };
 }
 
 export async function inspectDeploymentTransaction({ rpc, deployment, chainId, contractId, selector, transactionHash }) {
