@@ -25,9 +25,11 @@ import type { Address, Hex } from "@loom/core";
  * It is offered here because the recovering device has already proved it holds
  * the matching roster: the request could not have been created otherwise.
  */
-export function GuardianInviteLinks({ account, chainId }: {
+export function GuardianInviteLinks({ account, chainId, requestLink }: {
   readonly account: Address;
   readonly chainId: number;
+  /** The request itself, so one message carries everything a guardian needs. */
+  readonly requestLink?: () => Promise<string>;
 }) {
   const { config } = useNetwork();
   const services = useAppServices();
@@ -104,6 +106,34 @@ export function GuardianInviteLinks({ account, chainId }: {
     catch { setMessage("The browser would not copy it. Select the link below and copy it manually."); }
   };
 
+  /**
+   * Both links in one message.
+   *
+   * A guardian needs two things: the capability that lets them approve, and the
+   * request to approve. Sending them separately is two deliveries per person
+   * for no reason -- and paying to announce the request only avoids the second
+   * delivery, which is not worth a transaction when the first one is happening
+   * anyway.
+   */
+  const copyBoth = async (guardianId: string) => {
+    const invitation = links[guardianId];
+    if (!invitation || !requestLink) return;
+    try {
+      const request = await requestLink();
+      await navigator.clipboard.writeText(
+        `Your guardian invitation:
+${invitation}
+
+The recovery to review:
+${request}
+
+`
+        + "Open the invitation first -- it is what lets your approval count."
+      );
+      setMessage("Invitation and request copied together. Send both to that guardian over a channel you trust.");
+    } catch { setMessage("The browser would not copy it."); }
+  };
+
   if (state.kind === "loading") return <p className="form-note">Reading the guardian list on this device…</p>;
   if (state.kind === "unavailable") return <p className="callout warning">{state.reason}</p>;
 
@@ -126,7 +156,8 @@ export function GuardianInviteLinks({ account, chainId }: {
           <button className="secondary" onClick={() => void issue(guardian.id)}>
             {links[guardian.id] ? "Issue a new invitation" : "Create invitation"}
           </button>
-          {links[guardian.id] && <button className="secondary" onClick={() => void copy(guardian.id)}>Copy</button>}
+          {links[guardian.id] && requestLink && <button className="primary" onClick={() => void copyBoth(guardian.id)}>Copy invitation + request</button>}
+          {links[guardian.id] && <button className="secondary" onClick={() => void copy(guardian.id)}>Copy invitation only</button>}
         </div>
       </div>)}
     </div>
