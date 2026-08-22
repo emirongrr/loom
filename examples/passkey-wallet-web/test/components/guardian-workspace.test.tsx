@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { createGuardianInvite, createGuardianSet } from "@loom/sdk/recovery";
 import { AppServicesProvider, type AppServices } from "../../src/app/AppServices.tsx";
@@ -92,4 +92,47 @@ test("switching wallets clears the previous guardian relationships before loadin
   await screen.findByText(/^0xbbbb…bbbb$/iu);
   expect(screen.queryByText(/^0xaaaa…aaaa$/iu)).toBeNull();
   expect(screen.queryByText("Protected B")).toBeNull();
+});
+
+// A guardian who has not accepted an invitation used to find no paste field at
+// all: "Review a recovery request" rendered only once the wallet already held a
+// usable capability. With nothing on screen and no reason given, the only field
+// there was is the invitation box -- which is exactly where recovery requests
+// were being pasted, and where they silently failed.
+test("the recovery review section is present before any invitation is accepted, and says why it is closed", async () => {
+  const guardian = account("wallet-empty", "44");
+  const services = {
+    guardianVault: {
+      list: async () => [],
+      inspect: async () => ({ records: [], issues: [] }) as GuardianVaultSnapshot,
+      put: async () => undefined,
+      remove: async () => undefined
+    },
+    invitationLinks: {},
+    accounts: {},
+    publicClients: {},
+    runtime: {},
+    pendingOperations: {},
+    now: () => 1_900_000_000_000
+  } as AppServices;
+
+  // Scoped to this render: the earlier test in this file leaves its tree
+  // mounted, and both now carry a review section.
+  const view = render(
+    <NetworkProvider><AppServicesProvider services={services}><GuardianWorkspace account={guardian} /></AppServicesProvider></NetworkProvider>
+  );
+  const panel = within(view.container);
+
+  await panel.findByRole("heading", { name: "Review a recovery request" });
+  await panel.findByText(/No accepted invitation for this account yet/iu);
+  // The invitation is the way in, and the reason is stated rather than left as
+  // a rule: the same capability that lets a guardian approve is what lets an
+  // approval be published on chain.
+  expect(panel.getByText(/published on chain/iu)).toBeTruthy();
+  expect(panel.getByText(/issuing one costs them nothing/iu)).toBeTruthy();
+
+  // Closed until the invitation is accepted, rather than absent with no reason.
+  const boxes = panel.getAllByPlaceholderText(/loom\.recovery-request/iu) as HTMLTextAreaElement[];
+  expect(boxes.length).toBe(1);
+  expect(boxes[0]!.disabled).toBe(true);
 });

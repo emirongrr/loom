@@ -1,3 +1,4 @@
+import { AccountOperations } from "./AccountOperations";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNetwork } from "../../config/NetworkContext";
 import { transactionUrl } from "../../config/network";
@@ -84,7 +85,11 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
   const showManual = Boolean(cursor) && (autoPaused || !canObserve);
 
   return <div className="page-stack">
-    <header className="page-title"><p className="eyebrow">Account history</p><h1>Activity</h1><p>Transfers and account operations for {account.label}, indexed by {hostOf(config.explorerUrl)}.</p></header>
+    <header className="page-title"><p className="eyebrow">Account history</p><h1>Activity</h1><p>What {account.label} did, read from the EntryPoint, alongside what {hostOf(config.explorerUrl)} indexed about it.</p></header>
+
+    {/* First, because it is the account's own history. The explorer section
+        below cannot see it: a Loom account never sends a transaction. */}
+    <AccountOperations account={account} />
 
     <section className="section-card">
       <div className="section-heading">

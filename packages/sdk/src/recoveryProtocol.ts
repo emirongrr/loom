@@ -19,6 +19,47 @@ const RESPONSE_CRITICAL = [
   "requestId", "chainId", "account", "recoveryDigest", "guardianLeaf", "verifier", "keyCommitment",
   "salt", "proof", "signature", "expiresAt"
 ] as const;
+const SIGNATURE_FIELDS = [
+  "format", "version", "critical", "requestId", "chainId", "account", "recoveryDigest", "signature",
+  "signedAt", "expiresAt", "integrity"
+] as const;
+const SIGNATURE_CRITICAL = [
+  "requestId", "chainId", "account", "recoveryDigest", "signature", "expiresAt"
+] as const;
+
+/**
+ * A guardian's signature over a recovery, and nothing else.
+ *
+ * The full response carries `guardianLeaf`, `verifier`, `keyCommitment`,
+ * `salt` and `proof`, all of which come from a capability the guardian was
+ * invited with. Requiring them made an invitation a precondition for helping,
+ * so a guardian who had never been sent one -- or whose wallet had been reset
+ * -- could not act at all, at the one moment they were needed.
+ *
+ * None of those five are secrets and none of them are the guardian's to know:
+ * they describe membership of a set the *recovering* party holds. Only the
+ * signature is the guardian's, and only the signature authorises anything. So
+ * this carries only that, and the recovering side rebuilds the rest from its
+ * own roster.
+ *
+ * A signature from someone who is not in the set matches no leaf and is worth
+ * exactly nothing -- there is no state to poison and nothing to refuse, which
+ * is why this can be accepted from anyone.
+ */
+export interface RecoverySignatureV1 {
+  readonly format: "loom.recovery-signature";
+  readonly version: 1;
+  readonly critical: readonly string[];
+  readonly requestId: Hex;
+  readonly chainId: number;
+  readonly account: Address;
+  /** Repeated so a signer's own view of what they signed is checkable. */
+  readonly recoveryDigest: Hex;
+  readonly signature: Hex;
+  readonly signedAt: number;
+  readonly expiresAt: number;
+  readonly integrity: ProtocolIntegrity;
+}
 
 export interface ProtocolIntegrity {
   readonly algorithm: "keccak256-canonical-json";
@@ -110,7 +151,78 @@ export function parseRecoveryResponse(value: string | unknown, request: Recovery
   return parsed;
 }
 
-export function serializeRecoveryProtocol(value: RecoveryRequestV1 | RecoveryResponseV1): string {
+export function createRecoverySignature(
+  input: Omit<RecoverySignatureV1, "format" | "version" | "critical" | "integrity">
+): RecoverySignatureV1 {
+  const signature = normalizeSignature({
+    ...input,
+    format: "loom.recovery-signature",
+    version: 1,
+    critical: SIGNATURE_CRITICAL,
+    integrity: { algorithm: "keccak256-canonical-json", digest: zero32() }
+  }, false);
+  return Object.freeze({ ...signature, integrity: integrityFor(signature) });
+}
+
+/**
+ * Read a guardian's signature against the request it claims to answer.
+ *
+ * Bound to the request the same way a full response is. The digest is checked
+ * rather than trusted: it commits to the account, the new validator, the
+ * rotated guardian set, the configuration version and the nonce, so a
+ * signature cannot be carried from one recovery to another.
+ */
+export function parseRecoverySignature(
+  value: string | unknown,
+  request: RecoveryRequestV1,
+  options: { now?: number } = {}
+): RecoverySignatureV1 {
+  const parsed = normalizeSignature(typeof value === "string" ? parseJson(value, "signature") : value, true);
+  verifyIntegrity(parsed);
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  if (parsed.expiresAt <= now || parsed.expiresAt > request.expiresAt) {
+    protocolError("INVALID_RECOVERY_RESPONSE", "recovery signature is expired or outlives its request");
+  }
+  if (parsed.requestId !== request.requestId || parsed.chainId !== request.chainId || parsed.account !== request.account) {
+    protocolError("INVALID_RECOVERY_RESPONSE", "recovery signature does not match its request");
+  }
+  return parsed;
+}
+
+/**
+ * Complete a bare signature into the response the proposal path already takes.
+ *
+ * The five capability fields come from the caller's own guardian set, which is
+ * the only place they exist. Nothing downstream changes: the result is checked
+ * against the live root exactly as a response from an invited guardian is.
+ */
+export function completeRecoverySignature(input: {
+  readonly signature: RecoverySignatureV1;
+  readonly guardian: {
+    readonly leaf: Hex;
+    readonly verifier: Address;
+    readonly keyCommitment: Hex;
+    readonly salt: Hex;
+  };
+  readonly proof: readonly Hex[];
+}): RecoveryResponseV1 {
+  return createRecoveryResponse({
+    requestId: input.signature.requestId,
+    chainId: input.signature.chainId,
+    account: input.signature.account,
+    recoveryDigest: input.signature.recoveryDigest,
+    guardianLeaf: input.guardian.leaf,
+    verifier: input.guardian.verifier,
+    keyCommitment: input.guardian.keyCommitment,
+    salt: input.guardian.salt,
+    proof: input.proof,
+    signature: input.signature.signature,
+    signedAt: input.signature.signedAt,
+    expiresAt: input.signature.expiresAt
+  });
+}
+
+export function serializeRecoveryProtocol(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): string {
   return canonicalJson(value);
 }
 
@@ -214,12 +326,36 @@ function normalizeResponse(value: unknown, enforceIntegrity: boolean): RecoveryR
   });
 }
 
-function integrityFor(value: RecoveryRequestV1 | RecoveryResponseV1): ProtocolIntegrity {
+function normalizeSignature(value: unknown, enforceIntegrity: boolean): RecoverySignatureV1 {
+  const record = object(value, "recovery signature", "INVALID_RECOVERY_RESPONSE");
+  exactFields(record, SIGNATURE_FIELDS, "recovery signature", "INVALID_RECOVERY_RESPONSE");
+  if (record.format !== "loom.recovery-signature" || record.version !== 1) {
+    protocolError("INVALID_RECOVERY_RESPONSE", "unsupported recovery signature format");
+  }
+  critical(record.critical, SIGNATURE_CRITICAL, "INVALID_RECOVERY_RESPONSE");
+  return Object.freeze({
+    format: "loom.recovery-signature" as const,
+    version: 1 as const,
+    critical: Object.freeze([...SIGNATURE_CRITICAL]),
+    requestId: bytes32(record.requestId, "request id"),
+    chainId: positiveInteger(record.chainId, "chainId", "INVALID_RECOVERY_RESPONSE"),
+    account: address(record.account, "account"),
+    recoveryDigest: bytes32(record.recoveryDigest, "recovery digest"),
+    signature: hexBytes(record.signature, "signature", 16_384),
+    signedAt: timestamp(record.signedAt, "signedAt", "INVALID_RECOVERY_RESPONSE"),
+    expiresAt: timestamp(record.expiresAt, "expiresAt", "INVALID_RECOVERY_RESPONSE"),
+    integrity: enforceIntegrity
+      ? normalizeIntegrity(record.integrity, "INVALID_RECOVERY_RESPONSE")
+      : { algorithm: "keccak256-canonical-json" as const, digest: zero32() }
+  });
+}
+
+function integrityFor(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): ProtocolIntegrity {
   const { integrity: _integrity, ...unsigned } = value;
   return Object.freeze({ algorithm: "keccak256-canonical-json", digest: keccak256(stringToHex(canonicalJson(unsigned))) });
 }
 
-function verifyIntegrity(value: RecoveryRequestV1 | RecoveryResponseV1): void {
+function verifyIntegrity(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): void {
   if (value.integrity.digest !== integrityFor(value).digest) {
     protocolError(value.format === "loom.recovery-request" ? "INVALID_RECOVERY_REQUEST" : "INVALID_RECOVERY_RESPONSE", "recovery protocol integrity check failed");
   }
@@ -236,13 +372,27 @@ function critical(value: unknown, required: readonly string[], code: "INVALID_RE
   if (!Array.isArray(value) || value.length !== required.length || value.some((item, index) => item !== required[index])) protocolError(code, "recovery protocol critical fields are invalid");
 }
 
-function exactFields(record: Record<string, unknown>, allowed: readonly string[], label: string): void {
-  if (Object.keys(record).some(key => !allowed.includes(key))) protocolError(label.includes("response") ? "INVALID_RECOVERY_RESPONSE" : "INVALID_RECOVERY_REQUEST", `${label} contains unknown fields`);
-  if (allowed.some(key => !Object.hasOwn(record, key))) protocolError(label.includes("response") ? "INVALID_RECOVERY_RESPONSE" : "INVALID_RECOVERY_REQUEST", `${label} is missing fields`);
+/**
+ * `code` is explicit where the label does not name the artifact it belongs to.
+ * A bare guardian signature is part of the response half of the protocol, but
+ * saying "signature" made it report request errors.
+ */
+function exactFields(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+  code: "INVALID_RECOVERY_REQUEST" | "INVALID_RECOVERY_RESPONSE" = label.includes("response") ? "INVALID_RECOVERY_RESPONSE" : "INVALID_RECOVERY_REQUEST"
+): void {
+  if (Object.keys(record).some(key => !allowed.includes(key))) protocolError(code, `${label} contains unknown fields`);
+  if (allowed.some(key => !Object.hasOwn(record, key))) protocolError(code, `${label} is missing fields`);
 }
 
-function object(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) protocolError(label.includes("response") ? "INVALID_RECOVERY_RESPONSE" : "INVALID_RECOVERY_REQUEST", `${label} must be an object`);
+function object(
+  value: unknown,
+  label: string,
+  code: "INVALID_RECOVERY_REQUEST" | "INVALID_RECOVERY_RESPONSE" = label.includes("response") ? "INVALID_RECOVERY_RESPONSE" : "INVALID_RECOVERY_REQUEST"
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) protocolError(code, `${label} must be an object`);
   return value as Record<string, unknown>;
 }
 

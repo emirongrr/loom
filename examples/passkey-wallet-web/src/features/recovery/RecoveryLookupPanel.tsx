@@ -6,6 +6,8 @@ import { executionBlockers, verifyExecutionArguments } from "./recoveryLookup";
 import { encodeExecuteRecovery, lookupRecovery, type RecoveryLookupResult } from "./recoveryLookupClient";
 import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
+import { readPublishedRecoveryValidators, type PublicationScan } from "./existingPublications";
+import { RecoveryManagerAbi } from "@loom/core/abi";
 
 /**
  * Look up a recovery for any account, and finish it, from nothing but its
@@ -20,16 +22,21 @@ import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accou
  * What this cannot do is decide that a recovery is legitimate. It reports what
  * the chain says and refuses to offer a call the manager would reject.
  */
-export function RecoveryLookupPanel() {
+export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: Address } = {}) {
   const { config } = useNetwork();
   const { publicClients, runtime } = useAppServices();
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [deploymentError, setDeploymentError] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<string>(fixedAccount ?? "");
   const [result, setResult] = useState<RecoveryLookupResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<Hex | "">("");
+  // Publishing a recovery passkey and proposing a recovery are separate steps,
+  // and only the second one writes the record this panel reads. An account
+  // stranded between them looks identical to an account that never started,
+  // which reads as the chain having lost the publication it was paid for.
+  const [published, setPublished] = useState<PublicationScan | null>(null);
 
   // Load the profile and check the deployed bytecode against it before offering
   // anything. Reading a recovery from a manager this build does not recognise
@@ -57,17 +64,31 @@ export function RecoveryLookupPanel() {
   const blockers = result ? executionBlockers({ lookup: result.lookup }) : [];
 
   const look = async () => {
-    setError(""); setResult(null); setSent("");
+    setError(""); setResult(null); setSent(""); setPublished(null);
     if (!manager) { setError("The deployment profile has not loaded, so there is no recovery manager to ask."); return; }
     if (!isAddress(address.trim())) { setError("Enter a valid account address."); return; }
     setBusy(true);
     try {
-      const found = await lookupRecovery({
-        publicClient: publicClients.forEndpoint(config.rpcUrl),
-        recoveryManager: manager,
-        account: getAddress(address.trim())
-      });
+      const publicClient = publicClients.forEndpoint(config.rpcUrl);
+      const account = getAddress(address.trim());
+      const found = await lookupRecovery({ publicClient, recoveryManager: manager, account });
       setResult(found);
+
+      // Nothing pending is not the same as nothing happened. Ask the
+      // provisioner's log whether a recovery passkey was published for this
+      // account, so the answer separates "never started" from "started and
+      // never proposed".
+      const provisioner = deployment?.recoveryValidatorProvisioner;
+      if (found.lookup.kind === "none" && provisioner) {
+        const recoveryNonce = await publicClient.readContract({
+          address: manager, abi: RecoveryManagerAbi, functionName: "recoveryNonces", args: [account]
+        }) as bigint;
+        setPublished(await readPublishedRecoveryValidators({
+          publicClient,
+          verificationClient: publicClients.forEndpoint(config.verificationRpcUrl),
+          factory: provisioner.address, account, recoveryNonce
+        }));
+      }
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The lookup failed.");
     } finally { setBusy(false); }
@@ -109,30 +130,62 @@ export function RecoveryLookupPanel() {
     } finally { setBusy(false); }
   };
 
-  return <section className="section-card" aria-labelledby="recovery-lookup-title">
-    <div className="section-heading"><div>
-      <p className="eyebrow">Read from the chain</p>
-      <h2 id="recovery-lookup-title">Look up a recovery by address</h2>
-    </div></div>
+  // Driven by the account already being recovered when one is given, so the
+  // reader never types the same address twice. Execution needs no session and
+  // no passkey on this device -- an approved recovery whose delay has elapsed
+  // can be finished by anyone willing to pay the gas (ADR-0025) -- which is
+  // why this stays reachable even though nothing else here requires it.
+  useEffect(() => {
+    if (fixedAccount && manager && !result && !busy) void look();
+  }, [fixedAccount, manager]);
+
+  const body = <>
     <p className="form-note">
       Anyone can read whether an account has a recovery pending. A pending request is itself proof that the
-      guardians approved it, because the manager verifies the threshold before it records one.
+      guardians approved it, because the manager verifies the threshold before it records one. Finishing one
+      grants the publisher no authority: it only pays the gas.
     </p>
 
-    <label className="field"><span>Account address</span>
-      <input value={address} disabled={busy} spellCheck={false} autoComplete="off" placeholder="0x…"
-        onChange={event => setAddress(event.target.value)} />
-    </label>
-    <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
-      {busy ? "Reading…" : "Look up"}
-    </button>
+    {fixedAccount
+      ? <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
+        {busy ? "Reading…" : "Re-read chain state"}
+      </button>
+      : <>
+        <label className="field"><span>Account address</span>
+          <input value={address} disabled={busy} spellCheck={false} autoComplete="off" placeholder="0x…"
+            onChange={event => setAddress(event.target.value)} />
+        </label>
+        <button className="secondary" disabled={busy || !deployment} onClick={() => void look()}>
+          {busy ? "Reading…" : "Look up"}
+        </button>
+      </>}
 
     {deploymentError && <p className="callout warning">{deploymentError}</p>}
     {error && <p className="callout warning">{error}</p>}
 
-    {result && result.lookup.kind === "none" && <p className="callout">
-      No recovery is pending for this account at block {String(result.blockNumber)}.
-    </p>}
+    {result && result.lookup.kind === "none" && <div className="callout">
+      <p>No recovery is pending for this account at block {String(result.blockNumber)}.</p>
+      {published && published.published.length > 0 && <>
+        <p>
+          A recovery passkey <strong>was</strong> published for this account. Publishing the validator and
+          proposing the recovery are separate steps, and only the proposal creates the record this lookup
+          reads. The recovery is waiting on guardian approvals, from the device holding that passkey.
+        </p>
+        <ul>
+          {published.published.map(entry => <li key={entry.validator} className="breakable">
+            {entry.validator} · block {String(entry.blockNumber)}
+          </li>)}
+        </ul>
+      </>}
+      {published && !published.consistent && <p>
+        The two endpoints disagreed about this account's publication history, so the list above is the union of
+        both reads and may still be short. Confirm on an explorer before publishing another recovery passkey.
+      </p>}
+      {published && published.published.length === 0 && !published.complete && <p>
+        Whether a recovery passkey was ever published could not be settled: the log scan reached back only to
+        block {String(published.scannedFromBlock)} before the endpoint stopped serving it.
+      </p>}
+    </div>}
 
     {result && found && record && <>
       <div className="callout">
@@ -161,6 +214,14 @@ export function RecoveryLookupPanel() {
       </p>
       {sent && <p className="callout success breakable">Submitted: {sent}</p>}
     </>}
+  </>;
+
+  return <section className="section-card" aria-labelledby="recovery-lookup-title">
+    <div className="section-heading"><div>
+      <p className="eyebrow">Read from the chain</p>
+      <h2 id="recovery-lookup-title">{fixedAccount ? "Finish this recovery" : "Look up a recovery by address"}</h2>
+    </div></div>
+    {body}
   </section>;
 }
 

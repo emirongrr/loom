@@ -88,11 +88,44 @@ export async function sendEip1193Transaction(input: {
   readonly data: Hex;
   readonly value?: bigint;
 }): Promise<Hex> {
-  const liveChain = await input.provider.request({ method: "eth_chainId" });
-  if (typeof liveChain !== "string" || BigInt(liveChain) !== BigInt(input.chainId)) {
-    throw new Error(`Switch the publishing wallet to chain ${input.chainId}.`);
+  const onExpectedChain = async () => {
+    const live = await input.provider.request({ method: "eth_chainId" });
+    return typeof live === "string" && BigInt(live) === BigInt(input.chainId);
+  };
+  if (!await onExpectedChain()) {
+    // Ask, rather than refuse and leave the reader to find the setting. The
+    // wallet still prompts and the reader still decides; this only saves them
+    // reading a chain id out of an error message.
+    try {
+      await input.provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: `0x${input.chainId.toString(16)}` }]
+      });
+    } catch (issue) {
+      // A wallet that already has a window open cannot be asked anything, and
+      // says so with a code rather than a sentence. Telling the reader to
+      // switch chains here would send them looking for the wrong thing.
+      if (pendingRequest(issue)) {
+        throw new Error("Your wallet already has a request waiting. Open it, finish or dismiss that request, then try again.");
+      }
+      /* Declined, or the wallet cannot switch. The check below says so. */
+    }
+    // Verified rather than assumed: a wallet may reject the request, or accept
+    // it and do nothing. Sending to a wallet that never moved would put this
+    // transaction on the wrong chain.
+    if (!await onExpectedChain()) {
+      throw new Error(`Switch the publishing wallet to chain ${input.chainId}.`);
+    }
   }
-  const accounts = await input.provider.request({ method: "eth_requestAccounts" });
+  let accounts: unknown;
+  try {
+    accounts = await input.provider.request({ method: "eth_requestAccounts" });
+  } catch (issue) {
+    if (pendingRequest(issue)) {
+      throw new Error("Your wallet already has a request waiting. Open it, finish or dismiss that request, then try again.");
+    }
+    throw issue;
+  }
   if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(accounts[0])) {
     throw new Error("No publishing wallet account is available.");
   }
@@ -104,4 +137,9 @@ export async function sendEip1193Transaction(input: {
     throw new Error("The publishing wallet returned an invalid transaction hash.");
   }
   return hash as Hex;
+}
+
+/** EIP-1193 -32002: the wallet is already showing something and cannot be asked. */
+function pendingRequest(issue: unknown): boolean {
+  return Boolean(issue) && typeof issue === "object" && (issue as { code?: unknown }).code === -32002;
 }

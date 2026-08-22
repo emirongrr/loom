@@ -94,7 +94,17 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
         : await receiveGuardianInvite(link, services.invitationLinks, Math.floor(services.now() / 1000));
       await services.guardianVault.put(account, { capability: invite, acceptedAt: services.now(), status: "unverified" });
       setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
-    } catch (error) { setMessage(safeUserMessage(error, "Capability could not be accepted.", "validation")); }
+    } catch (error) {
+      // An invitation and a recovery request travel the same way -- same link
+      // shape, same path -- and only their contents tell them apart. Pasted
+      // into the wrong box, a recovery request failed as "capability could not
+      // be accepted", which describes neither what it is nor where it goes.
+      if (await looksLikeRecoveryRequest(link, services)) {
+        setMessage("That is a recovery request, not an invitation. It goes in “Review a recovery request” below — and that needs an accepted invitation for the same account first, because a guardian signs with the capability that invitation carries.");
+        return;
+      }
+      setMessage(safeUserMessage(error, "Capability could not be accepted.", "validation"));
+    }
   };
   const visibleRecords = guardianVaultRecordsForAccount(records, account);
   const reviewableRecords = reviewableGuardianCapabilitiesForAccount(records, account, Math.floor(services.now() / 1000));
@@ -218,7 +228,12 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
         {discovery.status === "checking" ? "Checking the chain…" : "Check for recovery requests"}
       </button>
     </section>}
-    {reviewableRecords.length > 0 && <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the request or bearer link sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p><label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim()} onClick={() => void reviewRecovery()}>Review recovery request</button></section>}
+    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the request or bearer link sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p>
+      {/* This section used to disappear entirely without one, so a guardian who
+          had not accepted their invitation yet found nowhere to paste and no
+          reason given -- and tried the invitation box instead. */}
+      {reviewableRecords.length === 0 && <p className="callout warning"><strong>No accepted invitation for this account yet.</strong> A guardian approves with the proof and salt their invitation carries, and the same capability is what lets an approval be published on chain, so the invitation has to come first. Ask the recovering person for it -- issuing one costs them nothing and needs no transaction -- and accept it above.</p>}
+      <label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} disabled={reviewableRecords.length === 0} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim() || reviewableRecords.length === 0} onClick={() => void reviewRecovery()}>Review recovery request</button></section>
     {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
       {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {
@@ -240,4 +255,25 @@ function GuardianAccount({ record, onFreeze }: { record: GuardianVaultRecord; on
     <p className="form-note">Freezing pauses this account's ordinary execution for the contract's emergency window. It moves no funds, approves no recovery, and gives you no spending power.</p>
     <div className="guardian-actions"><button className="danger-button" onClick={onFreeze}>Emergency freeze…</button></div>
   </article>;
+}
+
+/**
+ * Whether what was pasted is a recovery request rather than an invitation.
+ *
+ * Only used to explain a failure that already happened, so anything it cannot
+ * read is simply not a recovery request: a wrong guess here would replace a
+ * real validation error with a misleading redirection.
+ */
+async function looksLikeRecoveryRequest(
+  value: string,
+  services: { readonly invitationLinks: { receive(value: string): Promise<unknown> } }
+): Promise<boolean> {
+  const isRequest = (payload: unknown): boolean =>
+    Boolean(payload) && typeof payload === "object" && !Array.isArray(payload)
+    && (payload as Record<string, unknown>).format === "loom.recovery-request";
+  const trimmed = value.trim();
+  if (trimmed.startsWith("{")) {
+    try { return isRequest(JSON.parse(trimmed)); } catch { return false; }
+  }
+  try { return isRequest(await services.invitationLinks.receive(trimmed)); } catch { return false; }
 }

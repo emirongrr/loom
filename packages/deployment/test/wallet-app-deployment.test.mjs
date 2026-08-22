@@ -15,7 +15,7 @@ import {
   parseFoundryBroadcast,
   verifyManifestOnChain,
   verifyWalletDeploymentFiles
-} from "../src/index.js";
+, recoveryValidatorRuntimeCodeHash } from "../src/index.js";
 
 const { keccak256 } = jsSha3;
 const ENTRYPOINT = address("entrypoint");
@@ -552,4 +552,66 @@ test("the recovery child runtime hash must be a 32-byte hash", async () => {
     buildWalletProfileManifest(profileOptions({ validatorRuntimeCodeHash: "0x1234" })),
     /must be a 32-byte hash/u
   );
+});
+
+// A child that declares immutables cannot be pinned by hashing the compiler's
+// `deployedBytecode`: Solidity zeroes the placeholders there and fills them at
+// construction. The wallet shipped a Sepolia profile pinned to the artifact
+// hash, so every recovery on that deployment failed closed with "deployed
+// recovery validator code does not match the trusted deployment profile" --
+// a manifest error that read to the user as a lost passkey.
+const IMMUTABLE_ARTIFACT = Object.freeze({
+  ast: {
+    nodeType: "SourceUnit",
+    nodes: [{ nodeType: "VariableDeclaration", mutability: "immutable", id: 11, name: "recoveryValidatorFactory" }]
+  },
+  deployedBytecode: {
+    object: `0x${"00".repeat(96)}`,
+    immutableReferences: { 11: [{ start: 32, length: 32 }] }
+  }
+});
+
+test("the recovery validator hash fills immutables instead of hashing placeholders", () => {
+  const filled = recoveryValidatorRuntimeCodeHash({
+    artifact: IMMUTABLE_ARTIFACT,
+    values: { recoveryValidatorFactory: "0x02e1d96947bbc6e5b3c94f6ab1753da7a8b0b48f" }
+  });
+  const placeholders = recoveryValidatorRuntimeCodeHash({
+    artifact: {
+      ...IMMUTABLE_ARTIFACT,
+      deployedBytecode: { object: IMMUTABLE_ARTIFACT.deployedBytecode.object, immutableReferences: {} }
+    },
+    values: {}
+  });
+  assert.notEqual(filled, placeholders, "an unfilled artifact must not pass for a deployed child");
+  assert.match(filled, /^0x[0-9a-f]{64}$/);
+});
+
+test("an immutable with no supplied value is refused rather than guessed", () => {
+  assert.throws(
+    () => recoveryValidatorRuntimeCodeHash({ artifact: IMMUTABLE_ARTIFACT, values: {} }),
+    /recoveryValidatorFactory/
+  );
+});
+
+// An id declared in a base contract lives in that contract's own artifact. Left
+// unresolved it would silently keep its zero placeholder, which is exactly the
+// bug being fixed, so it fails instead.
+test("an immutable the artifacts cannot name is refused, not skipped", () => {
+  assert.throws(
+    () => recoveryValidatorRuntimeCodeHash({
+      artifact: { ast: { nodeType: "SourceUnit", nodes: [] }, deployedBytecode: IMMUTABLE_ARTIFACT.deployedBytecode },
+      values: { recoveryValidatorFactory: "0x02e1d96947bbc6e5b3c94f6ab1753da7a8b0b48f" }
+    }),
+    /does not name immutable 11/
+  );
+});
+
+test("a base contract's immutable is resolved through baseArtifacts", () => {
+  const hash = recoveryValidatorRuntimeCodeHash({
+    artifact: { ast: { nodeType: "SourceUnit", nodes: [] }, deployedBytecode: IMMUTABLE_ARTIFACT.deployedBytecode },
+    baseArtifacts: [IMMUTABLE_ARTIFACT],
+    values: { recoveryValidatorFactory: "0x02e1d96947bbc6e5b3c94f6ab1753da7a8b0b48f" }
+  });
+  assert.match(hash, /^0x[0-9a-f]{64}$/);
 });

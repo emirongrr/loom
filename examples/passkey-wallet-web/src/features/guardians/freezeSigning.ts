@@ -69,3 +69,54 @@ export async function signGuardianDigestWithPasskey(input: {
 }
 
 export const signFreezeDigestWithPasskey = signGuardianDigestWithPasskey;
+
+/**
+ * Sign a recovery digest with this wallet's own passkey, holding no capability.
+ *
+ * The envelope is built entirely from the wallet's own key -- the capability
+ * only ever supplied the account match and the kind -- so a guardian who was
+ * never invited can still produce the one thing that is theirs to produce. The
+ * five membership fields a full response also carries are not theirs to know,
+ * and the recovering party supplies those from its own roster.
+ *
+ * Whether this signature counts is not decided here and cannot be: it is
+ * decided by whether it verifies against a leaf in the account's live guardian
+ * root. A signature from someone who is not a guardian simply matches nothing.
+ */
+export async function signRecoveryDigestWithOwnPasskey(input: {
+  readonly account: AccountHandle;
+  readonly digest: Hex;
+  readonly signChallenge?: (request: PasskeySignRequest) => Promise<BrowserPasskeyAssertion>;
+}): Promise<Hex> {
+  const assertion = await (input.signChallenge ?? signWithBrowserPasskey)({
+    userOperationHash: input.digest,
+    rpId: input.account.rpId,
+    credentialId: input.account.credentialId
+  });
+  const { r, s } = parseP256Signature(assertion.signature);
+  return encodeAbiParameters(
+    [{
+      type: "tuple", components: [
+        { name: "x", type: "bytes32" }, { name: "y", type: "bytes32" },
+        { name: "rpIdHash", type: "bytes32" }, { name: "originHash", type: "bytes32" }
+      ]
+    }, {
+      type: "tuple", components: [
+        { name: "authenticatorData", type: "bytes" }, { name: "clientDataJSON", type: "bytes" },
+        { name: "origin", type: "bytes" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" }
+      ]
+    }],
+    [{
+      x: input.account.publicKey.x,
+      y: input.account.publicKey.y,
+      rpIdHash: sha256(stringToHex(input.account.rpId)),
+      originHash: keccak256(stringToHex(input.account.origin))
+    }, {
+      authenticatorData: assertion.authenticatorData,
+      clientDataJSON: assertion.clientDataJSON,
+      origin: stringToHex(input.account.origin),
+      r,
+      s
+    }]
+  );
+}

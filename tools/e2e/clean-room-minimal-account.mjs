@@ -16,12 +16,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJsonRpcClient, parseFoundryBroadcast } from "../../packages/deployment/src/index.js";
 import { packReleasePackages } from "../release/pack-packages.mjs";
+import { devnetPort, requireExclusiveDevnet } from "./exclusive-devnet.mjs";
 
 // A fixed non-release version for the clean-room proof, distinct from any tag.
 const CLEAN_ROOM_VERSION = "0.0.0-cleanroom";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const RPC_URL = "http://127.0.0.1:8545";
+const RPC_URL = process.env.DEVNET_RPC_URL ?? "http://127.0.0.1:8545";
 const DEPLOYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const DEPLOYER_ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -104,7 +105,8 @@ async function main() {
 
   const rpc = createJsonRpcClient(RPC_URL);
   console.log("==> Starting anvil devnet");
-  anvil = spawn(bin("anvil"), ["--port", "8545", "--chain-id", "31337", "--silent"], { cwd: repoRoot, stdio: "ignore" });
+  await requireExclusiveDevnet(RPC_URL);
+  anvil = spawn(bin("anvil"), ["--port", devnetPort(RPC_URL), "--chain-id", "31337", "--silent"], { cwd: repoRoot, stdio: "ignore" });
   anvil.on("error", error => fail(`anvil failed to start: ${error.message}`));
   await waitForRpc(rpc);
 

@@ -515,6 +515,8 @@ export async function prepareP256RecoveryValidator(input: {
   readonly account: Address;
   readonly recoveryNonce: bigint;
   readonly initData: Hex;
+  /** The set this recovery rotates to. Bound into the validator's address. */
+  readonly newGuardianSet: { readonly root: Hex; readonly threshold: number };
   readonly profile: P256RecoveryValidatorFactoryProfile;
   readonly stateTransport: LoomStateReadTransport;
 }): Promise<PreparedP256RecoveryValidator> {
@@ -523,6 +525,10 @@ export async function prepareP256RecoveryValidator(input: {
   if (recoveryNonce > ((1n << 64n) - 1n)) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery nonce exceeds uint64");
   const initData = hexBytes(input.initData, "validator initialization data", 65_536);
   const initDataHash = keccak256(initData);
+  // The rotated set is part of the address since ADR-0026, so predicting one
+  // without it would predict a validator this factory will never deploy.
+  const newGuardianRoot = bytes32(input.newGuardianSet.root, "rotated guardian root");
+  const newGuardianThreshold = input.newGuardianSet.threshold;
   const factory = address(input.profile.address, "recovery validator factory");
   const state = input.stateTransport;
   if (!state?.getCode) fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory verification requires getCode");
@@ -536,7 +542,7 @@ export async function prepareP256RecoveryValidator(input: {
   let validator: Address;
   try {
     fallbackVerifier = address(await readContract(state, factory, P256RecoveryValidatorFactoryAbi, "fallbackVerifier"), "factory fallback verifier");
-    validator = address(await readContract(state, factory, P256RecoveryValidatorFactoryAbi, "getAddress", [account, recoveryNonce, initDataHash]), "recovery validator");
+    validator = address(await readContract(state, factory, P256RecoveryValidatorFactoryAbi, "getAddress", [account, recoveryNonce, initDataHash, newGuardianRoot, newGuardianThreshold]), "recovery validator");
   } catch {
     fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "recovery validator factory could not be verified");
   }
@@ -561,7 +567,7 @@ export async function prepareP256RecoveryValidator(input: {
       data: encodeFunctionData({
         abi: P256RecoveryValidatorFactoryAbi,
         functionName: "deploy",
-        args: [account, recoveryNonce, ...decodeRecoveryInitializer(initData)]
+        args: [account, recoveryNonce, ...decodeRecoveryInitializer(initData), newGuardianRoot, newGuardianThreshold]
       }),
       value: 0n,
       permissionless: true
@@ -662,7 +668,15 @@ export function createGuardianRecoveryClient(options: {
     inspectAccount,
     inspectGuardianCandidate,
     prepareGuardianConfiguration,
-    async prepareRecoveryValidator(input: { initData: Hex }) {
+    /**
+     * Predict, and prepare the publication of, the validator for one recovery.
+     *
+     * The rotated guardian set is required because the address commits to it
+     * (ADR-0026): the same key rotating to a different set is a different
+     * validator, and publishing without naming the set would publish one that
+     * can never be proposed.
+     */
+    async prepareRecoveryValidator(input: { initData: Hex; newGuardianSet: { root: Hex; threshold: number } }) {
       if (!options.recoveryValidatorFactory) {
         fail("UNSUPPORTED_RECOVERED_VALIDATOR_PATH", "the deployment does not publish a trusted recovery validator factory");
       }
@@ -671,6 +685,7 @@ export function createGuardianRecoveryClient(options: {
         account,
         recoveryNonce: nonce,
         initData: input.initData,
+        newGuardianSet: input.newGuardianSet,
         profile: options.recoveryValidatorFactory,
         stateTransport: state
       });
@@ -752,6 +767,7 @@ export function createGuardianRecoveryClient(options: {
           account,
           recoveryNonce: nonce,
           initData: input.initData,
+          newGuardianSet: input.newGuardianSet,
           profile: options.recoveryValidatorFactory,
           stateTransport: state
         });
@@ -795,6 +811,28 @@ export function createGuardianRecoveryClient(options: {
     },
     async verifyRecoveryApproval(prepared: PreparedRecovery, input: { guardian: GuardianSetMember; signature: Hex }) {
       return verifyApproval(input.guardian, prepared.digest, input.signature);
+    },
+    /**
+     * Which member of a set produced a signature, if any did.
+     *
+     * Lets a guardian help without holding a capability: they return only a
+     * signature, and the set the recovering party already holds supplies the
+     * verifier, key commitment, salt and proof that complete it.
+     *
+     * The answer is the verifier contract's, asked once per candidate, so a
+     * signature from outside the set matches nobody and is worth nothing --
+     * which is what makes it safe to accept one from anyone. Members are tried
+     * in order and the first match wins; a set cannot hold the same key
+     * commitment twice, so at most one can answer for a given key.
+     */
+    async matchRecoverySignature(prepared: PreparedRecovery, set: GuardianSet, signature: Hex) {
+      const attempt = hexBytes(signature, "guardian signature", 16_384);
+      for (const guardian of set.guardians) {
+        if (await verifyApproval(guardian, prepared.digest, attempt)) {
+          return deepFreeze({ guardian, proof: createGuardianProof(set, guardian.leaf) });
+        }
+      }
+      return undefined;
     },
     async collectRecoveryApproval(prepared: PreparedRecovery, set: GuardianSet, approvals: readonly { leaf: Hex; signature: Hex }[]) {
       return assembleGuardianApprovals({ set, approvals, threshold: set.threshold, digest: prepared.digest, verify: ({ guardian, signature }) => verifyApproval(guardian, prepared.digest, signature) });

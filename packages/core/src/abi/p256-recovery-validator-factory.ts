@@ -63,6 +63,16 @@ export const P256RecoveryValidatorFactoryAbi = [
         "name": "policyHook",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "newGuardianRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianThreshold",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [
@@ -92,6 +102,16 @@ export const P256RecoveryValidatorFactoryAbi = [
         "name": "initDataHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianThreshold",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [
@@ -134,6 +154,16 @@ export const P256RecoveryValidatorFactoryAbi = [
         "name": "initDataHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianThreshold",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [
@@ -224,6 +254,18 @@ export const P256RecoveryValidatorFactoryAbi = [
         "type": "address",
         "indexed": false,
         "internalType": "address"
+      },
+      {
+        "name": "newGuardianRoot",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newGuardianThreshold",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
       }
     ],
     "anonymous": false

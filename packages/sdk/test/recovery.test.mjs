@@ -23,6 +23,9 @@ import {
   createRecoveryId,
   createRecoveryRequest,
   createRecoveryResponse,
+  createRecoverySignature,
+  parseRecoverySignature,
+  completeRecoverySignature,
   createRecoveryProposalDigest,
   createScheduledOperationId,
   parseGuardianInvite,
@@ -85,7 +88,8 @@ test("recovery validator provisioning verifies the factory and prepares one dete
     allowedPolicyHooks: [policyHook]
   };
 
-  const pending = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });
+  const rotation = { root: `0x${"7c".repeat(32)}`, threshold: 2 };
+  const pending = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile, stateTransport: transport });
   assert.equal(pending.validator, validator);
   assert.equal(pending.alreadyDeployed, false);
   // The factory takes the key fields and derives the commitment itself
@@ -93,25 +97,32 @@ test("recovery validator provisioning verifies the factory and prepares one dete
   // so the deployment call cannot describe a different key than the proposal.
   assert.deepEqual(
     decodeFunctionData({ abi: P256RecoveryValidatorFactoryAbi, data: pending.deploy.data }).args,
-    [account, 3n, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, `0x${"44".repeat(32)}`, getAddress(policyHook)]
+    [
+      account, 3n, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, `0x${"44".repeat(32)}`,
+      getAddress(policyHook),
+      // The rotated set travels with the deployment: the address commits to it
+      // (ADR-0026), so publishing without it would publish a validator that can
+      // never be proposed.
+      rotation.root, rotation.threshold
+    ]
   );
   assert.equal(pending.initDataHash, keccak256(initData), "the commitment still covers the whole initializer");
 
   await assert.rejects(
     prepareP256RecoveryValidator({
-      account, recoveryNonce: 3n, initData: "0xdeadbeef", profile, stateTransport: transport
+      account, recoveryNonce: 3n, initData: "0xdeadbeef", newGuardianSet: rotation, profile, stateTransport: transport
     }),
     /initialization data/u,
     "calldata that is not a validator initializer must not reach the factory"
   );
 
   validatorDeployed = true;
-  const existing = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile, stateTransport: transport });
+  const existing = await prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile, stateTransport: transport });
   assert.equal(existing.alreadyDeployed, true);
   assert.equal(existing.deploy, undefined);
 
   await assert.rejects(
-    prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, profile: { ...profile, runtimeCodeHash: `0x${"ff".repeat(32)}` }, stateTransport: transport }),
+    prepareP256RecoveryValidator({ account, recoveryNonce: 3n, initData, newGuardianSet: rotation, profile: { ...profile, runtimeCodeHash: `0x${"ff".repeat(32)}` }, stateTransport: transport }),
     error => error instanceof GuardianRecoveryError && error.code === "UNSUPPORTED_RECOVERED_VALIDATOR_PATH"
   );
 });
@@ -367,6 +378,54 @@ test("manual recovery request and response artifacts are strict, bounded, and mu
   });
   assert.equal(parseRecoveryResponse(serializeRecoveryProtocol(response), request, { now: 1_900_000_101 }).requestId, request.requestId);
 
+  // A guardian who was never invited holds none of the five capability fields a
+  // response carries, so the artifact they can produce carries only what is
+  // actually theirs: the signature. Everything else is rebuilt by the
+  // recovering side from the roster it already holds.
+  const bare = createRecoverySignature({
+    requestId: request.requestId,
+    chainId: request.chainId,
+    account: request.account,
+    recoveryDigest: `0x${"61".repeat(32)}`,
+    signature: "0x1234",
+    signedAt: 1_900_000_100,
+    expiresAt: request.expiresAt
+  });
+  const decodedSignature = parseRecoverySignature(serializeRecoveryProtocol(bare), request, { now: 1_900_000_101 });
+  assert.equal(decodedSignature.signature, "0x1234");
+  assert.equal(Object.hasOwn(decodedSignature, "proof"), false, "a bare signature must not carry set membership");
+  assert.equal(Object.hasOwn(decodedSignature, "salt"), false, "a bare signature must not carry set membership");
+
+  // Completed, it is the same response the proposal path already takes, so
+  // nothing downstream has to know which route a guardian used.
+  const completed = completeRecoverySignature({
+    signature: decodedSignature,
+    guardian: { leaf: `0x${"71".repeat(32)}`, verifier: verifierA, keyCommitment: `0x${"81".repeat(32)}`, salt },
+    proof: [`0x${"92".repeat(32)}`]
+  });
+  assert.deepEqual({ ...completed, integrity: null }, { ...response, integrity: null });
+
+  // Bound to its request exactly as a full response is: the digest commits to
+  // the account, the new validator, the rotated set, the config version and the
+  // nonce, so a signature cannot be carried to another recovery.
+  assert.throws(
+    () => parseRecoverySignature(serializeRecoveryProtocol(bare), { ...request, requestId: `0x${"aa".repeat(32)}` }, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(serializeRecoveryProtocol(bare), request, { now: request.expiresAt }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(JSON.stringify({ ...bare, unexpected: true }), request, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE"
+  );
+  assert.throws(
+    () => parseRecoverySignature(JSON.stringify({ ...bare, signature: "0xdead" }), request, { now: 1_900_000_101 }),
+    error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_RESPONSE",
+    "an altered signature must fail the integrity digest"
+  );
+
   assert.throws(
     () => parseRecoveryRequest(JSON.stringify({ ...request, unexpected: true }), { now: 1_900_000_001 }),
     error => error instanceof GuardianRecoveryError && error.code === "INVALID_RECOVERY_REQUEST"
@@ -587,7 +646,7 @@ test("the recovery client owns account inspection, freeze verification, and prop
       allowedPolicyHooks: [policyHook]
     }
   });
-  const factoryValidator = await factoryClient.prepareRecoveryValidator({ initData: validatorInitData });
+  const factoryValidator = await factoryClient.prepareRecoveryValidator({ initData: validatorInitData, newGuardianSet: freshSet });
   assert.equal(factoryValidator.validator, newValidator);
   assert.equal(factoryValidator.alreadyDeployed, true);
   const factoryRecovery = await factoryClient.prepareRecovery({ newValidator, initData: validatorInitData, newGuardianSet: freshSet });

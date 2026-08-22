@@ -33,6 +33,7 @@ import { buildGuardianTree, guardianLeaf } from "../../packages/guardian/src/ind
 import {
   base64UrlEncode, deriveAccountAddress, encodeValidatorSignature, encodeWebAuthnSignature,
   EntryPointAbi, getUserOpHash, LoomAccountAbi, LoomAccountFactoryAbi, P256RecoveryValidatorFactoryAbi,
+  RecoveryIntentBoardAbi,
   P256ValidatorAbi, packUserOperation, parseP256Signature
 } from "../../packages/core/dist/index.js";
 import { createRecoveryIntentBoardReader, reconcileRecoveryDiscovery } from "../../packages/sdk/dist/recovery.js";
@@ -40,6 +41,7 @@ import {
   encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, serializeSignature, stringToHex
 } from "viem";
 import { privateKeyToAccount, sign } from "viem/accounts";
+import { devnetPort, requireExclusiveDevnet } from "./exclusive-devnet.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RPC_URL = process.env.DEVNET_RPC_URL ?? "http://127.0.0.1:8545";
@@ -183,7 +185,8 @@ const accountAbi = parseAbi([
 async function main() {
   const rpc = createJsonRpcClient(RPC_URL);
   console.log("==> Starting anvil devnet");
-  anvil = spawn(bin("anvil"), ["--port", "8545", "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
+  await requireExclusiveDevnet(RPC_URL);
+  anvil = spawn(bin("anvil"), ["--port", devnetPort(RPC_URL), "--chain-id", String(CHAIN_ID), "--silent"], { cwd: repoRoot, stdio: "ignore" });
   anvil.on("error", e => fail(`anvil failed to start: ${e.message}`));
   await waitForRpc(rpc);
   if (!(await probeP256Precompile(rpc)).supported) fail("devnet P-256 precompile probe failed");
@@ -248,16 +251,20 @@ async function main() {
   const newValidatorInit = encodeFunctionData({ abi: P256ValidatorAbi, functionName: "initialize",
     args: [newKey.x, newKey.y, rpIdHash, originHash, policyHook] });
   const initDataHash = keccak256(newValidatorInit);
+  // Chosen before the address exists, because the address commits to it
+  // (ADR-0026): the same key rotating to a different set is a different
+  // validator.
+  const newRoot = keccak256(stringToHex("loom.devnet.board.newroot"));
   const recoveryNonce = BigInt(await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "recoveryNonces", args: [account] })));
   const newValidator = `0x${(await ethCall(rpc, recoveryValidatorFactory, encodeFunctionData({
-    abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress", args: [account, recoveryNonce, initDataHash] }))).slice(-40)}`;
+    abi: P256RecoveryValidatorFactoryAbi, functionName: "getAddress",
+    args: [account, recoveryNonce, initDataHash, newRoot, THRESHOLD] }))).slice(-40)}`;
   await send(rpc, DEPLOYER_ADDRESS, recoveryValidatorFactory, encodeFunctionData({
     abi: P256RecoveryValidatorFactoryAbi, functionName: "deploy",
-    args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook] }), "0x4c4b40");
+    args: [account, recoveryNonce, newKey.x, newKey.y, rpIdHash, originHash, policyHook, newRoot, THRESHOLD] }), "0x4c4b40");
 
   const oldValidators = [validator];
   const oldValidatorsHash = keccak256(encodeAbiParameters([{ type: "address[]" }], [oldValidators]));
-  const newRoot = keccak256(stringToHex("loom.devnet.board.newroot"));
   const configVersion = BigInt(await ethCall(rpc, account, encodeFunctionData({ abi: accountAbi, functionName: "configVersion" })));
   const digest = await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "proposalDigest",
     args: [account, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, configVersion, recoveryNonce] }));
@@ -277,6 +284,22 @@ async function main() {
     await send(rpc, GRIEFER_ADDRESS, board, encodeFunctionData({ abi: boardAbi, functionName: "announce",
       args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, BigInt(2_000_000_000 + i)] }), "0x2dc6c0");
   }
+  // The wallet encodes announcements with the generated ABI, this rehearsal with
+  // a hand-written one. Proving the board accepts one says nothing about the
+  // other unless they produce the same bytes, so that is checked rather than
+  // assumed -- an argument reordered in the generated ABI would otherwise ship
+  // an announcement nobody here ever sent.
+  const walletAnnounce = encodeFunctionData({
+    abi: RecoveryIntentBoardAbi, functionName: "announce",
+    args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, 2_000_000_000]
+  });
+  const rehearsalAnnounce = encodeFunctionData({
+    abi: boardAbi, functionName: "announce",
+    args: [account, recoveryManager, oldValidatorsHash, newValidator, initDataHash, newRoot, THRESHOLD, 2_000_000_000]
+  });
+  if (walletAnnounce !== rehearsalAnnounce) fail("the wallet's announcement encoding differs from the one proven here");
+  ok("the wallet's generated ABI encodes the same announcement byte for byte");
+
   const pendingAfterFlood = await ethCall(rpc, recoveryManager, encodeFunctionData({ abi: recoveryAbi, functionName: "pendingRecoveries", args: [account] }));
   // Field 5 of PendingRecovery is readyAt; non-zero means a recovery is pending.
   if (BigInt(`0x${pendingAfterFlood.slice(2 + 64 * 5, 2 + 64 * 6)}`) !== 0n) fail("an announcement created a pending recovery");

@@ -191,3 +191,86 @@ function exactAuditReport() {
     }
   };
 }
+
+/** The exception shape the mobile example uses, with two pinned packages. */
+function exactFixture() {
+  return {
+    exception: {
+      target: "mobile privacy wallet example",
+      profile: "exact-advisory-graph-v1",
+      expiresAt: "2026-08-23T00:00:00Z",
+      isolationTest: "packages/privacy/test/dependency-audit-isolation.test.mjs",
+      advisories: [
+        { package: "leaf", advisory: "GHSA-aaaa-bbbb-cccc", source: 1, url: "https://github.com/advisories/GHSA-aaaa-bbbb-cccc" },
+        { package: "leaf", advisory: "GHSA-dddd-eeee-ffff", source: 2, url: "https://github.com/advisories/GHSA-dddd-eeee-ffff" }
+      ],
+      packages: {
+        leaf: { path: "node_modules/leaf", version: "1.0.0" },
+        parent: { path: "node_modules/parent", version: "2.0.0" }
+      },
+      via: { leaf: [], parent: ["leaf"] }
+    },
+    lockfile: {
+      packages: {
+        "node_modules/leaf": { version: "1.0.0" },
+        "node_modules/parent": { version: "2.0.0" }
+      }
+    }
+  };
+}
+
+// The registry withdraws claims without us changing anything: the same lockfile
+// produced eleven vulnerable packages, then eight, then five. Re-recording each
+// time teaches people to re-record without looking.
+test("a graph that shrinks is accepted, because fewer findings is not a regression", () => {
+  const { exception, lockfile } = exactFixture();
+  const report = exactAuditReport();
+  delete report.vulnerabilities.parent;
+  report.metadata.vulnerabilities = { info: 0, low: 0, moderate: 0, high: 1, critical: 0, total: 1 };
+
+  assert.equal(
+    assertAllowedAuditReport({ report, lockfile, exception, root, now: beforeExpiry }).expiresAt,
+    "2026-08-23T00:00:00Z"
+  );
+});
+
+// The protection that trimming the list silently destroyed: a package which has
+// left the advisory graph still has its version pinned, so a dependency moving
+// underneath us is caught whether or not npm currently calls it vulnerable.
+test("a package that left the graph still has its version pinned", () => {
+  const { exception, lockfile } = exactFixture();
+  const report = exactAuditReport();
+  delete report.vulnerabilities.parent;
+  report.metadata.vulnerabilities = { info: 0, low: 0, moderate: 0, high: 1, critical: 0, total: 1 };
+  lockfile.packages["node_modules/parent"].version = "3.0.0";
+
+  assert.throws(
+    () => assertAllowedAuditReport({ report, lockfile, exception, root, now: beforeExpiry }),
+    /locked parent version changed/
+  );
+});
+
+test("a newly flagged package nobody pinned is refused", () => {
+  const { exception, lockfile } = exactFixture();
+  const report = exactAuditReport();
+  report.vulnerabilities.stranger = { via: [], nodes: ["node_modules/stranger"] };
+  report.metadata.vulnerabilities = { info: 0, low: 0, moderate: 0, high: 3, critical: 0, total: 3 };
+
+  assert.throws(
+    () => assertAllowedAuditReport({ report, lockfile, exception, root, now: beforeExpiry }),
+    /does not cover: stranger/
+  );
+});
+
+// A path that grows is a new way to reach the vulnerable package, which is a
+// finding; one that shrinks is the registry withdrawing a claim.
+test("a dependency path that grows is refused", () => {
+  const { exception, lockfile } = exactFixture();
+  const report = exactAuditReport();
+  report.vulnerabilities.parent.via = ["leaf", "somethingElse"];
+
+  assert.throws(
+    () => assertAllowedAuditReport({ report, lockfile, exception, root, now: beforeExpiry }),
+    /audit path grew for parent: somethingElse/
+  );
+});

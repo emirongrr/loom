@@ -291,7 +291,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       await roster.write(account.id, { entries: pending.entries, version: Date.now(), pending: null });
       notifications.update(toast, {
         status: "success", title: "Guardians updated",
-        detail: `${pending.threshold} of ${pending.entries.length} approvals can now recover this account.`,
+        detail: `${pending.threshold} of ${pending.entries.length} approvals can now recover this account. Each guardian still needs their invitation.`,
         ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
       });
       setReloads(count => count + 1);
@@ -350,6 +350,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       <li className={pending ? "done" : stage === "list" ? "active" : "done"}><span>1</span>Choose guardians</li>
       <li className={pending ? "done" : stage === "review" ? "active" : ""}><span>2</span>Review</li>
       <li className={pending ? "active" : ""}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
+      {/* The step that was missing. A committed set whose guardians hold no
+          invitation cannot approve anything: an approval carries the proof and
+          salt only their own capability supplies. */}
+      <li className={!pending && protection.kind === "in-sync" ? "active" : ""}><span>4</span>Invite guardians</li>
     </ol>
 
     {pending && <PendingChangeCard
@@ -416,6 +420,29 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         onCopy={() => void copyInvitation()}
         onClose={() => setInvitation(null)}
       />}
+
+      {protection.kind === "in-sync" && committed.length > 0 && <div className="callout warning">
+        <strong>Each guardian needs their own invitation.</strong>
+        <p>
+          Writing the set on chain does not reach anyone. A guardian approves with the proof and salt their
+          invitation carries, so one who never received it cannot help you recover this account — and you would
+          only find that out when you needed them. Issuing an invitation needs no signature and no transaction,
+          and grants no spending power.
+        </p>
+        <p className="form-note">
+          This wallet cannot tell whether a guardian accepted: that happens on their device, and nothing about it
+          is published. Ask each of them to confirm.
+        </p>
+        <div className="guardian-list">
+          {committed.map(entry => <div className="guardian-row" key={`invite-${entry.id}`}>
+            <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
+            <div><strong>{entry.label}</strong><p className="breakable">{describeGuardian(entry.descriptor)}</p></div>
+            <div className="guardian-row-actions">
+              <button className="secondary" disabled={busy} onClick={() => void inviteGuardian(entry)}>Create invitation</button>
+            </div>
+          </div>)}
+        </div>
+      </div>}
 
       {protection.kind === "in-sync" && <p className="form-note">
         This list is held only on this device and matches the account's on-chain guardian root.{" "}

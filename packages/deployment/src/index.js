@@ -193,6 +193,75 @@ const WALLET_PROFILE_GUARDIAN_VERIFIERS = Object.freeze({
  * deployment may omit them, and the wallet simply has no on-chain discovery.
  * Every contract that *is* named must have code, which `codehash` enforces.
  */
+/**
+ * The runtime code hash a recovery validator child will actually carry.
+ *
+ * Hashing the compiler artifact's `deployedBytecode` directly is wrong, and
+ * wrong in a way that fails closed and looks like something else: the child
+ * declares immutables, Solidity leaves them as zeroed placeholders in the
+ * artifact, and fills them in at construction. So the artifact's hash can never
+ * equal any deployed child's, and a manifest pinned to it makes every recovery
+ * on that deployment unusable -- the wallet reports "deployed recovery
+ * validator code does not match the trusted deployment profile" and stops,
+ * correctly, on a manifest error.
+ *
+ * The placeholders are filled here from values the deployment already knows,
+ * resolved by variable name through the artifact's AST rather than by the
+ * order the ids happen to appear in. An immutable with no supplied value is an
+ * error: guessing one would produce a hash that pins nothing.
+ *
+ * `baseArtifacts` carries the contracts the child inherits from. Solidity keeps
+ * each source unit's AST in its own artifact, so an immutable declared in a
+ * base -- `fallbackVerifier` is -- cannot be named from the child's AST alone,
+ * and an id that stays unresolved is refused rather than skipped.
+ */
+export function recoveryValidatorRuntimeCodeHash(options) {
+  const artifact = options?.artifact;
+  const deployed = artifact?.deployedBytecode;
+  const object = deployed?.object;
+  if (typeof object !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(object)) {
+    throw new Error("recovery validator artifact has no deployed bytecode");
+  }
+  const references = deployed.immutableReferences ?? {};
+  const names = new Map();
+  for (const source of [artifact, ...(options?.baseArtifacts ?? [])]) {
+    for (const [id, name] of immutableNamesFromAst(source?.ast)) names.set(id, name);
+  }
+  const bytes = Buffer.from(object.slice(2), "hex");
+
+  for (const [id, slots] of Object.entries(references)) {
+    const name = names.get(String(id));
+    if (!name) throw new Error(`recovery validator artifact does not name immutable ${id}`);
+    const value = options?.values?.[name];
+    if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+      throw new Error(`no address supplied for recovery validator immutable "${name}"`);
+    }
+    const word = Buffer.alloc(32);
+    Buffer.from(value.slice(2), "hex").copy(word, 12);
+    for (const slot of slots) {
+      if (slot.length !== 32) throw new Error(`recovery validator immutable "${name}" is not one word`);
+      word.copy(bytes, slot.start);
+    }
+  }
+  return `0x${keccak256(bytes)}`;
+}
+
+function immutableNamesFromAst(ast) {
+  const names = new Map();
+  const walk = node => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const child of node) walk(child); return; }
+    if (node.nodeType === "VariableDeclaration" && node.mutability === "immutable" && node.name) {
+      names.set(String(node.id), node.name);
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === "object") walk(value);
+    }
+  };
+  walk(ast);
+  return names;
+}
+
 export async function buildWalletProfileManifest(options) {
   assertObject(options, "options");
   const parsed = parseFoundryBroadcast(options.broadcast, options);
