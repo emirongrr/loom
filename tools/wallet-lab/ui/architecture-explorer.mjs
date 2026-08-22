@@ -54,6 +54,85 @@ export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], s
   };
 }
 
+function traceRecords(node, parent = null, result = []) {
+  if (!node) return result;
+  result.push({ frame: node, parent });
+  for (const child of node.calls ?? []) traceRecords(child, node, result);
+  return result;
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+export function buildFunctionExecutionLens({ deployment, contractId, functionSelector, trace } = {}) {
+  const nodes = deployment?.nodes ?? [];
+  const edges = deployment?.edges ?? [];
+  const addressToId = new Map(nodes.filter(node => node.address).map(node => [node.address.toLowerCase(), node.id]));
+  const frameId = frame => frame?.contractId ?? (typeof frame?.to === "string" ? addressToId.get(frame.to.toLowerCase()) : null);
+  const relatedEdges = edges.filter(edge => edge.from === contractId || edge.to === contractId);
+  const records = traceRecords(trace);
+  const matches = records.filter(({ frame }) => frameId(frame) === contractId && frame.selector === functionSelector);
+  const observedNodeIds = [];
+  const observedEdges = [];
+  const calls = matches.map(({ frame, parent }) => {
+    const frames = [];
+    const visit = (current, parentFrame = null, depth = 0) => {
+      const currentId = frameId(current);
+      const parentId = frameId(parentFrame);
+      if (depth === 0 && parentId) observedNodeIds.push(parentId);
+      if (currentId) observedNodeIds.push(currentId);
+      if (parentId && currentId && parentId !== currentId) observedEdges.push({ from: parentId, to: currentId, type: current.type ?? "CALL" });
+      frames.push({
+        depth,
+        contractId: currentId ?? null,
+        contractName: current.contractName ?? nodes.find(node => node.id === currentId)?.name ?? null,
+        type: current.type ?? "CALL",
+        functionSignature: current.functionSignature ?? null,
+        selector: current.selector ?? null,
+        from: current.from ?? null,
+        to: current.to ?? null,
+        value: current.value ?? null,
+        gasUsed: current.gasUsed ?? null,
+        input: current.input ?? null,
+        output: current.output ?? null,
+        error: current.error ?? null,
+        revertReason: current.revertReason ?? null
+      });
+      for (const child of current.calls ?? []) visit(child, current, depth + 1);
+    };
+    visit(frame, parent, 0);
+    const callerId = frameId(parent);
+    return {
+      caller: parent ? {
+        contractId: callerId ?? null,
+        contractName: parent.contractName ?? nodes.find(node => node.id === callerId)?.name ?? null,
+        from: frame.from ?? parent.to ?? null,
+        callType: frame.type ?? "CALL"
+      } : null,
+      frames
+    };
+  });
+  const observedIds = unique(observedNodeIds);
+  const possibleNodeIds = unique(relatedEdges.map(edge => edge.from === contractId ? edge.to : edge.from)).filter(id => id !== contractId && !observedIds.includes(id));
+  const edgeKeys = new Set();
+  const uniqueObservedEdges = observedEdges.filter(edge => {
+    const key = `${edge.from}:${edge.to}:${edge.type}`;
+    if (edgeKeys.has(key)) return false;
+    edgeKeys.add(key);
+    return true;
+  });
+  return {
+    status: calls.length ? "observed" : "architecture-only",
+    contractId,
+    functionSelector,
+    calls,
+    observedNodeIds: observedIds,
+    observedEdges: uniqueObservedEdges,
+    possibleNodeIds
+  };
+}
+
 export function reduceArchitectureFocus(state, action) {
   if (action.type === "focus-node") return { focusedNodeId: action.nodeId, focusedSection: null, focusedAbiItem: null };
   if (action.type === "focus-section") return { ...state, focusedSection: action.section, focusedAbiItem: null };

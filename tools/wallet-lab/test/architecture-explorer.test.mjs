@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildArchitectureExplorer, reduceArchitectureFocus } from "../ui/architecture-explorer.mjs";
+import { buildArchitectureExplorer, buildFunctionExecutionLens, reduceArchitectureFocus } from "../ui/architecture-explorer.mjs";
 
 const deployment = {
   nodes: [
@@ -61,4 +61,78 @@ test("Escape unwinds ABI item and section but keeps the focused node open", () =
   assert.deepEqual(itemClosed, { ...focused, focusedAbiItem: null });
   assert.deepEqual(sectionClosed, { ...focused, focusedSection: null, focusedAbiItem: null });
   assert.deepEqual(nodeClosed, { ...focused, focusedSection: null, focusedAbiItem: null });
+});
+
+test("function execution lens separates observed frames from possible architecture relationships", () => {
+  const tracedDeployment = {
+    ...deployment,
+    nodes: deployment.nodes.map((node, index) => ({ ...node, address: `0x${String(index + 1).padStart(40, "0")}` })),
+    edges: [
+      ...deployment.edges,
+      { from: "LoomAccount", to: "VaultHook", kind: "guarded-by", label: "may enforce policy" }
+    ]
+  };
+  const trace = {
+    type: "CALL",
+    from: "0x0000000000000000000000000000000000000099",
+    to: tracedDeployment.nodes[0].address,
+    contractId: "EntryPoint",
+    selector: "0x765e827f",
+    calls: [{
+      type: "CALL",
+      from: tracedDeployment.nodes[0].address,
+      to: tracedDeployment.nodes[1].address,
+      contractId: "LoomAccount",
+      selector: "0x12345678",
+      functionSignature: "execute(address,uint256,bytes)",
+      input: "0x12345678aabb",
+      output: "0x01",
+      value: "0x0",
+      gasUsed: "0x5208",
+      calls: [{
+        type: "CALL",
+        from: tracedDeployment.nodes[1].address,
+        to: tracedDeployment.nodes[2].address,
+        contractId: "P256Validator",
+        selector: "0xabcdef01",
+        functionSignature: "validate(bytes32)",
+        input: "0xabcdef01ccdd",
+        output: "0x01",
+        value: "0x0",
+        gasUsed: "0x100",
+        calls: []
+      }]
+    }]
+  };
+
+  const lens = buildFunctionExecutionLens({ deployment: tracedDeployment, contractId: "LoomAccount", functionSelector: "0x12345678", trace });
+
+  assert.equal(lens.status, "observed");
+  assert.deepEqual(lens.observedNodeIds, ["EntryPoint", "LoomAccount", "P256Validator"]);
+  assert.deepEqual(lens.possibleNodeIds, ["RecoveryManager", "VaultHook"]);
+  assert.equal(lens.calls.length, 1);
+  assert.deepEqual(lens.calls[0].caller, {
+    contractId: "EntryPoint",
+    contractName: "EntryPoint",
+    from: tracedDeployment.nodes[0].address,
+    callType: "CALL"
+  });
+  assert.deepEqual(lens.calls[0].frames.map(frame => [frame.contractId, frame.type, frame.input, frame.output]), [
+    ["LoomAccount", "CALL", "0x12345678aabb", "0x01"],
+    ["P256Validator", "CALL", "0xabcdef01ccdd", "0x01"]
+  ]);
+  assert.deepEqual(lens.observedEdges.map(edge => [edge.from, edge.to, edge.type]), [
+    ["EntryPoint", "LoomAccount", "CALL"],
+    ["LoomAccount", "P256Validator", "CALL"]
+  ]);
+});
+
+test("function execution lens never invents calls or values when the selector was not observed", () => {
+  const lens = buildFunctionExecutionLens({ deployment, contractId: "LoomAccount", functionSelector: "0xdeadbeef", trace: null });
+
+  assert.equal(lens.status, "architecture-only");
+  assert.deepEqual(lens.calls, []);
+  assert.deepEqual(lens.observedNodeIds, []);
+  assert.deepEqual(lens.observedEdges, []);
+  assert.deepEqual(lens.possibleNodeIds, ["EntryPoint", "P256Validator", "RecoveryManager"]);
 });

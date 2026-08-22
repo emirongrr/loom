@@ -1,4 +1,4 @@
-import { buildArchitectureExplorer, reduceArchitectureFocus } from "./architecture-explorer.mjs";
+import { buildArchitectureExplorer, buildFunctionExecutionLens, reduceArchitectureFocus } from "./architecture-explorer.mjs";
 import { layoutArchitectureExplorer } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 import { buildOperationLens } from "./lab-domain.mjs";
@@ -714,9 +714,42 @@ function architectureEdgeId(edge) {
   return `${edge.from}:${edge.to}:${edge.kind}`;
 }
 
+function selectedFunctionLens(deployment) {
+  if (!state.focusedNodeId || !state.focusedAbiItem) return null;
+  return buildFunctionExecutionLens({
+    deployment,
+    contractId: state.focusedNodeId,
+    functionSelector: state.focusedAbiItem,
+    trace: currentTrace(state.artifact?.events ?? [])?.trace
+  });
+}
+
+function traceData(value, empty = "none") {
+  if (typeof value !== "string" || !value.length || value === "0x") return empty;
+  return short(value, 18, 12);
+}
+
+function renderFunctionExecutionLens(deployment, contract, fn) {
+  const lens = selectedFunctionLens(deployment);
+  if (!lens) return "";
+  const schema = items => items?.length ? items.map(item => item.type).join(", ") : "none";
+  if (lens.status !== "observed") {
+    return `<section class="function-execution-lens architecture-only"><header><div><p class="eyebrow">EXECUTION LENS</p><h3>Possible path, not observed</h3></div><span>ABI + architecture</span></header><p>This selector was not present in the recorded EVM trace. Highlighted neighboring contracts are architectural possibilities only; no call values, return data, gas, or state effects are invented.</p></section>`;
+  }
+  const calls = lens.calls.map((call, callIndex) => `<div class="function-call-run"><strong>Observed invocation ${callIndex + 1}</strong>${call.caller ? `<div class="execution-origin"><span>Caller</span><strong>${escapeHtml(call.caller.contractName ?? short(call.caller.from, 10, 8))}</strong><code>${escapeHtml(call.caller.callType)} → ${escapeHtml(fn.name)}</code></div>` : ""}<ol>${call.frames.map((frame, index) => {
+    const target = deployment.nodes.find(node => node.id === frame.contractId);
+    const targetFn = target?.functions?.find(candidate => candidate.selector === frame.selector);
+    const label = frame.functionSignature ?? frame.selector ?? "fallback / receive";
+    const result = frame.error ? `Reverted · ${frame.revertReason ?? frame.error}` : `Returned ${traceData(frame.output)}`;
+    return `<li style="--lens-depth:${Math.min(frame.depth, 4)}"><div class="execution-step-marker"><span>${index + 1}</span><i></i></div><article class="execution-frame${frame.error ? " error" : ""}"><header><span>${escapeHtml(frame.type)}</span><strong>${escapeHtml(target?.name ?? frame.contractName ?? short(frame.to, 10, 8))}</strong><small>${escapeHtml(formatTraceNumber(frame.gasUsed))} gas</small></header><code>${escapeHtml(label)}</code><p>${escapeHtml(targetFn?.purpose ?? targetFn?.behavior ?? target?.responsibility ?? "Observed contract call frame.")}</p><dl><div><dt>Sends</dt><dd><code>${escapeHtml(traceData(frame.input))}</code><small>raw calldata · ${escapeHtml(formatTraceNumber(frame.value))} wei</small></dd></div><div><dt>Expects</dt><dd><code>${escapeHtml(schema(targetFn?.outputs))}</code><small>ABI return schema</small></dd></div><div><dt>Result</dt><dd><code>${escapeHtml(result)}</code><small>${frame.error ? "observed revert" : "observed raw output"}</small></dd></div></dl></article></li>`;
+  }).join("")}</ol></div>`).join("");
+  return `<section class="function-execution-lens observed"><header><div><p class="eyebrow">EXECUTION LENS</p><h3>Observed EVM path</h3></div><span>${lens.calls.length} invocation${lens.calls.length === 1 ? "" : "s"}</span></header><p>The glowing graph path and frames below come from the recorded transaction. Calldata and output stay raw unless ABI decoding is independently available.</p>${calls}</section>`;
+}
+
 function renderArchitectureFunctionDetail(contract, fn) {
   const parameters = items => items?.length ? items.map(item => `<li><code>${escapeHtml(item.type)}</code><strong>${escapeHtml(item.name || "unnamed")}</strong></li>`).join("") : `<li class="empty">None</li>`;
-  return `<div class="architecture-function-detail"><button type="button" class="focus-back" data-focus-back="functions">← All functions</button><p class="eyebrow">FUNCTION</p><h3>${escapeHtml(fn.name)}</h3><code class="function-signature">${escapeHtml(fn.signature)}</code><div class="function-facts"><span>${escapeHtml(fn.stateMutability)}</span><span>${escapeHtml(fn.selector)}</span></div><p>${escapeHtml(fn.purpose ?? fn.behavior ?? "Declared by the compiler ABI for this contract.")}</p><div class="function-io"><div><strong>Inputs</strong><ul>${parameters(fn.inputs)}</ul></div><div><strong>Outputs</strong><ul>${parameters(fn.outputs)}</ul></div></div>${renderFunctionInteractions(contract, fn, currentTrace(state.artifact?.events ?? []))}</div>`;
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  return `<div class="architecture-function-detail"><button type="button" class="focus-back" data-focus-back="functions">← All functions</button><p class="eyebrow">FUNCTION</p><h3>${escapeHtml(fn.name)}</h3><code class="function-signature">${escapeHtml(fn.signature)}</code><div class="function-facts"><span>${escapeHtml(fn.stateMutability)}</span><span>${escapeHtml(fn.selector)}</span></div><p>${escapeHtml(fn.purpose ?? fn.behavior ?? "Declared by the compiler ABI for this contract.")}</p><div class="function-io"><div><strong>Inputs</strong><ul>${parameters(fn.inputs)}</ul></div><div><strong>Outputs</strong><ul>${parameters(fn.outputs)}</ul></div></div>${renderFunctionExecutionLens(deployment, contract, fn)}</div>`;
 }
 
 function renderArchitectureSection(deployment, contract) {
@@ -746,13 +779,14 @@ function renderArchitectureSection(deployment, contract) {
   return `<div class="focus-list">${items.map(item => `<article class="focus-declaration ${section}"><strong>${escapeHtml(item.signature ?? item.name)}</strong><code>${escapeHtml(item.topic ?? item.selector ?? "")}</code><p>${escapeHtml(item.purpose ?? item.documentation ?? `Declared ${section.slice(0, -1)} in the compiler ABI.`)}</p></article>`).join("") || `<p class="empty">No ${escapeHtml(section)} in this ABI.</p>`}</div>`;
 }
 
-function renderFocusedArchitectureNode(deployment, contract, bounds) {
+function renderFocusedArchitectureNode(deployment, contract, bounds, functionLens = null) {
   const sourceUrl = githubSourceUrl(contract.source);
   const tabs = architectureSections.map(section => {
     const counts = { relationships: deployment.edges.filter(edge => edge.from === contract.id || edge.to === contract.id).length, functions: contract.functions?.length ?? 0, fields: contract.fields?.length ?? 0, events: contract.events?.length ?? 0, errors: contract.errors?.length ?? 0 };
     return `<button type="button" data-focus-section="${section}" aria-pressed="${state.focusedSection === section}">${titleCase(section)} <span>${counts[section]}</span></button>`;
   }).join("");
-  return `<foreignObject class="architecture-focus-object" data-contract-id="${escapeHtml(contract.id)}" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}"><div xmlns="http://www.w3.org/1999/xhtml" class="architecture-focus-node ${escapeHtml(contract.requirement)}"><header><div><p class="eyebrow">${escapeHtml(titleCase(contract.requirement))}</p><h2>${escapeHtml(contract.name)}</h2></div><button type="button" data-focus-close="true" aria-label="Close contract detail">×</button></header><div class="focus-identity">${renderContractAddress(contract)}${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source ↗</a>` : ""}</div><p class="focus-responsibility">${escapeHtml(contract.responsibility ?? "Deployment contract")}</p><nav aria-label="Contract detail sections">${tabs}</nav><div class="focus-content">${renderArchitectureSection(deployment, contract)}</div></div></foreignObject>`;
+  const lensClass = functionLens ? ` function-${functionLens.status}` : "";
+  return `<foreignObject class="architecture-focus-object${lensClass}" data-contract-id="${escapeHtml(contract.id)}" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}"><div xmlns="http://www.w3.org/1999/xhtml" class="architecture-focus-node ${escapeHtml(contract.requirement)}"><header><div><p class="eyebrow">${escapeHtml(titleCase(contract.requirement))}</p><h2>${escapeHtml(contract.name)}</h2></div><button type="button" data-focus-close="true" aria-label="Close contract detail">×</button></header><div class="focus-identity">${renderContractAddress(contract)}${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source ↗</a>` : ""}</div><p class="focus-responsibility">${escapeHtml(contract.responsibility ?? "Deployment contract")}</p><nav aria-label="Contract detail sections">${tabs}</nav><div class="focus-content">${renderArchitectureSection(deployment, contract)}</div></div></foreignObject>`;
 }
 
 function renderDeploymentGraph(deployment) {
@@ -773,7 +807,13 @@ function renderDeploymentGraph(deployment) {
     state.focusedAbiItem = null;
   }
   const { positions, bounds, height, neighborIds } = graphPositions(view.visibleNodes, view.visibleEdges);
-  const overlay = observedTraceOverlay(deployment, currentTrace(state.artifact?.events ?? []));
+  const functionLens = selectedFunctionLens(deployment);
+  const traceOverlay = observedTraceOverlay(deployment, currentTrace(state.artifact?.events ?? []));
+  const overlay = functionLens?.status === "observed"
+    ? { nodeIds: new Set(functionLens.observedNodeIds), edges: functionLens.observedEdges.map(edge => ({ ...edge, count: 1 })) }
+    : traceOverlay;
+  const functionObservedIds = new Set(functionLens?.observedNodeIds ?? []);
+  const functionPossibleIds = new Set(functionLens?.possibleNodeIds ?? []);
   const edges = view.visibleEdges.map(edge => {
     const from = positions[edge.from];
     const to = positions[edge.to];
@@ -785,10 +825,13 @@ function renderDeploymentGraph(deployment) {
     const mid = (x1 + x2) / 2;
     const edgeId = architectureEdgeId(edge);
     const selected = edgeId === state.focusedEdgeId ? " selected" : "";
-    const faded = state.focusedNodeId && edge.from !== state.focusedNodeId && edge.to !== state.focusedNodeId ? " unrelated" : "";
+    const lensPossible = functionLens && (edge.from === state.focusedNodeId || edge.to === state.focusedNodeId) ? " function-possible" : "";
+    const faded = functionLens
+      ? lensPossible ? "" : " unrelated"
+      : state.focusedNodeId && edge.from !== state.focusedNodeId && edge.to !== state.focusedNodeId ? " unrelated" : "";
     const label = edge.kind === "delegates" ? "DELEGATECALL · shared code / instance state" : edge.label;
     const displayLabel = label.length > 30 ? `${label.slice(0, 29)}…` : label;
-    return `<g class="graph-edge ${edgeClass(edge.kind)}${selected}${faded}" data-edge-id="${escapeHtml(edgeId)}" role="button" tabindex="0" aria-label="Inspect relationship ${escapeHtml(label)}"><title>${escapeHtml(label)}</title><path d="M ${x1} ${from.y} C ${mid} ${from.y}, ${mid} ${to.y}, ${x2} ${to.y}" marker-end="url(#arrow-${edgeClass(edge.kind)})"></path><text x="${mid}" y="${(from.y + to.y) / 2 - 8}" text-anchor="middle">${escapeHtml(displayLabel)}</text></g>`;
+    return `<g class="graph-edge ${edgeClass(edge.kind)}${selected}${lensPossible}${faded}" data-edge-id="${escapeHtml(edgeId)}" role="button" tabindex="0" aria-label="Inspect relationship ${escapeHtml(label)}"><title>${escapeHtml(label)}</title><path d="M ${x1} ${from.y} C ${mid} ${from.y}, ${mid} ${to.y}, ${x2} ${to.y}" marker-end="url(#arrow-${edgeClass(edge.kind)})"></path><text x="${mid}" y="${(from.y + to.y) / 2 - 8}" text-anchor="middle">${escapeHtml(displayLabel)}</text></g>`;
   }).join("");
   const observedEdges = overlay.edges.map(edge => {
     const from = positions[edge.from];
@@ -799,19 +842,24 @@ function renderDeploymentGraph(deployment) {
     const x1 = to.x >= from.x ? fromBounds.x + fromBounds.width : fromBounds.x;
     const x2 = to.x >= from.x ? toBounds.x : toBounds.x + toBounds.width;
     const mid = (x1 + x2) / 2;
-    return `<g class="graph-edge observed"><title>${escapeHtml(`${edge.type} observed ${edge.count} time${edge.count === 1 ? "" : "s"}`)}</title><path d="M ${x1} ${from.y} C ${mid} ${from.y}, ${mid} ${to.y}, ${x2} ${to.y}" marker-end="url(#arrow-observed)"></path></g>`;
+    const label = functionLens ? `${edge.type} · OBSERVED` : `${edge.type} · ${edge.count}×`;
+    return `<g class="graph-edge observed${functionLens ? " function-observed" : ""}"><title>${escapeHtml(`${edge.type} observed ${edge.count} time${edge.count === 1 ? "" : "s"}`)}</title><path d="M ${x1} ${from.y} C ${mid} ${from.y}, ${mid} ${to.y}, ${x2} ${to.y}" marker-end="url(#arrow-observed)"></path>${functionLens ? `<text x="${mid}" y="${(from.y + to.y) / 2 - 10}" text-anchor="middle">${escapeHtml(label)}</text>` : ""}</g>`;
   }).join("");
   const nodes = view.visibleNodes.map(node => {
     const point = positions[node.id];
     const nodeBounds = bounds[node.id];
-    if (node.id === state.focusedNodeId) return renderFocusedArchitectureNode(deployment, node, nodeBounds);
+    if (node.id === state.focusedNodeId) return renderFocusedArchitectureNode(deployment, node, nodeBounds, functionLens);
     const selected = node.id === state.focusedNodeId ? " selected" : "";
     const role = ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
     const verification = node.verification ? ` · ${node.verification.toUpperCase()}` : "";
     const identityClass = node.id === "LoomAccount" ? " implementation" : node.id === "ObservedAccount" ? " instance" : "";
     const displayName = node.name.length > 28 ? `${node.name.slice(0, 27)}…` : node.name;
-    const traceClass = state.traceOverlayEnabled ? overlay.nodeIds.has(node.id) ? " trace-observed" : " trace-idle" : "";
-    const unrelated = state.focusedNodeId && !neighborIds.has(node.id) ? " unrelated" : "";
+    const traceClass = functionLens
+      ? functionObservedIds.has(node.id) ? " function-observed" : functionPossibleIds.has(node.id) ? " function-possible" : " function-idle"
+      : state.traceOverlayEnabled ? overlay.nodeIds.has(node.id) ? " trace-observed" : " trace-idle" : "";
+    const unrelated = functionLens
+      ? !functionObservedIds.has(node.id) && !functionPossibleIds.has(node.id) ? " unrelated" : ""
+      : state.focusedNodeId && !neighborIds.has(node.id) ? " unrelated" : "";
     if (node.nodeType === "group") return `<g class="graph-node architecture-group${unrelated}" data-architecture-group="${escapeHtml(node.id)}" role="button" tabindex="0" aria-label="Expand ${escapeHtml(node.name)} group with ${node.count} contracts"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="18"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 5}">OPTIONAL GROUP · ${node.count}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 18}">${escapeHtml(displayName)}</text><text class="group-open" x="${nodeBounds.x + nodeBounds.width - 25}" y="${point.y + 7}">+</text></g>`;
     return `<g class="graph-node ${escapeHtml(node.kind)} ${escapeHtml(node.requirement ?? "optional")}${identityClass}${selected}${traceClass}${unrelated}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-pressed="${node.id === state.focusedNodeId}" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="12"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 12}">${escapeHtml(role + verification)}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 10}">${escapeHtml(displayName)}</text><text class="node-address" x="${nodeBounds.x + 20}" y="${point.y + 29}">${escapeHtml(short(node.address, 10, 8))}</text></g>`;
   }).join("");
@@ -1725,7 +1773,12 @@ $("#panel-architecture").addEventListener("click", event => {
   const fn = event.target.closest("[data-focus-function]");
   if (fn) {
     Object.assign(state, reduceArchitectureFocus(state, { type: "focus-abi", section: "functions", itemId: fn.dataset.focusFunction }));
-    renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
+    const deployment = currentDeployment(state.artifact?.events ?? []);
+    const lens = selectedFunctionLens(deployment);
+    const relevantIds = new Set(lens?.observedNodeIds ?? []);
+    const relevantGroups = architectureView(deployment).groups.filter(group => group.members.some(node => relevantIds.has(node.id))).map(group => group.id);
+    state.expandedArchitectureGroups = [...new Set([...state.expandedArchitectureGroups, ...relevantGroups])];
+    renderDeploymentGraph(deployment);
     return;
   }
   const edgeButton = event.target.closest("[data-edge-id], [data-focus-edge]");

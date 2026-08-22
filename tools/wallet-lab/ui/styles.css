@@ -266,6 +266,13 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .graph-node.test-only rect { stroke: #b26ed0; stroke-dasharray: 3 3; }
 .graph-node.trace-idle { opacity: .22; }
 .graph-node.trace-observed rect { stroke: #75f7b1; stroke-width: 3; filter: drop-shadow(0 0 5px rgba(117, 247, 177, .35)); }
+.graph-node.function-observed rect { stroke: #75f7b1; stroke-width: 3; filter: drop-shadow(0 0 9px rgba(117, 247, 177, .6)); }
+.graph-node.function-possible { opacity: .58; }
+.graph-node.function-possible rect { stroke: var(--amber); stroke-dasharray: 5 4; }
+.graph-edge.function-possible { opacity: .45; }
+.graph-edge.function-possible path { stroke: var(--amber); stroke-dasharray: 5 5; }
+.graph-edge.function-possible text { fill: var(--amber); }
+.graph-edge.function-observed text { fill: #75f7b1; font-weight: 700; }
 .graph-node .node-kind { fill: var(--green); font: 700 9px ui-monospace, monospace; letter-spacing: 1px; }
 .graph-node .node-name { fill: #edf4ef; font: 700 13px Inter, sans-serif; }
 .graph-node .node-address { fill: #84938a; font: 10px ui-monospace, monospace; }
@@ -408,6 +415,8 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .graph-stage.zoom-normal .node-address { opacity: .35; }
 .graph-stage.zoom-near .node-address { opacity: 1; }
 .architecture-focus-object { overflow: visible; filter: drop-shadow(0 20px 32px rgba(0, 0, 0, .55)); }
+.architecture-focus-object.function-observed { filter: drop-shadow(0 0 12px rgba(117, 247, 177, .46)) drop-shadow(0 20px 32px rgba(0, 0, 0, .55)); }
+.architecture-focus-object.function-architecture-only .architecture-focus-node { border-color: var(--amber); }
 .architecture-focus-node { height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--green); border-radius: 16px; background: #101713; color: #edf4ef; user-select: text; }
 .architecture-focus-node.transport-required { border-color: var(--blue); }
 .architecture-focus-node.profile-required { border-color: var(--amber); }
@@ -455,6 +464,37 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .function-io strong { font-size: .56rem; }
 .function-io ul { margin: .35rem 0 0; padding: 0; list-style: none; }
 .function-io li { display: flex; gap: .35rem; margin-top: .2rem; font-size: .52rem; }
+.function-execution-lens { margin-top: .65rem; padding-top: .65rem; border-top: 1px solid var(--line); }
+.function-execution-lens > header { display: flex; align-items: flex-start; justify-content: space-between; gap: .55rem; }
+.function-execution-lens > header h3 { margin: .1rem 0 0; font-size: .7rem; }
+.function-execution-lens > header > span { flex: none; padding: .2rem .35rem; border-radius: 5px; background: var(--green-soft); color: var(--green); text-transform: uppercase; font: 700 .46rem ui-monospace, monospace; }
+.function-execution-lens.architecture-only > header > span { background: var(--amber-soft); color: var(--amber); }
+.function-execution-lens > p { margin: .35rem 0 .6rem; color: var(--muted); font-size: .54rem; line-height: 1.45; }
+.function-call-run > strong { display: block; margin: .45rem 0 .35rem; color: #cbd8cf; font-size: .54rem; }
+.execution-origin { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .35rem; align-items: center; margin-bottom: .35rem; padding: .35rem .45rem; border-left: 2px solid var(--blue); background: #101a25; }
+.execution-origin span { color: var(--blue); text-transform: uppercase; font: 700 .43rem ui-monospace, monospace; }
+.execution-origin strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .52rem; }
+.execution-origin code { color: var(--muted); font-size: .45rem; }
+.function-call-run ol { margin: 0; padding: 0; list-style: none; }
+.function-call-run li { position: relative; display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: .35rem; margin-left: calc(var(--lens-depth) * .42rem); }
+.execution-step-marker { display: flex; flex-direction: column; align-items: center; }
+.execution-step-marker span { width: 1.15rem; height: 1.15rem; display: grid; place-items: center; flex: none; border: 1px solid var(--green); border-radius: 50%; color: var(--green); font: 700 .45rem ui-monospace, monospace; }
+.execution-step-marker i { width: 1px; min-height: .55rem; flex: 1; background: var(--line-strong); }
+.function-call-run li:last-child .execution-step-marker i { display: none; }
+.execution-frame { min-width: 0; margin-bottom: .4rem; padding: .45rem; border-left: 2px solid var(--green); background: var(--surface-soft); }
+.execution-frame.error { border-color: var(--red); }
+.execution-frame > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .35rem; align-items: center; }
+.execution-frame > header span { color: var(--green); font: 700 .44rem ui-monospace, monospace; }
+.execution-frame > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .56rem; }
+.execution-frame > header small { color: var(--muted); font: .45rem ui-monospace, monospace; }
+.execution-frame > code { display: block; margin-top: .25rem; overflow: hidden; color: var(--green); text-overflow: ellipsis; white-space: nowrap; font-size: .48rem; }
+.execution-frame > p { margin: .3rem 0; color: #b8c5bc; font-size: .5rem; line-height: 1.4; }
+.execution-frame dl { display: grid; gap: .25rem; margin: 0; }
+.execution-frame dl > div { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: .3rem; padding-top: .25rem; border-top: 1px solid #202923; }
+.execution-frame dt { color: var(--muted); text-transform: uppercase; font: 700 .43rem ui-monospace, monospace; }
+.execution-frame dd { min-width: 0; margin: 0; }
+.execution-frame dd code, .execution-frame dd small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .45rem; }
+.execution-frame dd small { margin-top: .1rem; color: var(--muted); }
 
 body.architecture-immersive { height: 100dvh; overflow: hidden; background: var(--canvas); }
 body.architecture-immersive > .masthead, body.architecture-immersive .deployment-source-bar, body.architecture-immersive .run-strip, body.architecture-immersive .workspace-tabs, body.architecture-immersive .failure-banner { display: none !important; }
