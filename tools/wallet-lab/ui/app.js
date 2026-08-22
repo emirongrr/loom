@@ -1938,7 +1938,7 @@ async function connectSepoliaDeployment() {
     if (!response.ok || report.status !== "verified") {
       const mismatchCount = Array.isArray(report.failures) ? report.failures.length : 0;
       status.className = "target-status error";
-      status.textContent = report.status === "mismatch" ? `Verification failed: ${mismatchCount} deployment commitment${mismatchCount === 1 ? "" : "s"} did not match` : "Public RPC could not verify this deployment";
+      status.textContent = report.status === "mismatch" ? `Verification failed: ${mismatchCount} deployment commitment${mismatchCount === 1 ? "" : "s"} did not match` : (report.message ?? "Public RPC could not verify this deployment");
       renderDeployment(state.artifact?.events ?? []);
       return;
     }

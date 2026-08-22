@@ -79,6 +79,17 @@ test("Sepolia RPC rejects oversized responses before parsing them", async () => 
   await assert.rejects(() => rpc("eth_chainId"), /exceeded the size limit/u);
 });
 
+test("Sepolia RPC classifies transport failures without exposing endpoint details", async () => {
+  const rpc = createJsonRpc("https://user:secret@rpc.example/private-token", {
+    fetchImpl: async () => new Response("provider unavailable", { status: 503 })
+  });
+
+  await assert.rejects(
+    () => rpc("eth_chainId"),
+    error => error.code === "RPC_HTTP_ERROR" && error.httpStatus === 503 && !String(error.message).includes("secret") && !String(error.message).includes("private-token")
+  );
+});
+
 test("Wallet Lab UI exposes a local or verified Sepolia deployment choice", () => {
   const html = readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
   const script = readFileSync(new URL("../ui/app.js", import.meta.url), "utf8");

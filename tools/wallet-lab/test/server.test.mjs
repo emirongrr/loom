@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createTraceRecorder, nativeTransferScenario } from "../dist/index.js";
-import { createWalletLabServer } from "../server.mjs";
+import { createWalletLabServer, PUBLIC_SEPOLIA_RPC_PROVIDERS } from "../server.mjs";
 
 const executionContract = {
   id: "Example",
@@ -71,6 +71,33 @@ test("lab server exposes only configured public Sepolia presets and connects one
   const connected = await fetch(`${listening.url}api/deployments/sepolia/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "test-public" }) });
   assert.equal(connected.status, 200);
   assert.equal((await connected.json()).status, "mismatch");
+});
+
+test("published Sepolia presets exclude providers that no longer serve the chain", () => {
+  assert.deepEqual(PUBLIC_SEPOLIA_RPC_PROVIDERS.map(provider => provider.id), ["publicnode"]);
+});
+
+test("Sepolia connection failures return safe actionable diagnostics", async t => {
+  const dir = mkdtempSync(join(tmpdir(), "loom-wallet-lab-"));
+  const repoRoot = new URL("../../../", import.meta.url);
+  const manifest = JSON.parse(readFileSync(new URL("../../../examples/passkey-wallet-web/public/sepolia.deployment.json", import.meta.url), "utf8"));
+  const server = createWalletLabServer({
+    artifactPath: join(dir, "missing.json"),
+    port: 0,
+    sepoliaProfile: { repoRoot, manifest },
+    sepoliaProviders: [{ id: "offline", label: "Offline RPC", endpoint: "https://rpc.example/private-token" }],
+    createRpc: () => async () => {
+      throw new Error("provider token leaked");
+    }
+  });
+  const listening = await server.start();
+  t.after(() => server.stop());
+
+  const response = await fetch(`${listening.url}api/deployments/sepolia/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "offline" }) });
+  const report = await response.json();
+  assert.equal(response.status, 502);
+  assert.deepEqual(report, { status: "unavailable", code: "RPC_UNREACHABLE", message: "The selected public RPC could not be reached. Try again or choose another provider.", retryable: true });
+  assert.doesNotMatch(JSON.stringify(report), /token|rpc\.example/u);
 });
 
 test("lab execution API is same-origin, deployment-scoped, and simulation-only by default", async t => {

@@ -6,6 +6,13 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/u;
 const HASH = /^0x[0-9a-fA-F]{64}$/u;
 const MAX_RPC_RESPONSE_BYTES = 1_000_000;
 
+function rpcFailure(code, message, metadata = {}) {
+  const error = new Error(message);
+  error.code = code;
+  Object.assign(error, metadata);
+  return error;
+}
+
 const COMPONENTS = Object.freeze([
   ["EntryPoint", "entryPoint", "entryPoint"],
   ["LoomAccountFactory", "factory", "factory"],
@@ -54,23 +61,24 @@ export function createJsonRpc(endpoint, { fetchImpl = fetch, timeoutMs = 8_000 }
         body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
         signal: controller.signal
       });
-      if (!response.ok) throw new Error("Sepolia RPC request failed");
+      if (!response.ok) throw rpcFailure("RPC_HTTP_ERROR", "The Sepolia RPC returned an unsuccessful HTTP response", { httpStatus: response.status });
       const declaredLength = Number(response.headers.get("content-length") ?? 0);
-      if (declaredLength > MAX_RPC_RESPONSE_BYTES) throw new Error("Sepolia RPC response exceeded the size limit");
+      if (declaredLength > MAX_RPC_RESPONSE_BYTES) throw rpcFailure("RPC_RESPONSE_TOO_LARGE", "Sepolia RPC response exceeded the size limit");
       const text = await response.text();
-      if (Buffer.byteLength(text, "utf8") > MAX_RPC_RESPONSE_BYTES) throw new Error("Sepolia RPC response exceeded the size limit");
+      if (Buffer.byteLength(text, "utf8") > MAX_RPC_RESPONSE_BYTES) throw rpcFailure("RPC_RESPONSE_TOO_LARGE", "Sepolia RPC response exceeded the size limit");
       const payload = JSON.parse(text);
       if (payload?.error) {
-        const rpcError = new Error("RPC rejected the requested operation");
+        const rpcError = rpcFailure("RPC_REJECTED", "RPC rejected the requested operation");
         rpcError.rpcCode = payload.error.code;
         rpcError.rpcData = typeof payload.error.data === "string" ? payload.error.data : null;
         throw rpcError;
       }
-      if (!("result" in (payload ?? {}))) throw new Error("Sepolia RPC returned an invalid response");
+      if (!("result" in (payload ?? {}))) throw rpcFailure("RPC_INVALID_RESPONSE", "Sepolia RPC returned an invalid response");
       return payload.result;
     } catch (error) {
-      if (error?.name === "AbortError") throw new Error("Sepolia RPC request timed out");
-      throw error;
+      if (error?.name === "AbortError") throw rpcFailure("RPC_TIMEOUT", "Sepolia RPC request timed out");
+      if (String(error?.code ?? "").startsWith("RPC_")) throw error;
+      throw rpcFailure("RPC_UNREACHABLE", "The Sepolia RPC could not be reached");
     } finally {
       clearTimeout(timeout);
     }

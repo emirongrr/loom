@@ -19,9 +19,20 @@ const MAX_CONTROL_BODY_BYTES = 32_768;
 const LOCAL_CHAIN_ID = 31337;
 const LOCAL_TEST_SENDER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 export const PUBLIC_SEPOLIA_RPC_PROVIDERS = Object.freeze([
-  Object.freeze({ id: "publicnode", label: "PublicNode", endpoint: "https://ethereum-sepolia-rpc.publicnode.com" }),
-  Object.freeze({ id: "drpc", label: "dRPC public", endpoint: "https://sepolia.drpc.org" })
+  Object.freeze({ id: "publicnode", label: "PublicNode", endpoint: "https://ethereum-sepolia-rpc.publicnode.com" })
 ]);
+
+function publicRpcFailure(error) {
+  const diagnostics = {
+    RPC_TIMEOUT: { httpStatus: 504, code: "RPC_TIMEOUT", message: "The selected public RPC timed out. Try again or choose another provider." },
+    RPC_HTTP_ERROR: { httpStatus: 502, code: "RPC_HTTP_ERROR", message: "The selected public RPC temporarily rejected the verification request. Try again later." },
+    RPC_REJECTED: { httpStatus: 502, code: "RPC_REJECTED", message: "The selected public RPC does not support a required Sepolia verification request." },
+    RPC_RESPONSE_TOO_LARGE: { httpStatus: 502, code: "RPC_RESPONSE_TOO_LARGE", message: "The selected public RPC returned more data than Wallet Lab safely accepts." },
+    RPC_INVALID_RESPONSE: { httpStatus: 502, code: "RPC_INVALID_RESPONSE", message: "The selected public RPC returned an invalid verification response." }
+  };
+  const selected = diagnostics[error?.code] ?? { httpStatus: 502, code: "RPC_UNREACHABLE", message: "The selected public RPC could not be reached. Try again or choose another provider." };
+  return { ...selected, payload: { status: "unavailable", code: selected.code, message: selected.message, retryable: true } };
+}
 
 function safeUiPath(pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
@@ -39,7 +50,7 @@ async function readControlBody(request) {
   return JSON.parse(body);
 }
 
-export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port = 4173, localExecution, sepolia, sepoliaProfile, sepoliaProviders = PUBLIC_SEPOLIA_RPC_PROVIDERS } = {}) {
+export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port = 4173, localExecution, sepolia, sepoliaProfile, sepoliaProviders = PUBLIC_SEPOLIA_RPC_PROVIDERS, createRpc = createJsonRpc } = {}) {
   if (!artifactPath) throw new Error("wallet lab artifact path is required");
   const profile = sepoliaProfile ?? (sepolia ? { repoRoot: sepolia.repoRoot, manifest: sepolia.manifest } : null);
   const providers = sepoliaProviders.map(provider => Object.freeze({ ...provider, origin: rpcEndpointOrigin(provider.endpoint) }));
@@ -167,14 +178,15 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
           response.end(JSON.stringify({ status: "error", message: "Select one of the published Sepolia RPC presets." }));
           return;
         }
-        activeSepolia = { ...profile, rpc: createJsonRpc(provider.endpoint), endpointOrigin: provider.origin };
+        activeSepolia = { ...profile, rpc: createRpc(provider.endpoint), endpointOrigin: provider.origin };
         sepoliaInspection = undefined;
         const report = await inspectSepolia();
         response.writeHead(200);
         response.end(JSON.stringify(report));
-      } catch {
-        response.writeHead(502);
-        response.end(JSON.stringify({ status: "unavailable", message: "Sepolia deployment verification could not be completed." }));
+      } catch (error) {
+        const failure = publicRpcFailure(error);
+        response.writeHead(failure.httpStatus);
+        response.end(JSON.stringify(failure.payload));
       }
       return;
     }
@@ -221,9 +233,10 @@ export function createWalletLabServer({ artifactPath, host = "127.0.0.1", port =
       try {
         response.writeHead(200);
         response.end(JSON.stringify(await inspectSepolia()));
-      } catch {
-        response.writeHead(502);
-        response.end(JSON.stringify({ status: "unavailable", message: "Sepolia deployment verification could not be completed." }));
+      } catch (error) {
+        const failure = publicRpcFailure(error);
+        response.writeHead(failure.httpStatus);
+        response.end(JSON.stringify(failure.payload));
       }
       return;
     }
