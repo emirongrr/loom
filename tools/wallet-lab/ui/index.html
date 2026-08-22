@@ -45,7 +45,9 @@
         <nav class="workspace-tabs" role="tablist" aria-label="Wallet Lab panels">
           <button type="button" role="tab" id="tab-architecture" aria-controls="panel-architecture" aria-selected="true" data-tab="architecture">Loom architecture <span id="contract-count">0</span></button>
           <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">RPC &amp; SDK <span id="network-count">0</span></button>
-          <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">EVM layer</button>
+          <button type="button" role="tab" id="tab-authority" aria-controls="panel-authority" aria-selected="false" data-tab="authority">Authority</button>
+          <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">Effects &amp; EVM</button>
+          <button type="button" role="tab" id="tab-privacy" aria-controls="panel-privacy" aria-selected="false" data-tab="privacy">Privacy</button>
           <button type="button" role="tab" id="tab-execution" aria-controls="panel-execution" aria-selected="false" data-tab="execution">Execution Studio</button>
         </nav>
 
@@ -68,7 +70,18 @@
           <div id="network-operation-groups" class="network-operation-groups"></div><div class="toolbar network-toolbar"><label><span>Search requests</span><input id="network-search" type="search" placeholder="Method, stage, reason..." /></label><label><span>Transport</span><select id="network-transport"><option value="all">RPC and bundler</option><option value="rpc">RPC</option><option value="bundler">Bundler</option></select></label></div><div class="network-layout"><div class="table-scroll"><table><thead><tr><th>#</th><th>Operation stage</th><th>Transport</th><th>Method</th><th>Requirement</th><th>Result</th></tr></thead><tbody id="network-rows"></tbody></table></div><article id="network-inspector" class="surface inspector-detail empty">Select a request to see why it happened and inspect its JSON-RPC evidence.</article></div>
         </section>
 
+        <section id="panel-authority" class="workspace-panel" role="tabpanel" aria-labelledby="tab-authority" hidden>
+          <article class="surface lens-intro"><div><p class="eyebrow">AUTHORITY &amp; TRUST</p><h2>Who allowed or constrained this operation?</h2><p>This view separates account authority from transport influence. Approve, veto, publish, delay, observe, move-funds, and configuration abilities remain distinct and each relationship names its evidence level.</p></div><div id="authority-context" class="lens-context">Waiting for an operation.</div></article>
+          <div class="authority-layout"><article id="authority-graph" class="surface authority-graph empty">No authority evidence is available.</article><aside id="authority-actors" class="surface authority-actors empty">Select a run with client or trace evidence.</aside></div>
+        </section>
+
         <section id="panel-evm" class="workspace-panel" role="tabpanel" aria-labelledby="tab-evm" hidden><article class="surface evm-surface"><div class="section-title"><div><p class="eyebrow">EVM LAYER</p><h2>Function execution, gas, calls, and state access</h2><p>Every metric below is derived from the selected transaction trace. It distinguishes control flow, storage access, external calls, logs, and exits before exposing the instruction-level debugger.</p></div><span id="evm-trace-summary">No trace captured</span></div><div id="evm-behavior-summary" class="evm-behavior-summary empty">Local trace evidence is required for an EVM behavior profile.</div><div id="evm-trace" class="evm-trace empty">Local evidence is required to inspect a transaction trace.</div></article></section>
+
+        <section id="panel-privacy" class="workspace-panel" role="tabpanel" aria-labelledby="tab-privacy" hidden>
+          <article class="surface lens-intro"><div><p class="eyebrow">OBSERVER MODEL</p><h2>Who can see what?</h2><p>Visibility is classified per observer. “Off-chain” never automatically means hidden, and a public commitment is not described as anonymous without supporting evidence.</p></div><div id="privacy-context" class="lens-context">Waiting for an operation.</div></article>
+          <div id="privacy-observer-map" class="privacy-observer-map empty">No observer-specific evidence is available.</div>
+          <article id="privacy-evidence" class="surface privacy-evidence empty">Select a disclosure to inspect its provenance.</article>
+        </section>
 
         <section id="panel-execution" class="workspace-panel" role="tabpanel" aria-labelledby="tab-execution" hidden>
           <article class="surface execution-studio-intro"><div><p class="eyebrow">EXECUTION STUDIO</p><h2>Test wallet behavior in a controlled sandbox</h2><p>Choose a Loom contract function, start from realistic deployment-aware inputs, simulate safely, execute against the local devnet, or inspect an original mined Sepolia transaction. Inputs, output, call frames, state changes, gas, events, and opcodes stay bound to one evidence result.</p></div><div class="execution-studio-key"><span>Local devnet</span><strong>Simulate + broadcast + full trace</strong><span>Sepolia</span><strong>Inspect mined transaction evidence</strong></div></article>

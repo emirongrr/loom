@@ -5,6 +5,26 @@ devnet. It records a real SDK -> Alto -> EntryPoint -> Loom account operation as
 a typed lifecycle artifact, checks independent invariants, and renders the
 timeline and semantic state diff without adding production authority.
 
+The UI presents one operation through five deliberately separate evidence
+lenses:
+
+- **Architecture** shows the static deployment topology derived from the pinned
+  manifest, compiler artifacts, and repository source metadata.
+- **Execution** shows the observed call tree for a specific transaction. It is
+  never presented as the architecture graph.
+- **Authority** distinguishes actors that approve, reject, constrain, publish,
+  delay, execute, or merely observe the operation.
+- **Effects & EVM** combines the call/opcode view with independently measured
+  semantic before/after values.
+- **Privacy** answers who learned which operation data: authenticator, RPC,
+  bundler, public chain, and contract target are separate observers.
+
+Every rendered claim carries a normalized provenance category such as
+`observed_trace`, `observed_receipt`, `derived_from_manifest`, `inferred`, or
+`unavailable`, plus a confidence level and stable references where available.
+Missing trace or state-diff capability produces an explicit limitation instead
+of invented execution detail.
+
 ## Run
 
 Use Node 22 and install repository dependencies as described in the root
@@ -28,6 +48,12 @@ To inspect an existing artifact without running a chain:
 ```sh
 npm run wallet-lab:serve -- .loom/wallet-lab/latest-run.json
 ```
+
+Use the deployment selector in the UI to inspect either the deterministic local
+deployment or the bundled Sepolia profile. Local run artifacts can populate all
+five lenses. Sepolia inspection is intentionally read-only: a transaction hash
+can be analyzed only to the extent supported by the configured public RPC. The
+UI does not combine local trace evidence with Sepolia manifest claims.
 
 To replay from a clean devnet:
 
@@ -68,6 +94,16 @@ mnemonics, and browser storage state must never be provided to Wallet Lab.
 `included` requires a matching UserOperation receipt and successful enclosing
 transaction. `finalized` requires the scenario's later-block policy. These
 states are never aliases.
+
+## Trace capability and fallback
+
+Wallet Lab probes provider capabilities before presenting trace-derived facts.
+Call frames require a supported transaction tracer. Storage and balance changes
+require state-difference evidence or independent before/after reads. A provider
+that exposes only receipts can still prove inclusion, logs, gas use, and the
+enclosing transaction, but it cannot prove internal call frames or storage
+writes. Those panels remain explicitly unavailable rather than silently falling
+back to speculation.
 
 ## Troubleshooting
 

@@ -1,6 +1,101 @@
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { readonly [key: string]: JsonValue };
 
+export type LabEvidenceKind =
+  | "observed_client"
+  | "observed_onchain"
+  | "observed_rpc"
+  | "observed_trace"
+  | "observed_receipt"
+  | "observed_event"
+  | "observed_state_diff"
+  | "derived_from_artifact"
+  | "derived_from_source"
+  | "derived_from_manifest"
+  | "derived_from_configuration"
+  | "derived_from_simulation"
+  | "inferred"
+  | "unavailable";
+
+export type LabEvidenceConfidence = "verified" | "observed" | "derived" | "inferred" | "unknown";
+
+export interface LabEvidenceReference {
+  readonly kind: LabEvidenceKind;
+  readonly confidence: LabEvidenceConfidence;
+  readonly description: string;
+  readonly chainId?: number;
+  readonly blockNumber?: number;
+  readonly transactionHash?: string;
+  readonly userOperationHash?: string;
+  readonly contractAddress?: string;
+  readonly selector?: string;
+  readonly sourcePath?: string;
+  readonly traceFrameId?: string;
+  readonly rpcMethod?: string;
+  readonly timestamp?: string;
+}
+
+export interface LabGraphNode {
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly address?: string;
+  readonly explanation: string;
+  readonly evidence: readonly LabEvidenceReference[];
+}
+
+export interface LabGraphEdge {
+  readonly id: string;
+  readonly graph: "architecture" | "execution" | "authority";
+  readonly source: string;
+  readonly target: string;
+  readonly relationship: string;
+  readonly explanation: string;
+  readonly evidence: readonly LabEvidenceReference[];
+}
+
+export interface LabAuthorityActor extends LabGraphNode {
+  readonly abilities: readonly string[];
+}
+
+export interface LabPrivacyDisclosure {
+  readonly id: string;
+  readonly observer: string;
+  readonly dataCategory: string;
+  readonly visibility:
+    | "disclosed_to_specific_party"
+    | "disclosed_to_infrastructure"
+    | "revealed_onchain"
+    | "disclosed_to_counterparty"
+    | "unknown";
+  readonly explanation: string;
+  readonly evidence: readonly LabEvidenceReference[];
+}
+
+export interface LabOperationLens {
+  readonly operation: {
+    readonly id: string;
+    readonly title: string;
+    readonly status: LabRunStatus | "unknown";
+    readonly chainId: number | null;
+    readonly selectedContractId: string | null;
+  };
+  readonly capabilities: Readonly<Record<"trace" | "stateDiff" | "receipt", "available" | "unavailable">>;
+  readonly architecture: { readonly nodes: readonly LabGraphNode[]; readonly edges: readonly LabGraphEdge[] };
+  readonly execution: { readonly nodes: readonly LabGraphNode[]; readonly edges: readonly LabGraphEdge[] };
+  readonly authority: { readonly actors: readonly LabAuthorityActor[]; readonly edges: readonly LabGraphEdge[] };
+  readonly effects: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly before: JsonValue;
+    readonly after: JsonValue;
+    readonly explanation: string;
+    readonly evidence: readonly LabEvidenceReference[];
+  }[];
+  readonly privacy: readonly LabPrivacyDisclosure[];
+  readonly notices: readonly string[];
+}
+
 export type LabRunStatus = "running" | "success" | "error";
 export type LabEventStatus =
   | "not-started"

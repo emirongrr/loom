@@ -19,7 +19,7 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   const html = readFileSync(new URL("index.html", uiRoot), "utf8");
   const script = readFileSync(new URL("app.js", uiRoot), "utf8");
 
-  for (const panel of ["architecture", "network", "evm", "execution"]) {
+  for (const panel of ["architecture", "network", "authority", "evm", "privacy", "execution"]) {
     assert.match(html, new RegExp(`id="tab-${panel}"[^>]+role="tab"|role="tab"[^>]+id="tab-${panel}"`, "u"));
     assert.match(html, new RegExp(`id="panel-${panel}"[^>]+role="tabpanel"|role="tabpanel"[^>]+id="panel-${panel}"`, "u"));
   }
@@ -57,6 +57,14 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /id="sdk-contract-matrix"/u);
   assert.match(script, /function renderSdkRpcLayer\(/u);
   assert.match(script, /SDK_TO_CHAIN_STAGES/u);
+  assert.match(html, /Who allowed or constrained this operation/u);
+  assert.match(html, /Who can see what/u);
+  assert.match(html, /id="authority-graph"/u);
+  assert.match(html, /id="privacy-observer-map"/u);
+  assert.match(script, /buildOperationLens/u);
+  assert.match(script, /function renderAuthorityView\(/u);
+  assert.match(script, /function renderPrivacyView\(/u);
+  assert.match(script, /function renderSharedOperationLens\(/u);
   assert.doesNotMatch(html, /<details open[^>]*>\s*<summary>Technical details/u);
   assert.match(script, /function renderNetwork\(/u);
   assert.match(script, /function renderArchitectureSummary\(/u);

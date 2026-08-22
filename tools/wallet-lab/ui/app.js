@@ -1,5 +1,6 @@
 import { layoutDeploymentGraph } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
+import { buildOperationLens } from "./lab-domain.mjs";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -18,6 +19,8 @@ const state = {
   functionSearch: "",
   selectedContractId: null,
   selectedFunctionSelector: null,
+  selectedAuthorityId: null,
+  selectedDisclosureId: null,
   graphTransform: { x: 0, y: 0, scale: 1 },
   graphNodeOffsets: {},
   graphInteraction: null,
@@ -360,6 +363,147 @@ function renderSdkRpcLayer(events = []) {
   const matrix = $("#sdk-contract-matrix");
   matrix.className = "sdk-contract-matrix";
   matrix.innerHTML = `<div class="section-title"><div><p class="eyebrow">SDK → RPC → CONTRACT</p><h2>Compatibility map</h2><p>This is the join point between off-chain construction and on-chain authority. SDK output is replaceable; only the configured contracts and valid signatures can authorize state changes.</p></div><span>${escapeHtml(exchanges.length)} captured exchanges</span></div><div class="sdk-matrix-scroll"><table><thead><tr><th>SDK stage</th><th>Produced artifact</th><th>RPC / boundary</th><th>Core consumer</th><th>Run evidence</th></tr></thead><tbody>${SDK_TO_CHAIN_STAGES.map(stage => { const evidence = latestPhaseEvent(events, stage.phase); return `<tr><td><strong>${escapeHtml(stage.title)}</strong><small>${escapeHtml(stage.layer)}</small></td><td>${escapeHtml(stage.artifact)}</td><td><code>${escapeHtml(stage.rpc)}</code></td><td><strong>${escapeHtml(stage.contract)}</strong><small>${escapeHtml(stage.consumer)}</small></td><td><span class="pill ${evidence ? statusClass(evidence.status) : "waiting"}">${evidence ? escapeHtml(titleCase(evidence.status)) : "Not captured"}</span></td></tr>`; }).join("")}</tbody></table></div>`;
+}
+
+const evidenceKindLabels = {
+  observed_client: "Observed in client",
+  observed_onchain: "Observed on-chain",
+  observed_rpc: "Observed transport",
+  observed_trace: "Observed trace",
+  observed_receipt: "Receipt-bound",
+  observed_event: "Observed event",
+  observed_state_diff: "Verified state diff",
+  derived_from_artifact: "Derived from artifact",
+  derived_from_source: "Derived from source",
+  derived_from_manifest: "Derived from manifest",
+  derived_from_configuration: "Derived from configuration",
+  derived_from_simulation: "Simulation only",
+  inferred: "Inferred",
+  unavailable: "Unavailable"
+};
+
+const abilityLabels = {
+  approve: "Approve",
+  reject: "Reject",
+  veto: "Veto",
+  constrain: "Constrain",
+  publish: "Publish",
+  delay: "Delay",
+  refuse_service: "Refuse service",
+  observe: "Observe",
+  execute_transport: "Execute transport",
+  settle_gas: "Settle gas",
+  move_funds: "Move funds",
+  execute: "Execute calls",
+  change_configuration: "Change configuration",
+  receive_value: "Receive value",
+  receive_call: "Receive call"
+};
+
+const visibilityLabels = {
+  local_only: "Local only",
+  disclosed_to_specific_party: "Specific party",
+  disclosed_to_infrastructure: "Infrastructure",
+  disclosed_to_counterparty: "Counterparty",
+  committed_onchain: "Committed on-chain",
+  revealed_onchain: "Public on-chain",
+  publicly_linkable: "Publicly linkable",
+  conditionally_linkable: "Conditionally linkable",
+  unknown: "Unknown"
+};
+
+function currentOperationLens(events = state.artifact?.events ?? []) {
+  if (!state.artifact) return null;
+  if (state.deploymentSource !== "local") return null;
+  return buildOperationLens({
+    artifact: state.artifact,
+    deployment: currentDeployment(events),
+    tracePayload: currentTrace(events),
+    selectedContractId: state.selectedContractId
+  });
+}
+
+function evidenceBadge(evidence) {
+  if (!evidence) return `<span class="evidence-badge unavailable">Unavailable</span>`;
+  return `<span class="evidence-badge ${escapeHtml(evidence.confidence)}">${escapeHtml(evidenceKindLabels[evidence.kind] ?? titleCase(evidence.kind))}</span>`;
+}
+
+function evidenceDetails(evidence = []) {
+  if (!evidence.length) return `<p class="empty">No evidence reference is available.</p>`;
+  return evidence.map(reference => {
+    const details = Object.entries(reference).filter(([key]) => !["kind", "confidence", "description"].includes(key));
+    return `<article class="evidence-reference"><div>${evidenceBadge(reference)}<strong>${escapeHtml(titleCase(reference.confidence))}</strong></div><p>${escapeHtml(reference.description)}</p>${details.length ? `<details><summary>Advanced evidence references</summary><dl>${details.map(([key, value]) => `<div><dt>${escapeHtml(titleCase(key))}</dt><dd><code>${escapeHtml(value)}</code></dd></div>`).join("")}</dl></details>` : ""}</article>`;
+  }).join("");
+}
+
+function renderAuthorityView(lens) {
+  const graph = $("#authority-graph");
+  const actorsRoot = $("#authority-actors");
+  const context = $("#authority-context");
+  if (!lens?.authority?.actors?.length) {
+    graph.className = "surface authority-graph empty";
+    graph.textContent = "No authority evidence is available.";
+    actorsRoot.className = "surface authority-actors empty";
+    actorsRoot.textContent = "Select a run with client or trace evidence.";
+    context.textContent = "Waiting for an operation.";
+    return;
+  }
+  const actors = lens.authority.actors;
+  if (!actors.some(actor => actor.id === state.selectedAuthorityId)) state.selectedAuthorityId = actors.find(actor => actor.id === state.selectedContractId)?.id ?? actors[0].id;
+  const positions = new Map(actors.map((actor, index) => [actor.id, { x: 55 + (index % 3) * 345, y: 55 + Math.floor(index / 3) * 145 }]));
+  const height = Math.max(220, Math.ceil(actors.length / 3) * 145 + 60);
+  const edges = lens.authority.edges.map(edge => {
+    const from = positions.get(edge.source);
+    const to = positions.get(edge.target);
+    if (!from || !to) return "";
+    const startX = from.x + 250;
+    const startY = from.y + 36;
+    const endX = to.x;
+    const endY = to.y + 36;
+    const bend = Math.max(45, Math.abs(endX - startX) * .45);
+    return `<path d="M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}" marker-end="url(#authority-arrow)"><title>${escapeHtml(edge.explanation)}</title></path>`;
+  }).join("");
+  const nodes = actors.map(actor => {
+    const position = positions.get(actor.id);
+    const selected = actor.id === state.selectedAuthorityId ? " selected" : "";
+    const evidence = actor.evidence.at(-1);
+    return `<g class="authority-node${selected}" transform="translate(${position.x} ${position.y})" data-authority-id="${escapeHtml(actor.id)}" role="button" tabindex="0" aria-pressed="${actor.id === state.selectedAuthorityId}" aria-label="Inspect authority for ${escapeHtml(actor.label)}"><rect width="250" height="72" rx="9"></rect><text class="authority-node-kind" x="13" y="18">${escapeHtml(evidenceKindLabels[evidence?.kind] ?? "Unknown evidence")}</text><text class="authority-node-name" x="13" y="39">${escapeHtml(short(actor.label, 25, 5))}</text><text class="authority-node-ability" x="13" y="58">${escapeHtml(actor.abilities.slice(0, 3).map(ability => abilityLabels[ability] ?? titleCase(ability)).join(" · "))}</text></g>`;
+  }).join("");
+  graph.className = "surface authority-graph";
+  graph.innerHTML = `<div class="section-title"><div><p class="eyebrow">AUTHORITY GRAPH</p><h2>Influence on this operation</h2><p>Edges mean authorization, enforcement, publication, or execution—not generic conceptual association.</p></div><span>${actors.length} evidenced actors</span></div><div class="authority-svg-scroll"><svg viewBox="0 0 1000 ${height}" role="img" aria-label="Authority and trust relationships for the selected operation"><defs><marker id="authority-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z"></path></marker></defs><g class="authority-edges">${edges}</g>${nodes}</svg></div>`;
+
+  const selected = actors.find(actor => actor.id === state.selectedAuthorityId) ?? actors[0];
+  actorsRoot.className = "surface authority-actors";
+  actorsRoot.innerHTML = `<div class="section-title"><div><p class="eyebrow">SELECTED ACTOR</p><h2>${escapeHtml(selected.label)}</h2><p>${escapeHtml(selected.explanation)}</p></div>${evidenceBadge(selected.evidence.at(-1))}</div><div class="ability-list">${selected.abilities.map(ability => `<span>${escapeHtml(abilityLabels[ability] ?? titleCase(ability))}</span>`).join("")}</div><div class="authority-actor-list" aria-label="Authority actors">${actors.map(actor => `<button type="button" data-authority-id="${escapeHtml(actor.id)}" aria-pressed="${actor.id === selected.id}"><strong>${escapeHtml(actor.label)}</strong><small>${escapeHtml(actor.abilities.map(ability => abilityLabels[ability] ?? titleCase(ability)).join(" · "))}</small></button>`).join("")}</div><section class="lens-evidence"><h3>Why Wallet Lab can say this</h3>${evidenceDetails(selected.evidence)}</section>`;
+  context.innerHTML = `<span>Operation</span><strong>${escapeHtml(lens.operation.title)}</strong><small>${escapeHtml(lens.operation.selectedContractId ? `Focused on ${lens.operation.selectedContractId}` : "Deployment-wide focus")}</small>`;
+}
+
+function renderPrivacyView(lens) {
+  const map = $("#privacy-observer-map");
+  const evidenceRoot = $("#privacy-evidence");
+  const context = $("#privacy-context");
+  const disclosures = lens?.privacy ?? [];
+  if (!disclosures.length) {
+    map.className = "privacy-observer-map empty";
+    map.textContent = "No observer-specific evidence is available.";
+    evidenceRoot.className = "surface privacy-evidence empty";
+    evidenceRoot.textContent = "Select a disclosure to inspect its provenance.";
+    context.textContent = "Waiting for an operation.";
+    return;
+  }
+  if (!disclosures.some(disclosure => disclosure.id === state.selectedDisclosureId)) state.selectedDisclosureId = disclosures[0].id;
+  map.className = "privacy-observer-map";
+  map.innerHTML = disclosures.map(disclosure => `<button type="button" class="privacy-observer ${escapeHtml(disclosure.visibility)}" data-disclosure-id="${escapeHtml(disclosure.id)}" aria-pressed="${disclosure.id === state.selectedDisclosureId}"><span>${escapeHtml(visibilityLabels[disclosure.visibility] ?? titleCase(disclosure.visibility))}</span><strong>${escapeHtml(disclosure.observer)}</strong><p>${escapeHtml(disclosure.dataCategory)}</p>${evidenceBadge(disclosure.evidence[0])}</button>`).join("");
+  const selected = disclosures.find(disclosure => disclosure.id === state.selectedDisclosureId) ?? disclosures[0];
+  evidenceRoot.className = "surface privacy-evidence";
+  evidenceRoot.innerHTML = `<div class="section-title"><div><p class="eyebrow">SELECTED DISCLOSURE</p><h2>${escapeHtml(selected.observer)}</h2><p>${escapeHtml(selected.explanation)}</p></div><span class="visibility ${escapeHtml(selected.visibility)}">${escapeHtml(visibilityLabels[selected.visibility] ?? titleCase(selected.visibility))}</span></div><div class="privacy-data-category"><span>Data visible to this observer</span><strong>${escapeHtml(selected.dataCategory)}</strong></div><section class="lens-evidence"><h3>Evidence and limits</h3>${evidenceDetails(selected.evidence)}</section>`;
+  context.innerHTML = `<span>Operation</span><strong>${escapeHtml(lens.operation.title)}</strong><small>${escapeHtml(`${disclosures.length} evidenced observer disclosures`)}</small>`;
+}
+
+function renderSharedOperationLens(events = state.artifact?.events ?? []) {
+  const lens = currentOperationLens(events);
+  renderAuthorityView(lens);
+  renderPrivacyView(lens);
 }
 
 function filteredNetwork(events) {
@@ -1379,6 +1523,7 @@ function renderDeployment(events = []) {
   renderFunctionInspector(contract, fn, tracePayload);
   renderExecutionCatalog(deployment, contract, fn);
   renderExecutionWorkspace(contract, fn, tracePayload);
+  renderSharedOperationLens(events);
   $("#contract-count").textContent = deployment?.nodes?.length ?? 0;
   renderDeploymentVerification();
 }
@@ -1480,6 +1625,33 @@ $("#panel-architecture").addEventListener("click", event => {
     renderDeployment(events);
     return;
   }
+});
+
+function selectAuthorityActor(authorityId) {
+  state.selectedAuthorityId = authorityId;
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  if (deployment?.nodes?.some(node => node.id === authorityId)) state.selectedContractId = authorityId;
+  renderDeployment(state.artifact?.events ?? []);
+}
+
+$("#panel-authority").addEventListener("click", event => {
+  const actor = event.target.closest("[data-authority-id]");
+  if (actor) selectAuthorityActor(actor.dataset.authorityId);
+});
+
+$("#panel-authority").addEventListener("keydown", event => {
+  if (!["Enter", " "].includes(event.key)) return;
+  const actor = event.target.closest("[data-authority-id]");
+  if (!actor) return;
+  event.preventDefault();
+  selectAuthorityActor(actor.dataset.authorityId);
+});
+
+$("#panel-privacy").addEventListener("click", event => {
+  const disclosure = event.target.closest("[data-disclosure-id]");
+  if (!disclosure) return;
+  state.selectedDisclosureId = disclosure.dataset.disclosureId;
+  renderPrivacyView(currentOperationLens());
 });
 
 $("#deployment-graph").addEventListener("pointerdown", beginGraphInteraction);
@@ -1647,6 +1819,8 @@ function chooseDeployment(source) {
   state.activeTab = "architecture";
   state.selectedContractId = null;
   state.selectedFunctionSelector = null;
+  state.selectedAuthorityId = null;
+  state.selectedDisclosureId = null;
   state.selectedTracePath = "0";
   state.graphTransform = { x: 0, y: 0, scale: 1 };
   state.graphNodeOffsets = {};
