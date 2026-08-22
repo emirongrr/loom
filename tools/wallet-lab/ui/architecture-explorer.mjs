@@ -62,7 +62,6 @@ export function reduceArchitectureFocus(state, action) {
   if (action.type === "escape") {
     if (state.focusedAbiItem) return { ...state, focusedAbiItem: null };
     if (state.focusedSection) return { ...state, focusedSection: null, focusedAbiItem: null };
-    if (state.focusedNodeId) return { focusedNodeId: null, focusedSection: null, focusedAbiItem: null };
   }
   return state;
 }

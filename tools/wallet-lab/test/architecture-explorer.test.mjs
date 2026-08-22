@@ -52,7 +52,7 @@ test("search reveals matching optional contracts without mutating collapsed grou
   assert.deepEqual(view.expandedGroupIds, []);
 });
 
-test("Escape unwinds ABI item, section, and focused node in order", () => {
+test("Escape unwinds ABI item and section but keeps the focused node open", () => {
   const focused = { focusedNodeId: "LoomAccount", focusedSection: "functions", focusedAbiItem: "execute" };
   const itemClosed = reduceArchitectureFocus(focused, { type: "escape" });
   const sectionClosed = reduceArchitectureFocus(itemClosed, { type: "escape" });
@@ -60,5 +60,5 @@ test("Escape unwinds ABI item, section, and focused node in order", () => {
 
   assert.deepEqual(itemClosed, { ...focused, focusedAbiItem: null });
   assert.deepEqual(sectionClosed, { ...focused, focusedSection: null, focusedAbiItem: null });
-  assert.deepEqual(nodeClosed, { focusedNodeId: null, focusedSection: null, focusedAbiItem: null });
+  assert.deepEqual(nodeClosed, { ...focused, focusedSection: null, focusedAbiItem: null });
 });

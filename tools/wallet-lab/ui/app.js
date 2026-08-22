@@ -839,6 +839,9 @@ function graphPointerPosition(event) {
 
 function focusArchitectureNode(contractId) {
   if (!contractId) return;
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const containingGroup = architectureView(deployment).groups.find(group => group.members.some(node => node.id === contractId));
+  if (containingGroup) state.expandedArchitectureGroups = [...new Set([...state.expandedArchitectureGroups, containingGroup.id])];
   state.selectedContractId = contractId;
   state.selectedFunctionSelector = null;
   Object.assign(state, reduceArchitectureFocus(state, { type: "focus-node", nodeId: contractId }));
@@ -896,7 +899,6 @@ function resetGraphView() {
   state.graphNodeOffsets = {};
   state.expandedArchitectureGroups = [];
   state.architectureSearch = "";
-  Object.assign(state, reduceArchitectureFocus(state, { type: "clear" }));
   state.focusedEdgeId = null;
   $("#architecture-search").value = "";
   renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
@@ -1757,11 +1759,6 @@ $("#panel-architecture").addEventListener("click", event => {
   if (contractButton) {
     focusArchitectureNode(contractButton.dataset.contractId);
     return;
-  }
-  if (event.target.closest("#deployment-graph")) {
-    Object.assign(state, reduceArchitectureFocus(state, { type: "clear" }));
-    state.focusedEdgeId = null;
-    renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
   }
 });
 
