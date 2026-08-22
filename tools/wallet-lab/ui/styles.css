@@ -395,8 +395,7 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-canvas .deployment-graph { width: 100%; height: 100%; min-height: 0; border-top: 0; border-radius: 0 0 12px 12px; background-color: #080c0a; background-image: radial-gradient(circle, rgba(93, 121, 103, .22) 1px, transparent 1px), radial-gradient(circle at 50% 38%, #132019 0, transparent 52%); background-size: 22px 22px, 100% 100%; }
 .architecture-canvas .deployment-graph svg { min-width: 0; }
 .graph-node.unrelated, .graph-edge.unrelated { opacity: .16; }
-.graph-node, .graph-edge { animation: architecture-node-in .18s ease both; transition: opacity .18s ease, filter .18s ease; }
-@keyframes architecture-node-in { from { transform: translateY(8px); } }
+.graph-node, .graph-edge { transition: opacity .18s ease, filter .18s ease; }
 .graph-edge { cursor: pointer; }
 .graph-edge path { pointer-events: stroke; stroke-width: 3; }
 .graph-edge text { pointer-events: none; paint-order: stroke; stroke: #080c0a; stroke-width: 4px; stroke-linejoin: round; }
@@ -414,6 +413,8 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-focus-node.profile-required { border-color: var(--amber); }
 .architecture-focus-node.optional { border-color: #829188; }
 .architecture-focus-node > header { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; padding: .75rem .8rem .35rem; }
+.architecture-focus-node > header { cursor: grab; user-select: none; }
+.architecture-focus-node > header:active { cursor: grabbing; }
 .architecture-focus-node > header h2 { font-size: 1.05rem; }
 .architecture-focus-node > header button { width: 2rem; height: 2rem; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-soft); color: var(--muted); font-size: 1.15rem; }
 .focus-identity { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; padding: 0 .8rem; }
@@ -483,7 +484,7 @@ body.architecture-immersive .architecture-canvas .deployment-graph { border: 0; 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .graph-node, .graph-edge { animation: none; transition: none; }
+  .graph-node, .graph-edge { transition: none; }
 }
 .execution-studio-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem; margin-top: .75rem; }
 .execution-studio-intro > div { max-width: 780px; }

@@ -752,7 +752,7 @@ function renderFocusedArchitectureNode(deployment, contract, bounds) {
     const counts = { relationships: deployment.edges.filter(edge => edge.from === contract.id || edge.to === contract.id).length, functions: contract.functions?.length ?? 0, fields: contract.fields?.length ?? 0, events: contract.events?.length ?? 0, errors: contract.errors?.length ?? 0 };
     return `<button type="button" data-focus-section="${section}" aria-pressed="${state.focusedSection === section}">${titleCase(section)} <span>${counts[section]}</span></button>`;
   }).join("");
-  return `<foreignObject class="architecture-focus-object" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}"><div xmlns="http://www.w3.org/1999/xhtml" class="architecture-focus-node ${escapeHtml(contract.requirement)}" data-graph-control="true"><header><div><p class="eyebrow">${escapeHtml(titleCase(contract.requirement))}</p><h2>${escapeHtml(contract.name)}</h2></div><button type="button" data-focus-close="true" aria-label="Close contract detail">×</button></header><div class="focus-identity">${renderContractAddress(contract)}${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source ↗</a>` : ""}</div><p class="focus-responsibility">${escapeHtml(contract.responsibility ?? "Deployment contract")}</p><nav aria-label="Contract detail sections">${tabs}</nav><div class="focus-content">${renderArchitectureSection(deployment, contract)}</div></div></foreignObject>`;
+  return `<foreignObject class="architecture-focus-object" data-contract-id="${escapeHtml(contract.id)}" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}"><div xmlns="http://www.w3.org/1999/xhtml" class="architecture-focus-node ${escapeHtml(contract.requirement)}"><header><div><p class="eyebrow">${escapeHtml(titleCase(contract.requirement))}</p><h2>${escapeHtml(contract.name)}</h2></div><button type="button" data-focus-close="true" aria-label="Close contract detail">×</button></header><div class="focus-identity">${renderContractAddress(contract)}${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source ↗</a>` : ""}</div><p class="focus-responsibility">${escapeHtml(contract.responsibility ?? "Deployment contract")}</p><nav aria-label="Contract detail sections">${tabs}</nav><div class="focus-content">${renderArchitectureSection(deployment, contract)}</div></div></foreignObject>`;
 }
 
 function renderDeploymentGraph(deployment) {
@@ -851,7 +851,8 @@ function focusArchitectureNode(contractId) {
 
 function beginGraphInteraction(event) {
   if (event.button !== 0) return;
-  if (event.target.closest("[data-graph-control], [data-edge-id], [data-architecture-group]")) return;
+  if (event.target.closest("button, a, input, nav, .focus-content")) return;
+  if (event.target.closest("[data-edge-id], [data-architecture-group]")) return;
   const point = graphPointerPosition(event);
   if (!point) return;
   const node = event.target.closest("[data-contract-id]");

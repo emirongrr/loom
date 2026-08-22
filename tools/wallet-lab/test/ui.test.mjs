@@ -18,6 +18,7 @@ test("Wallet Lab browser entrypoint is valid ECMAScript module syntax", () => {
 test("Wallet Lab presents architecture, network, EVM, and execution evidence without redundant panels", () => {
   const html = readFileSync(new URL("index.html", uiRoot), "utf8");
   const script = readFileSync(new URL("app.js", uiRoot), "utf8");
+  const styles = readFileSync(new URL("styles.css", uiRoot), "utf8");
 
   for (const panel of ["architecture", "network", "authority", "evm", "privacy", "execution"]) {
     assert.match(html, new RegExp(`id="tab-${panel}"[^>]+role="tab"|role="tab"[^>]+id="tab-${panel}"`, "u"));
@@ -104,6 +105,9 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(script, /function moveGraphInteraction\(/u);
   assert.match(script, /function focusArchitectureNode\(/u);
   assert.match(script, /interaction\.type === "node"/u);
+  assert.match(script, /architecture-focus-object[^\n]+data-contract-id=/u);
+  assert.match(script, /closest\("button, a, input, nav, \.focus-content"\)/u);
+  assert.doesNotMatch(styles, /animation:\s*architecture-node-in/u);
   assert.match(script, /function connectSepoliaDeployment\(/u);
   assert.match(script, /function showDeploymentWorkspace\(/u);
   assert.match(script, /function renderDeployment\(/u);
