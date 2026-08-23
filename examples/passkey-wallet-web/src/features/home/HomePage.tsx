@@ -23,11 +23,12 @@ const EMPTY_ASSETS: AccountAssets = {
   tokens: [], nfts: [], deployed: false, discoveryUnavailable: false, nftDiscoveryUnavailable: false
 };
 
-export function HomePage({ account, onNavigate, onSwitch, onLock }: {
+export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery }: {
   readonly account: AccountHandle;
   readonly onNavigate: (area: NavigationArea) => void;
   readonly onSwitch: () => void;
   readonly onLock: () => void;
+  readonly onStopRecovery: () => void;
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
@@ -119,7 +120,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     {/* First on the screen: a recovery in flight replaces every validator on
         this account, and the owner is the only person who can say whether it
         is theirs. */}
-    <PendingRecoveryBanner account={account} />
+    <PendingRecoveryBanner account={account} onStop={onStopRecovery} />
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
 
     <div className="quick-actions">

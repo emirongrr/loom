@@ -18,6 +18,7 @@ import { parseAccountHandle } from "../storage/accountStore";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
 import { RecoveryPage } from "../features/recovery/RecoveryPage";
+import { StopRecoveryPage } from "../features/recovery/StopRecoveryPage";
 import { useAppNavigation } from "./useAppNavigation";
 import { safeUserMessage } from "../domain/errors/appError";
 
@@ -132,7 +133,14 @@ export function App() {
     await refreshAccounts();
   };
   if (!accountsLoaded) return <main className="wallet-landing"><section className="landing-panel"><p>Loading saved wallets…</p></section></main>;
-  if (recoveryPath) return <><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (recoveryPath === STOP_RECOVERY_PATH && selected) {
+    return <><StopRecoveryPage handle={selected} onClose={closeRecovery} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  }
+  // Reached only with an account open, since stopping a recovery is something
+  // an owner does about their own account. Visiting the path without one falls
+  // through to the lock screen rather than to the page for recovering someone
+  // else's account, which answers a different question entirely.
+  if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onImport={importAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   return <div className="app-shell">
@@ -154,7 +162,8 @@ export function App() {
       switchAccount,
       lockAccount,
       () => openRecovery("/recover", selected.id),
-      guardianInboundLink
+      guardianInboundLink,
+      () => openRecovery(STOP_RECOVERY_PATH, selected.id)
     )}</main>
     <button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button>
     <nav className="bottom-nav" aria-label="Mobile navigation">{primaryNavigation.map(item => <NavButton key={item.id} item={item} current={area} onClick={setArea} />)}</nav>
@@ -165,9 +174,9 @@ function NavButton({ item, current, onClick }: { item: { id: NavigationArea; lab
   return <button className={current === item.id ? "nav-item active" : "nav-item"} aria-current={current === item.id ? "page" : undefined} onClick={() => onClick(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>;
 }
 
-function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string) {
+function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string, stopRecovery: () => void) {
   switch (area) {
-    case "home": return <HomePage account={account} onNavigate={navigate} onSwitch={switchAccount} onLock={lockAccount} />;
+    case "home": return <HomePage account={account} onNavigate={navigate} onSwitch={switchAccount} onLock={lockAccount} onStopRecovery={stopRecovery} />;
     case "activity": return <ActivityPage account={account} />;
     case "apps": return <AppsPage account={account} />;
     case "security": return <SecurityPage account={account} onGuardian={() => navigate("guardian")} onRecovery={openRecovery} />;
@@ -175,3 +184,6 @@ function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => vo
     case "developer": return <DeveloperSettings />;
   }
 }
+
+/** Where the warning on the wallet sends an owner who wants this stopped. */
+export const STOP_RECOVERY_PATH = "/recover/stop";

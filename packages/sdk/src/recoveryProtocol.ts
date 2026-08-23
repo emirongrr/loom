@@ -1,6 +1,6 @@
 import type { Address, Hex } from "@loom/core";
 import { getAddress, isAddress, keccak256, stringToHex } from "viem";
-import { GuardianRecoveryError } from "./recovery.js";
+import { createRecoveryCancellationDigest, GuardianRecoveryError } from "./recovery.js";
 
 const REQUEST_FIELDS = [
   "format", "version", "critical", "requestId", "chainId", "account", "recoveryManager",
@@ -25,6 +25,23 @@ const SIGNATURE_FIELDS = [
 ] as const;
 const SIGNATURE_CRITICAL = [
   "requestId", "chainId", "account", "recoveryDigest", "signature", "expiresAt"
+] as const;
+const CANCEL_REQUEST_FIELDS = [
+  "format", "version", "critical", "recoveryId", "chainId", "account", "recoveryManager",
+  "guardianRoot", "guardianThreshold", "configVersion", "nonce", "cancelDigest",
+  "createdAt", "expiresAt", "humanCode", "integrity"
+] as const;
+const CANCEL_REQUEST_CRITICAL = [
+  "recoveryId", "chainId", "account", "recoveryManager", "guardianRoot", "guardianThreshold",
+  "configVersion", "nonce", "cancelDigest", "expiresAt"
+] as const;
+const CANCEL_RESPONSE_FIELDS = [
+  "format", "version", "critical", "recoveryId", "chainId", "account", "cancelDigest", "guardianLeaf",
+  "verifier", "keyCommitment", "salt", "proof", "signature", "signedAt", "expiresAt", "integrity"
+] as const;
+const CANCEL_RESPONSE_CRITICAL = [
+  "recoveryId", "chainId", "account", "cancelDigest", "guardianLeaf", "verifier", "keyCommitment",
+  "salt", "proof", "signature", "expiresAt"
 ] as const;
 
 /**
@@ -105,6 +122,153 @@ export interface RecoveryResponseV1 {
   readonly signedAt: number;
   readonly expiresAt: number;
   readonly integrity: ProtocolIntegrity;
+}
+
+/**
+ * A request for guardians to help *stop* a recovery, rather than approve one.
+ *
+ * Deliberately not a `RecoveryRequestV1` with a flag. A guardian asked to
+ * cancel and a guardian asked to approve are being asked opposite questions,
+ * and the two must never be confusable -- not on the wire, and not in whatever
+ * screen renders them. The chain already refuses to confuse them, because
+ * `CancelRecovery` and `ProposeRecovery` are different EIP-712 types; this
+ * keeps the same distinction in front of the person deciding.
+ *
+ * `recoveryId` names the pending recovery being stopped, so a signature cannot
+ * be replayed against a later one: proposing again advances the nonce, which
+ * changes both the id and the digest.
+ */
+export interface CancelRequestV1 {
+  readonly format: "loom.recovery-cancel-request";
+  readonly version: 1;
+  readonly critical: readonly string[];
+  readonly recoveryId: Hex;
+  readonly chainId: number;
+  readonly account: Address;
+  readonly recoveryManager: Address;
+  readonly guardianRoot: Hex;
+  readonly guardianThreshold: number;
+  readonly configVersion: string;
+  readonly nonce: string;
+  /** Repeated so a guardian can check what they are about to sign. */
+  readonly cancelDigest: Hex;
+  readonly createdAt: number;
+  readonly expiresAt: number;
+  readonly humanCode: string;
+  readonly integrity: ProtocolIntegrity;
+}
+
+export interface CancelResponseV1 {
+  readonly format: "loom.recovery-cancel-response";
+  readonly version: 1;
+  readonly critical: readonly string[];
+  readonly recoveryId: Hex;
+  readonly chainId: number;
+  readonly account: Address;
+  readonly cancelDigest: Hex;
+  readonly guardianLeaf: Hex;
+  readonly verifier: Address;
+  readonly keyCommitment: Hex;
+  readonly salt: Hex;
+  readonly proof: readonly Hex[];
+  readonly signature: Hex;
+  readonly signedAt: number;
+  readonly expiresAt: number;
+  readonly integrity: ProtocolIntegrity;
+}
+
+export function createCancelRequest(
+  input: Omit<CancelRequestV1, "format" | "version" | "critical" | "humanCode" | "cancelDigest" | "integrity">
+): CancelRequestV1 {
+  const request = normalizeCancelRequest({
+    ...input,
+    format: "loom.recovery-cancel-request",
+    version: 1,
+    critical: CANCEL_REQUEST_CRITICAL,
+    // Derived, never accepted from the caller: a digest someone else chose is
+    // a digest nobody checked.
+    cancelDigest: cancelDigestFor(input),
+    humanCode: humanRecoveryCode(input.recoveryId),
+    integrity: { algorithm: "keccak256-canonical-json", digest: zero32() }
+  }, false);
+  return Object.freeze({ ...request, integrity: integrityFor(request) });
+}
+
+/**
+ * Read a cancellation request, recomputing the digest rather than believing it.
+ *
+ * The digest is the whole of what a guardian signs. Taking the sender's word
+ * for it would let a request show one thing and sign another, which is the
+ * only interesting attack on this envelope.
+ */
+export function parseCancelRequest(
+  value: string | unknown,
+  options: { now?: number; chainId?: number; account?: Address } = {}
+): CancelRequestV1 {
+  const parsed = normalizeCancelRequest(typeof value === "string" ? parseJson(value, "cancellation request") : value, true);
+  verifyIntegrity(parsed);
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  if (parsed.expiresAt <= now) protocolError("INVALID_RECOVERY_REQUEST", "cancellation request has expired");
+  if (options.chainId !== undefined && parsed.chainId !== options.chainId) protocolError("DEPLOYMENT_CHAIN_MISMATCH", "cancellation request is for another chain");
+  if (options.account !== undefined && parsed.account !== address(options.account, "expected account")) protocolError("INVALID_RECOVERY_REQUEST", "cancellation request is for another account");
+  if (parsed.cancelDigest !== cancelDigestFor(parsed)) protocolError("INVALID_RECOVERY_REQUEST", "cancellation request digest does not match its own contents");
+  return parsed;
+}
+
+export function createCancelResponse(
+  input: Omit<CancelResponseV1, "format" | "version" | "critical" | "integrity">
+): CancelResponseV1 {
+  const response = normalizeCancelResponse({
+    ...input,
+    format: "loom.recovery-cancel-response",
+    version: 1,
+    critical: CANCEL_RESPONSE_CRITICAL,
+    integrity: { algorithm: "keccak256-canonical-json", digest: zero32() }
+  }, false);
+  return Object.freeze({ ...response, integrity: integrityFor(response) });
+}
+
+export function parseCancelResponse(
+  value: string | unknown,
+  request: CancelRequestV1,
+  options: { now?: number } = {}
+): CancelResponseV1 {
+  const parsed = normalizeCancelResponse(typeof value === "string" ? parseJson(value, "cancellation response") : value, true);
+  verifyIntegrity(parsed);
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  if (parsed.expiresAt <= now || parsed.expiresAt > request.expiresAt) protocolError("INVALID_RECOVERY_RESPONSE", "cancellation response is expired or outlives its request");
+  if (parsed.recoveryId !== request.recoveryId || parsed.chainId !== request.chainId || parsed.account !== request.account) {
+    protocolError("INVALID_RECOVERY_RESPONSE", "cancellation response does not match its request");
+  }
+  // A response that signed a different digest is answering a different
+  // question, whichever recovery it names.
+  if (parsed.cancelDigest !== request.cancelDigest) protocolError("INVALID_RECOVERY_RESPONSE", "cancellation response signed a different digest");
+  return parsed;
+}
+
+/**
+ * Project a cancellation response onto the approval tuple the two
+ * `cancelRecoveryWith...` entry points accept. Unverified, exactly as
+ * `recoveryApprovalFromResponse` is: it is a re-encoding of data someone else
+ * supplied, and the client revalidates it against live guardian state.
+ */
+export function cancelApprovalFromResponse(response: CancelResponseV1): {
+  readonly verifier: Address;
+  readonly keyCommitment: Hex;
+  readonly salt: Hex;
+  readonly signature: Hex;
+  readonly proof: readonly Hex[];
+  readonly leaf: Hex;
+} {
+  const parsed = normalizeCancelResponse(response, true);
+  return Object.freeze({
+    verifier: parsed.verifier,
+    keyCommitment: parsed.keyCommitment,
+    salt: parsed.salt,
+    signature: parsed.signature,
+    proof: parsed.proof,
+    leaf: parsed.guardianLeaf
+  });
 }
 
 export function createRecoveryRequest(input: Omit<RecoveryRequestV1, "format" | "version" | "critical" | "humanCode" | "integrity">): RecoveryRequestV1 {
@@ -222,7 +386,7 @@ export function completeRecoverySignature(input: {
   });
 }
 
-export function serializeRecoveryProtocol(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): string {
+export function serializeRecoveryProtocol(value: ProtocolEnvelope): string {
   return canonicalJson(value);
 }
 
@@ -262,6 +426,85 @@ export function recoveryApprovalFromResponse(response: RecoveryResponseV1): {
 export function humanRecoveryCode(requestId: Hex): string {
   const value = BigInt(bytes32(requestId, "request id")) % 1_000_000n;
   return value.toString().padStart(6, "0");
+}
+
+function cancelDigestFor(input: {
+  readonly chainId: number;
+  readonly recoveryManager: Address;
+  readonly account: Address;
+  readonly recoveryId: Hex;
+  readonly configVersion: string;
+  readonly nonce: string;
+}): Hex {
+  return createRecoveryCancellationDigest({
+    chainId: input.chainId,
+    recoveryManager: input.recoveryManager,
+    account: input.account,
+    recoveryId: input.recoveryId,
+    configVersion: input.configVersion,
+    nonce: input.nonce
+  });
+}
+
+function normalizeCancelRequest(value: unknown, enforceIntegrity: boolean): CancelRequestV1 {
+  const record = object(value, "cancellation request", "INVALID_RECOVERY_REQUEST");
+  exactFields(record, CANCEL_REQUEST_FIELDS, "cancellation request", "INVALID_RECOVERY_REQUEST");
+  if (record.format !== "loom.recovery-cancel-request" || record.version !== 1) protocolError("INVALID_RECOVERY_REQUEST", "unsupported cancellation request format");
+  critical(record.critical, CANCEL_REQUEST_CRITICAL, "INVALID_RECOVERY_REQUEST");
+  const createdAt = timestamp(record.createdAt, "createdAt", "INVALID_RECOVERY_REQUEST");
+  const expiresAt = timestamp(record.expiresAt, "expiresAt", "INVALID_RECOVERY_REQUEST");
+  if (expiresAt <= createdAt || expiresAt - createdAt > 604_800) protocolError("INVALID_RECOVERY_REQUEST", "cancellation request lifetime is invalid");
+  const recoveryId = bytes32(record.recoveryId, "recovery id");
+  const normalized = Object.freeze({
+    format: "loom.recovery-cancel-request" as const,
+    version: 1 as const,
+    critical: Object.freeze([...CANCEL_REQUEST_CRITICAL]),
+    recoveryId,
+    chainId: positiveInteger(record.chainId, "chainId", "INVALID_RECOVERY_REQUEST"),
+    account: address(record.account, "account"),
+    recoveryManager: address(record.recoveryManager, "recovery manager"),
+    guardianRoot: bytes32(record.guardianRoot, "guardian root"),
+    guardianThreshold: boundedThreshold(record.guardianThreshold, "guardian threshold", "INVALID_RECOVERY_REQUEST"),
+    configVersion: uintString(record.configVersion, "config version", "INVALID_RECOVERY_REQUEST"),
+    nonce: uintString(record.nonce, "nonce", "INVALID_RECOVERY_REQUEST"),
+    cancelDigest: bytes32(record.cancelDigest, "cancellation digest"),
+    createdAt,
+    expiresAt,
+    humanCode: text(record.humanCode, "human code", 6, "INVALID_RECOVERY_REQUEST"),
+    integrity: normalizeIntegrity(record.integrity, "INVALID_RECOVERY_REQUEST")
+  });
+  if (normalized.humanCode !== humanRecoveryCode(recoveryId)) protocolError("INVALID_RECOVERY_REQUEST", "cancellation request human code is invalid");
+  if (!enforceIntegrity) return normalized;
+  return normalized;
+}
+
+function normalizeCancelResponse(value: unknown, enforceIntegrity: boolean): CancelResponseV1 {
+  const record = object(value, "cancellation response", "INVALID_RECOVERY_RESPONSE");
+  exactFields(record, CANCEL_RESPONSE_FIELDS, "cancellation response", "INVALID_RECOVERY_RESPONSE");
+  if (record.format !== "loom.recovery-cancel-response" || record.version !== 1) protocolError("INVALID_RECOVERY_RESPONSE", "unsupported cancellation response format");
+  critical(record.critical, CANCEL_RESPONSE_CRITICAL, "INVALID_RECOVERY_RESPONSE");
+  const proof = record.proof;
+  if (!Array.isArray(proof) || proof.length > 32) protocolError("INVALID_RECOVERY_RESPONSE", "cancellation response proof is invalid");
+  const normalized = Object.freeze({
+    format: "loom.recovery-cancel-response" as const,
+    version: 1 as const,
+    critical: Object.freeze([...CANCEL_RESPONSE_CRITICAL]),
+    recoveryId: bytes32(record.recoveryId, "recovery id"),
+    chainId: positiveInteger(record.chainId, "chainId", "INVALID_RECOVERY_RESPONSE"),
+    account: address(record.account, "account"),
+    cancelDigest: bytes32(record.cancelDigest, "cancellation digest"),
+    guardianLeaf: bytes32(record.guardianLeaf, "guardian leaf"),
+    verifier: address(record.verifier, "verifier"),
+    keyCommitment: bytes32(record.keyCommitment, "key commitment"),
+    salt: bytes32(record.salt, "salt"),
+    proof: Object.freeze(proof.map((item, index) => bytes32(item, `proof[${index}]`))),
+    signature: hexBytes(record.signature, "signature", 16_384),
+    signedAt: timestamp(record.signedAt, "signedAt", "INVALID_RECOVERY_RESPONSE"),
+    expiresAt: timestamp(record.expiresAt, "expiresAt", "INVALID_RECOVERY_RESPONSE"),
+    integrity: normalizeIntegrity(record.integrity, "INVALID_RECOVERY_RESPONSE")
+  });
+  if (!enforceIntegrity) return normalized;
+  return normalized;
 }
 
 function normalizeRequest(value: unknown, enforceIntegrity: boolean): RecoveryRequestV1 {
@@ -350,14 +593,17 @@ function normalizeSignature(value: unknown, enforceIntegrity: boolean): Recovery
   });
 }
 
-function integrityFor(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): ProtocolIntegrity {
+type ProtocolEnvelope = RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1 | CancelRequestV1 | CancelResponseV1;
+
+function integrityFor(value: ProtocolEnvelope): ProtocolIntegrity {
   const { integrity: _integrity, ...unsigned } = value;
   return Object.freeze({ algorithm: "keccak256-canonical-json", digest: keccak256(stringToHex(canonicalJson(unsigned))) });
 }
 
-function verifyIntegrity(value: RecoveryRequestV1 | RecoveryResponseV1 | RecoverySignatureV1): void {
+function verifyIntegrity(value: ProtocolEnvelope): void {
   if (value.integrity.digest !== integrityFor(value).digest) {
-    protocolError(value.format === "loom.recovery-request" ? "INVALID_RECOVERY_REQUEST" : "INVALID_RECOVERY_RESPONSE", "recovery protocol integrity check failed");
+    const requestShaped = value.format === "loom.recovery-request" || value.format === "loom.recovery-cancel-request";
+    protocolError(requestShaped ? "INVALID_RECOVERY_REQUEST" : "INVALID_RECOVERY_RESPONSE", "recovery protocol integrity check failed");
   }
 }
 

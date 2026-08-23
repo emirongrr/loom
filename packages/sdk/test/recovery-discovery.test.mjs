@@ -56,6 +56,29 @@ function approvalLog(overrides = {}) {
   };
 }
 
+function cancellationLog(overrides = {}) {
+  const o = {
+    account, recoveryId, guardianLeaf: leafA, recoveryManager, verifier,
+    signature: `0x${"cc".repeat(65)}`, proof: [leafB],
+    blockNumber: 100n, blockHash: `0x${"b1".repeat(32)}`, logIndex: 0,
+    address: board, removed: false, ...overrides
+  };
+  return {
+    address: o.address,
+    topics: encodeEventTopics({
+      abi: RecoveryIntentBoardAbi,
+      eventName: "RecoveryCancellationPublished",
+      args: { account: o.account, recoveryId: o.recoveryId, guardianLeaf: o.guardianLeaf }
+    }),
+    data: encodeAbiParameters(APPROVAL_DATA, [o.recoveryManager, o.verifier, commitment, salt, o.signature, o.proof]),
+    blockNumber: o.blockNumber,
+    blockHash: o.blockHash,
+    logIndex: o.logIndex,
+    transactionHash: `0x${"cd".repeat(32)}`,
+    removed: o.removed
+  };
+}
+
 function announcementLog(overrides = {}) {
   const o = {
     account, recoveryId, recoveryManager, blockNumber: 90n,
@@ -147,12 +170,13 @@ test("queries are filtered server-side by event and account so a busy board cann
 
   assert.equal(queries.length, 1);
   const [events, accountTopic] = queries[0].topics;
-  assert.equal(events.length, 2, "both board events must be requested");
+  assert.equal(events.length, 3, "every board event must be requested");
   assert.deepEqual(
     [...events].sort(),
     [
       encodeEventTopics({ abi: RecoveryIntentBoardAbi, eventName: "RecoveryAnnounced" })[0],
-      encodeEventTopics({ abi: RecoveryIntentBoardAbi, eventName: "RecoveryApprovalPublished" })[0]
+      encodeEventTopics({ abi: RecoveryIntentBoardAbi, eventName: "RecoveryApprovalPublished" })[0],
+      encodeEventTopics({ abi: RecoveryIntentBoardAbi, eventName: "RecoveryCancellationPublished" })[0]
     ].sort()
   );
   assert.equal(
@@ -341,4 +365,47 @@ test("a reader without a log transport fails closed instead of silently finding 
       return true;
     }
   );
+});
+
+// A cancellation and an approval are signatures over different EIP-712 types
+// answering opposite questions. Merging them would build a bundle the manager
+// refuses -- after the gas, and after telling someone their quorum was reached.
+test("a published cancellation is never counted as an approval", async () => {
+  const snapshot = await reader(transport([cancellationLog()])).discover({ fromBlock: 0n });
+  assert.equal(snapshot.approvals.length, 0);
+  assert.equal(snapshot.cancellations.length, 1);
+  assert.equal(snapshot.cancellations[0].guardianLeaf, leafA.toLowerCase());
+});
+
+test("a published approval is never counted as a cancellation", async () => {
+  const snapshot = await reader(transport([approvalLog()])).discover({ fromBlock: 0n });
+  assert.equal(snapshot.cancellations.length, 0);
+  assert.equal(snapshot.approvals.length, 1);
+});
+
+test("both kinds are read in one scan and kept apart", async () => {
+  const snapshot = await reader(transport([approvalLog(), cancellationLog({ logIndex: 1 })])).discover({ fromBlock: 0n });
+  assert.equal(snapshot.approvals.length, 1);
+  assert.equal(snapshot.cancellations.length, 1);
+  assert.notEqual(snapshot.approvals[0].approval.signature, snapshot.cancellations[0].approval.signature);
+});
+
+// One guardian objecting twice is one objection, exactly as one guardian
+// approving twice is one approval.
+test("a guardian who publishes the same cancellation twice fills one seat", async () => {
+  const snapshot = await reader(transport([
+    cancellationLog(),
+    cancellationLog({ logIndex: 1, blockNumber: 101n })
+  ])).discover({ fromBlock: 0n });
+  assert.equal(snapshot.cancellations.length, 1);
+  assert.equal(snapshot.cancellations[0].blockNumber, 100n);
+});
+
+// Someone was told a quorum to stop a recovery had been reached. It has not.
+test("a cancellation lost to a reorg is reported, not silently dropped", async () => {
+  const before = await reader(transport([cancellationLog()])).discover({ fromBlock: 0n });
+  const after = await reader(transport([])).discover({ fromBlock: 0n });
+  const reconciled = reconcileRecoveryDiscovery(before, after);
+  assert.equal(reconciled.rolledBack, true);
+  assert.deepEqual([...reconciled.droppedCancellations], [leafA.toLowerCase()]);
 });

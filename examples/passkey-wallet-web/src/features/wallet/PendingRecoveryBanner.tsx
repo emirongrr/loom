@@ -22,7 +22,11 @@ const ACCOUNT = parseAbi(["function guardianThreshold() view returns (uint256)"]
  * Read on the wallet's own screen rather than filed under settings, because the
  * cost of missing it is the account.
  */
-export function PendingRecoveryBanner({ account }: { readonly account: AccountHandle }) {
+export function PendingRecoveryBanner({ account, onStop }: {
+  readonly account: AccountHandle;
+  /** Where the reader goes next. Without this the warning led nowhere. */
+  readonly onStop?: () => void;
+}) {
   const { config } = useNetwork();
   const { publicClients } = useAppServices();
   const [notice, setNotice] = useState<PendingRecoveryNotice>({ kind: "none" });
@@ -62,5 +66,10 @@ export function PendingRecoveryBanner({ account }: { readonly account: AccountHa
     <strong>{notice.headline}</strong>
     <p>{notice.detail}</p>
     <p className="form-note">{notice.cancellation}</p>
+    {onStop ? <div className="guardian-actions">
+      <button className={notice.urgency === "delay" ? "secondary" : "primary"} onClick={onStop}>
+        See when it happens, and how to stop it
+      </button>
+    </div> : null}
   </div>;
 }

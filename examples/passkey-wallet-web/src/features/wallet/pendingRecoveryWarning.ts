@@ -1,4 +1,5 @@
 import type { Address } from "@loom/core";
+import { cancellationQuorum } from "../recovery/cancellationQuorum.ts";
 
 /**
  * What an account owner is told when someone has started recovering their
@@ -37,10 +38,7 @@ export function describePendingRecovery(input: {
 }): PendingRecoveryNotice {
   if (!input.pending || input.readyAt === 0n) return Object.freeze({ kind: "none" as const });
 
-  const helpers = Math.max(1, input.guardianThreshold - 1);
-  const cancellation = `Stopping it needs this wallet plus ${helpers} of your guardians, or ${input.guardianThreshold}`
-    + ` guardians without this wallet. One person cannot cancel a recovery alone -- if they could, anyone holding a`
-    + ` stolen key could block the guardians who were trying to take the account back.`;
+  const cancellation = cancellationSentence(input.guardianThreshold);
 
   if (input.nowSeconds > input.expiresAt) {
     return Object.freeze({
@@ -76,6 +74,19 @@ export function describePendingRecovery(input: {
     cancellation,
     newValidator: input.newValidator
   });
+}
+
+
+/**
+ * How cancelling actually works, in a sentence the reader can act on. The rule
+ * itself lives in [[cancellationQuorum]] because it was written out by hand in
+ * two screens and was wrong in both.
+ */
+function cancellationSentence(threshold: number): string {
+  const quorum = cancellationQuorum(threshold);
+  const reason = " One person cannot cancel a recovery alone -- if they could, anyone holding a stolen key could"
+    + " block the guardians who were trying to take the account back.";
+  return `Stopping ${quorum.sentence.replace(/^it /, "it ")}.` + reason;
 }
 
 const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
