@@ -14,6 +14,7 @@ import { guardianVaultRecordsForAccount, reviewableGuardianCapabilitiesForAccoun
 import { createEncryptedLinkTransport } from "../../transports/invitations";
 import { RecoveryApprovalDialog } from "./RecoveryApprovalDialog";
 import { CancellationApprovalDialog } from "./CancellationApprovalDialog";
+import { Callout } from "../../components/Callout";
 import { describePendingCancellation, distinctProtectedAccounts, protectedAccountsKey, type PendingCancellationView } from "./pendingCancellations";
 import { useNetwork } from "../../config/NetworkContext";
 import { createRecoveryLogTransport } from "../../transports/recoveryLogs";
@@ -31,6 +32,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
   const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
   const [link, setLink] = useState("");
+  const [arrived, setArrived] = useState(false);
   const [message, setMessage] = useState("");
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
@@ -90,6 +92,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       .then(payload => {
         if (!payload || typeof payload !== "object" || (payload as Record<string, unknown>).format !== "loom.recovery-request") {
           setLink(inboundLink);
+          setArrived(true);
           return;
         }
         const request = parseRecoveryRequest(payload);
@@ -282,11 +285,36 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
     } catch (error) { setCancelMessage(safeUserMessage(error, "Cancellation request could not be reviewed.", "validation")); }
   };
   return <div className="page-stack">{!embedded && <header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>}
-    <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
-    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Invite link or QR payload</h2></div><span className="pill">Bearer secret</span></div>
-      <label className="field"><span>Invitation</span><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" /></label>
+    <section className="section-card">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Someone asked for your help</p>
+          <h2>Accept an invitation</h2>
+        </div>
+        <span className="pill">Treat like a password</span>
+      </div>
+      {/* Arriving by link used to fill the box and say nothing. Someone who
+          followed a friend's message found a filled field and no idea what it
+          was or what to press. */}
+      {arrived && <Callout tone="warning" title="You were invited to help protect an account." live>
+        <p>
+          The invitation is in the field below. Reviewing it shows whose account it is and what you would be agreeing
+          to. Accepting gives you no power to spend their money — only to help them recover the account if they lose
+          access.
+        </p>
+      </Callout>}
+      <label className="field">
+        <span>Invitation link</span>
+        <input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" />
+      </label>
       <button className="primary" onClick={accept} disabled={!link.trim()}>Review invitation</button>
-      <details><summary>Advanced / portable file fallback</summary><p>Paste a versioned JSON capability exported from an independent wallet. It contains only your proof, never the full guardian set.</p></details>
+      <details>
+        <summary>It arrived as a file instead</summary>
+        <p className="form-note">
+          Paste the file&apos;s contents in the same box. It carries only your own part of the arrangement, never the
+          list of the other people helping.
+        </p>
+      </details>
       {message && <p className="toast" role="status">{message}</p>}
     </section>
     {reviewableRecords.length > 0 && <section className="section-card" aria-labelledby="discovered-requests-heading">

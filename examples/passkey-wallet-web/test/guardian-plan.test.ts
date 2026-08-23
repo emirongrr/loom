@@ -211,3 +211,34 @@ test("a valid stored roster round-trips", () => {
   assert.equal(parsed.entries.length, 1);
   assert.equal(parsed.entries[0]?.label, "Alice");
 });
+
+// A record written before invitations were tracked has no `invitedAt`. It must
+// read as "not sent" rather than as an invalid record, or upgrading the wallet
+// would empty someone's guardian list.
+test("an older guardian record without an invitation timestamp is still valid", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.invitedAt, undefined);
+});
+
+test("an invitation timestamp survives a round trip", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", invitedAt: 1_900_000_000_000, descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.invitedAt, 1_900_000_000_000);
+});
+
+// Nonsense is dropped rather than rendered as a date, since the only thing it
+// drives is whether the row says an invitation was sent.
+test("an unusable invitation timestamp is dropped, not adopted", () => {
+  for (const invitedAt of [0, -1, Number.NaN, "yesterday"]) {
+    const record = parseRosterRecord({
+      version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+      entries: [{ id: "g1", label: "Ada", invitedAt, descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+    }, "11155111:0xaaa");
+    assert.equal(record.entries[0]?.invitedAt, undefined);
+  }
+});

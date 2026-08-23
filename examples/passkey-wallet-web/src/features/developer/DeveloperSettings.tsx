@@ -32,6 +32,19 @@ export function DeveloperSettings() {
   const restore = () => { reset(); setDraft(DEFAULT_NETWORK); setSaved(false); setError(""); };
 
   return <div className="page-stack"><header className="page-title"><p className="eyebrow">Advanced</p><h1>Developer settings</h1><p>Infrastructure is replaceable and kept outside consumer flows. Changing it cannot grant account authority — the same passkey-signed operation is valid through any endpoint.</p></header>
+    {/* The storage caveat used to sit permanently above the guardian list.
+        It is true, and it changes nothing a person can do about it -- so it
+        belongs where someone comes looking for how the wallet works, not in
+        front of the list they came to read. */}
+    <section className="section-card">
+      <div className="section-heading"><div><p className="eyebrow">How this wallet stores things</p><h2>Local encryption</h2></div></div>
+      <p className="form-note">
+        Guardian capabilities and account handles are encrypted with a key held by this browser and never sent
+        anywhere. That protects them from casual inspection of browser storage. It does not protect them from code
+        running on this origin: a script injected into this page could use the same key.
+      </p>
+    </section>
+
     <section className="section-card form-stack">
       {field("rpcUrl", "RPC endpoint", "Reads balances and simulates transactions. Defaults to a public Sepolia node.", DEFAULT_NETWORK.rpcUrl)}
       {field("verificationRpcUrl", "Independent verification RPC", "Corroborates deployment bytecode and confirmed EntryPoint events. Keep it operated separately from the primary RPC.", DEFAULT_NETWORK.verificationRpcUrl)}

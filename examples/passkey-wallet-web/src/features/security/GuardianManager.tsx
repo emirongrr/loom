@@ -266,6 +266,13 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       });
       const delivered = await services.invitationLinks.deliver(invite, { expiresAt });
       setInvitation({ guardianId: entry.id, guardianLabel: entry.label, link: delivered.value, expiresAt });
+      // Recorded so the row can say it, rather than a paragraph telling every
+      // owner that invitations exist. It can only ever mean "sent from here":
+      // acceptance happens on the guardian's device and is never published.
+      const invitedAt = services.now();
+      const marked = committed.map(item => item.id === entry.id ? { ...item, invitedAt } : item);
+      setDraft(current => current.map(item => item.id === entry.id ? { ...item, invitedAt } : item));
+      await roster.write(account.id, { entries: marked, version: setVersion, pending: null });
       notifications.notify({
         status: "success",
         title: "Guardian invite ready",
@@ -449,8 +456,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </p>
     </div>}
 
+    {/* The distinction that has to survive shortening: what is shown is real,
+        but its absence proves nothing. */}
     {operationDiscoveryIncomplete && <p className="callout warning">
-      Scheduled-change discovery was incomplete. Verified operations remain visible, but this device cannot prove that the list is exhaustive. Try another RPC before relying on the absence of a change.
+      This RPC did not return every scheduled change. What is listed is real; an empty list is not proof.
     </p>}
 
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
@@ -475,6 +484,14 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
               >
                 <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
                 <span><strong>{entry.label}</strong><span className="breakable">{describeGuardian(entry.descriptor)}</span></span>
+                {/* One fact per guardian, where that guardian is. A paragraph
+                    above the list told every owner that invitations matter; it
+                    could not tell them which of their guardians was missing
+                    one, which is the only part they can act on. */}
+                {onChainAlready && <span className={entry.invitedAt ? "guardian-state sent" : "guardian-state unsent"}>
+                  <span aria-hidden="true">{entry.invitedAt ? "✓" : "!"}</span>
+                  {entry.invitedAt ? "Invitation sent" : "No invitation"}
+                </span>}
                 <span className="guardian-row-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
               {/* What can be done to one guardian belongs with that guardian,
@@ -505,15 +522,9 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         onClose={() => setInvitation(null)}
       />}
 
-      {protection.kind === "in-sync" && committed.length > 0 && <p className="form-note">
-        Writing the set on chain reaches nobody: open a guardian to send their invitation. Without one they cannot
-        help you recover this account, and you would find that out only when you needed them. Whether they accepted
-        happens on their device and is never published, so ask each of them to confirm.
-      </p>}
-
       {protection.kind === "in-sync" && <p className="form-note">
-        This list lives only on this device.{" "}
-        <button className="text-button" disabled={busy} onClick={() => void exportRoster()}>Export an encrypted backup</button> — without one, no other device can edit the set.
+        Held on this device only.{" "}
+        <button className="text-button" disabled={busy} onClick={() => void exportRoster()}>Export an encrypted backup</button> to edit it from another.
       </p>}
 
       <AddGuardianForm busy={busy} onAdd={addGuardian} />
@@ -523,7 +534,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
           <select value={threshold} onChange={event => setThreshold(Number(event.target.value))}>
             {Array.from({ length: draft.length }, (_, index) => index + 1).map(value => <option key={value} value={value}>{value} of {draft.length}</option>)}
           </select>
-          <small className="form-note">A higher threshold resists a compromised guardian; a lower one survives an unreachable guardian.</small>
+          <small className="form-note">Higher survives a compromised guardian; lower survives an unreachable one.</small>
         </label>
       </div>}
 

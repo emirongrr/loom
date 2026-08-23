@@ -13,6 +13,15 @@ export interface RosterEntry {
   readonly id: string;
   readonly label: string;
   readonly descriptor: GuardianDescriptor;
+  /**
+   * When this device last issued this guardian's invitation, in milliseconds.
+   *
+   * Local and approximate on purpose. Nothing about an invitation is published,
+   * and whether the guardian accepted happens on their device, so this can only
+   * ever say "I sent one" -- which is still the difference between a guardian
+   * who can help and one who will discover they cannot at the worst moment.
+   */
+  readonly invitedAt?: number;
 }
 
 export interface GuardianChangePlan {

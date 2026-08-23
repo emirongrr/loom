@@ -220,3 +220,11 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .roster-tab.active { border-bottom-color: var(--brand); color: var(--ink); }
 .roster-tab:hover:not(.active) { color: var(--ink); }
 @media (max-width: 760px) { .roster-tab { font-size: 13px; } .roster-tab + .roster-tab { margin-left: 8px; } }
+
+/* One fact per guardian, carried where that guardian is. Colour is a second
+   signal, never the only one: the mark and the words say the same thing. */
+.guardian-state { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.guardian-state.sent { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
+.guardian-state.unsent { color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); }
+.guardian-row-open { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+@media (max-width: 760px) { .guardian-state { padding: 3px 7px; font-size: 10px; } }
