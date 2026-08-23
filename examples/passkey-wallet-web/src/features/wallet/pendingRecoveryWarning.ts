@@ -1,3 +1,4 @@
+import { parseAbi } from "viem";
 import type { Address } from "@loom/core";
 import { cancellationQuorum } from "../recovery/cancellationQuorum.ts";
 
@@ -97,3 +98,16 @@ function when(seconds: bigint): string {
   if (seconds < 86_400n) return `in about ${Number(seconds / 3600n)} hour(s)`;
   return `in about ${Number(seconds / 86_400n)} day(s)`;
 }
+
+/**
+ * The reads this warning is built from.
+ *
+ * Declared beside the rule that interprets them rather than inside the
+ * component that renders it: a screen should not be the place where the shape
+ * of a contract call is decided.
+ */
+export const PENDING_RECOVERY_READS = parseAbi([
+  "function pendingRecoveries(address) view returns (bytes32 oldValidatorsHash, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, uint48 readyAt, uint48 expiresAt, uint64 configVersion, uint64 nonce)"
+]);
+
+export const ACCOUNT_THRESHOLD_READ = parseAbi(["function guardianThreshold() view returns (uint256)"]);

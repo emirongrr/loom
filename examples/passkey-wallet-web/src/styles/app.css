@@ -155,3 +155,15 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .recovery-request > button { justify-self: start; }
 .recovery-share-qr { display: grid; justify-items: center; gap: 8px; margin-top: 14px; }
 .recovery-share-qr svg { border-radius: 10px; }
+
+/* Touch targets. A pointer that cannot be aimed precisely needs a larger
+   target than a mouse does, and the two smallest controls here -- the wallet
+   header actions and the remove button beside a saved wallet -- sat under the
+   44px that touch guidance asks for. Raised only for coarse pointers, so the
+   desktop layout keeps its proportions. The remove button in particular is one
+   people should not hit by accident, but it must also not be one they cannot
+   hit on purpose. */
+@media (pointer: coarse) {
+  .hero-button, .wallet-list-remove, .text-button, .icon-button { min-height: 44px; }
+  .text-button { padding: 0 8px; }
+}

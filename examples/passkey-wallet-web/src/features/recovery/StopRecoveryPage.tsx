@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { encodeFunctionData } from "viem";
-import { RecoveryManagerAbi } from "@loom/core/abi";
 import {
   cancelApprovalFromResponse, createCancelRequest, createRecoveryId, parseCancelResponse,
   serializeRecoveryProtocol, type CancelRequestV1
@@ -15,6 +13,7 @@ import { loadWalletDeployment } from "../onboarding/accountLifecycle";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { GuardianInviteLinks } from "./GuardianInviteLinks";
 import { cancellationHorizon } from "../guardians/pendingCancellations";
+import { cancelWithAccountAndGuardians, cancelWithGuardians } from "./recoveryCalls";
 import { mergeApprovals, readBoardCancellations } from "./boardApprovals";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { humanDuration, planStopRecovery, preferredRoute, shortAddress, type StopRecoveryPlan } from "./stopRecovery";
@@ -144,19 +143,13 @@ export function StopRecoveryPage({ handle, onClose }: {
 
   const cancelCalls = useMemo(() => {
     if (state.kind !== "pending" || signatures.length === 0) return null;
-    const tuples = [...signatures]
-      .map(approval => ({ ...approval, leaf: (approval as { leaf?: Hex }).leaf ?? `0x${""}` as Hex }))
-      .sort((left, right) => left.leaf.toLowerCase() < right.leaf.toLowerCase() ? -1 : 1)
-      .map(approval => ({
-        verifier: approval.verifier, keyCommitment: approval.keyCommitment,
-        salt: approval.salt, signature: approval.signature, proof: approval.proof
-      }));
+    const approvals = signatures as readonly Parameters<typeof cancelWithGuardians>[0]["approvals"][number][];
     return {
       to: state.recoveryManager,
-      guardiansOnly: encodeFunctionData({ abi: RecoveryManagerAbi, functionName: "cancelRecoveryWithGuardians", args: [account, tuples] }),
+      guardiansOnly: cancelWithGuardians({ recoveryManager: state.recoveryManager, account, approvals }).data,
       // The manager checks the sender on this one, so it only counts when the
       // account itself makes the call -- which is the whole point of the route.
-      withAccount: encodeFunctionData({ abi: RecoveryManagerAbi, functionName: "cancelRecoveryWithAccountAndGuardians", args: [account, tuples] })
+      withAccount: cancelWithAccountAndGuardians({ recoveryManager: state.recoveryManager, account, approvals }).data
     };
   }, [account, signatures, state]);
 

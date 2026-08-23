@@ -1,15 +1,10 @@
 import { useEffect, useState } from "react";
-import { parseAbi } from "viem";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
 import { loadWalletDeployment } from "../onboarding/accountLifecycle";
-import { describePendingRecovery, type PendingRecoveryNotice } from "./pendingRecoveryWarning";
+import { ACCOUNT_THRESHOLD_READ, describePendingRecovery, PENDING_RECOVERY_READS, type PendingRecoveryNotice } from "./pendingRecoveryWarning";
 import type { AccountHandle } from "../../types";
 
-const MANAGER = parseAbi([
-  "function pendingRecoveries(address) view returns (bytes32 oldValidatorsHash, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, uint48 readyAt, uint48 expiresAt, uint64 configVersion, uint64 nonce)"
-]);
-const ACCOUNT = parseAbi(["function guardianThreshold() view returns (uint256)"]);
 
 /**
  * Tell the owner when someone is recovering their account.
@@ -39,8 +34,8 @@ export function PendingRecoveryBanner({ account, onStop }: {
         if (!deployment.recoveryModule || deployment.chainId !== account.chainId) return;
         const client = publicClients.forEndpoint(config.rpcUrl);
         const [pending, threshold, block] = await Promise.all([
-          client.readContract({ address: deployment.recoveryModule, abi: MANAGER, functionName: "pendingRecoveries", args: [account.account] }),
-          client.readContract({ address: account.account, abi: ACCOUNT, functionName: "guardianThreshold" }).catch(() => 1n),
+          client.readContract({ address: deployment.recoveryModule, abi: PENDING_RECOVERY_READS, functionName: "pendingRecoveries", args: [account.account] }),
+          client.readContract({ address: account.account, abi: ACCOUNT_THRESHOLD_READ, functionName: "guardianThreshold" }).catch(() => 1n),
           client.getBlock()
         ]);
         const record = pending as readonly unknown[];

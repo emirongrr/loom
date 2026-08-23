@@ -93,7 +93,7 @@ export function createRecoveryDraftRepository(
   });
 }
 
-export function parseRecoveryDraft(value: unknown): RecoveryDraft {
+function parseRecoveryDraft(value: unknown): RecoveryDraft {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("recovery draft is invalid");
   const record = value as Record<string, unknown>;
   const allowed = ["version", "id", "chainId", "account", "configVersion", "label", "createdAt", "preparation", "rotation"];

@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { encodeFunctionData } from "viem";
-import { RecoveryIntentBoardAbi } from "@loom/core/abi";
 import {
   cancelApprovalFromResponse, serializeRecoveryProtocol,
   type CancelRequestV1, type CancelResponseV1, type GuardianInviteV1
@@ -15,6 +13,7 @@ import { guardianCapabilityMatchesAccount, signGuardianDigestWithPasskey } from 
 import { submitAccountCalls } from "../wallet/accountClient";
 import { createGuardianCancellationResponse, prepareGuardianCancellationReview } from "../recovery/cancellationApproval";
 import { cancellationQuorum } from "../recovery/cancellationQuorum.ts";
+import { publishCancellation } from "../recovery/recoveryCalls";
 import { boardSupportsCancellation } from "./boardCapabilities.ts";
 import { safeUserMessage } from "../../domain/errors/appError";
 import { Dialog } from "../../components/Dialog";
@@ -133,18 +132,12 @@ export function CancellationApprovalDialog({ request, capability, deployment, gu
    */
   const publishCalldata = () => {
     if (!response || !board) return null;
-    const approval = cancelApprovalFromResponse(response);
-    return encodeFunctionData({
-      abi: RecoveryIntentBoardAbi,
-      functionName: "publishCancellation",
-      args: [request.account, request.recoveryManager, [{
-        verifier: approval.verifier,
-        keyCommitment: approval.keyCommitment,
-        salt: approval.salt,
-        signature: approval.signature,
-        proof: approval.proof
-      }]]
-    });
+    return publishCancellation({
+      board,
+      account: request.account,
+      recoveryManager: request.recoveryManager,
+      approval: cancelApprovalFromResponse(response)
+    }).data;
   };
 
   const publish = async () => {
