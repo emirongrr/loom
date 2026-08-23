@@ -164,6 +164,59 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
    people should not hit by accident, but it must also not be one they cannot
    hit on purpose. */
 @media (pointer: coarse) {
-  .hero-button, .wallet-list-remove, .text-button, .icon-button { min-height: 44px; }
+  .primary, .secondary, .danger-button, .hero-button, .wallet-list-remove, .text-button, .icon-button { min-height: 44px; }
   .text-button { padding: 0 8px; }
 }
+
+/* Account protection rows. Tone is carried by the mark and by the words beside
+   it, never by colour alone: green and red are the fastest signal for people
+   who can see them and no signal at all for people who cannot. */
+.protection-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-top: 12px; border: 1px solid var(--line); border-radius: 15px; padding: 14px 16px; background: var(--surface-soft); }
+.protection-row p { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.protection-row > button { align-self: center; }
+.protection-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface); font-weight: 850; }
+.protection-row.protected { border-color: color-mix(in srgb, var(--success) 30%, var(--line)); }
+.protection-row.protected .protection-mark { color: var(--success); }
+.protection-row.urgent { border-color: color-mix(in srgb, var(--danger) 32%, var(--line)); background: color-mix(in srgb, var(--danger) 4%, var(--surface-soft)); }
+.protection-row.urgent .protection-mark { color: var(--danger); }
+.protection-row.attention { border-color: color-mix(in srgb, var(--warning) 32%, var(--line)); }
+.protection-row.attention .protection-mark { color: var(--warning); }
+@media (max-width: 760px) {
+  .protection-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .protection-row > button { grid-column: 1 / -1; width: 100%; }
+}
+
+/* A guardian row opens into what can be done to that guardian. Keeping the
+   actions inside the row means the list carries one verb per person instead of
+   two, and an invitation is never one stray click away. */
+.guardian-row.opened { border-color: color-mix(in srgb, var(--brand) 26%, var(--line)); }
+.guardian-row-open { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; border: 0; padding: 0; text-align: left; background: transparent; }
+.guardian-row-open > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.guardian-row-open strong { font-size: 15px; }
+.guardian-row-open span span { color: var(--muted); font-size: 13px; }
+.guardian-row-chevron { color: var(--muted); font-size: 12px; }
+.guardian-row-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.guardian-row-panel .form-note { margin: 0 0 10px; }
+
+/* The posture card carries the shield, then any exception beneath it, so the
+   whole answer to "is my account safe" sits in one place instead of two cards
+   repeating each other. */
+.posture { align-items: flex-start; }
+.posture-body { display: grid; min-width: 0; }
+.posture-body > .protection-row:first-of-type { margin-top: 14px; }
+.posture-body > .guardian-actions { margin-top: 14px; }
+.posture-body > details { margin-top: 14px; }
+/* An account nobody can recover is not a caution, so the shield is not amber:
+   if the passkey goes, the account goes with it. */
+.posture .posture-mark.unguarded { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface-soft)); }
+
+/* Two rosters, one for each direction the relationship runs: the guardians who
+   can restore this account, and the accounts this passkey can help restore.
+   They used to be separate destinations, so seeing both meant leaving and
+   coming back, and the guardian side was easy to forget entirely. */
+.roster-tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.roster-tab { min-height: 42px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 4px 10px; color: var(--muted); background: transparent; font-size: 14px; font-weight: 700; }
+.roster-tab + .roster-tab { margin-left: 14px; }
+.roster-tab.active { border-bottom-color: var(--brand); color: var(--ink); }
+.roster-tab:hover:not(.active) { color: var(--ink); }
+@media (max-width: 760px) { .roster-tab { font-size: 13px; } .roster-tab + .roster-tab { margin-left: 8px; } }

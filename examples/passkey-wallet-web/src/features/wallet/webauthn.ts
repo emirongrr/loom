@@ -45,3 +45,44 @@ export async function signWithBrowserPasskey(challenge: PasskeySignRequest): Pro
     signature: hexFromBytes(new Uint8Array(credential.response.signature))
   });
 }
+
+/**
+ * A stable secret the account's own passkey derives, when it can.
+ *
+ * WebAuthn's PRF extension asks the authenticator for a value derived from the
+ * credential and a salt we choose. It never leaves the authenticator's control
+ * and is not stored anywhere: unlocking the passkey reproduces it, and nothing
+ * else does. Where the passkey itself syncs between a person's devices, so does
+ * this, which is what lets a file encrypted on one of them open on another
+ * without a second secret to remember and lose.
+ *
+ * Returns null when the authenticator declines. Plenty do, and the caller must
+ * have somewhere else to go rather than treating this as a guarantee.
+ */
+export async function passkeyDerivedSecret(input: {
+  readonly credentialId: Hex;
+  readonly rpId?: string;
+  readonly salt: Uint8Array;
+}): Promise<Uint8Array | null> {
+  if (!window.PublicKeyCredential || !navigator.credentials) return null;
+  try {
+    const credential = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        ...(input.rpId ? { rpId: input.rpId } : {}),
+        allowCredentials: [{ type: "public-key", id: bytesFromHex(input.credentialId) }],
+        userVerification: "required",
+        timeout: 60_000,
+        extensions: { prf: { eval: { first: input.salt } } }
+      } as PublicKeyCredentialRequestOptions
+    });
+    if (!(credential instanceof PublicKeyCredential)) return null;
+    const results = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf;
+    const first = results?.results?.first;
+    return first ? new Uint8Array(first) : null;
+  } catch {
+    // An authenticator that refuses the extension, or a person who cancels.
+    // Neither is an error here; both mean "use the other route".
+    return null;
+  }
+}

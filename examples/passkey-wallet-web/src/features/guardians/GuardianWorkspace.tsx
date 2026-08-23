@@ -21,7 +21,12 @@ import { createAccountGuardianClient } from "../security/guardianClient";
 import { discoverGuardianRecoveryRequests } from "./guardianDiscovery";
 import type { DiscoveredRequestView } from "./discoveredRequests";
 
-export function GuardianWorkspace({ account, inboundLink = "" }: { readonly account: AccountHandle; readonly inboundLink?: string }) {
+export function GuardianWorkspace({ account, inboundLink = "", embedded = false }: {
+  readonly account: AccountHandle;
+  readonly inboundLink?: string;
+  /** Rendered inside another page, which already carries the heading. */
+  readonly embedded?: boolean;
+}) {
   const services = useAppServices();
   const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
@@ -276,7 +281,7 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
       setCancelling({ request, capability: record.capability });
     } catch (error) { setCancelMessage(safeUserMessage(error, "Cancellation request could not be reviewed.", "validation")); }
   };
-  return <div className="page-stack"><header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>
+  return <div className="page-stack">{!embedded && <header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>}
     <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
     <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Invite link or QR payload</h2></div><span className="pill">Bearer secret</span></div>
       <label className="field"><span>Invitation</span><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" /></label>

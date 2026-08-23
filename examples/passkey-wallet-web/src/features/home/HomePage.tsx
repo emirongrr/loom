@@ -1,6 +1,7 @@
 import { PendingRecoveryBanner } from "../wallet/PendingRecoveryBanner";
 import { useCallback, useEffect, useState } from "react";
 import { AccountHeader, type BalanceView } from "../../components/AccountHeader";
+import { describeAccountProtection } from "../security/accountProtection";
 import { SecurityStatus } from "../../components/SecurityStatus";
 import { SendDialog } from "../send/SendDialog";
 import { ReceiveDialog } from "../wallet/ReceiveDialog";
@@ -160,7 +161,10 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
       </button>
     </section>}
 
-    {guardianThreshold === 0 && <SecurityStatus guardians={0} threshold={0} frozen={false} pendingRecovery={false} />}
+    {guardianThreshold === 0 && <SecurityStatus
+      protection={describeAccountProtection({ guardianThreshold: 0, recoveryConfigured: false, freezeActive: false, pendingRecovery: false })}
+      onAddGuardians={() => onNavigate("security")}
+    />}
 
     <section className="section-card">
       <div className="section-heading"><div><p className="eyebrow">Assets</p><h2>Tokens</h2></div><button className="icon-button" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh balances"><span className={refreshing ? "spin" : ""}>⟳</span></button></div>
