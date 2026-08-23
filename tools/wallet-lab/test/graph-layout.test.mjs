@@ -48,3 +48,24 @@ test("focus layout expands the selected node and places direct neighbors around 
     }
   }
 });
+
+test("expanded optional contracts never overlap the remaining collapsed groups", () => {
+  const nodes = [
+    { id: "EntryPoint", kind: "protocol", requirement: "transport-required" },
+    { id: "Factory", kind: "factory", requirement: "core" },
+    { id: "Account", kind: "account", requirement: "core" },
+    ...Array.from({ length: 7 }, (_, index) => ({ id: `Optional${index}`, kind: "validator", requirement: "optional" })),
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `group:${index}`, nodeType: "group" }))
+  ];
+  const layout = layoutArchitectureExplorer(nodes, [], { width: 1200, height: 720 });
+
+  for (const [leftIndex, left] of nodes.entries()) {
+    for (const right of nodes.slice(leftIndex + 1)) {
+      const a = layout.bounds[left.id];
+      const b = layout.bounds[right.id];
+      const separated = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+      assert.ok(separated, `${left.id} and ${right.id} must not overlap`);
+    }
+  }
+  assert.ok(layout.height > 720, "the canvas must grow when expanded modules need more rows");
+});

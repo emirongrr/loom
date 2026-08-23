@@ -33,11 +33,26 @@ export function layoutArchitectureExplorer(nodes, edges, { focusedNodeId = null,
     columns.forEach((column, columnIndex) => column.forEach((node, index) => {
       positions[node.id] = { x: xValues[columnIndex], y: 130 + index * 106 };
     }));
-    groups.forEach((node, index) => {
-      const columnsCount = Math.min(5, groups.length);
-      const slot = width / (columnsCount + 1);
-      positions[node.id] = { x: slot * ((index % columnsCount) + 1), y: height - 72 - Math.floor(index / columnsCount) * 88 };
-    });
+    if (groups.length) {
+      const groupWidth = 264;
+      const horizontalGap = 16;
+      const horizontalPadding = 48;
+      const columnsCount = Math.max(1, Math.min(groups.length, Math.floor((width - horizontalPadding * 2 + horizontalGap) / (groupWidth + horizontalGap))));
+      const rowsCount = Math.ceil(groups.length / columnsCount);
+      const requiredBottom = required.reduce((bottom, node) => Math.max(bottom, (positions[node.id]?.y ?? 0) + 38), 0);
+      const rowGap = 88;
+      const preferredFirstY = height - 72 - (rowsCount - 1) * rowGap;
+      const firstY = Math.max(preferredFirstY, requiredBottom + 66);
+      groups.forEach((node, index) => {
+        const row = Math.floor(index / columnsCount);
+        const indexInRow = index % columnsCount;
+        const itemsInRow = Math.min(columnsCount, groups.length - row * columnsCount);
+        const rowWidth = itemsInRow * groupWidth + Math.max(0, itemsInRow - 1) * horizontalGap;
+        const firstX = (width - rowWidth) / 2 + groupWidth / 2;
+        positions[node.id] = { x: firstX + indexInRow * (groupWidth + horizontalGap), y: firstY + row * rowGap };
+      });
+      layoutHeight = Math.max(height, firstY + (rowsCount - 1) * rowGap + 72);
+    }
   } else {
     const incomingIds = new Set(edges.filter(edge => edge.to === focused.id).map(edge => edge.from));
     const outgoingIds = new Set(edges.filter(edge => edge.from === focused.id).map(edge => edge.to));

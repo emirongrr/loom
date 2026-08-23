@@ -155,6 +155,8 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /id="architecture-transaction-dock"/u);
   assert.match(script, /function renderArchitectureTransactionDock\(/u);
   assert.match(script, /buildTransactionArchitectureJourney/u);
+  assert.match(script, /data-open-evm-evidence/u);
+  assert.match(script, /currentTrace\(artifact\.events\)\?\.kind !== "transaction-analysis"/u);
   assert.match(architectureExplorer, /Publisher \/ bundler executor/u);
   assert.match(architectureExplorer, /does not prove the service identity/u);
   assert.match(script, /SIMULATION ONLY/u);

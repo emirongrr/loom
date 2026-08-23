@@ -434,6 +434,9 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-transaction-stages strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .56rem; }
 .architecture-transaction-stages code { margin-top: .15rem; overflow: hidden; color: var(--blue); text-overflow: ellipsis; white-space: nowrap; font-size: .47rem; }
 .architecture-transaction-stages small { margin-top: .22rem; color: var(--muted); font-size: .49rem; line-height: 1.4; }
+.architecture-transaction-actions { display: flex; justify-content: flex-end; margin-top: .55rem; }
+.architecture-transaction-actions button { min-height: 32px; padding: .4rem .58rem; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-soft); color: #dce7df; font-size: .54rem; font-weight: 700; }
+.architecture-transaction-actions button:hover, .architecture-transaction-actions button:focus-visible { border-color: var(--green); color: var(--green); }
 .architecture-transaction-note { margin: .5rem 0 0; color: var(--muted); font-size: .52rem; line-height: 1.45; }
 .architecture-canvas .deployment-graph { width: 100%; height: 100%; min-height: 0; border-top: 0; border-radius: 0 0 12px 12px; background-color: #080c0a; background-image: radial-gradient(circle, rgba(93, 121, 103, .22) 1px, transparent 1px), radial-gradient(circle at 50% 38%, #132019 0, transparent 52%); background-size: 22px 22px, 100% 100%; }
 .architecture-canvas .deployment-graph svg { min-width: 0; }

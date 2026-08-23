@@ -822,7 +822,7 @@ function renderArchitectureTransactionDock(deployment) {
   }).join("")}</div>` : "";
   const evidence = result ? `<div class="architecture-transaction-evidence"><span>${escapeHtml(formatTraceNumber(result.gasUsed))} gas</span><span>${escapeHtml(result.traceSummary?.calls ?? "No")} call frames</span><span>${escapeHtml(result.capabilities?.stateDiff ?? "state unavailable")}</span><span>${escapeHtml(result.capabilities?.opcodeTrace ?? "opcodes unavailable")}</span></div>` : "";
   dock.hidden = false;
-  dock.innerHTML = `<header><div><p class="eyebrow">LIVE TRANSACTION PATH</p><h2>${escapeHtml(result ? title : "Trace a Sepolia wallet operation")}</h2><p>${escapeHtml(result ? description : "Paste a mined transaction hash. Wallet Lab verifies the selected deployment before mapping publisher, EntryPoint, account authority, policy, target calls, state effects, and receipt.")}</p></div>${result ? `<span class="status ${tone}">${escapeHtml(titleCase(journey.classification))}</span>` : ""}<button type="button" data-transaction-close aria-label="Close transaction trace">×</button></header><div class="architecture-transaction-form"><label><span>Sepolia transaction hash</span><input id="architecture-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x…" spellcheck="false" /></label><button type="button" id="architecture-analyze-transaction"${busy || !state.executionTransactionHash ? " disabled" : ""}>${busy ? "Collecting evidence…" : "Analyze on chain"}</button></div>${error}${result ? `<div class="architecture-transaction-summary"><code>${escapeHtml(result.transactionHash)}</code><span>Block ${escapeHtml(formatTraceNumber(result.blockNumber))}</span></div>${evidence}${stages}<p class="architecture-transaction-note">Solid green stages are receipt- or trace-bound. Missing debug methods remain unavailable; Wallet Lab does not reconstruct them from guesses.</p>` : `<p class="architecture-transaction-note">The transaction sender is shown as publisher / bundler executor. Its address proves who paid transaction gas, not which commercial bundler service operated it.</p>`}`;
+  dock.innerHTML = `<header><div><p class="eyebrow">LIVE TRANSACTION PATH</p><h2>${escapeHtml(result ? title : "Trace a Sepolia wallet operation")}</h2><p>${escapeHtml(result ? description : "Paste a mined transaction hash. Wallet Lab verifies the selected deployment before mapping publisher, EntryPoint, account authority, policy, target calls, state effects, and receipt.")}</p></div>${result ? `<span class="status ${tone}">${escapeHtml(titleCase(journey.classification))}</span>` : ""}<button type="button" data-transaction-close aria-label="Close transaction trace">×</button></header><div class="architecture-transaction-form"><label><span>Sepolia transaction hash</span><input id="architecture-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x…" spellcheck="false" /></label><button type="button" id="architecture-analyze-transaction"${busy || !state.executionTransactionHash ? " disabled" : ""}>${busy ? "Collecting evidence…" : "Analyze on chain"}</button></div>${error}${result ? `<div class="architecture-transaction-summary"><code>${escapeHtml(result.transactionHash)}</code><span>Block ${escapeHtml(formatTraceNumber(result.blockNumber))}</span></div>${evidence}${stages}<div class="architecture-transaction-actions"><button type="button" data-open-evm-evidence>Open state and opcode evidence</button></div><p class="architecture-transaction-note">Green stages are receipt- or trace-bound. Amber stages are shared infrastructure or calls outside the selected deployment. Missing debug methods remain unavailable; Wallet Lab does not reconstruct them from guesses.</p>` : `<p class="architecture-transaction-note">The transaction sender is shown as publisher / bundler executor. Its address proves who paid transaction gas, not which commercial bundler service operated it.</p>`}`;
 }
 
 function renderDeploymentGraph(deployment) {
@@ -1504,6 +1504,7 @@ async function inspectSepoliaExecution() {
   const groups = architectureView(deployment).groups.filter(group => group.members.some(node => touched.has(node.id))).map(group => group.id);
   state.expandedArchitectureGroups = [...new Set([...state.expandedArchitectureGroups, ...groups])];
   renderDeployment(state.artifact?.events ?? []);
+  renderEvmTrace(result);
 }
 
 async function sendSepoliaExecution() {
@@ -1745,7 +1746,7 @@ function render(artifact) {
   renderNetwork(artifact.events);
   renderDeployment(artifact.events);
   renderEvmTrace(currentTrace(artifact.events));
-  if (state.deploymentSource === "sepolia") {
+  if (state.deploymentSource === "sepolia" && currentTrace(artifact.events)?.kind !== "transaction-analysis") {
     $("#evm-trace").className = "evm-trace empty";
     $("#evm-trace").textContent = "Sepolia deployment inspection is read-only. Choose the local deterministic run to inspect its captured EVM transaction trace.";
     $("#evm-trace-summary").textContent = "No Sepolia transaction selected";
@@ -1805,6 +1806,11 @@ $("#panel-architecture").addEventListener("click", event => {
   }
   if (event.target.closest("#architecture-analyze-transaction")) {
     inspectSepoliaExecution();
+    return;
+  }
+  if (event.target.closest("[data-open-evm-evidence]")) {
+    renderEvmTrace(currentTrace(state.artifact?.events ?? []));
+    switchTab("evm", true);
     return;
   }
   const transactionContract = event.target.closest("[data-transaction-contract]");
