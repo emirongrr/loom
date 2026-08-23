@@ -18,6 +18,7 @@ test("Wallet Lab browser entrypoint is valid ECMAScript module syntax", () => {
 test("Wallet Lab presents architecture, network, EVM, and execution evidence without redundant panels", () => {
   const html = readFileSync(new URL("index.html", uiRoot), "utf8");
   const script = readFileSync(new URL("app.js", uiRoot), "utf8");
+  const architectureExplorer = readFileSync(new URL("architecture-explorer.mjs", uiRoot), "utf8");
   const styles = readFileSync(new URL("styles.css", uiRoot), "utf8");
 
   for (const panel of ["architecture", "network", "authority", "evm", "privacy", "execution"]) {
@@ -150,6 +151,12 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(script, /from: accounts\[0\]/u);
   assert.match(script, /nothing was sent/u);
   assert.match(script, /function inspectSepoliaExecution\(/u);
+  assert.match(html, /id="architecture-transaction-toggle"/u);
+  assert.match(html, /id="architecture-transaction-dock"/u);
+  assert.match(script, /function renderArchitectureTransactionDock\(/u);
+  assert.match(script, /buildTransactionArchitectureJourney/u);
+  assert.match(architectureExplorer, /Publisher \/ bundler executor/u);
+  assert.match(architectureExplorer, /does not prove the service identity/u);
   assert.match(script, /SIMULATION ONLY/u);
   assert.match(script, /MINED TRANSACTION/u);
   assert.match(script, /Unavailable without call trace/u);

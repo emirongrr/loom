@@ -198,6 +198,7 @@ summary { padding: .55rem 0; color: #b6c5bb; cursor: pointer; font-size: .76rem;
 .requirement.required-for-observed-flow, .requirement.core { background: var(--green-soft); color: var(--green); }
 .requirement.independent-check, .requirement.transport-required { background: #192638; color: var(--blue); }
 .requirement.profile-required { background: var(--amber-soft); color: var(--amber); }
+.requirement.deployment-required { background: #1a2634; color: var(--blue); }
 .requirement.provider-specific { background: #2b1d32; color: #d99aff; }
 .requirement.test-only { background: #2b1d32; color: #d99aff; }
 .table-scroll { max-height: calc(100vh - 270px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
@@ -262,6 +263,7 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .graph-node.instance rect { fill: #173524; stroke: var(--green); stroke-width: 2; }
 .graph-node.transport-required rect { stroke: var(--blue); }
 .graph-node.profile-required rect { stroke: var(--amber); }
+.graph-node.deployment-required rect { stroke: var(--blue); stroke-width: 2; }
 .graph-node.optional rect { stroke: #56645b; stroke-dasharray: 5 3; }
 .graph-node.test-only rect { stroke: #b26ed0; stroke-dasharray: 3 3; }
 .graph-node.trace-idle { opacity: .22; }
@@ -285,12 +287,14 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-role.core { border-left-color: var(--green); }
 .architecture-role.transport-required { border-left-color: var(--blue); }
 .architecture-role.profile-required { border-left-color: var(--amber); }
+.architecture-role.deployment-required { border-left-color: var(--blue); }
 .architecture-role.test-only { border-left-color: #d99aff; }
 .architecture-legend { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 .architecture-legend span { padding: .3rem .5rem; border-left: 3px solid #56645b; background: #111713; color: var(--muted); font-size: .62rem; }
 .architecture-legend .core { border-color: var(--green); }
 .architecture-legend .transport-required { border-color: var(--blue); }
 .architecture-legend .profile-required { border-color: var(--amber); }
+.architecture-legend .deployment-required { border-color: var(--blue); }
 .architecture-legend .test-only { border-color: #d99aff; }
 .relationship-summary { display: flex; align-items: center; gap: .5rem; margin-top: .7rem; padding: .65rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
 .relationship-summary > strong { flex: none; margin-right: .25rem; color: #c8d4cc; font-size: .68rem; }
@@ -313,6 +317,7 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .contract-dossier.core { border-top-color: var(--green); }
 .contract-dossier.transport-required { border-top-color: var(--blue); }
 .contract-dossier.profile-required { border-top-color: var(--amber); }
+.contract-dossier.deployment-required { border-top-color: var(--blue); }
 .contract-dossier.test-only { border-top-color: #d99aff; }
 .dossier-hero { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: .65rem; }
 .dossier-hero > div { min-width: 0; }
@@ -399,6 +404,37 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-expanded-groups button:hover { border-color: var(--green); }
 .architecture-expanded-groups strong { min-width: 1.15rem; padding: .1rem .25rem; border-radius: 99px; background: var(--green-soft); color: var(--green); font: .5rem ui-monospace, monospace; }
 .architecture-expanded-groups b { color: var(--muted); font-size: .7rem; }
+.architecture-transaction-dock { position: absolute; z-index: 9; right: .75rem; bottom: .75rem; left: .75rem; max-height: min(54%, 520px); padding: .85rem; overflow: auto; border: 1px solid var(--line-strong); border-radius: 13px; background: rgba(12, 18, 14, .97); box-shadow: 0 22px 70px rgba(0, 0, 0, .58); backdrop-filter: blur(16px); scrollbar-gutter: stable; }
+.architecture-transaction-dock > header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .65rem; align-items: start; }
+.architecture-transaction-dock > header h2 { margin: .12rem 0 .25rem; font-size: .95rem; }
+.architecture-transaction-dock > header p { max-width: 850px; margin: 0; color: var(--muted); font-size: .61rem; line-height: 1.45; }
+.architecture-transaction-dock > header > button { width: 2rem; height: 2rem; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-soft); color: var(--muted); font-size: 1rem; }
+.architecture-transaction-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .55rem; align-items: end; margin-top: .7rem; }
+.architecture-transaction-form label { display: grid; gap: .3rem; }
+.architecture-transaction-form label span { color: var(--muted); text-transform: uppercase; font: 700 .49rem ui-monospace, monospace; letter-spacing: .06em; }
+.architecture-transaction-form input { width: 100%; min-height: 38px; padding: .52rem .65rem; border: 1px solid var(--line-strong); border-radius: 7px; background: #090d0b; color: #edf4ef; font: .6rem ui-monospace, monospace; }
+.architecture-transaction-form button { min-height: 38px; padding: .5rem .72rem; border: 1px solid var(--green); border-radius: 7px; background: var(--green-soft); color: var(--green); font-weight: 750; }
+.architecture-transaction-form button:disabled { opacity: .45; }
+.architecture-transaction-error { margin: .5rem 0 0; color: var(--red); font-size: .6rem; }
+.architecture-transaction-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .45rem; margin-top: .65rem; padding-top: .55rem; border-top: 1px solid var(--line); }
+.architecture-transaction-summary code { overflow: hidden; color: #dce7df; text-overflow: ellipsis; white-space: nowrap; font-size: .56rem; }
+.architecture-transaction-summary span { color: var(--muted); font: .52rem ui-monospace, monospace; }
+.architecture-transaction-evidence { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+.architecture-transaction-evidence span { padding: .22rem .36rem; border-radius: 5px; background: #202923; color: #b8c5bc; font: .48rem ui-monospace, monospace; }
+.architecture-transaction-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .4rem; margin-top: .6rem; }
+.architecture-transaction-stages > button, .architecture-transaction-stages > article { min-width: 0; display: grid; grid-template-columns: 1.35rem minmax(0, 1fr); gap: .45rem; padding: .48rem; border: 1px solid var(--line); border-left: 2px solid var(--green); border-radius: 8px; background: var(--surface-soft); color: #edf4ef; text-align: left; }
+.architecture-transaction-stages > .shared, .architecture-transaction-stages > .external { border-left-color: var(--amber); }
+.architecture-transaction-stages > .failed { border-left-color: var(--red); }
+.architecture-transaction-stages > button:hover, .architecture-transaction-stages > button:focus-visible { border-color: var(--green); background: var(--green-soft); }
+.architecture-transaction-stages > * > span { width: 1.2rem; height: 1.2rem; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 50%; color: var(--green); font: 700 .45rem ui-monospace, monospace; }
+.architecture-transaction-stages > .shared > span, .architecture-transaction-stages > .external > span { border-color: var(--amber); color: var(--amber); }
+.architecture-transaction-stages > .failed > span { border-color: var(--red); color: var(--red); }
+.architecture-transaction-stages div { min-width: 0; }
+.architecture-transaction-stages strong, .architecture-transaction-stages code, .architecture-transaction-stages small { display: block; }
+.architecture-transaction-stages strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .56rem; }
+.architecture-transaction-stages code { margin-top: .15rem; overflow: hidden; color: var(--blue); text-overflow: ellipsis; white-space: nowrap; font-size: .47rem; }
+.architecture-transaction-stages small { margin-top: .22rem; color: var(--muted); font-size: .49rem; line-height: 1.4; }
+.architecture-transaction-note { margin: .5rem 0 0; color: var(--muted); font-size: .52rem; line-height: 1.45; }
 .architecture-canvas .deployment-graph { width: 100%; height: 100%; min-height: 0; border-top: 0; border-radius: 0 0 12px 12px; background-color: #080c0a; background-image: radial-gradient(circle, rgba(93, 121, 103, .22) 1px, transparent 1px), radial-gradient(circle at 50% 38%, #132019 0, transparent 52%); background-size: 22px 22px, 100% 100%; }
 .architecture-canvas .deployment-graph svg { min-width: 0; }
 .graph-node.unrelated, .graph-edge.unrelated { opacity: .16; }
@@ -420,6 +456,7 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-focus-node { height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 2px solid var(--green); border-radius: 16px; background: #101713; color: #edf4ef; user-select: text; }
 .architecture-focus-node.transport-required { border-color: var(--blue); }
 .architecture-focus-node.profile-required { border-color: var(--amber); }
+.architecture-focus-node.deployment-required { border-color: var(--blue); }
 .architecture-focus-node.optional { border-color: #829188; }
 .architecture-focus-node > header { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; padding: .75rem .8rem .35rem; }
 .architecture-focus-node > header { cursor: grab; user-select: none; }
@@ -513,6 +550,10 @@ body.architecture-immersive .architecture-canvas .deployment-graph { border: 0; 
 }
 
 @media (max-width: 600px) {
+  .architecture-transaction-dock { right: .35rem; bottom: .35rem; left: .35rem; max-height: 68%; padding: .65rem; }
+  .architecture-transaction-dock > header { grid-template-columns: minmax(0, 1fr) auto; }
+  .architecture-transaction-dock > header .status { grid-row: 2; grid-column: 1 / -1; justify-self: start; }
+  .architecture-transaction-form { grid-template-columns: 1fr; }
   .architecture-topbar { grid-template-columns: auto minmax(0, 1fr); padding: .45rem; }
   .architecture-deployment { order: 2; }
   .architecture-search { order: 3; }
@@ -553,7 +594,7 @@ body.architecture-immersive .architecture-canvas .deployment-graph { border: 0; 
 .execution-contract-choice small { margin-top: .18rem; color: var(--muted); font-size: .52rem; }
 .execution-contract-choice em { color: var(--muted); text-transform: uppercase; font: 700 .45rem ui-monospace, monospace; }
 .requirement-dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--muted); }
-.requirement-dot.core { background: var(--green); }.requirement-dot.transport-required { background: var(--blue); }.requirement-dot.profile-required { background: var(--amber); }.requirement-dot.test-only { background: var(--red); }
+.requirement-dot.core { background: var(--green); }.requirement-dot.transport-required, .requirement-dot.deployment-required { background: var(--blue); }.requirement-dot.profile-required { background: var(--amber); }.requirement-dot.test-only { background: var(--red); }
 .execution-function-list { display: grid; gap: .25rem; padding: .35rem; border-top: 1px solid var(--line); }
 .execution-function-choice { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .3rem .5rem; padding: .55rem; border: 1px solid transparent; border-radius: 7px; background: var(--surface-soft); color: #edf4ef; text-align: left; }
 .execution-function-choice:hover { border-color: var(--line-strong); }

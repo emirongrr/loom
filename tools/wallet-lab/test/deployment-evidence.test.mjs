@@ -66,7 +66,12 @@ test("deployment evidence distinguishes core, profile, optional, and test-only c
     LoomAccount: "0x0000000000000000000000000000000000000002",
     P256Validator: "0x0000000000000000000000000000000000000003",
     VaultHook: "0x0000000000000000000000000000000000000004",
-    DevnetTarget: "0x0000000000000000000000000000000000000005"
+    DevnetTarget: "0x0000000000000000000000000000000000000005",
+    RecoveryManager: "0x0000000000000000000000000000000000000006",
+    P256RecoveryValidatorFactory: "0x0000000000000000000000000000000000000007",
+    ECDSAGuardianVerifier: "0x0000000000000000000000000000000000000008",
+    P256GuardianVerifier: "0x0000000000000000000000000000000000000009",
+    ERC1271GuardianVerifier: "0x000000000000000000000000000000000000000a"
   };
   const deployment = buildDeploymentEvidence({ repoRoot: fileURLToPath(new URL("../../../", import.meta.url)), addresses, codeHashes: {} });
   const roles = Object.fromEntries(deployment.nodes.map(node => [node.id, node.requirement]));
@@ -75,6 +80,9 @@ test("deployment evidence distinguishes core, profile, optional, and test-only c
   assert.equal(roles.LoomAccount, "core");
   assert.equal(roles.EntryPoint, "transport-required");
   assert.equal(roles.P256Validator, "profile-required");
+  for (const name of ["RecoveryManager", "P256RecoveryValidatorFactory", "ECDSAGuardianVerifier", "P256GuardianVerifier", "ERC1271GuardianVerifier"]) {
+    assert.equal(roles[name], "deployment-required");
+  }
   assert.equal(roles.VaultHook, "optional");
   assert.equal(roles.DevnetTarget, "test-only");
   const entryPoint = deployment.nodes.find(node => node.id === "EntryPoint");

@@ -1,4 +1,4 @@
-import { buildArchitectureExplorer, buildFunctionExecutionLens, reduceArchitectureFocus } from "./architecture-explorer.mjs";
+import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransactionArchitectureJourney, reduceArchitectureFocus } from "./architecture-explorer.mjs";
 import { layoutArchitectureExplorer } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 import { buildOperationLens } from "./lab-domain.mjs";
@@ -28,6 +28,7 @@ const state = {
   ignoreGraphClick: false,
   architectureImmersive: false,
   architectureSearch: "",
+  architectureTransactionOpen: false,
   expandedArchitectureGroups: [],
   focusedNodeId: null,
   focusedSection: null,
@@ -606,7 +607,8 @@ function currentDeployment(events = state.artifact?.events ?? []) {
 }
 
 function currentTrace(events = state.artifact?.events ?? []) {
-  return state.deploymentSource === "sepolia" ? null : evmTraceEvidence(events);
+  if (state.deploymentSource === "sepolia") return state.executionResult?.kind === "transaction-analysis" ? state.executionResult : null;
+  return evmTraceEvidence(events);
 }
 
 function renderDeploymentVerification() {
@@ -630,6 +632,7 @@ function renderDeploymentVerification() {
 const requirementLabels = {
   core: ["Core account system", "Owns the smart-account execution and creation path."],
   "transport-required": ["ERC-4337 transport", "Required by the observed UserOperation route, not an owner of the wallet."],
+  "deployment-required": ["Required recovery infrastructure", "Published by every supported deployment so accounts can configure sovereign guardian recovery."],
   "profile-required": ["Current security profile", "Required by this deployment profile to validate its configured account behavior."],
   optional: ["Optional modules", "Installed only when the account enables that capability; they do not become Loom core."],
   "test-only": ["Lab-only contracts", "Deterministic scenario helpers that are not part of a production deployment."]
@@ -789,6 +792,39 @@ function renderFocusedArchitectureNode(deployment, contract, bounds, functionLen
   return `<foreignObject class="architecture-focus-object${lensClass}" data-contract-id="${escapeHtml(contract.id)}" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}"><div xmlns="http://www.w3.org/1999/xhtml" class="architecture-focus-node ${escapeHtml(contract.requirement)}"><header><div><p class="eyebrow">${escapeHtml(titleCase(contract.requirement))}</p><h2>${escapeHtml(contract.name)}</h2></div><button type="button" data-focus-close="true" aria-label="Close contract detail">×</button></header><div class="focus-identity">${renderContractAddress(contract)}${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source ↗</a>` : ""}</div><p class="focus-responsibility">${escapeHtml(contract.responsibility ?? "Deployment contract")}</p><nav aria-label="Contract detail sections">${tabs}</nav><div class="focus-content">${renderArchitectureSection(deployment, contract)}</div></div></foreignObject>`;
 }
 
+function transactionClassification(result) {
+  const classification = result?.provenance?.classification;
+  if (classification === "loom-confirmed") return ["Verified Loom execution", "success", "Trusted deployment code or a verified Loom account runtime was observed."];
+  if (classification === "erc4337-only") return ["ERC-4337 only", "waiting", "The shared EntryPoint was used, but that alone does not prove this transaction belongs to Loom."];
+  if (classification === "unrelated") return ["Not a Loom execution", "error", "The available call trace did not touch this deployment or a verified Loom account runtime."];
+  return ["Evidence incomplete", "waiting", "The selected RPC could not provide enough evidence to classify this transaction."];
+}
+
+function renderArchitectureTransactionDock(deployment) {
+  const toggle = $("#architecture-transaction-toggle");
+  const dock = $("#architecture-transaction-dock");
+  const enabled = state.deploymentSource === "sepolia";
+  toggle.hidden = !enabled;
+  toggle.setAttribute("aria-pressed", String(enabled && state.architectureTransactionOpen));
+  if (!enabled || !state.architectureTransactionOpen) {
+    dock.hidden = true;
+    dock.replaceChildren();
+    return;
+  }
+  const busy = state.executionStatus === "confirming";
+  const result = state.executionResult?.kind === "transaction-analysis" ? state.executionResult : null;
+  const journey = buildTransactionArchitectureJourney(deployment, result);
+  const [title, tone, description] = transactionClassification(result);
+  const error = state.executionError ? `<p class="architecture-transaction-error" role="alert">${escapeHtml(state.executionError)}</p>` : "";
+  const stages = result ? `<div class="architecture-transaction-stages" aria-label="Observed transaction path">${journey.stages.map((stage, index) => {
+    const content = `<span>${index + 1}</span><div><strong>${escapeHtml(stage.label)}</strong>${stage.address ? `<code>${escapeHtml(short(stage.address, 10, 8))}</code>` : ""}<small>${escapeHtml(stage.description)}</small></div>`;
+    return stage.contractId ? `<button type="button" class="${escapeHtml(stage.tone ?? "observed")}" data-transaction-contract="${escapeHtml(stage.contractId)}">${content}</button>` : `<article class="${escapeHtml(stage.tone ?? "observed")}">${content}</article>`;
+  }).join("")}</div>` : "";
+  const evidence = result ? `<div class="architecture-transaction-evidence"><span>${escapeHtml(formatTraceNumber(result.gasUsed))} gas</span><span>${escapeHtml(result.traceSummary?.calls ?? "No")} call frames</span><span>${escapeHtml(result.capabilities?.stateDiff ?? "state unavailable")}</span><span>${escapeHtml(result.capabilities?.opcodeTrace ?? "opcodes unavailable")}</span></div>` : "";
+  dock.hidden = false;
+  dock.innerHTML = `<header><div><p class="eyebrow">LIVE TRANSACTION PATH</p><h2>${escapeHtml(result ? title : "Trace a Sepolia wallet operation")}</h2><p>${escapeHtml(result ? description : "Paste a mined transaction hash. Wallet Lab verifies the selected deployment before mapping publisher, EntryPoint, account authority, policy, target calls, state effects, and receipt.")}</p></div>${result ? `<span class="status ${tone}">${escapeHtml(titleCase(journey.classification))}</span>` : ""}<button type="button" data-transaction-close aria-label="Close transaction trace">×</button></header><div class="architecture-transaction-form"><label><span>Sepolia transaction hash</span><input id="architecture-transaction-hash" value="${escapeHtml(state.executionTransactionHash)}" placeholder="0x…" spellcheck="false" /></label><button type="button" id="architecture-analyze-transaction"${busy || !state.executionTransactionHash ? " disabled" : ""}>${busy ? "Collecting evidence…" : "Analyze on chain"}</button></div>${error}${result ? `<div class="architecture-transaction-summary"><code>${escapeHtml(result.transactionHash)}</code><span>Block ${escapeHtml(formatTraceNumber(result.blockNumber))}</span></div>${evidence}${stages}<p class="architecture-transaction-note">Solid green stages are receipt- or trace-bound. Missing debug methods remain unavailable; Wallet Lab does not reconstruct them from guesses.</p>` : `<p class="architecture-transaction-note">The transaction sender is shown as publisher / bundler executor. Its address proves who paid transaction gas, not which commercial bundler service operated it.</p>`}`;
+}
+
 function renderDeploymentGraph(deployment) {
   const root = $("#deployment-graph");
   if (!deployment?.nodes?.length) {
@@ -850,7 +886,7 @@ function renderDeploymentGraph(deployment) {
     const nodeBounds = bounds[node.id];
     if (node.id === state.focusedNodeId) return renderFocusedArchitectureNode(deployment, node, nodeBounds, functionLens);
     const selected = node.id === state.focusedNodeId ? " selected" : "";
-    const role = ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
+    const role = ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "deployment-required": "DEPLOYMENT REQUIRED", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
     const verification = node.verification ? ` · ${node.verification.toUpperCase()}` : "";
     const identityClass = node.id === "LoomAccount" ? " implementation" : node.id === "ObservedAccount" ? " instance" : "";
     const displayName = node.name.length > 28 ? `${node.name.slice(0, 27)}…` : node.name;
@@ -872,6 +908,7 @@ function renderDeploymentGraph(deployment) {
   overlayButton.disabled = !hasTrace;
   overlayButton.setAttribute("aria-pressed", String(state.traceOverlayEnabled && hasTrace));
   overlayButton.textContent = hasTrace ? state.traceOverlayEnabled ? "Hide observed trace" : "Show observed trace" : "Trace unavailable";
+  renderArchitectureTransactionDock(deployment);
 }
 
 function graphPointerPosition(event) {
@@ -986,6 +1023,7 @@ function selectedFunction(contract) {
 const requirementDescriptions = {
   core: "Required in every Loom account deployment. This contract is part of the account authority or deterministic creation boundary.",
   "transport-required": "Required for this ERC-4337 route, but it does not own the account. Direct sovereign publication remains a separate path.",
+  "deployment-required": "Published and code-hash verified by every supported Loom deployment. Individual accounts still install and configure their own recovery authority.",
   "profile-required": "Required by the selected account security profile. Another valid Loom profile may install a different module.",
   optional: "Optional capability. It affects an account only after that account installs or configures it.",
   "test-only": "Local test evidence only. It is not a production Loom deployment dependency."
@@ -1000,7 +1038,7 @@ const layerDescriptions = {
   "execution-policy": "Applies constraints before and after account execution.",
   "asset-policy": "Applies optional asset-specific withdrawal and spending rules.",
   session: "Provides optional, bounded authority for a constrained session.",
-  recovery: "Provides optional delayed guardian recovery and validator replacement behavior.",
+  recovery: "Provides the deployment's delayed guardian recovery and validator replacement infrastructure. Account-level guardian configuration remains explicit.",
   "guardian-verifier": "Verifies one supported guardian proof format without changing account authority itself.",
   scenario: "Exists only to make the local laboratory state transition observable.",
   external: "Participates in the selected deployment but is outside Loom's cataloged core layers."
@@ -1456,7 +1494,16 @@ async function runLocalProbe(scope) {
 
 async function inspectSepoliaExecution() {
   if (state.deploymentSource !== "sepolia" || !state.executionTransactionHash) return;
-  await requestExecution("/api/execution/sepolia/analyze", { transactionHash: state.executionTransactionHash }, "confirming");
+  const result = await requestExecution("/api/execution/sepolia/analyze", { transactionHash: state.executionTransactionHash }, "confirming");
+  if (!result) return;
+  state.architectureTransactionOpen = true;
+  state.traceOverlayEnabled = result.capabilities?.callTrace === "available";
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const journey = buildTransactionArchitectureJourney(deployment, result);
+  const touched = new Set(journey.observedNodeIds);
+  const groups = architectureView(deployment).groups.filter(group => group.members.some(node => touched.has(node.id))).map(group => group.id);
+  state.expandedArchitectureGroups = [...new Set([...state.expandedArchitectureGroups, ...groups])];
+  renderDeployment(state.artifact?.events ?? []);
 }
 
 async function sendSepoliaExecution() {
@@ -1746,6 +1793,25 @@ $("#network-operation-groups").addEventListener("click", event => {
 });
 
 $("#panel-architecture").addEventListener("click", event => {
+  if (event.target.closest("#architecture-transaction-toggle")) {
+    state.architectureTransactionOpen = !state.architectureTransactionOpen;
+    renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
+    return;
+  }
+  if (event.target.closest("[data-transaction-close]")) {
+    state.architectureTransactionOpen = false;
+    renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
+    return;
+  }
+  if (event.target.closest("#architecture-analyze-transaction")) {
+    inspectSepoliaExecution();
+    return;
+  }
+  const transactionContract = event.target.closest("[data-transaction-contract]");
+  if (transactionContract) {
+    focusArchitectureNode(transactionContract.dataset.transactionContract);
+    return;
+  }
   if (state.ignoreGraphClick && event.target.closest("#deployment-graph")) {
     state.ignoreGraphClick = false;
     return;
@@ -1813,6 +1879,13 @@ $("#panel-architecture").addEventListener("click", event => {
     focusArchitectureNode(contractButton.dataset.contractId);
     return;
   }
+});
+
+$("#panel-architecture").addEventListener("input", event => {
+  if (event.target.id !== "architecture-transaction-hash") return;
+  state.executionTransactionHash = event.target.value.trim();
+  const analyze = $("#architecture-analyze-transaction");
+  if (analyze) analyze.disabled = !state.executionTransactionHash || state.executionStatus === "confirming";
 });
 
 function selectAuthorityActor(authorityId) {
@@ -2036,6 +2109,7 @@ function chooseDeployment(source) {
   state.focusedSection = null;
   state.focusedAbiItem = null;
   state.focusedEdgeId = null;
+  state.architectureTransactionOpen = false;
   state.selectedContractId = null;
   state.selectedFunctionSelector = null;
   state.selectedAuthorityId = null;

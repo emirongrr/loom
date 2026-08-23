@@ -48,11 +48,11 @@ const CONTRACT_PROFILES = Object.freeze({
   ExactCallSessionValidator: { layer: "session", requirement: "optional", responsibility: "Optional time-, use-, call-, and paymaster-bound session authority." },
   GranularSessionValidator: { layer: "session", requirement: "optional", responsibility: "Optional reusable target, selector, amount, counterparty, and time-bounded session authority." },
   VaultHook: { layer: "asset-policy", requirement: "optional", responsibility: "Optional daily-spend and delayed-withdrawal policy for protected assets." },
-  RecoveryManager: { layer: "recovery", requirement: "optional", responsibility: "Optional delayed guardian-threshold validator and guardian replacement path." },
-  P256RecoveryValidatorFactory: { layer: "recovery", requirement: "optional", responsibility: "Optional permissionless provisioning path for a recovered P-256 validator." },
-  ECDSAGuardianVerifier: { layer: "guardian-verifier", requirement: "optional", responsibility: "Optional ECDSA guardian proof verifier bound into guardian leaves." },
-  P256GuardianVerifier: { layer: "guardian-verifier", requirement: "optional", responsibility: "Optional P-256 passkey guardian proof verifier bound into guardian leaves." },
-  ERC1271GuardianVerifier: { layer: "guardian-verifier", requirement: "optional", responsibility: "Optional contract-wallet guardian proof verifier using ERC-1271." },
+  RecoveryManager: { layer: "recovery", requirement: "deployment-required", responsibility: "Required deployment-level delayed guardian-threshold validator and guardian replacement path. Each account still configures its own guardian set." },
+  P256RecoveryValidatorFactory: { layer: "recovery", requirement: "deployment-required", responsibility: "Required permissionless provisioning path for a recovered P-256 validator." },
+  ECDSAGuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for ECDSA guardian proofs bound into guardian leaves." },
+  P256GuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for P-256 passkey guardian proofs bound into guardian leaves." },
+  ERC1271GuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for contract-wallet guardian proofs using ERC-1271." },
   DevnetTarget: { layer: "scenario", requirement: "test-only", responsibility: "Local-only target used to make the test state transition independently observable." }
 });
 
