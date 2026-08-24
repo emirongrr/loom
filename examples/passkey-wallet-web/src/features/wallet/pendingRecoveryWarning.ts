@@ -87,7 +87,9 @@ function cancellationSentence(threshold: number): string {
   const quorum = cancellationQuorum(threshold);
   const reason = " One person cannot cancel a recovery alone -- if they could, anyone holding a stolen key could"
     + " block the guardians who were trying to take the account back.";
-  return `Stopping ${quorum.sentence.replace(/^it /, "it ")}.` + reason;
+  // `sentence` is written to follow a verb and already begins with "it", so it
+  // reads on from "Stopping" as it stands.
+  return `Stopping ${quorum.sentence}.` + reason;
 }
 
 const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
