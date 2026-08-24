@@ -16,6 +16,10 @@ import {
   type GuardianStatus, type OnChainGuardians
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
+import { guardianSetupStep } from "./guardianSetupStep";
+import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
+import { encryptRoster } from "./portableRoster";
+import { passkeyDerivedSecret } from "../wallet/webauthn";
 import { AddGuardianForm } from "./AddGuardianForm";
 import { createLoomGuardianChainReader, detectGuardianAddress, resolveLoomP256Guardian } from "./loomGuardian";
 import { PendingChangeCard } from "./PendingChangeCard";
@@ -117,24 +121,62 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     [onChain, committed]
   );
 
-  const exportRoster = () => {
-    const backup = createRosterBackup({
-      account: account.account,
-      chainId: account.chainId,
-      threshold: onChain?.threshold ?? committed.length,
-      entries: committed
+  /**
+   * A backup this account's own passkey can open, on any device that holds it.
+   *
+   * It used to leave as plain JSON, and the notice beside it had to ask people
+   * to keep it private: it names their guardians, which is the most sensitive
+   * thing this wallet holds. Now unlocking the wallet unlocks the file, and
+   * where it travels is the owner's business -- Loom stores nothing.
+   */
+  const exportRoster = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      const backup = createRosterBackup({
+        account: account.account,
+        chainId: account.chainId,
+        threshold: onChain?.threshold ?? committed.length,
+        entries: committed
+      });
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const secret = await passkeyDerivedSecret({
+        credentialId: account.credentialId as Hex,
+        ...(account.rpId ? { rpId: account.rpId } : {}),
+        salt
+      });
+      if (!secret) {
+        setError("This device's authenticator will not derive a key from the passkey, so an encrypted backup cannot be made here. Export from a device whose passkey supports it.");
+        return;
+      }
+      const file = await encryptRoster({ backup, account: account.account, chainId: account.chainId, key: { kind: "passkey", secret }, salt });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `loom-guardians-${account.account.slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      notifications.notify({
+        status: "success",
+        title: "Encrypted backup saved",
+        detail: "Only this account's passkey opens it. Put it anywhere you trust; Loom keeps no copy."
+      });
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "The backup could not be created.");
+    } finally { setBusy(false); }
+  };
+
+
+  /** Ask the passkey the same question the file was sealed with. */
+  const openEncryptedRoster = async (file: unknown): Promise<unknown> => {
+    const salt = rosterPrfSalt(parseEncryptedRoster(file));
+    const secret = await passkeyDerivedSecret({
+      credentialId: account.credentialId as Hex,
+      ...(account.rpId ? { rpId: account.rpId } : {}),
+      salt
     });
-    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `loom-guardians-${account.account.slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    notifications.notify({
-      status: "success",
-      title: "Guardian list exported",
-      detail: "Keep it private: it names your guardians. Without it this device cannot edit the set."
-    });
+    if (!secret) throw new Error("This device's passkey could not open the backup. Use the device that created it.");
+    return decryptRoster({ file, account: account.account, chainId: account.chainId, key: { kind: "passkey", secret } });
   };
 
   /** Restore only a private backup that reconstructs the live root. */
@@ -143,7 +185,12 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     if (!onChain) { setError("The account's guardian state has not loaded yet."); return; }
     setBusy(true);
     try {
-      const backup = parseRosterBackup(JSON.parse(text));
+      const parsed: unknown = JSON.parse(text);
+      // Older backups were plain JSON. Reading them still works, so a device
+      // holding one is not stranded by the change.
+      const backup = isEncryptedRoster(parsed)
+        ? parseRosterBackup(await openEncryptedRoster(parsed))
+        : parseRosterBackup(parsed);
       const verdict = verifyRosterBackup({ backup, account: account.account, chainId: account.chainId, onChain });
       if (!verdict.ok) throw new Error(verdict.reason);
       await roster.write(account.id, { entries: backup.entries, version: Date.now(), pending: null });
@@ -219,6 +266,13 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       });
       const delivered = await services.invitationLinks.deliver(invite, { expiresAt });
       setInvitation({ guardianId: entry.id, guardianLabel: entry.label, link: delivered.value, expiresAt });
+      // Recorded so the row can say it, rather than a paragraph telling every
+      // owner that invitations exist. It can only ever mean "sent from here":
+      // acceptance happens on the guardian's device and is never published.
+      const invitedAt = services.now();
+      const marked = committed.map(item => item.id === entry.id ? { ...item, invitedAt } : item);
+      setDraft(current => current.map(item => item.id === entry.id ? { ...item, invitedAt } : item));
+      await roster.write(account.id, { entries: marked, version: setVersion, pending: null });
       notifications.notify({
         status: "success",
         title: "Guardian invite ready",
@@ -329,6 +383,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     setReloads(count => count + 1);
   };
 
+  const [opened, setOpened] = useState<string | null>(null);
   const dirty = plan !== null && (plan.added.length > 0 || plan.removed.length > 0 || threshold !== (onChain?.threshold ?? 0));
 
   return <section className="section-card">
@@ -346,15 +401,26 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       propose a recovery. Reinstall the recovery module before relying on this quorum.
     </p>}
 
-    <ol className="stepper" aria-label="Guardian setup steps">
-      <li className={pending ? "done" : stage === "list" ? "active" : "done"}><span>1</span>Choose guardians</li>
-      <li className={pending ? "done" : stage === "review" ? "active" : ""}><span>2</span>Review</li>
-      <li className={pending ? "active" : ""}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
-      {/* The step that was missing. A committed set whose guardians hold no
-          invitation cannot approve anything: an approval carries the proof and
-          salt only their own capability supplies. */}
-      <li className={!pending && protection.kind === "in-sync" ? "active" : ""}><span>4</span>Invite guardians</li>
-    </ol>
+    {(() => {
+      const steps = guardianSetupStep({
+        pending: Boolean(pending),
+        stage,
+        dirty,
+        hasGuardians: committed.length > 0,
+        awaitingInvitations: false
+      });
+      // Shown only while a change is being carried through them. Editing an
+      // existing set is not a journey, and the screen should not pretend the
+      // reader is partway along one.
+      if (!steps.changing) return null;
+      const mark = (step: 1 | 2 | 3 | 4) => steps.current === step ? "active" : steps.done.includes(step) ? "done" : "";
+      return <ol className="stepper" aria-label="Guardian change steps">
+        <li className={mark(1)} aria-current={steps.current === 1 ? "step" : undefined}><span>1</span>Choose guardians</li>
+        <li className={mark(2)} aria-current={steps.current === 2 ? "step" : undefined}><span>2</span>Review</li>
+        <li className={mark(3)} aria-current={steps.current === 3 ? "step" : undefined}><span>3</span>Wait {formatDelay(MIN_DELAY_SECONDS)}</li>
+        <li className={mark(4)} aria-current={steps.current === 4 ? "step" : undefined}><span>4</span>Invite guardians</li>
+      </ol>;
+    })()}
 
     {pending && <PendingChangeCard
       config={config}
@@ -390,8 +456,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </p>
     </div>}
 
+    {/* The distinction that has to survive shortening: what is shown is real,
+        but its absence proves nothing. */}
     {operationDiscoveryIncomplete && <p className="callout warning">
-      Scheduled-change discovery was incomplete. Verified operations remain visible, but this device cannot prove that the list is exhaustive. Try another RPC before relying on the absence of a change.
+      This RPC did not return every scheduled change. What is listed is real; an empty list is not proof.
     </p>}
 
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
@@ -405,15 +473,48 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     {!pending && protection.kind !== "list-missing" && protection.kind !== "list-mismatch" && stage === "list" && <>
       {draft.length === 0
         ? <p className="form-note">No guardians yet. Add people or wallets that can help you recover this account — they never gain spending power.</p>
-        : <div className="guardian-list">{draft.map(entry => <div className="guardian-row" key={entry.id}>
-            <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
-            <div><strong>{entry.label}</strong><p className="breakable">{describeGuardian(entry.descriptor)}</p></div>
-            <div className="guardian-row-actions">
-              {protection.kind === "in-sync" && committed.some(item => item.id === entry.id) &&
-                <button className="text-button" disabled={busy} onClick={() => void inviteGuardian(entry)}>Invite</button>}
-              <button className="text-button" onClick={() => removeGuardian(entry.id)}>Remove</button>
-            </div>
-          </div>)}</div>}
+        : <div className="guardian-list">{draft.map(entry => {
+            const onChainAlready = protection.kind === "in-sync" && committed.some(item => item.id === entry.id);
+            const open = opened === entry.id;
+            return <div className={open ? "guardian-row opened" : "guardian-row"} key={entry.id}>
+              <button
+                className="guardian-row-open"
+                aria-expanded={open}
+                onClick={() => setOpened(open ? null : entry.id)}
+              >
+                <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
+                <span><strong>{entry.label}</strong><span className="breakable">{describeGuardian(entry.descriptor)}</span></span>
+                {/* One fact per guardian, where that guardian is. A paragraph
+                    above the list told every owner that invitations matter; it
+                    could not tell them which of their guardians was missing
+                    one, which is the only part they can act on. */}
+                {onChainAlready && <span className={entry.invitedAt ? "guardian-state sent" : "guardian-state unsent"}>
+                  <span aria-hidden="true">{entry.invitedAt ? "✓" : "!"}</span>
+                  {entry.invitedAt ? "Invitation sent" : "No invitation"}
+                </span>}
+                <span className="guardian-row-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+              </button>
+              {/* What can be done to one guardian belongs with that guardian,
+                  not in the list. Firing an invitation straight from a row put
+                  a irreversible-looking action a stray click away, and left the
+                  list carrying two verbs for the same person. */}
+              {open && <div className="guardian-row-panel">
+                {onChainAlready
+                  ? <p className="form-note">
+                    An invitation carries the proof this guardian signs with. It costs nothing, needs no transaction,
+                    and grants no spending power.
+                  </p>
+                  : <p className="form-note">
+                    Not on chain yet. Review and commit the change first; an invitation issued now would name a set
+                    the account does not hold.
+                  </p>}
+                <div className="guardian-actions">
+                  {onChainAlready && <button className="secondary" disabled={busy} onClick={() => void inviteGuardian(entry)}>Send invitation</button>}
+                  <button className="text-button" onClick={() => { setOpened(null); removeGuardian(entry.id); }}>Remove guardian</button>
+                </div>
+              </div>}
+            </div>;
+          })}</div>}
 
       {invitation && <GuardianInvitationCard
         invitation={invitation}
@@ -421,32 +522,9 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         onClose={() => setInvitation(null)}
       />}
 
-      {protection.kind === "in-sync" && committed.length > 0 && <div className="callout warning">
-        <strong>Each guardian needs their own invitation.</strong>
-        <p>
-          Writing the set on chain does not reach anyone. A guardian approves with the proof and salt their
-          invitation carries, so one who never received it cannot help you recover this account — and you would
-          only find that out when you needed them. Issuing an invitation needs no signature and no transaction,
-          and grants no spending power.
-        </p>
-        <p className="form-note">
-          This wallet cannot tell whether a guardian accepted: that happens on their device, and nothing about it
-          is published. Ask each of them to confirm.
-        </p>
-        <div className="guardian-list">
-          {committed.map(entry => <div className="guardian-row" key={`invite-${entry.id}`}>
-            <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
-            <div><strong>{entry.label}</strong><p className="breakable">{describeGuardian(entry.descriptor)}</p></div>
-            <div className="guardian-row-actions">
-              <button className="secondary" disabled={busy} onClick={() => void inviteGuardian(entry)}>Create invitation</button>
-            </div>
-          </div>)}
-        </div>
-      </div>}
-
       {protection.kind === "in-sync" && <p className="form-note">
-        This list is held only on this device and matches the account's on-chain guardian root.{" "}
-        <button className="text-button" onClick={exportRoster}>Export a backup</button> — without it, another device cannot edit the set.
+        Held on this device only.{" "}
+        <button className="text-button" disabled={busy} onClick={() => void exportRoster()}>Export an encrypted backup</button> to edit it from another.
       </p>}
 
       <AddGuardianForm busy={busy} onAdd={addGuardian} />
@@ -456,7 +534,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
           <select value={threshold} onChange={event => setThreshold(Number(event.target.value))}>
             {Array.from({ length: draft.length }, (_, index) => index + 1).map(value => <option key={value} value={value}>{value} of {draft.length}</option>)}
           </select>
-          <small className="form-note">A higher threshold resists a compromised guardian; a lower one survives an unreachable guardian.</small>
+          <small className="form-note">Higher survives a compromised guardian; lower survives an unreachable one.</small>
         </label>
       </div>}
 
@@ -489,4 +567,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
 function randomBytes32(): Hex {
   const value = crypto.getRandomValues(new Uint8Array(32));
   return `0x${Array.from(value, byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** A file that names itself as the encrypted form, before anything is tried. */
+function isEncryptedRoster(value: unknown): boolean {
+  return Boolean(value) && typeof value === "object"
+    && (value as { format?: unknown }).format === "loom.guardian-roster.encrypted";
 }

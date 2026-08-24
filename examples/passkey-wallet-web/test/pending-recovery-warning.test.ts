@@ -39,13 +39,23 @@ test("an expired recovery still says it occupies the slot", () => {
 test("cancellation is described as needing guardians, never the owner alone", () => {
   const notice = describePendingRecovery({ ...base, readyAt: 200n, expiresAt: 800n, nowSeconds: 100n });
   if (notice.kind !== "pending") throw new Error("unreachable");
-  assert.match(notice.cancellation, /1 of your guardians/);
+  assert.match(notice.cancellation, /this wallet plus 1 guardian, or/);
   assert.match(notice.cancellation, /2 guardians without this wallet/);
   assert.match(notice.cancellation, /cannot cancel a recovery alone/);
 });
 
-test("a threshold of one still names at least one helper", () => {
+// At a threshold of one the account route would need the same single guardian
+// as the other, and the account besides. Reported from the running app, where
+// this read "1 guardians" and described one thing twice.
+test("a threshold of one says so once, and counts in the singular", () => {
   const notice = describePendingRecovery({ ...base, guardianThreshold: 1, readyAt: 200n, expiresAt: 800n, nowSeconds: 100n });
   if (notice.kind !== "pending") throw new Error("unreachable");
-  assert.match(notice.cancellation, /1 of your guardians/);
+  assert.match(notice.cancellation, /takes 1 guardian, with or without this wallet/);
+  assert.doesNotMatch(notice.cancellation, /1 guardians/);
+});
+
+test("plural guardians are counted in the plural", () => {
+  const notice = describePendingRecovery({ ...base, guardianThreshold: 3, readyAt: 200n, expiresAt: 800n, nowSeconds: 100n });
+  if (notice.kind !== "pending") throw new Error("unreachable");
+  assert.match(notice.cancellation, /this wallet plus 2 guardians, or 3 guardians without this wallet/);
 });

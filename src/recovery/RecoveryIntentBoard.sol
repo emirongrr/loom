@@ -23,6 +23,32 @@ interface IRecoveryProposalSource {
     function recoveryNonces(address account) external view returns (uint64);
 }
 
+/// @notice The slice of a recovery manager the cancellation side reads. Kept
+/// apart from `IRecoveryProposalSource` because the two describe opposite
+/// requests, and a board that could confuse them would be a board that let a
+/// guardian's approval count as their objection.
+interface IRecoveryCancellationSource {
+    function pendingRecoveries(address account)
+        external
+        view
+        returns (
+            bytes32 oldValidatorsHash,
+            address newValidator,
+            bytes32 initDataHash,
+            bytes32 newGuardianRoot,
+            uint8 newGuardianThreshold,
+            uint48 readyAt,
+            uint48 expiresAt,
+            uint64 configVersion,
+            uint64 nonce
+        );
+
+    function cancelDigest(address account, bytes32 recoveryId, uint64 configVersion, uint64 nonce)
+        external
+        view
+        returns (bytes32);
+}
+
 /// @notice Optional publication surface that lets guardian approvals accumulate
 /// across separate transactions, and lets a guardian discover that an account
 /// they protect is being recovered, without anyone gaining authority.
@@ -51,6 +77,8 @@ contract RecoveryIntentBoard {
     error SignatureTooLarge();
     /// @dev The account has not installed the named contract as its recovery module.
     error UnknownRecoveryManager();
+    /// @dev There is no pending recovery to object to.
+    error NoPendingRecovery();
 
     /// @notice Upper bound on a published signature, so one guardian cannot emit
     /// an unbounded log. Comfortably above a WebAuthn P-256 assertion, which is
@@ -82,6 +110,24 @@ contract RecoveryIntentBoard {
     /// @dev The approval tuple travels in log data so a third party can rebuild
     /// the exact `GuardianVerificationLib.Approval` the manager will accept.
     event RecoveryApprovalPublished(
+        address indexed account,
+        bytes32 indexed recoveryId,
+        bytes32 indexed guardianLeaf,
+        address recoveryManager,
+        address verifier,
+        bytes32 keyCommitment,
+        bytes32 salt,
+        bytes signature,
+        bytes32[] proof
+    );
+
+    /// @notice One guardian signature against a *pending* recovery, verified at
+    /// publication time exactly as an approval is.
+    /// @dev Deliberately a distinct event from `RecoveryApprovalPublished`. A
+    /// consumer scanning one must never pick up the other: they are signatures
+    /// over different EIP-712 types answering opposite questions, and a bundle
+    /// that mixed them would be refused by the manager only after the gas.
+    event RecoveryCancellationPublished(
         address indexed account,
         bytes32 indexed recoveryId,
         bytes32 indexed guardianLeaf,
@@ -233,6 +279,81 @@ contract RecoveryIntentBoard {
             nonce
         );
         emit RecoveryApprovalPublished(
+            account,
+            recoveryId,
+            GuardianVerificationLib.guardianLeaf(approvals[0].verifier, approvals[0].keyCommitment, approvals[0].salt),
+            recoveryManager,
+            approvals[0].verifier,
+            approvals[0].keyCommitment,
+            approvals[0].salt,
+            approvals[0].signature,
+            approvals[0].proof
+        );
+    }
+
+    /// @notice Publish one guardian's signature to cancel the recovery currently
+    /// pending against `account`.
+    ///
+    /// @dev The mirror of `publishApproval`, and needed for the same reason:
+    /// without it, every cancellation signature has to reach one device, and a
+    /// quorum that cannot assemble is a quorum that cannot act. Stopping a
+    /// recovery is the more time-pressed of the two -- the delay is running --
+    /// so the route that does not depend on reaching one person matters more
+    /// here, not less.
+    ///
+    /// Nothing about the recovery is taken from the caller. The pending record
+    /// is read from the manager the account installed, and `recoveryId` and the
+    /// digest are derived from it, so a publication can only ever name the
+    /// recovery the chain is actually holding. Proposing again advances the
+    /// nonce, which moves both, so a signature cannot be carried forward to the
+    /// next recovery.
+    ///
+    /// Still only a log, and still no authority: the manager re-verifies every
+    /// approval from scratch when the cancellation is finally submitted.
+    function publishCancellation(
+        address account,
+        address recoveryManager,
+        GuardianVerificationLib.Approval[] calldata approvals
+    ) external returns (bytes32 recoveryId) {
+        if (approvals.length != 1) {
+            revert SingleApprovalRequired();
+        }
+        if (approvals[0].signature.length > MAX_SIGNATURE_BYTES) revert SignatureTooLarge();
+        if (!ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, recoveryManager)) {
+            revert UnknownRecoveryManager();
+        }
+
+        (
+            bytes32 oldValidatorsHash,
+            address newValidator,
+            bytes32 initDataHash,
+            bytes32 newGuardianRoot,
+            uint8 newGuardianThreshold,
+            uint48 readyAt,,
+            uint64 configVersion,
+            uint64 nonce
+        ) = IRecoveryCancellationSource(recoveryManager).pendingRecoveries(account);
+        // An expired recovery still occupies the slot and still needs
+        // cancelling, so only the absence of one is refused.
+        if (readyAt == 0) revert NoPendingRecovery();
+
+        recoveryId = _recoveryId(
+            account,
+            oldValidatorsHash,
+            newValidator,
+            initDataHash,
+            newGuardianRoot,
+            newGuardianThreshold,
+            configVersion,
+            nonce
+        );
+        bytes32 digest =
+            IRecoveryCancellationSource(recoveryManager).cancelDigest(account, recoveryId, configVersion, nonce);
+        if (!GuardianVerificationLib.approved(ILoomAccount(account).guardianRoot(), 1, digest, approvals)) {
+            revert InvalidApproval();
+        }
+
+        emit RecoveryCancellationPublished(
             account,
             recoveryId,
             GuardianVerificationLib.guardianLeaf(approvals[0].verifier, approvals[0].keyCommitment, approvals[0].salt),

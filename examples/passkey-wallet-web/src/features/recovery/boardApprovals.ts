@@ -104,3 +104,51 @@ export function mergeApprovals(input: {
   }
   return Object.freeze([...byLeaf.values()]);
 }
+
+/**
+ * Read the *cancellation* signatures published for one recovery.
+ *
+ * Deliberately a separate call from `readBoardApprovals`, reading a separate
+ * event. The two are signatures over different EIP-712 types answering
+ * opposite questions; a function that returned both would sooner or later be
+ * called by something that wanted one.
+ */
+export async function readBoardCancellations(input: {
+  readonly chainId: number;
+  readonly account: Address;
+  readonly board: Address;
+  readonly recoveryManager: Address;
+  readonly recoveryId: Hex;
+  readonly logTransport: Parameters<typeof createRecoveryIntentBoardReader>[0]["logTransport"];
+}): Promise<BoardApprovalScan> {
+  try {
+    const reader = createRecoveryIntentBoardReader({
+      chainId: input.chainId,
+      account: input.account,
+      board: input.board,
+      recoveryManager: input.recoveryManager,
+      ...(input.logTransport ? { logTransport: input.logTransport } : {})
+    });
+    const snapshot = await reader.discover();
+    const wanted = input.recoveryId.toLowerCase();
+    const byLeaf = new Map<string, BoardApproval>();
+    for (const entry of snapshot.cancellations) {
+      if (entry.recoveryId.toLowerCase() !== wanted) continue;
+      const key = entry.guardianLeaf.toLowerCase();
+      if (byLeaf.has(key)) continue;
+      byLeaf.set(key, Object.freeze({
+        guardianLeaf: entry.guardianLeaf,
+        approval: entry.approval,
+        confirmed: entry.confirmed
+      }));
+    }
+    return Object.freeze({ approvals: Object.freeze([...byLeaf.values()]) });
+  } catch (error) {
+    return Object.freeze({
+      approvals: [],
+      unavailable: error instanceof Error
+        ? error.message
+        : "Published cancellations could not be read. Signatures handed over directly are unaffected."
+    });
+  }
+}

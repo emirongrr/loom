@@ -1,4 +1,6 @@
+import { parseAbi } from "viem";
 import type { Address } from "@loom/core";
+import { cancellationQuorum } from "../recovery/cancellationQuorum.ts";
 
 /**
  * What an account owner is told when someone has started recovering their
@@ -37,10 +39,7 @@ export function describePendingRecovery(input: {
 }): PendingRecoveryNotice {
   if (!input.pending || input.readyAt === 0n) return Object.freeze({ kind: "none" as const });
 
-  const helpers = Math.max(1, input.guardianThreshold - 1);
-  const cancellation = `Stopping it needs this wallet plus ${helpers} of your guardians, or ${input.guardianThreshold}`
-    + ` guardians without this wallet. One person cannot cancel a recovery alone -- if they could, anyone holding a`
-    + ` stolen key could block the guardians who were trying to take the account back.`;
+  const cancellation = cancellationSentence(input.guardianThreshold);
 
   if (input.nowSeconds > input.expiresAt) {
     return Object.freeze({
@@ -78,6 +77,21 @@ export function describePendingRecovery(input: {
   });
 }
 
+
+/**
+ * How cancelling actually works, in a sentence the reader can act on. The rule
+ * itself lives in [[cancellationQuorum]] because it was written out by hand in
+ * two screens and was wrong in both.
+ */
+function cancellationSentence(threshold: number): string {
+  const quorum = cancellationQuorum(threshold);
+  const reason = " One person cannot cancel a recovery alone -- if they could, anyone holding a stolen key could"
+    + " block the guardians who were trying to take the account back.";
+  // `sentence` is written to follow a verb and already begins with "it", so it
+  // reads on from "Stopping" as it stands.
+  return `Stopping ${quorum.sentence}.` + reason;
+}
+
 const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
 
 /** Coarse on purpose: the decision is "is there time", not "how many seconds". */
@@ -86,3 +100,16 @@ function when(seconds: bigint): string {
   if (seconds < 86_400n) return `in about ${Number(seconds / 3600n)} hour(s)`;
   return `in about ${Number(seconds / 86_400n)} day(s)`;
 }
+
+/**
+ * The reads this warning is built from.
+ *
+ * Declared beside the rule that interprets them rather than inside the
+ * component that renders it: a screen should not be the place where the shape
+ * of a contract call is decided.
+ */
+export const PENDING_RECOVERY_READS = parseAbi([
+  "function pendingRecoveries(address) view returns (bytes32 oldValidatorsHash, address newValidator, bytes32 initDataHash, bytes32 newGuardianRoot, uint8 newGuardianThreshold, uint48 readyAt, uint48 expiresAt, uint64 configVersion, uint64 nonce)"
+]);
+
+export const ACCOUNT_THRESHOLD_READ = parseAbi(["function guardianThreshold() view returns (uint256)"]);

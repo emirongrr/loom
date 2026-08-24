@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { P256RecoveryValidatorFactoryAbi, RecoveryIntentBoardAbi } from "@loom/core/abi";
+import { P256RecoveryValidatorFactoryAbi } from "@loom/core/abi";
 import { recoveryApprovalFromResponse, serializeRecoveryProtocol, type GuardianInviteV1, type RecoveryRequestV1, type RecoveryResponseV1 } from "@loom/sdk/recovery";
-import { encodeFunctionData, keccak256 } from "viem";
+import { keccak256 } from "viem";
 import { useAppServices } from "../../app/AppServices";
 import { useNetwork } from "../../config/NetworkContext";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
@@ -11,6 +11,7 @@ import { createAccountGuardianClient } from "../security/guardianClient";
 import { submitAccountCalls } from "../wallet/accountClient";
 import { guardianCapabilityMatchesAccount, signGuardianDigestWithPasskey } from "./freezeSigning";
 import { createGuardianRecoveryResponse, prepareGuardianRecoveryReview, type GuardianRecoveryReview } from "../recovery/recoveryApproval";
+import { publishApproval } from "../recovery/recoveryCalls";
 import { safeUserMessage } from "../../domain/errors/appError";
 import { Dialog } from "../../components/Dialog";
 
@@ -59,26 +60,18 @@ export function RecoveryApprovalDialog({ request, capability, deployment, guardi
   };
 
   const publishCalldata = () => {
-    if (!response || !review) return null;
-    const approval = recoveryApprovalFromResponse(response);
-    return encodeFunctionData({
-      abi: RecoveryIntentBoardAbi,
-      functionName: "publishApproval",
-      args: [
-        request.account, request.recoveryManager, review.oldValidatorsHash, request.newValidator,
-        request.initDataHash, request.newGuardianRoot, request.newGuardianThreshold,
-        // The board takes an array so it can reuse `GuardianVerificationLib`'s
-        // calldata loop; it requires exactly one entry. `leaf` is derived on
-        // chain and is not part of the struct.
-        [{
-          verifier: approval.verifier,
-          keyCommitment: approval.keyCommitment,
-          salt: approval.salt,
-          signature: approval.signature,
-          proof: [...approval.proof]
-        }]
-      ]
-    });
+    if (!response || !review || !board) return null;
+    return publishApproval({
+      board,
+      account: request.account,
+      recoveryManager: request.recoveryManager,
+      oldValidatorsHash: review.oldValidatorsHash,
+      newValidator: request.newValidator,
+      initDataHash: request.initDataHash,
+      newGuardianRoot: request.newGuardianRoot,
+      newGuardianThreshold: request.newGuardianThreshold,
+      approval: recoveryApprovalFromResponse(response)
+    }).data;
   };
 
   const publish = async () => {

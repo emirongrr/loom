@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { GuardianInviteV1, RecoveryRequestV1 } from "@loom/sdk/recovery";
-import { parseGuardianInvite, parseRecoveryRequest } from "@loom/sdk/recovery";
+import type { CancelRequestV1, GuardianInviteV1, RecoveryRequestV1 } from "@loom/sdk/recovery";
+import { parseCancelRequest, parseGuardianInvite, parseRecoveryRequest } from "@loom/sdk/recovery";
 import { receiveGuardianInvite } from "../../transports/invitations";
 import { shorten } from "../../components/AccountHeader";
 import { useAppServices } from "../../app/AppServices";
@@ -13,21 +13,38 @@ import { safeUserMessage } from "../../domain/errors/appError";
 import { guardianVaultRecordsForAccount, reviewableGuardianCapabilitiesForAccount } from "../../storage/guardianVaultScope";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
 import { RecoveryApprovalDialog } from "./RecoveryApprovalDialog";
+import { CancellationApprovalDialog } from "./CancellationApprovalDialog";
+import { Callout } from "../../components/Callout";
+import { describePendingCancellation, distinctProtectedAccounts, protectedAccountsKey, type PendingCancellationView } from "./pendingCancellations";
 import { useNetwork } from "../../config/NetworkContext";
 import { createRecoveryLogTransport } from "../../transports/recoveryLogs";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { discoverGuardianRecoveryRequests } from "./guardianDiscovery";
 import type { DiscoveredRequestView } from "./discoveredRequests";
 
-export function GuardianWorkspace({ account, inboundLink = "" }: { readonly account: AccountHandle; readonly inboundLink?: string }) {
+export function GuardianWorkspace({ account, inboundLink = "", embedded = false }: {
+  readonly account: AccountHandle;
+  readonly inboundLink?: string;
+  /** Rendered inside another page, which already carries the heading. */
+  readonly embedded?: boolean;
+}) {
   const services = useAppServices();
   const [records, setRecords] = useState<readonly GuardianVaultRecord[]>([]);
   const [issues, setIssues] = useState<readonly GuardianVaultIssue[]>([]);
   const [link, setLink] = useState("");
+  const [arrived, setArrived] = useState(false);
   const [message, setMessage] = useState("");
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
   const [recoveryArtifact, setRecoveryArtifact] = useState("");
+  const [cancelArtifact, setCancelArtifact] = useState("");
+  const [cancelMessage, setCancelMessage] = useState("");
+  const [cancelling, setCancelling] = useState<{ readonly request: CancelRequestV1; readonly capability: GuardianInviteV1 } | null>(null);
+  const [stoppable, setStoppable] = useState<{
+    readonly status: "idle" | "reading" | "done";
+    readonly entries: readonly PendingCancellationView[];
+    readonly unavailable?: string;
+  }>({ status: "idle", entries: [] });
   const [approving, setApproving] = useState<{ readonly request: RecoveryRequestV1; readonly capability: GuardianInviteV1; readonly alreadyPublished?: boolean } | null>(null);
   const { config } = useNetwork();
   const [discovery, setDiscovery] = useState<{
@@ -75,6 +92,7 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
       .then(payload => {
         if (!payload || typeof payload !== "object" || (payload as Record<string, unknown>).format !== "loom.recovery-request") {
           setLink(inboundLink);
+          setArrived(true);
           return;
         }
         const request = parseRecoveryRequest(payload);
@@ -108,6 +126,7 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
   };
   const visibleRecords = guardianVaultRecordsForAccount(records, account);
   const reviewableRecords = reviewableGuardianCapabilitiesForAccount(records, account, Math.floor(services.now() / 1000));
+  const protectedAccountKey = protectedAccountsKey(reviewableRecords);
 
   /**
    * Ask the board about the accounts this wallet already protects. The query set
@@ -188,12 +207,114 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
       setApproving({ request, capability: record.capability });
     } catch (error) { setMessage(safeUserMessage(error, "Recovery request could not be reviewed.", "validation")); }
   };
-  return <div className="page-stack"><header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>
-    <section className="privacy-banner"><span aria-hidden="true">◌</span><div><strong>Local and encrypted</strong><p>Capabilities use authenticated browser encryption. This reduces casual storage disclosure, but an XSS running on this origin can still use the device key.</p></div></section>
-    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Accept an invitation</p><h2>Invite link or QR payload</h2></div><span className="pill">Bearer secret</span></div>
-      <label className="field"><span>Invitation</span><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" /></label>
+  /**
+   * Read a cancellation request the same way a recovery request is read, and
+   * refuse it just as readily. Kept separate from `reviewRecovery` because the
+   * two ask opposite questions of the guardian, and one function answering
+   * both would be one edit away from answering the wrong one.
+   */
+  /**
+   * Look for recoveries pending against the accounts this guardian protects.
+   *
+   * Reads only accounts already in the local list, one ordinary state read
+   * each. Nothing on chain records who protects whom, and this must not become
+   * the thing that does.
+   */
+  useEffect(() => {
+    if (!deployment?.recoveryModule || protectedAccountKey.length === 0) return;
+    const manager = deployment.recoveryModule;
+    const chainId = deployment.chainId;
+    let cancelled = false;
+    setStoppable({ status: "reading", entries: [] });
+    void (async () => {
+      try {
+        const now = Math.floor(services.now() / 1000);
+        const found: PendingCancellationView[] = [];
+        let unreadable = 0;
+        for (const capability of distinctProtectedAccounts(reviewableRecords, chainId)) {
+          try {
+            const client = createAccountGuardianClient({
+              config, chainId, account: capability.account, recoveryManager: manager, publicClients: services.publicClients
+            });
+            const [live, pending] = await Promise.all([client.inspectAccount(), client.readPendingRecovery()]);
+            const view = describePendingCancellation({ capability, recoveryManager: manager, live, pending, nowSeconds: now });
+            if (view) found.push(view);
+          } catch {
+            // One account that cannot be read -- not deployed yet, or an
+            // endpoint that failed on this call -- must not hide the pending
+            // recoveries of every other account this guardian protects.
+            unreadable += 1;
+          }
+        }
+        if (!cancelled) {
+          setStoppable({
+            status: "done",
+            entries: Object.freeze(found),
+            ...(unreadable > 0
+              ? { unavailable: `${unreadable} of the accounts you protect could not be read, so this list may be incomplete.` }
+              : {})
+          });
+        }
+      } catch {
+        // Unreadable is not "nothing pending". The manual path stays open.
+        if (!cancelled) setStoppable({ status: "done", entries: [], unavailable: "Pending recoveries could not be read from the network. Paste a cancellation request instead." });
+      }
+    })();
+    return () => { cancelled = true; };
+    // Keyed by which accounts are protected, not by the array holding them.
+    // `reviewableRecords` is rebuilt on every render, so depending on it made
+    // this effect re-run on every render -- and its first act is to set the
+    // reading state, which causes another render. The list sat on "Reading the
+    // chain" forever, looking like a chain problem rather than a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, deployment, protectedAccountKey, services]);
+
+  const reviewCancellation = async () => {
+    setCancelMessage("");
+    try {
+      const request = cancelArtifact.trim().startsWith("{")
+        ? parseCancelRequest(cancelArtifact)
+        : parseCancelRequest(await createEncryptedLinkTransport<CancelRequestV1>({ origin: window.location.origin, path: "/guardian" }).receive(cancelArtifact));
+      const now = Math.floor(services.now() / 1000);
+      const record = reviewableGuardianCapabilitiesForAccount(records, account, now).find(candidate =>
+        candidate.capability.chainId === request.chainId
+        && candidate.capability.account.toLowerCase() === request.account.toLowerCase()
+      );
+      if (!record) throw new Error("This guardian wallet has no accepted capability for that protected account.");
+      setCancelling({ request, capability: record.capability });
+    } catch (error) { setCancelMessage(safeUserMessage(error, "Cancellation request could not be reviewed.", "validation")); }
+  };
+  return <div className="page-stack">{!embedded && <header className="page-title"><p className="eyebrow">Guardian workspace</p><h1>Accounts I protect</h1><p>This private list exists only on this device. The chain cannot enumerate it.</p></header>}
+    <section className="section-card">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Someone asked for your help</p>
+          <h2>Accept an invitation</h2>
+        </div>
+        <span className="pill">Treat like a password</span>
+      </div>
+      {/* Arriving by link used to fill the box and say nothing. Someone who
+          followed a friend's message found a filled field and no idea what it
+          was or what to press. */}
+      {arrived && <Callout tone="warning" title="You were invited to help protect an account." live>
+        <p>
+          The invitation is in the field below. Reviewing it shows whose account it is and what you would be agreeing
+          to. Accepting gives you no power to spend their money — only to help them recover the account if they lose
+          access.
+        </p>
+      </Callout>}
+      <label className="field">
+        <span>Invitation link</span>
+        <input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" />
+      </label>
       <button className="primary" onClick={accept} disabled={!link.trim()}>Review invitation</button>
-      <details><summary>Advanced / portable file fallback</summary><p>Paste a versioned JSON capability exported from an independent wallet. It contains only your proof, never the full guardian set.</p></details>
+      <details>
+        <summary>It arrived as a file instead</summary>
+        <p className="form-note">
+          Paste the file&apos;s contents in the same box. It carries only your own part of the arrangement, never the
+          list of the other people helping.
+        </p>
+      </details>
       {message && <p className="toast" role="status">{message}</p>}
     </section>
     {reviewableRecords.length > 0 && <section className="section-card" aria-labelledby="discovered-requests-heading">
@@ -234,6 +355,84 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
           reason given -- and tried the invitation box instead. */}
       {reviewableRecords.length === 0 && <p className="callout warning"><strong>No accepted invitation for this account yet.</strong> A guardian approves with the proof and salt their invitation carries, and the same capability is what lets an approval be published on chain, so the invitation has to come first. Ask the recovering person for it -- issuing one costs them nothing and needs no transaction -- and accept it above.</p>}
       <label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} disabled={reviewableRecords.length === 0} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim() || reviewableRecords.length === 0} onClick={() => void reviewRecovery()}>Review recovery request</button></section>
+    <section className="section-card cancellation-card" aria-labelledby="stop-recovery-heading">
+      <div className="section-heading">
+        <div><p className="eyebrow">The opposite request</p><h2 id="stop-recovery-heading">Stop a recovery</h2></div>
+        <span className="pill failed">No gas</span>
+      </div>
+      <p>
+        An account owner who did not start a recovery of their own account can ask you to help stop it. Cancelling
+        needs a quorum for the same reason approving does: neither the owner nor any single guardian can do it alone.
+      </p>
+      <div className="removal-confirmation">
+        <div className="removal-warning">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>Read which way you are signing.</strong>
+            <p>
+              A cancellation signature helps take a recovery away. If the recovery is genuine, that strands the
+              owner — the failure guardians exist to prevent. Confirm with the owner over an independent channel
+              before you sign.
+            </p>
+          </div>
+        </div>
+      </div>
+      {reviewableRecords.length === 0 && <p className="callout warning">
+        <strong>Nothing here can be signed yet.</strong> A cancellation carries the same proof and salt an approval
+        does, so an accepted invitation has to come first — accept one above.
+      </p>}
+
+      {stoppable.status === "reading" && <p className="form-note">Reading the chain for pending recoveries…</p>}
+      {stoppable.unavailable && <p className="callout warning" role="status">{stoppable.unavailable}</p>}
+      {stoppable.status === "done" && stoppable.entries.length === 0 && !stoppable.unavailable && reviewableRecords.length > 0
+        && <p className="form-note">No recovery is pending against the accounts you protect, so there is nothing to stop.</p>}
+
+      {stoppable.entries.length > 0 && <ul className="wallet-list">
+        {stoppable.entries.map(entry => <li key={entry.request.recoveryId} className="wallet-list-item stoppable-recovery">
+          <div>
+            <strong className="breakable">{entry.account}</strong>
+            <p className="form-note">
+              {entry.phase === "expired"
+                ? "Expired, but still holding the recovery slot."
+                : entry.phase === "executable"
+                  ? "Executable now — control moves as soon as anyone completes it."
+                  : `Becomes executable ${new Date(Number(entry.readyAt) * 1000).toLocaleString()}.`}
+              {" "}Control would move to {entry.newValidator.slice(0, 10)}…{entry.newValidator.slice(-6)}.
+              Stopping it takes {entry.guardianThreshold} guardian{entry.guardianThreshold === 1 ? "" : "s"},
+              or the account plus {Math.max(1, entry.guardianThreshold - 1)}.
+            </p>
+          </div>
+          <button className="danger-button" onClick={() => setCancelling({ request: entry.request, capability: entry.capability })}>
+            Review stopping it
+          </button>
+        </li>)}
+      </ul>}
+
+      <details>
+        <summary>A cancellation request was sent to me instead</summary>
+        <p className="form-note">
+          The buttons above are built from what the chain says, which is the only version worth signing. A request
+          from someone else is checked against exactly the same state, so this is here for when this device cannot
+          reach the network.
+        </p>
+        <label className="field">
+          <span>Cancellation request or bearer link</span>
+          <textarea
+            rows={5}
+            value={cancelArtifact}
+            disabled={reviewableRecords.length === 0}
+            onChange={event => setCancelArtifact(event.target.value)}
+            placeholder={'{"format":"loom.recovery-cancel-request",…}'}
+          />
+        </label>
+        <button
+          className="danger-button"
+          disabled={!cancelArtifact.trim() || reviewableRecords.length === 0}
+          onClick={() => void reviewCancellation()}
+        >Review cancellation request</button>
+      </details>
+      {cancelMessage && <p className="callout" role="status">{cancelMessage}</p>}
+    </section>
     {issues.length > 0 && <section className="section-card" aria-labelledby="guardian-vault-issues"><div className="section-heading"><div><p className="eyebrow">Local vault maintenance</p><h2 id="guardian-vault-issues">Unreadable records</h2></div><span className="pill failed">{issues.length}</span></div>
       <p>These encrypted records failed authentication or validation. Healthy guardian accounts remain available.</p>
       {issues.map(issue => <div className="guardian-actions" key={String(issue.key)}><span>{issue.message}</span><button className="secondary" onClick={async () => {
@@ -244,6 +443,7 @@ export function GuardianWorkspace({ account, inboundLink = "" }: { readonly acco
     {visibleRecords.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts for this wallet</h2><p>Open an invitation addressed to this guardian wallet. Invitations accepted by another local wallet stay private to that wallet.</p></section> : visibleRecords.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onFreeze={() => setFreezing(record.capability)} />)}
     {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} guardianAccount={account} onClose={() => setFreezing(null)} />}
     {approving && deployment && <RecoveryApprovalDialog {...approving} deployment={deployment} guardianAccount={account} onClose={() => setApproving(null)} />}
+    {cancelling && deployment && <CancellationApprovalDialog {...cancelling} deployment={deployment} guardianAccount={account} onClose={() => { setCancelling(null); setCancelArtifact(""); }} />}
   </div>;
 }
 

@@ -28,7 +28,7 @@ export function GuardianInvitationCard({ invitation, onCopy, onClose }: {
       <textarea readOnly rows={3} value={invitation.link} onFocus={event => event.currentTarget.select()} />
     </label>
     <p className="form-note">Expires {new Date(invitation.expiresAt * 1_000).toLocaleString()}. The capability rides in the URL fragment, so it is never sent to a web server or written to its logs.</p>
-    <p className="callout warning">Treat this link like a password: it carries its own decryption key, so anyone who has it can read and copy the invitation. Only the matching guardian wallet can accept and use it. Send it over a channel you trust and let it expire if it goes astray.</p>
+    <p className="callout warning">Treat this link like a password. Anyone holding it can read the invitation, though only the matching guardian wallet can use it. Send it over a channel you trust; if it goes astray, let it expire.</p>
     <div className="guardian-actions">
       <button className="secondary" onClick={onClose}>Close</button>
       <button className="primary" onClick={onCopy}>Copy invite link</button>
