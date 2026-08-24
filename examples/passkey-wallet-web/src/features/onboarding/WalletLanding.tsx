@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { AccountHandle } from "../../types";
-import { shorten } from "../../components/AccountHeader";
 import { Dialog } from "../../components/Dialog";
 import { useNetwork } from "../../config/NetworkContext";
 import { loadWalletDeployment } from "./accountLifecycle";
@@ -12,6 +11,7 @@ import {
 import { AddGuardianForm } from "../security/AddGuardianForm";
 import { createLoomGuardianChainReader, detectGuardianAddress, resolveLoomP256Guardian } from "../security/loomGuardian";
 import { useAppServices } from "../../app/AppServices";
+import { shortAddress } from "../../components/address.ts";
 
 export interface WalletCreationRequest {
   readonly label: string;
@@ -154,7 +154,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
       <div className="section-heading"><div><p className="eyebrow">Persistent local registry</p><h2 id="saved-wallets-title">Saved wallets</h2></div><span className="pill">{accounts.length}</span></div>
       {accounts.length === 0 ? <div className="empty-state compact"><h3>No wallets saved yet</h3><p>Created and restored handles remain listed here until you remove them.</p></div> : <div className="wallet-list">{accounts.map(account => <div key={account.id} className="wallet-list-item">
         <button className="wallet-list-open" disabled={busy} onClick={() => void onOpen(account)}>
-          <span className="identicon" aria-hidden="true" /><span><strong>{account.label}</strong><small>{shorten(account.account)} · Chain {account.chainId}</small></span><span className="pill included">Open</span>
+          <span className="identicon" aria-hidden="true" /><span><strong>{account.label}</strong><small>{shortAddress(account.account)} · Chain {account.chainId}</small></span><span className="pill included">Open</span>
         </button>
         <button className="wallet-list-remove" disabled={busy} aria-label={`Remove ${account.label}`} onClick={() => { setRemovalConfirmation(""); setRemoving(account); }}>
           <svg className="wallet-list-remove-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M9 3h6m-9 4h12m-1 0-.6 12a2 2 0 0 1-2 2H9.6a2 2 0 0 1-2-2L7 7m3 4v6m4-6v6" /></svg>
@@ -168,7 +168,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
       <h2>Remove {removing.label}?</h2>
       <p>This removes its public connection metadata from this list. It does not delete the on-chain account, its passkey, guardian capabilities, or recovery records.</p>
       <div className="review-summary">
-        <div><span>Account</span><strong>{shorten(removing.account)}</strong></div>
+        <div><span>Account</span><strong>{shortAddress(removing.account)}</strong></div>
         <div><span>Network</span><strong>Chain {removing.chainId}</strong></div>
       </div>
       <p className="form-note">To add it again, restore an exported public handle with the matching passkey. Passkeys cannot be rediscovered by this website.</p>
@@ -196,7 +196,7 @@ export function WalletLock({ account, busy, message, onUnlock, onSwitch }: {
       <div className="landing-brand"><span className="brand-mark">L</span><strong>Loom</strong></div>
       <p className="eyebrow">Account locked</p>
       <h1 id="locked-wallet-title">{account.label}</h1>
-      <p>{shorten(account.account)} · Chain {account.chainId}</p>
+      <p>{shortAddress(account.account)} · Chain {account.chainId}</p>
       <p className="form-note">Use the wallet's matching passkey to continue. Public metadata remains saved while locked.</p>
       <div className="landing-actions">
         <button type="button" className="secondary" disabled={busy} onClick={onSwitch}>Switch account</button>

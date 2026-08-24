@@ -1,4 +1,5 @@
 import type { Address, Hex } from "@loom/core";
+import { mediumAddress } from "../../components/address.ts";
 
 /**
  * Recovery passkeys already published on chain for one account.
@@ -42,8 +43,6 @@ export type ExistingPublications =
     readonly resumable?: Address;
     readonly message: string;
   };
-
-const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
 
 /**
  * What the chain says about this account's recovery publications, read against
@@ -121,7 +120,7 @@ export function classifyExistingPublications(input: {
   // "1 recovery passkey were" reached the running app because the test that was
   // meant to catch it accepted either verb.
   const verb = orphans.length === 1 ? "was" : "were";
-  const listed = orphans.map(entry => short(entry.validator)).join(", ");
+  const listed = orphans.map(entry => mediumAddress(entry.validator)).join(", ");
   const bounded = (input.complete ? "" : ` The scan reached back only to block ${scannedFrom}, so there may be more.`)
     + (input.consistent === false
       ? ` Two reads of the same range disagreed about what exists, so this list is the union of both and may`

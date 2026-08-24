@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { CancelRequestV1, GuardianInviteV1, RecoveryRequestV1 } from "@loom/sdk/recovery";
 import { parseCancelRequest, parseGuardianInvite, parseRecoveryRequest } from "@loom/sdk/recovery";
 import { receiveGuardianInvite } from "../../transports/invitations";
-import { shorten } from "../../components/AccountHeader";
 import { useAppServices } from "../../app/AppServices";
 import { FreezeDialog } from "./FreezeDialog";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
@@ -23,6 +22,7 @@ import { discoverGuardianRecoveryRequests } from "./guardianDiscovery";
 import { capabilityStanding, describeStanding, type CapabilityStanding } from "./capabilityStanding";
 import { useClipboard } from "../../components/useClipboard";
 import type { DiscoveredRequestView } from "./discoveredRequests";
+import { mediumAddress, shortAddress } from "../../components/address.ts";
 
 export function GuardianWorkspace({ account, inboundLink = "", embedded = false }: {
   readonly account: AccountHandle;
@@ -351,7 +351,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         {discovery.requests.map(view => <li key={view.key}>
           <article className="section-card discovered-request">
             <div className="section-heading">
-              <div><p className="eyebrow">{shorten(view.account)}</p><h3>{view.trust === "verified" ? "Recovery request verified" : "Possible recovery request"}</h3></div>
+              <div><p className="eyebrow">{shortAddress(view.account)}</p><h3>{view.trust === "verified" ? "Recovery request verified" : "Possible recovery request"}</h3></div>
               <span className={`pill ${view.trust === "verified" ? "included" : "pending"}`}>{view.trust === "verified" ? "Verified against chain" : "Unverified"}</span>
             </div>
             <div className="permission-grid">
@@ -450,7 +450,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
                 : entry.phase === "executable"
                   ? "Executable now — control moves as soon as anyone completes it."
                   : `Becomes executable ${new Date(Number(entry.readyAt) * 1000).toLocaleString()}.`}
-              {" "}Control would move to {entry.newValidator.slice(0, 10)}…{entry.newValidator.slice(-6)}.
+              {" "}Control would move to {mediumAddress(entry.newValidator)}.
               Stopping it takes {entry.guardianThreshold} guardian{entry.guardianThreshold === 1 ? "" : "s"},
               or the account plus {Math.max(1, entry.guardianThreshold - 1)}.
             </p>
@@ -522,10 +522,10 @@ function GuardianAccount({ record, standing, onFreeze }: {
       <h2>
         <button
           className="address-copy"
-          aria-label={`Copy the full address of the account ${shorten(invite.account)}`}
+          aria-label={`Copy the full address of the account ${shortAddress(invite.account)}`}
           onClick={() => void clipboard.copy(invite.account, { what: "Account address" })}
         >
-          <span>{shorten(invite.account)}</span>
+          <span>{shortAddress(invite.account)}</span>
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
             <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
             <path d="M5 15V6a1 1 0 0 1 1-1h9" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />

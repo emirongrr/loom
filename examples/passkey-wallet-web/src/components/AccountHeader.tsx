@@ -1,4 +1,5 @@
 import type { Address } from "@loom/core";
+import { shortAddress } from "./address.ts";
 
 export interface BalanceView {
   readonly status: "loading" | "loaded" | "error";
@@ -17,7 +18,7 @@ export function AccountHeader({ account, network, balance, onSwitch, onLock }: {
     <div>
       <p className="eyebrow">{network}</p>
       <h1 id="account-title">{formatBalance(balance)}</h1>
-      <div className="account-identity"><span className="identicon" aria-hidden="true" /> {account ? shorten(account) : "No account"}</div>
+      <div className="account-identity"><span className="identicon" aria-hidden="true" /> {account ? shortAddress(account) : "No account"}</div>
       {balance.status === "loaded" && balance.deployed === false && <p className="hero-note">Not yet deployed on chain · its first operation creates it</p>}
     </div>
     <div className="hero-account-controls">
@@ -37,4 +38,3 @@ function formatBalance(balance: BalanceView): string {
   return `${trimmed ? `${whole}.${trimmed}` : whole} ETH`;
 }
 
-export function shorten(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
