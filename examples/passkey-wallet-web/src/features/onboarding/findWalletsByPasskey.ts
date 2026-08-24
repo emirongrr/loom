@@ -100,3 +100,52 @@ function decode(log: { readonly data: Hex; readonly topics: readonly Hex[] }): K
     return null;
   }
 }
+
+/**
+ * The accounts that published these keys, for guardians recorded before the
+ * address was kept.
+ *
+ * A passkey guardian's descriptor holds the key, not the address it came from,
+ * and the address cannot be derived from the key alone: it also depends on the
+ * guardian root, threshold, configuration hash and recovery module of *that*
+ * account, none of which this wallet knows. The chain does know, because the
+ * account published the key when its validator was installed.
+ *
+ * Returns only what it found. An account whose key is not in the scanned range
+ * is left out rather than guessed at, and the caller keeps showing what it had.
+ */
+export async function findAccountsByPublicKey(input: {
+  readonly validator: Address;
+  readonly keys: readonly { readonly x: Hex; readonly y: Hex }[];
+  readonly reader: LogReader;
+}): Promise<ReadonlyMap<string, Address>> {
+  const wanted = new Set(input.keys.map(key => keyOf(key)));
+  const found = new Map<string, Address>();
+  if (wanted.size === 0) return found;
+
+  const topic = encodeEventTopics({ abi: P256ValidatorAbi, eventName: "KeySet" })[0] as Hex;
+  try {
+    const head = await input.reader.getBlockNumber();
+    for (let end = head, windows = 0; end > 0n && windows < MAX_WINDOWS && found.size < wanted.size; end -= WINDOW) {
+      const from = end > WINDOW ? end - WINDOW + 1n : 0n;
+      const logs = await input.reader.getLogs({ address: input.validator, fromBlock: from, toBlock: end, topics: [topic] });
+      windows += 1;
+      for (const log of logs) {
+        const candidate = decode(log);
+        if (!candidate) continue;
+        const key = keyOf(candidate);
+        if (wanted.has(key) && !found.has(key)) found.set(key, candidate.account);
+      }
+      if (from === 0n) break;
+    }
+  } catch {
+    // Unreadable is not "no such account": the caller shows what it already
+    // had rather than replacing it with a claim.
+    return found;
+  }
+  return found;
+}
+
+export const publicKeyIndex = (key: { readonly x: Hex; readonly y: Hex }): string => keyOf(key);
+
+const keyOf = (key: { readonly x: Hex; readonly y: Hex }): string => `${key.x.toLowerCase()}:${key.y.toLowerCase()}`;

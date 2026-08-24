@@ -143,7 +143,7 @@ test("accepted capabilities are visible only in the matching local guardian wall
   assert.deepEqual(guardianVaultRecordsForAccount(records, account(OWNER)), [otherRecord]);
   assert.throws(
     () => assertGuardianCapabilityMatchesAccount(capability, account(OWNER)),
-    /invitation belongs to a different guardian wallet/u
+    /issued to a different wallet/u
   );
 });
 

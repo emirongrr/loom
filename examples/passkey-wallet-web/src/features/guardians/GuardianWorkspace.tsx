@@ -118,7 +118,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       // into the wrong box, a recovery request failed as "capability could not
       // be accepted", which describes neither what it is nor where it goes.
       if (await looksLikeRecoveryRequest(link, services)) {
-        setMessage("That is a recovery request, not an invitation. It goes in “Review a recovery request” below — and that needs an accepted invitation for the same account first, because a guardian signs with the capability that invitation carries.");
+        setMessage("That is a recovery request, not an invitation. Accept the invitation for that account first — you sign with the proof it carries — and the request will appear below.");
         return;
       }
       setMessage(safeUserMessage(error, "Capability could not be accepted.", "validation"));
@@ -308,13 +308,6 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         <input value={link} onChange={event => setLink(event.target.value)} placeholder="https://wallet.example/guardian#cap=…" />
       </label>
       <button className="primary" onClick={accept} disabled={!link.trim()}>Review invitation</button>
-      <details>
-        <summary>It arrived as a file instead</summary>
-        <p className="form-note">
-          Paste the file&apos;s contents in the same box. It carries only your own part of the arrangement, never the
-          list of the other people helping.
-        </p>
-      </details>
       {message && <p className="toast" role="status">{message}</p>}
     </section>
     {reviewableRecords.length > 0 && <section className="section-card" aria-labelledby="discovered-requests-heading">
@@ -349,40 +342,69 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         {discovery.status === "checking" ? "Checking the chain…" : "Check for recovery requests"}
       </button>
     </section>}
-    <section className="section-card"><div className="section-heading"><div><p className="eyebrow">Guardian recovery</p><h2>Review a recovery request</h2></div><span className="pill">No gas</span></div><p>Paste the request or bearer link sent by the recovering person. The open guardian wallet must already hold the matching accepted capability.</p>
-      {/* This section used to disappear entirely without one, so a guardian who
-          had not accepted their invitation yet found nowhere to paste and no
-          reason given -- and tried the invitation box instead. */}
-      {reviewableRecords.length === 0 && <p className="callout warning"><strong>No accepted invitation for this account yet.</strong> A guardian approves with the proof and salt their invitation carries, and the same capability is what lets an approval be published on chain, so the invitation has to come first. Ask the recovering person for it -- issuing one costs them nothing and needs no transaction -- and accept it above.</p>}
-      <label className="field"><span>Recovery request or bearer link</span><textarea rows={5} value={recoveryArtifact} disabled={reviewableRecords.length === 0} onChange={event => setRecoveryArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="primary" disabled={!recoveryArtifact.trim() || reviewableRecords.length === 0} onClick={() => void reviewRecovery()}>Review recovery request</button></section>
-    <section className="section-card cancellation-card" aria-labelledby="stop-recovery-heading">
+    <section className="section-card">
+      <div className="section-heading">
+        <div><p className="eyebrow">Guardian recovery</p><h2>Review a request</h2></div>
+        <span className="pill">No gas</span>
+      </div>
+      {/* Without an accepted invitation there is nothing to sign with, and this
+          section used to vanish entirely -- so a guardian who had not accepted
+          theirs found nowhere to act and no reason given, and tried the
+          invitation box instead. */}
+      {reviewableRecords.length === 0
+        ? <p className="callout warning">
+          <strong>Accept your invitation first.</strong> You sign with the proof it carries, so nothing can be
+          reviewed until it is accepted above.
+        </p>
+        : <p className="form-note">
+          Requests for accounts you protect appear above as soon as they are announced. Compare the six-digit code
+          with the person recovering before you approve.
+        </p>}
+      {/* Announcing costs a transaction, so many requests are handed over
+          privately and never appear on chain at all. Removing this would close
+          the route that costs nothing. */}
+      <details>
+        <summary>It was sent to me directly</summary>
+        <p className="form-note">Paste the request or link they sent you.</p>
+        <label className="field">
+          <span>Request</span>
+          <textarea rows={4} value={recoveryArtifact} disabled={reviewableRecords.length === 0} onChange={event => setRecoveryArtifact(event.target.value)} placeholder="Paste the request" />
+        </label>
+        <button className="secondary" disabled={!recoveryArtifact.trim() || reviewableRecords.length === 0} onClick={() => void reviewRecovery()}>Review pasted request</button>
+      </details>
+    </section>
+
+    {/* Red only when there is something to stop. A card that warns every day
+        about a decision nobody is being asked to make teaches people to stop
+        reading it, and the warning is worth reading on the day it applies. */}
+    <section
+      className={stoppable.entries.length > 0 ? "section-card cancellation-card" : "section-card"}
+      aria-labelledby="stop-recovery-heading"
+    >
       <div className="section-heading">
         <div><p className="eyebrow">The opposite request</p><h2 id="stop-recovery-heading">Stop a recovery</h2></div>
-        <span className="pill failed">No gas</span>
+        <span className={stoppable.entries.length > 0 ? "pill failed" : "pill"}>No gas</span>
       </div>
-      <p>
-        An account owner who did not start a recovery of their own account can ask you to help stop it. Cancelling
-        needs a quorum for the same reason approving does: neither the owner nor any single guardian can do it alone.
-      </p>
-      <div className="removal-confirmation">
+
+      {stoppable.entries.length > 0 && <div className="removal-confirmation">
         <div className="removal-warning">
           <span aria-hidden="true">!</span>
           <div>
-            <strong>Read which way you are signing.</strong>
+            <strong>Check which way you are signing.</strong>
             <p>
-              A cancellation signature helps take a recovery away. If the recovery is genuine, that strands the
-              owner — the failure guardians exist to prevent. Confirm with the owner over an independent channel
-              before you sign.
+              This takes a recovery away. If it is genuine, the owner is stranded — the failure guardians exist to
+              prevent. Confirm with them over a channel you trust first.
             </p>
           </div>
         </div>
-      </div>
+      </div>}
+
       {reviewableRecords.length === 0 && <p className="callout warning">
-        <strong>Nothing here can be signed yet.</strong> A cancellation carries the same proof and salt an approval
-        does, so an accepted invitation has to come first — accept one above.
+        <strong>Nothing can be signed here yet.</strong> A cancellation carries the same proof an approval does, so
+        an invitation has to be accepted first.
       </p>}
 
-      {stoppable.status === "reading" && <p className="form-note">Reading the chain for pending recoveries…</p>}
+      {stoppable.status === "reading" && <p className="form-note">Checking the accounts you protect…</p>}
       {stoppable.unavailable && <p className="callout warning" role="status">{stoppable.unavailable}</p>}
       {stoppable.status === "done" && stoppable.entries.length === 0 && !stoppable.unavailable && reviewableRecords.length > 0
         && <p className="form-note">No recovery is pending against the accounts you protect, so there is nothing to stop.</p>}
@@ -409,27 +431,23 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       </ul>}
 
       <details>
-        <summary>A cancellation request was sent to me instead</summary>
-        <p className="form-note">
-          The buttons above are built from what the chain says, which is the only version worth signing. A request
-          from someone else is checked against exactly the same state, so this is here for when this device cannot
-          reach the network.
-        </p>
+        <summary>A cancellation was sent to me directly</summary>
+        <p className="form-note">Paste the request or link they sent you.</p>
         <label className="field">
-          <span>Cancellation request or bearer link</span>
+          <span>Request</span>
           <textarea
-            rows={5}
+            rows={4}
             value={cancelArtifact}
             disabled={reviewableRecords.length === 0}
             onChange={event => setCancelArtifact(event.target.value)}
-            placeholder={'{"format":"loom.recovery-cancel-request",…}'}
+            placeholder="Paste the cancellation"
           />
         </label>
         <button
           className="danger-button"
           disabled={!cancelArtifact.trim() || reviewableRecords.length === 0}
           onClick={() => void reviewCancellation()}
-        >Review cancellation request</button>
+        >Review pasted cancellation</button>
       </details>
       {cancelMessage && <p className="callout" role="status">{cancelMessage}</p>}
     </section>

@@ -17,6 +17,7 @@ import {
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { guardianSetupStep } from "./guardianSetupStep";
+import { findAccountsByPublicKey, publicKeyIndex } from "../onboarding/findWalletsByPasskey";
 import { InlineName } from "../../components/InlineName";
 import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
 import { encryptRoster } from "./portableRoster";
@@ -211,6 +212,46 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     catch (issue) { return { plan: null, error: safeUserMessage(issue, "Guardian changes could not be reviewed.", "validation") }; }
   }, [committed, draft, threshold, onChain]);
   const plan = planning.plan;
+
+  /**
+   * Fill in the addresses of guardians recorded before they were kept.
+   *
+   * Read once from the chain and written back, so the lookup does not repeat on
+   * every visit. A guardian whose key is not found keeps showing what it had:
+   * being unable to read is not the same as there being nothing to read.
+   */
+  useEffect(() => {
+    const missing = committed.flatMap(entry => entry.guardianAccount === undefined && entry.descriptor.kind === "p256" && entry.descriptor.publicKey
+      ? [{ entry, publicKey: entry.descriptor.publicKey }]
+      : []);
+    if (missing.length === 0 || !deployment || protection.kind !== "in-sync") return;
+    let cancelled = false;
+    void (async () => {
+      const client = publicClients.forEndpoint(config.rpcUrl);
+      const found = await findAccountsByPublicKey({
+        validator: deployment.validator,
+        keys: missing.map(item => item.publicKey),
+        reader: {
+          getBlockNumber: () => client.getBlockNumber(),
+          getLogs: request => client.getLogs({
+            address: request.address,
+            fromBlock: request.fromBlock,
+            toBlock: request.toBlock,
+            ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
+          }) as never
+        }
+      });
+      if (cancelled || found.size === 0) return;
+      const filled = committed.map(entry => {
+        const publicKey = entry.descriptor.kind === "p256" ? entry.descriptor.publicKey : undefined;
+        const key = publicKey ? found.get(publicKeyIndex(publicKey)) : undefined;
+        return key ? { ...entry, guardianAccount: key } : entry;
+      });
+      setDraft(current => current.map(entry => filled.find(item => item.id === entry.id) ?? entry));
+      await roster.write(account.id, { entries: filled, version: setVersion, pending: null });
+    })();
+    return () => { cancelled = true; };
+  }, [account.id, committed, config.rpcUrl, deployment, protection.kind, publicClients, roster, setVersion]);
 
   const addGuardian = async (label: string, value: string) => {
     setError("");
