@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { getAddress } from "viem";
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, formatCountdown, guardianAuthority,
+  assertAddable, buildGuardianDescriptor, clampThreshold, createRosterEntry, formatCountdown, guardianAuthority,
   planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
 } from "../src/features/security/guardianPlan.ts";
 import { parseRosterRecord } from "../src/storage/guardianRosterRecord.ts";
@@ -269,4 +270,19 @@ test("something that is not an address is dropped rather than shown", () => {
     entries: [{ id: "g1", label: "Ada", guardianAccount: "not-an-address", descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
   }, "11155111:0xaaa");
   assert.equal(record.entries[0]?.guardianAccount, undefined);
+});
+
+test("a guardian added anywhere carries the wallet it was added from", () => {
+  const descriptor = buildGuardianDescriptor({ kind: "ecdsa", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH });
+  const entry = createRosterEntry({ label: " Ada ", descriptor, guardianAccount: ALICE });
+
+  // Required by the constructor, so neither screen that adds a guardian can
+  // leave it out -- which is how one of them came to.
+  assert.equal(entry.guardianAccount, getAddress(ALICE));
+  assert.equal(entry.label, "Ada");
+});
+
+test("a guardian added with no name is labelled by something that identifies it", () => {
+  const descriptor = buildGuardianDescriptor({ kind: "ecdsa", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH });
+  assert.equal(createRosterEntry({ label: "  ", descriptor, guardianAccount: ALICE }).label.length > 0, true);
 });

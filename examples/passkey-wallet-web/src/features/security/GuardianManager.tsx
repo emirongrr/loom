@@ -7,7 +7,7 @@ import { submitAccountCalls } from "../wallet/accountClient";
 import { transactionUrl } from "../../config/network";
 import { createAccountGuardianClient, readVerifierCodeHash } from "./guardianClient";
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, describeGuardian, formatCountdown, formatDelay,
+  assertAddable, buildGuardianDescriptor, clampThreshold, createRosterEntry, describeGuardian, formatCountdown, formatDelay,
   formatReadyAt, MIN_DELAY_SECONDS, planGuardianChange, suggestedThreshold, withFreshSalts, type GuardianChangePlan, type RosterEntry
 } from "./guardianPlan";
 import { cancelPendingGuardianChange, executePendingGuardianChange, readPendingGuardianChange, type PendingChangeStatus } from "./pendingChange";
@@ -227,17 +227,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         ? await resolveLoomP256Guardian({ value, deployment: deployment!, verifierCodeHash, reader: chainReader })
         : buildGuardianDescriptor({ kind: detected.kind, value: detected.address, verifier, verifierCodeHash });
       assertAddable(draft, descriptor);
-      const entry: RosterEntry = {
-        id: crypto.randomUUID(),
-        label: label.trim() || describeGuardian(descriptor).slice(0, 10),
-        descriptor,
-        // Recorded now because this is the only moment it is known: the
-        // descriptor keeps the key, never the address it came from, and the
-        // address cannot be derived back from it. Detection either yields an
-        // address or throws, so this is never skipped -- an entry saved without
-        // one could not be given it afterwards.
-        guardianAccount: detected.address
-      };
+      const entry = createRosterEntry({ label, descriptor, guardianAccount: detected.address });
       const next = [...draft, entry];
       setDraft(next);
       setThreshold(current => clampThreshold(current, next.length));

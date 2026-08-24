@@ -6,7 +6,7 @@ import { useNetwork } from "../../config/NetworkContext";
 import { loadWalletDeployment } from "./accountLifecycle";
 import { readVerifierCodeHash } from "../security/guardianClient";
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, describeGuardian, suggestedThreshold,
+  assertAddable, buildGuardianDescriptor, clampThreshold, createRosterEntry, describeGuardian, suggestedThreshold,
   type RosterEntry
 } from "../security/guardianPlan";
 import { AddGuardianForm } from "../security/AddGuardianForm";
@@ -66,11 +66,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
         ? await resolveLoomP256Guardian({ value, deployment, verifierCodeHash, reader: chainReader })
         : buildGuardianDescriptor({ kind: detected.kind, value: detected.address, verifier, verifierCodeHash });
       assertAddable(guardians, descriptor);
-      const entry: RosterEntry = Object.freeze({
-        id: crypto.randomUUID(),
-        label: guardianLabel.trim() || describeGuardian(descriptor).slice(0, 10),
-        descriptor
-      });
+      const entry = createRosterEntry({ label: guardianLabel, descriptor, guardianAccount: detected.address });
       const next = Object.freeze([...guardians, entry]);
       setGuardians(next);
       setCeremonyConfirmed(false);
@@ -121,7 +117,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
           <p className="form-note">Their names stay on this device. Choose people who would not all be unreachable at the same time.</p>
           {guardians.length > 0 && <div className="guardian-list">{guardians.map(entry => <div className="guardian-row" key={entry.id}>
             <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
-            <div><strong>{entry.label}</strong><p className="breakable">{describeGuardian(entry.descriptor)}</p></div>
+            <div><strong>{entry.label}</strong><p className="breakable">{entry.guardianAccount ?? describeGuardian(entry.descriptor)}</p></div>
             <button type="button" className="text-button" onClick={() => removeGuardian(entry.id)}>Remove</button>
           </div>)}</div>}
           <AddGuardianForm busy={busy || guardianBusy} onAdd={(name, value) => void addGuardian(name, value)} />

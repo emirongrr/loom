@@ -33,6 +33,29 @@ export interface RosterEntry {
   readonly guardianAccount?: `0x${string}`;
 }
 
+/**
+ * A roster entry for a guardian that has just been added.
+ *
+ * The address is required rather than left to each caller to remember. It is
+ * known only at this moment -- the descriptor keeps the key, never the address
+ * it came from, and the address cannot be derived back from it -- and two
+ * separate screens add guardians. An optional field is one that eventually goes
+ * unset on one of them, which is exactly what happened: a guardian added while
+ * creating a wallet had no address, and no later screen could give it one.
+ */
+export function createRosterEntry(input: {
+  readonly label: string;
+  readonly descriptor: GuardianDescriptor;
+  readonly guardianAccount: Address;
+}): RosterEntry {
+  return Object.freeze({
+    id: crypto.randomUUID(),
+    label: input.label.trim() || describeGuardian(input.descriptor).slice(0, 10),
+    descriptor: input.descriptor,
+    guardianAccount: getAddress(input.guardianAccount)
+  });
+}
+
 export interface GuardianChangePlan {
   readonly set: GuardianSet;
   readonly threshold: number;
