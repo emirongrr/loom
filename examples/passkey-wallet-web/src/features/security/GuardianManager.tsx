@@ -17,6 +17,7 @@ import {
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { guardianSetupStep } from "./guardianSetupStep";
+import { shortAddress } from "../recovery/stopRecovery";
 import { InlineName } from "../../components/InlineName";
 import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
 import { encryptRoster } from "./portableRoster";
@@ -506,7 +507,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
                 <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
                 <span>
                   <strong>{entry.label}</strong>
-                  <span className="breakable">{describeGuardian(entry.descriptor)}</span>
+                  {/* The wallet, not the kind. "Dedicated passkey" is true of
+                      every passkey guardian and so tells two of them apart from
+                      nothing; the address is the only thing that does. */}
+                  <span className="breakable">{guardianIdentity(entry)}</span>
                 </span>
                 <span className="guardian-row-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
@@ -578,6 +582,13 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
 
       {error && <p className="callout warning">{error}</p>}
       {!error && planning.error && <p className="callout warning">{planning.error}</p>}
+      {/* Adding and removing edit a draft; only a scheduled change touches the
+          chain. Without saying so, "Remove" reads as done -- and the guardian
+          is simply back on the next visit, which looks like the wallet
+          forgetting rather than like nothing having been asked of it. */}
+      {dirty && <p className="form-note">
+        Not saved yet. Leaving this page discards these edits — review them to schedule the change.
+      </p>}
       <div className="guardian-actions">
         <button className="primary" disabled={!dirty || busy || !plan} onClick={() => { setError(""); setStage("review"); }}>Review changes</button>
         {dirty && <button className="secondary" onClick={() => { setDraft(committed); setError(""); }}>Discard</button>}
@@ -586,8 +597,8 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
 
     {!pending && protection.kind !== "list-missing" && protection.kind !== "list-mismatch" && stage === "review" && plan && <>
       <div className="review-summary">
-        {plan.added.map(entry => <div key={entry.id}><span className="amount-in">Add</span><strong className="breakable">{entry.label} · {describeGuardian(entry.descriptor)}</strong></div>)}
-        {plan.removed.map(entry => <div key={entry.id}><span className="amount-failed">Remove</span><strong className="breakable">{entry.label} · {describeGuardian(entry.descriptor)}</strong></div>)}
+        {plan.added.map(entry => <div key={entry.id}><span className="amount-in">Add</span><strong className="breakable">{entry.label} · {guardianIdentity(entry)}</strong></div>)}
+        {plan.removed.map(entry => <div key={entry.id}><span className="amount-failed">Remove</span><strong className="breakable">{entry.label} · {guardianIdentity(entry)}</strong></div>)}
         <div><span>Threshold</span><strong>{plan.threshold} of {plan.set.guardians.length}</strong></div>
         <div><span>Takes effect</span><strong>After {formatDelay(MIN_DELAY_SECONDS)}</strong></div>
       </div>
@@ -600,6 +611,17 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     </>}
 
   </section>;
+}
+
+/**
+ * Which guardian this is, in the fewest characters that still distinguish one.
+ *
+ * The kind -- "Dedicated passkey" -- is true of every passkey guardian, so on
+ * its own it tells two of them apart from nothing. The wallet address does,
+ * and is kept from the moment the guardian is added.
+ */
+function guardianIdentity(entry: RosterEntry): string {
+  return entry.guardianAccount ? shortAddress(entry.guardianAccount) : describeGuardian(entry.descriptor);
 }
 
 function randomBytes32(): Hex {
