@@ -75,7 +75,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
     setRefreshing(true);
     try {
       const [next] = await Promise.all([
-        readAccountAssets(config, account.account),
+        readAccountAssets(config, account.account, publicClients),
         loadWalletDeployment().then(setDeployment).catch(() => setDeployment(null))
       ]);
       setDeployed(next.deployed);
