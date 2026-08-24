@@ -17,7 +17,6 @@ import {
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { guardianSetupStep } from "./guardianSetupStep";
-import { findAccountsByPublicKey, publicKeyIndex } from "../onboarding/findWalletsByPasskey";
 import { InlineName } from "../../components/InlineName";
 import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
 import { encryptRoster } from "./portableRoster";
@@ -213,46 +212,6 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   }, [committed, draft, threshold, onChain]);
   const plan = planning.plan;
 
-  /**
-   * Fill in the addresses of guardians recorded before they were kept.
-   *
-   * Read once from the chain and written back, so the lookup does not repeat on
-   * every visit. A guardian whose key is not found keeps showing what it had:
-   * being unable to read is not the same as there being nothing to read.
-   */
-  useEffect(() => {
-    const missing = committed.flatMap(entry => entry.guardianAccount === undefined && entry.descriptor.kind === "p256" && entry.descriptor.publicKey
-      ? [{ entry, publicKey: entry.descriptor.publicKey }]
-      : []);
-    if (missing.length === 0 || !deployment || protection.kind !== "in-sync") return;
-    let cancelled = false;
-    void (async () => {
-      const client = publicClients.forEndpoint(config.rpcUrl);
-      const found = await findAccountsByPublicKey({
-        validator: deployment.validator,
-        keys: missing.map(item => item.publicKey),
-        reader: {
-          getBlockNumber: () => client.getBlockNumber(),
-          getLogs: request => client.getLogs({
-            address: request.address,
-            fromBlock: request.fromBlock,
-            toBlock: request.toBlock,
-            ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
-          }) as never
-        }
-      });
-      if (cancelled || found.size === 0) return;
-      const filled = committed.map(entry => {
-        const publicKey = entry.descriptor.kind === "p256" ? entry.descriptor.publicKey : undefined;
-        const key = publicKey ? found.get(publicKeyIndex(publicKey)) : undefined;
-        return key ? { ...entry, guardianAccount: key } : entry;
-      });
-      setDraft(current => current.map(entry => filled.find(item => item.id === entry.id) ?? entry));
-      await roster.write(account.id, { entries: filled, version: setVersion, pending: null });
-    })();
-    return () => { cancelled = true; };
-  }, [account.id, committed, config.rpcUrl, deployment, protection.kind, publicClients, roster, setVersion]);
-
   const addGuardian = async (label: string, value: string) => {
     setError("");
     if (!verifiers) { setError("This deployment does not publish guardian verifiers."); return; }
@@ -272,8 +231,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         label: label.trim() || describeGuardian(descriptor).slice(0, 10),
         descriptor,
         // Recorded now because this is the only moment it is known: the
-        // descriptor keeps the key, not the address it came from.
-        ...(detected.address ? { guardianAccount: detected.address } : {})
+        // descriptor keeps the key, never the address it came from, and the
+        // address cannot be derived back from it. Detection either yields an
+        // address or throws, so this is never skipped -- an entry saved without
+        // one could not be given it afterwards.
+        guardianAccount: detected.address
       };
       const next = [...draft, entry];
       setDraft(next);
@@ -544,20 +506,8 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
                 <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
                 <span>
                   <strong>{entry.label}</strong>
-                  {/* The address it was added from, which is what tells two
-                      passkey guardians apart. Falls back to the descriptor for
-                      entries recorded before this was kept. */}
-                  <span className="breakable">{entry.guardianAccount ?? describeGuardian(entry.descriptor)}</span>
+                  <span className="breakable">{describeGuardian(entry.descriptor)}</span>
                 </span>
-                {/* Shown only when this device recorded sending one. Nothing is
-                    published about invitations and acceptance happens on the
-                    guardian's device, so silence here means "not known from
-                    here" -- never "they were not invited", which would be a
-                    false claim to anyone who invited them before this wallet
-                    started keeping the record. */}
-                {onChainAlready && entry.invitedAt !== undefined && <span className="guardian-state sent">
-                  <span aria-hidden="true">✓</span>Invitation sent
-                </span>}
                 <span className="guardian-row-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
               {/* What can be done to one guardian belongs with that guardian,
@@ -572,6 +522,21 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
                   compact
                   onSave={name => renameGuardian(entry.id, name)}
                 />
+                {/* The wallet behind this guardian, which is the only thing
+                    that tells two passkey guardians apart. Kept when the
+                    guardian is added, because that is the only moment it is
+                    known: the descriptor holds the key, and the address cannot
+                    be derived back from it. An entry saved before it was kept
+                    says so, rather than leaving a blank that reads as "none".
+                    An ECDSA or contract guardian is named by its address from
+                    the start, so its descriptor already is one. */}
+                <div className="guardian-address">
+                  <span className="eyebrow">Wallet address</span>
+                  <span className="breakable">{entry.guardianAccount
+                    ?? (entry.descriptor.kind === "p256"
+                      ? "Not recorded — this guardian was added before addresses were kept."
+                      : describeGuardian(entry.descriptor))}</span>
+                </div>
                 {onChainAlready
                   ? <p className="form-note">
                     {entry.invitedAt

@@ -197,6 +197,9 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .guardian-row-chevron { color: var(--muted); font-size: 12px; }
 .guardian-row-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .guardian-row-panel .form-note { margin: 0 0 10px; }
+.guardian-address { margin: 0 0 12px; }
+.guardian-address .eyebrow { display: block; margin: 0 0 3px; }
+.guardian-address .breakable { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 /* The posture card carries the shield, then any exception beneath it, so the
    whole answer to "is my account safe" sits in one place instead of two cards
@@ -223,11 +226,7 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 
 /* One fact per guardian, carried where that guardian is. Colour is a second
    signal, never the only one: the mark and the words say the same thing. */
-.guardian-state { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 750; white-space: nowrap; }
-.guardian-state.sent { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
-.guardian-state.unsent { color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); }
 .guardian-row-open { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-@media (max-width: 760px) { .guardian-state { padding: 3px 7px; font-size: 10px; } }
 
 /* The row's children used to be icon, text and actions, so it was a three
    column grid. It now holds one button that lays itself out, plus a panel when
