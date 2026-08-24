@@ -129,7 +129,10 @@ test("full account lifecycle runs through only caller-supplied adapters (walkawa
 
     // Any provider access that did happen used the user's own endpoint.
     for (const url of userFetchUrls) {
-      assert.equal(url.startsWith("https://user-selected.rpc.example"), true, `unexpected endpoint ${url}`);
+      // By origin rather than prefix: this test's whole claim is that nothing
+      // reached a third party, and "https://user-selected.rpc.example.other"
+      // would pass a prefix check while being someone else's host.
+      assert.equal(new URL(url).origin, "https://user-selected.rpc.example", `unexpected endpoint ${url}`);
     }
   } finally {
     globalThis.fetch = originalFetch;

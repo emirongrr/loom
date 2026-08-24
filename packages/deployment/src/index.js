@@ -738,7 +738,9 @@ export async function runFoundryDeployment(options) {
   const script = requireString(options.script, "options.script");
   const rpcUrl = requireString(options.rpcUrl, "options.rpcUrl");
   const scriptFile = script.includes(":") ? script.slice(0, script.indexOf(":")) : script;
-  const scriptName = scriptFile.split("/").pop().replace(/\.s\.sol$/u, ".s.sol");
+  // Foundry names the broadcast directory after the script file as given,
+  // extension included, so the file name is used as it stands.
+  const scriptName = scriptFile.split("/").pop();
 
   const forgeBin =
     options.forgeBin ??
