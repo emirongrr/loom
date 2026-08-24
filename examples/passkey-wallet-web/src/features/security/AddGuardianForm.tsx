@@ -16,7 +16,6 @@ export function AddGuardianForm({ busy, onAdd }: {
       <label className="field"><span>Address</span>
         <input value={value} onChange={event => setValue(event.target.value)} placeholder="0x…" spellCheck={false} autoComplete="off" />
       </label>
-      <p className="form-note">Loom picks the verifier from what is on chain, and it cannot change during approval. A contract whose signature interface cannot be confirmed is flagged before you add it.</p>
       <button type="button" className="secondary" disabled={busy || value.trim() === ""} onClick={submit}>{busy ? "Checking on-chain authority…" : "Add to list"}</button>
     </div>
   </details>;
