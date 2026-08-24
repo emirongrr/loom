@@ -83,17 +83,35 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
 
   const canObserve = typeof IntersectionObserver !== "undefined";
   const showManual = Boolean(cursor) && (autoPaused || !canObserve);
+  const [view, setView] = useState<"operations" | "transactions">("operations");
 
   return <div className="page-stack">
-    <header className="page-title"><p className="eyebrow">Account history</p><h1>Activity</h1><p>What {account.label} did, read from the EntryPoint, alongside what {hostOf(config.explorerUrl)} indexed about it.</p></header>
+    <header className="page-title"><p className="eyebrow">Account history</p><h1>Activity</h1></header>
 
-    {/* First, because it is the account's own history. The explorer section
-        below cannot see it: a Loom account never sends a transaction. */}
-    <AccountOperations account={account} />
-
+    {/* Two views of one history, kept in one place. They differ in where they
+        come from -- the EntryPoint's own log against a block explorer's index --
+        and stacking them made that read as two unrelated cards. Operations
+        lead: they are the account's own record, and the explorer cannot see
+        them at all, since a Loom account never sends a transaction itself. */}
     <section className="section-card">
+      <div className="roster-tabs" role="tablist" aria-label="Account history">
+        <button role="tab" id="tab-operations" aria-selected={view === "operations"} aria-controls="panel-operations"
+          className={view === "operations" ? "roster-tab active" : "roster-tab"} onClick={() => setView("operations")}>
+          Operations
+        </button>
+        <button role="tab" id="tab-transactions" aria-selected={view === "transactions"} aria-controls="panel-transactions"
+          className={view === "transactions" ? "roster-tab active" : "roster-tab"} onClick={() => setView("transactions")}>
+          Transactions{items.length > 0 && <span className="count-badge">{items.length}</span>}
+        </button>
+      </div>
+
+      {view === "operations" && <div role="tabpanel" id="panel-operations" aria-labelledby="tab-operations">
+        <AccountOperations account={account} />
+      </div>}
+
+      {view === "transactions" && <div role="tabpanel" id="panel-transactions" aria-labelledby="tab-transactions">
       <div className="section-heading">
-        <div><p className="eyebrow">Latest first</p><h2>Transactions{items.length > 0 && <span className="count-badge">{items.length}</span>}</h2></div>
+        <div><p className="eyebrow">Latest first</p></div>
         <button className="icon-button" onClick={() => void loadFirstPage()} disabled={phase !== "ready"} aria-label="Refresh activity"><span className={phase === "loading" ? "spin" : ""}>⟳</span></button>
       </div>
 
@@ -132,9 +150,12 @@ export function ActivityPage({ account }: { readonly account: AccountHandle }) {
           {phase === "ready" && !cursor && <p className="form-note">End of indexed history.</p>}
         </div>
       </>}
+      {/* Kept, and only on this panel: an index is not the account's authority,
+          and someone reading a balance off it would be trusting the wrong
+          thing. It says nothing about the operations beside it. */}
+      <p className="form-note">Indexed by a block explorer, so it can be incomplete. Your balance never comes from here.</p>
+      </div>}
     </section>
-
-    <p className="form-note">A block explorer index can omit or mislabel history. It is shown as history only — never as account authority, and never as the source of your balance.</p>
   </div>;
 }
 
@@ -158,4 +179,3 @@ function formatWhen(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
 }
 
-function hostOf(url: string): string { return url.replace(/^https?:\/\//, "").split("/")[0] ?? url; }
