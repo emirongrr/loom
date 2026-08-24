@@ -1,7 +1,7 @@
 import { decodeEventLog, encodeEventTopics, keccak256, sha256, stringToHex, toHex } from "viem";
 import { P256ValidatorAbi } from "@loom/core/abi";
 import type { Address, Hex } from "@loom/core";
-import { findAccountForAssertion, type KeyCandidate, type PasskeyAssertion } from "./passkeyDiscovery";
+import { findAccountForAssertion, type KeyCandidate, type PasskeyAssertion } from "./passkeyDiscovery.ts";
 
 /**
  * The accounts a passkey can open, read from the chain rather than remembered.
@@ -70,6 +70,19 @@ export async function findWalletsByPasskey(input: {
     });
   }
 
+  // Not one key published, on the validator this wallet is configured against
+  // and creates its accounts through. Either nobody has ever made an account
+  // here -- in which case there is nothing to find and saying so costs nothing
+  // -- or the endpoint is not showing its history. Reporting "no wallet" would
+  // be a guess between the two, and wrong in the case that matters.
+  if (candidates.length === 0) {
+    return Object.freeze({
+      found: null,
+      candidatesScanned: 0,
+      unavailable: "This endpoint returned no account history, so there is nothing to search. Try another RPC endpoint in Developer settings."
+    });
+  }
+
   const found = await findAccountForAssertion({
     candidates,
     assertion: input.assertion,
@@ -100,52 +113,3 @@ function decode(log: { readonly data: Hex; readonly topics: readonly Hex[] }): K
     return null;
   }
 }
-
-/**
- * The accounts that published these keys, for guardians recorded before the
- * address was kept.
- *
- * A passkey guardian's descriptor holds the key, not the address it came from,
- * and the address cannot be derived from the key alone: it also depends on the
- * guardian root, threshold, configuration hash and recovery module of *that*
- * account, none of which this wallet knows. The chain does know, because the
- * account published the key when its validator was installed.
- *
- * Returns only what it found. An account whose key is not in the scanned range
- * is left out rather than guessed at, and the caller keeps showing what it had.
- */
-export async function findAccountsByPublicKey(input: {
-  readonly validator: Address;
-  readonly keys: readonly { readonly x: Hex; readonly y: Hex }[];
-  readonly reader: LogReader;
-}): Promise<ReadonlyMap<string, Address>> {
-  const wanted = new Set(input.keys.map(key => keyOf(key)));
-  const found = new Map<string, Address>();
-  if (wanted.size === 0) return found;
-
-  const topic = encodeEventTopics({ abi: P256ValidatorAbi, eventName: "KeySet" })[0] as Hex;
-  try {
-    const head = await input.reader.getBlockNumber();
-    for (let end = head, windows = 0; end > 0n && windows < MAX_WINDOWS && found.size < wanted.size; end -= WINDOW) {
-      const from = end > WINDOW ? end - WINDOW + 1n : 0n;
-      const logs = await input.reader.getLogs({ address: input.validator, fromBlock: from, toBlock: end, topics: [topic] });
-      windows += 1;
-      for (const log of logs) {
-        const candidate = decode(log);
-        if (!candidate) continue;
-        const key = keyOf(candidate);
-        if (wanted.has(key) && !found.has(key)) found.set(key, candidate.account);
-      }
-      if (from === 0n) break;
-    }
-  } catch {
-    // Unreadable is not "no such account": the caller shows what it already
-    // had rather than replacing it with a claim.
-    return found;
-  }
-  return found;
-}
-
-export const publicKeyIndex = (key: { readonly x: Hex; readonly y: Hex }): string => keyOf(key);
-
-const keyOf = (key: { readonly x: Hex; readonly y: Hex }): string => `${key.x.toLowerCase()}:${key.y.toLowerCase()}`;

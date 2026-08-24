@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { webcrypto } from "node:crypto";
+import { encodeAbiParameters, encodeEventTopics } from "viem";
+import { P256ValidatorAbi } from "@loom/core/abi";
 import {
   candidateSigned, derToRawSignature, findAccountForAssertion, webauthnSignedMessage
 } from "../src/features/onboarding/passkeyDiscovery.ts";
+import { findWalletsByPasskey } from "../src/features/onboarding/findWalletsByPasskey.ts";
 
 const subtle = webcrypto.subtle;
 const hex = (bytes: Uint8Array) => `0x${[...bytes].map(b => b.toString(16).padStart(2, "0")).join("")}` as const;
@@ -111,4 +114,59 @@ test("a malformed candidate key is skipped, not fatal", async () => {
     candidate: { x: "0xzz", y: device.y } as never,
     message: device.message, rawSignature: device.rawSignature, subtle
   }), false);
+});
+
+/**
+ * A log endpoint that keeps only a recent window and answers anything older
+ * with an empty list, which is what several public providers do. The failure
+ * looks exactly like "there is nothing there", so these check that it is not
+ * reported as one.
+ */
+function forgetfulReader(logs: readonly { block: bigint; log: KeySetLog }[], keepFrom: bigint) {
+  return {
+    getBlockNumber: async () => HEAD,
+    getLogs: async (request: { fromBlock: bigint; toBlock: bigint }) => logs
+      .filter(entry => entry.block >= keepFrom && entry.block >= request.fromBlock && entry.block <= request.toBlock)
+      .map(entry => entry.log)
+  };
+}
+
+const HEAD = 1_000_000n;
+const VALIDATOR = "0x00000000000000000000000000000000000000aa" as const;
+const OWNER = "0x1111111111111111111111111111111111111111" as const;
+const GUARDIAN = "0x2222222222222222222222222222222222222222" as const;
+
+type KeySetLog = { data: `0x${string}`; topics: readonly `0x${string}`[] };
+
+function keySet(account: `0x${string}`, x: `0x${string}`, y: `0x${string}`): KeySetLog {
+  return {
+    topics: [
+      encodeEventTopics({ abi: P256ValidatorAbi, eventName: "KeySet" })[0] as `0x${string}`,
+      `0x${"0".repeat(24)}${account.slice(2)}` as `0x${string}`
+    ],
+    data: encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
+      [x, y, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`]
+    )
+  };
+}
+
+const KEY_A = { x: `0x${"aa".repeat(32)}` as const, y: `0x${"ab".repeat(32)}` as const };
+const KEY_B = { x: `0x${"ba".repeat(32)}` as const, y: `0x${"bb".repeat(32)}` as const };
+
+test("finding a wallet by passkey does not call an empty history a missing wallet", async () => {
+  const key = await authenticator();
+  const result = await findWalletsByPasskey({
+    validator: VALIDATOR,
+    rpId: "wallet.example",
+    origin: "https://wallet.example",
+    assertion: {
+      credentialId: "0x00", authenticatorData: key.authenticatorData,
+      clientDataJSON: key.clientDataJSON, signature: key.der
+    },
+    reader: forgetfulReader([], 0n),
+    subtle
+  });
+  assert.equal(result.found, null);
+  assert.match(result.unavailable ?? "", /no account history/u);
 });
