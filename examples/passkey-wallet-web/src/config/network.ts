@@ -24,8 +24,15 @@ export interface NetworkConfig {
 // Public Sepolia RPC and Pimlico's keyless public bundler. Neither can alter a
 // passkey-signed operation, and the account stays usable through any other
 // endpoint the user points at instead.
+//
+// The read endpoint has to serve historical logs, not just recent ones. Several
+// public providers keep only a rolling window -- roughly a day -- and answer a
+// query past it with an empty list rather than an error, which reads as "this
+// never happened" instead of "I cannot see that far". Account history, and
+// finding a wallet from its passkey, are both read from logs, so an endpoint
+// that quietly forgets makes the wallet quietly wrong.
 export const DEFAULT_NETWORK: NetworkConfig = Object.freeze({
-  rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+  rpcUrl: "https://sepolia.gateway.tenderly.co",
   verificationRpcUrl: "https://1rpc.io/sepolia",
   bundlerUrl: `https://public.pimlico.io/v2/${CHAIN_ID}/rpc`,
   explorerUrl: "https://eth-sepolia.blockscout.com",
