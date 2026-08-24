@@ -20,6 +20,8 @@ import { useNetwork } from "../../config/NetworkContext";
 import { createRecoveryLogTransport } from "../../transports/recoveryLogs";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { discoverGuardianRecoveryRequests } from "./guardianDiscovery";
+import { capabilityStanding, describeStanding, type CapabilityStanding } from "./capabilityStanding";
+import { useClipboard } from "../../components/useClipboard";
 import type { DiscoveredRequestView } from "./discoveredRequests";
 
 export function GuardianWorkspace({ account, inboundLink = "", embedded = false }: {
@@ -34,6 +36,9 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
   const [link, setLink] = useState("");
   const [arrived, setArrived] = useState(false);
   const [message, setMessage] = useState("");
+  /** Read from each protected account, never stored: a written-down status is
+      exactly what goes stale without anyone noticing. */
+  const [standings, setStandings] = useState<Readonly<Record<string, CapabilityStanding>>>({});
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [freezing, setFreezing] = useState<GuardianInviteV1 | null>(null);
   const [recoveryArtifact, setRecoveryArtifact] = useState("");
@@ -111,7 +116,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         ? parseGuardianInvite(link)
         : await receiveGuardianInvite(link, services.invitationLinks, Math.floor(services.now() / 1000));
       await services.guardianVault.put(account, { capability: invite, acceptedAt: services.now(), status: "unverified" });
-      setMessage("Capability validated and encrypted. Live account state must match before guardian actions are enabled."); setLink(""); refresh();
+      setMessage("Invitation accepted and encrypted on this device. Its standing against the account is read from the chain and shown on the card."); setLink(""); refresh();
     } catch (error) {
       // An invitation and a recovery request travel the same way -- same link
       // shape, same path -- and only their contents tell them apart. Pasted
@@ -221,7 +226,20 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
    * the thing that does.
    */
   useEffect(() => {
-    if (!deployment?.recoveryModule || protectedAccountKey.length === 0) return;
+    // Whether a capability still counts is read here rather than alongside
+    // recovery discovery: that path needs an intent board and a log-serving
+    // endpoint, and when either is missing it returns before reading any
+    // account at all -- leaving the badge saying "Checking…" for good. This
+    // needs only the account's own state, which is the same read this effect
+    // already makes.
+    const unread = (detail: string) => Object.fromEntries(reviewableRecords.map(record =>
+      [record.capability.capabilityId, { kind: "unreadable" as const, detail }]));
+    if (!deployment?.recoveryModule || protectedAccountKey.length === 0) {
+      if (reviewableRecords.length > 0) {
+        setStandings(unread("This deployment publishes no recovery manager to ask."));
+      }
+      return;
+    }
     const manager = deployment.recoveryModule;
     const chainId = deployment.chainId;
     let cancelled = false;
@@ -230,6 +248,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       try {
         const now = Math.floor(services.now() / 1000);
         const found: PendingCancellationView[] = [];
+        const readStandings: Record<string, CapabilityStanding> = {};
         let unreadable = 0;
         for (const capability of distinctProtectedAccounts(reviewableRecords, chainId)) {
           try {
@@ -237,6 +256,12 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
               config, chainId, account: capability.account, recoveryManager: manager, publicClients: services.publicClients
             });
             const [live, pending] = await Promise.all([client.inspectAccount(), client.readPendingRecovery()]);
+            for (const record of reviewableRecords) {
+              if (record.capability.account.toLowerCase() !== capability.account.toLowerCase()) continue;
+              readStandings[record.capability.capabilityId] = capabilityStanding({
+                capability: record.capability, live, nowSeconds: now
+              });
+            }
             const view = describePendingCancellation({ capability, recoveryManager: manager, live, pending, nowSeconds: now });
             if (view) found.push(view);
           } catch {
@@ -247,6 +272,9 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
           }
         }
         if (!cancelled) {
+          // A capability whose account could not be read keeps no verdict at
+          // all rather than inheriting one from an account that was.
+          setStandings({ ...unread("The account could not be read from this endpoint."), ...readStandings });
           setStoppable({
             status: "done",
             entries: Object.freeze(found),
@@ -257,7 +285,10 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         }
       } catch {
         // Unreadable is not "nothing pending". The manual path stays open.
-        if (!cancelled) setStoppable({ status: "done", entries: [], unavailable: "Pending recoveries could not be read from the network. Paste a cancellation request instead." });
+        if (!cancelled) {
+          setStandings(unread("The account could not be read from this endpoint."));
+          setStoppable({ status: "done", entries: [], unavailable: "Pending recoveries could not be read from the network. Paste a cancellation request instead." });
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -458,19 +489,61 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
         catch (error) { setMessage(safeUserMessage(error, "Unreadable record could not be removed.", "storage")); }
       }}>Remove local record</button></div>)}
     </section>}
-    {visibleRecords.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts for this wallet</h2><p>Open an invitation addressed to this guardian wallet. Invitations accepted by another local wallet stay private to that wallet.</p></section> : visibleRecords.map(record => <GuardianAccount key={record.capability.capabilityId} record={record} onFreeze={() => setFreezing(record.capability)} />)}
+    {visibleRecords.length === 0 ? <section className="empty-state"><span aria-hidden="true">◇</span><h2>No accepted accounts for this wallet</h2><p>Open an invitation addressed to this guardian wallet. Invitations accepted by another local wallet stay private to that wallet.</p></section> : visibleRecords.map(record => <GuardianAccount
+      key={record.capability.capabilityId}
+      record={record}
+      standing={standings[record.capability.capabilityId]}
+      onFreeze={() => setFreezing(record.capability)}
+    />)}
     {freezing && deployment && <FreezeDialog capability={freezing} deployment={deployment} guardianAccount={account} onClose={() => setFreezing(null)} />}
     {approving && deployment && <RecoveryApprovalDialog {...approving} deployment={deployment} guardianAccount={account} onClose={() => setApproving(null)} />}
     {cancelling && deployment && <CancellationApprovalDialog {...cancelling} deployment={deployment} guardianAccount={account} onClose={() => { setCancelling(null); setCancelArtifact(""); }} />}
   </div>;
 }
 
-function GuardianAccount({ record, onFreeze }: { record: GuardianVaultRecord; onFreeze(): void }) {
+function GuardianAccount({ record, standing, onFreeze }: {
+  record: GuardianVaultRecord;
+  /** Absent until the account has been read; absence is not a verdict. */
+  standing: CapabilityStanding | undefined;
+  onFreeze(): void;
+}) {
   const invite: GuardianInviteV1 = record.capability;
-  return <article className="section-card guardian-account"><div className="section-heading"><div><p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL}</p><h2>{shorten(invite.account)}</h2></div><span className={`pill ${record.status === "stale" ? "failed" : "included"}`}>{record.status}</span></div>
-    <div className="permission-grid"><div><span>Chain</span><strong>{invite.chainId}</strong></div><div><span>Guardian type</span><strong>{invite.guardian.kind === "p256" ? "Dedicated passkey" : invite.guardian.kind.toUpperCase()}</strong></div><div><span>Threshold</span><strong>{invite.threshold} of {invite.guardianCount}</strong></div><div><span>Accepted</span><strong>{new Date(record.acceptedAt).toLocaleDateString()}</strong></div></div>
-    <p className="callout warning"><strong>Current epoch only.</strong> This version 1 capability has no standby epoch, so recovery continuity is incomplete until the owner delivers a version 2 capability after scheduling the next guardian set.</p>
+  // The stored status only ever said "unverified": nothing wrote any other
+  // value, so the badge told the guardian the same thing forever. What they
+  // need to know is whether this capability still counts, which only the
+  // account can say.
+  const described = standing ? describeStanding(standing) : null;
+  const clipboard = useClipboard();
+  return <article className="section-card guardian-account"><div className="section-heading"><div>
+      <p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL}</p>
+      {/* Shortened to be read, copied in full: the address is what a guardian
+          needs to check the account anywhere else, and retyping 40 characters
+          from a truncated one is not an option. */}
+      <h2>
+        <button
+          className="address-copy"
+          aria-label={`Copy the full address of the account ${shorten(invite.account)}`}
+          onClick={() => void clipboard.copy(invite.account, { what: "Account address" })}
+        >
+          <span>{shorten(invite.account)}</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+            <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
+            <path d="M5 15V6a1 1 0 0 1 1-1h9" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+        </button>
+      </h2>
+    </div>
+      <span className={`pill ${described === null ? "pending" : described.tone === "good" ? "included" : "failed"}`}>
+        {described?.label ?? "Checking…"}
+      </span></div>
+    {described && <p className={described.tone === "good" ? "form-note" : "callout warning"}>{described.detail}</p>}
+    {/* What a guardian acts on: how many approvals this account needs, and
+        when they took this on. The chain is the one they are already on, and
+        the guardian type describes their own key rather than the account --
+        neither changes anything they would do here. */}
+    <div className="permission-grid"><div><span>Threshold</span><strong>{invite.threshold} of {invite.guardianCount}</strong></div><div><span>Accepted</span><strong>{new Date(record.acceptedAt).toLocaleDateString()}</strong></div></div>
     <p className="form-note">Freezing pauses this account's ordinary execution for the contract's emergency window. It moves no funds, approves no recovery, and gives you no spending power.</p>
+    {clipboard.message && <p className={clipboard.failed ? "callout warning" : "form-note"}>{clipboard.message}</p>}
     <div className="guardian-actions"><button className="danger-button" onClick={onFreeze}>Emergency freeze…</button></div>
   </article>;
 }

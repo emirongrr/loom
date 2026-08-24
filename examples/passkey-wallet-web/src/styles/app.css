@@ -198,6 +198,9 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .guardian-row-chevron { color: var(--muted); font-size: 12px; }
 .guardian-row-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .guardian-row-panel .form-note { margin: 0 0 10px; }
+.address-copy { display: inline-flex; align-items: center; gap: 8px; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; }
+.address-copy svg { flex: none; color: var(--muted); transition: color .15s ease; }
+.address-copy:hover svg, .address-copy:focus-visible svg { color: var(--brand); }
 .guardian-address { margin: 0 0 12px; }
 .guardian-address .eyebrow { display: block; margin: 0 0 3px; }
 .guardian-address .breakable { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
