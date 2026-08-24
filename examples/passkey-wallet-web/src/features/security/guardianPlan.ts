@@ -22,6 +22,15 @@ export interface RosterEntry {
    * who can help and one who will discover they cannot at the worst moment.
    */
   readonly invitedAt?: number;
+  /**
+   * The address this guardian was added from, kept for display only.
+   *
+   * A passkey guardian is identified on chain by its verifier, key and salt --
+   * never by an address -- so this is not part of the leaf and grants nothing.
+   * Without it a Loom wallet added as a guardian reads as "Dedicated passkey"
+   * and cannot be told from any other.
+   */
+  readonly guardianAccount?: `0x${string}`;
 }
 
 export interface GuardianChangePlan {

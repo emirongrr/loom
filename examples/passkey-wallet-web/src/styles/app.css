@@ -228,3 +228,35 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .guardian-state.unsent { color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); }
 .guardian-row-open { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 @media (max-width: 760px) { .guardian-state { padding: 3px 7px; font-size: 10px; } }
+
+/* The row's children used to be icon, text and actions, so it was a three
+   column grid. It now holds one button that lays itself out, plus a panel when
+   opened -- and left as three columns the button was squeezed into the first
+   one, collapsing the name column to zero and printing the state badge on top
+   of the label. */
+.guardian-list .guardian-row { display: block; }
+.guardian-list .guardian-row-open { grid-template-columns: 38px minmax(0, 1fr) auto auto; }
+
+
+/* Removing a guardian is the one action here that takes protection away, so it
+   is coloured for it rather than hidden as a text link. */
+.guardian-row-panel .guardian-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.guardian-row-panel .danger-button:hover:not(:disabled) { color: var(--surface); background: var(--danger); border-color: var(--danger); }
+
+/* Naming, the same way wherever it appears. Reading is quiet: the label in the
+   same small caps every card uses, the name in the body weight, and a pencil
+   that only announces itself to a screen reader. */
+.inline-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 16px 0; }
+.inline-name > div { display: grid; gap: 2px; min-width: 0; }
+.inline-name strong { overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.inline-name .icon-button { color: var(--muted); }
+.inline-name .icon-button:hover { color: var(--ink); }
+.inline-name.editing { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.inline-name.editing .field { margin: 0; }
+.inline-name-actions { display: flex; align-items: center; gap: 10px; }
+.guardian-row-panel .inline-name { margin: 0 0 12px; }
+
+/* A count inside a tab sits beside the word rather than replacing the pill
+   spacing the header used. */
+.roster-tab .count-badge { margin-left: 6px; }
+

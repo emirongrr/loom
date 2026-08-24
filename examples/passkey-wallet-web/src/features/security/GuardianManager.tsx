@@ -17,6 +17,7 @@ import {
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { guardianSetupStep } from "./guardianSetupStep";
+import { InlineName } from "../../components/InlineName";
 import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
 import { encryptRoster } from "./portableRoster";
 import { passkeyDerivedSecret } from "../wallet/webauthn";
@@ -92,7 +93,6 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   // — exists only on chain. Discover it there so it is never silently invisible.
   const [onChainOperations, setOnChainOperations] = useState<readonly ScheduledOperation[]>([]);
   const [chainNow, setChainNow] = useState(0n);
-  const [operationDiscoveryIncomplete, setOperationDiscoveryIncomplete] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -101,12 +101,10 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         if (!active) return;
         setOnChainOperations(result.operations);
         setChainNow(result.chainTimestamp);
-        setOperationDiscoveryIncomplete(result.discoveryUnavailable);
       })
       .catch(() => {
         if (!active) return;
         setOnChainOperations([]);
-        setOperationDiscoveryIncomplete(true);
       });
     return () => { active = false; };
   }, [config, account.account, publicClients, reloads]);
@@ -228,7 +226,14 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
         ? await resolveLoomP256Guardian({ value, deployment: deployment!, verifierCodeHash, reader: chainReader })
         : buildGuardianDescriptor({ kind: detected.kind, value: detected.address, verifier, verifierCodeHash });
       assertAddable(draft, descriptor);
-      const entry: RosterEntry = { id: crypto.randomUUID(), label: label.trim() || describeGuardian(descriptor).slice(0, 10), descriptor };
+      const entry: RosterEntry = {
+        id: crypto.randomUUID(),
+        label: label.trim() || describeGuardian(descriptor).slice(0, 10),
+        descriptor,
+        // Recorded now because this is the only moment it is known: the
+        // descriptor keeps the key, not the address it came from.
+        ...(detected.address ? { guardianAccount: detected.address } : {})
+      };
       const next = [...draft, entry];
       setDraft(next);
       setThreshold(current => clampThreshold(current, next.length));
@@ -236,6 +241,25 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
     } catch (issue) {
       setError(safeUserMessage(issue, "The guardian could not be verified and added.", "validation"));
     } finally { setBusy(false); }
+  };
+
+  /**
+   * A name for a guardian, kept on this device.
+   *
+   * Nothing about it is published: the chain holds a root over verifier, key
+   * and salt, and none of that is a name. It exists so a list of guardians
+   * reads as people rather than as addresses.
+   */
+  const renameGuardian = async (guardianId: string, label: string) => {
+    setError("");
+    const renamed = (entries: readonly RosterEntry[]) =>
+      entries.map(item => item.id === guardianId ? { ...item, label } : item);
+    setDraft(current => renamed(current));
+    // Written straight through when the set already matches the chain, so the
+    // name survives a reload without waiting for an unrelated change.
+    if (protection.kind === "in-sync") {
+      await roster.write(account.id, { entries: renamed(committed), version: setVersion, pending: null });
+    }
   };
 
   const removeGuardian = (id: string) => {
@@ -456,12 +480,6 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </p>
     </div>}
 
-    {/* The distinction that has to survive shortening: what is shown is real,
-        but its absence proves nothing. */}
-    {operationDiscoveryIncomplete && <p className="callout warning">
-      This RPC did not return every scheduled change. What is listed is real; an empty list is not proof.
-    </p>}
-
     {!pending && (protection.kind === "list-missing" || protection.kind === "list-mismatch") && <RestoreRoster
       status={protection}
       busy={busy}
@@ -483,14 +501,21 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
                 onClick={() => setOpened(open ? null : entry.id)}
               >
                 <span className="round-icon" aria-hidden="true">{entry.descriptor.kind === "erc1271" ? "▣" : "◆"}</span>
-                <span><strong>{entry.label}</strong><span className="breakable">{describeGuardian(entry.descriptor)}</span></span>
-                {/* One fact per guardian, where that guardian is. A paragraph
-                    above the list told every owner that invitations matter; it
-                    could not tell them which of their guardians was missing
-                    one, which is the only part they can act on. */}
-                {onChainAlready && <span className={entry.invitedAt ? "guardian-state sent" : "guardian-state unsent"}>
-                  <span aria-hidden="true">{entry.invitedAt ? "✓" : "!"}</span>
-                  {entry.invitedAt ? "Invitation sent" : "No invitation"}
+                <span>
+                  <strong>{entry.label}</strong>
+                  {/* The address it was added from, which is what tells two
+                      passkey guardians apart. Falls back to the descriptor for
+                      entries recorded before this was kept. */}
+                  <span className="breakable">{entry.guardianAccount ?? describeGuardian(entry.descriptor)}</span>
+                </span>
+                {/* Shown only when this device recorded sending one. Nothing is
+                    published about invitations and acceptance happens on the
+                    guardian's device, so silence here means "not known from
+                    here" -- never "they were not invited", which would be a
+                    false claim to anyone who invited them before this wallet
+                    started keeping the record. */}
+                {onChainAlready && entry.invitedAt !== undefined && <span className="guardian-state sent">
+                  <span aria-hidden="true">✓</span>Invitation sent
                 </span>}
                 <span className="guardian-row-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
               </button>
@@ -499,18 +524,25 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
                   a irreversible-looking action a stray click away, and left the
                   list carrying two verbs for the same person. */}
               {open && <div className="guardian-row-panel">
+                <InlineName
+                  label="Guardian name"
+                  value={entry.label}
+                  placeholder="Ada"
+                  compact
+                  onSave={name => renameGuardian(entry.id, name)}
+                />
                 {onChainAlready
                   ? <p className="form-note">
-                    An invitation carries the proof this guardian signs with. It costs nothing, needs no transaction,
-                    and grants no spending power.
+                    {entry.invitedAt
+                      ? `Invitation sent ${new Date(entry.invitedAt).toLocaleDateString()}. Send another if they lost it.`
+                      : "They need an invitation before they can help you recover this account."}
                   </p>
-                  : <p className="form-note">
-                    Not on chain yet. Review and commit the change first; an invitation issued now would name a set
-                    the account does not hold.
-                  </p>}
+                  : <p className="form-note">Not saved on chain yet — review the change first.</p>}
                 <div className="guardian-actions">
-                  {onChainAlready && <button className="secondary" disabled={busy} onClick={() => void inviteGuardian(entry)}>Send invitation</button>}
-                  <button className="text-button" onClick={() => { setOpened(null); removeGuardian(entry.id); }}>Remove guardian</button>
+                  {onChainAlready && <button className="primary" disabled={busy} onClick={() => void inviteGuardian(entry)}>
+                    {entry.invitedAt ? "Send again" : "Send invitation"}
+                  </button>}
+                  <button className="danger-button" onClick={() => { setOpened(null); removeGuardian(entry.id); }}>Remove</button>
                 </div>
               </div>}
             </div>;
