@@ -31,7 +31,9 @@ import { collectAccountRecoveryRequests, type AccountRecoveryRequest, type OnCha
 import { AccountRecoveryRequestsPanel } from "./AccountRecoveryRequestsPanel";
 import { RecoveryLookupPanel } from "./RecoveryLookupPanel";
 import { RecoveryStepper, recoveryViewStage } from "./RecoveryStepper";
+import { GasPayerChoice } from "./GasPayerChoice";
 import { useRecoverySetupController } from "./useRecoverySetupController";
+import { shortAddress } from "../../components/address.ts";
 
 export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWalletOpen = false, onClose, onNavigate, onRecovered }: {
   readonly path: string;
@@ -496,7 +498,16 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         {!passkeyPreparation && <><p className="callout warning">A validator deployment alone cannot restore its passkey metadata. If this recovery was started before encrypted drafts were supported, create one new recovery passkey; this attempt will be saved before any factory transaction and will resume after reload.</p><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
         {passkeyPreparation && <><div className="callout"><strong>Recovery validator</strong><p className="breakable">{passkeyPreparation.validator}</p></div>
           {passkeyStatus !== "published" ? <><p className="form-note">Publishing this exact factory call is permissionless and grants no account authority. The publishing wallet only pays network gas.</p>
-            {gasPayers.length > 0 && <div className="callout"><label className="field"><span>Pay gas with a saved Loom wallet</span><select value={selectedGasPayer?.id ?? ""} onChange={event => setGasPayerId(event.target.value)} disabled={passkeyStatus === "publishing"}>{gasPayers.map(payer => <option key={payer.id} value={payer.id}>{payer.label} · {shortAddress(payer.account)}</option>)}</select></label><p className="form-note">The selected wallet will request its own passkey and sign only the factory deployment call.</p><button className="primary" disabled={passkeyStatus === "publishing" || !selectedGasPayer} onClick={() => void publishWithLoomWallet()}>{passkeyStatus === "publishing" ? "Confirm on your device…" : "Publish & pay with Loom wallet"}</button></div>}
+            {gasPayers.length > 0 && <div className="callout">
+              <GasPayerChoice
+                label="Pay gas with a saved Loom wallet"
+                candidates={gasPayers}
+                selected={selectedGasPayer}
+                disabled={passkeyStatus === "publishing"}
+                onSelect={setGasPayerId}
+              />
+              <button className="primary" disabled={passkeyStatus === "publishing" || !selectedGasPayer} onClick={() => void publishWithLoomWallet()}>{passkeyStatus === "publishing" ? "Confirm on your device…" : "Publish & pay with Loom wallet"}</button>
+            </div>}
             {gasPayers.length === 0 && <p className="callout warning">No other Saved Wallet on this chain is available. Save and activate another Loom wallet, or use an external publisher.</p>}
             <div className="guardian-actions"><button className="secondary" onClick={() => void copyPublication()}>Copy exact transaction</button><button className="secondary" onClick={() => void verifyPublication().catch(error => setMessage(error instanceof Error ? error.message : "Publication could not be verified."))}>Check publication</button><button className="secondary" disabled={passkeyStatus === "publishing"} onClick={() => void publish()}>{passkeyStatus === "publishing" ? "Publishing…" : "Use external browser wallet"}</button></div></> : <><div className="callout success"><strong>New passkey validator is live.</strong><p>The exact child bytecode is verified on chain.</p></div><button className="primary" onClick={() => void prepareGuardianRequest()}>Continue to guardian approvals</button></>}
         </>}
@@ -1084,7 +1095,6 @@ function RecoveryProposalSessionView({ session, repository, accounts, onChanged,
       >The contract-enforced delay has elapsed. Execution will atomically replace the validator set and rotate the guardian root.</PaidStep>}{view.panels.includes("execution-receipt") && <ExecutionReceipt session={session} busy={busy} saveRecoveredWallet={saveRecoveredWallet} setMessage={setMessage} />}{view.panels.includes("send-to-guardians") && <SendToGuardians session={session} busy={busy} announced={announced} announceMessage={announceMessage} announcePayers={announcePayers} announcePayer={announcePayer} setAnnouncePayerId={setAnnouncePayerId} announceWithLoomWallet={announceWithLoomWallet} announce={announce} copyAnnouncement={copyAnnouncement} copyRequest={copyRequest} copyEncryptedLink={copyEncryptedLink} showShareQr={showShareQr} download={download} shareLink={shareLink} shortAddress={shortAddress} />}<div className="guardian-actions"><button className="secondary" onClick={onBack}>All sessions</button></div></section></main>;
 }
 
-
 /**
  * The announcement, built once for the three places that send it.
  *
@@ -1110,8 +1120,6 @@ function announcementCall(session: RecoverySession, board: `0x${string}`) {
 function shortStage(stage: RecoverySession["stage"]): string {
   return ({ "request-created": "Request ready", collecting: "Collecting approvals", "ready-to-propose": "Ready to propose", "delay-active": "Security delay active", "ready-to-execute": "Ready to execute", completed: "Recovery completed", cancelled: "Recovery cancelled", expired: "Recovery expired", blocked: "Recovery blocked" })[stage];
 }
-
-function shortAddress(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
 
 /**
  * Why an announcement did not go out, in the announcer's own terms.
