@@ -1,3 +1,4 @@
+import { getAddress } from "viem";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -186,3 +187,31 @@ function seeded(seed: number): (length: number) => Uint8Array {
   let counter = seed;
   return length => Uint8Array.from({ length }, () => (counter = (counter * 31 + 7) % 251));
 }
+
+test("a guardian's own wallet address travels with the backup", () => {
+  const [alice, bob] = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(9));
+  const entries = [{ ...alice!, guardianAccount: ALICE as `0x${string}` }, bob!];
+  const backup = parseRosterBackup(JSON.parse(JSON.stringify(
+    createRosterBackup({ account: ACCOUNT, chainId: 11155111, threshold: 2, entries })
+  )));
+
+  // Checksummed on the way back in, so a lower-case file and a mixed-case one
+  // restore to the same value rather than to two spellings of one wallet.
+  assert.equal(backup.entries[0]?.guardianAccount, getAddress(ALICE));
+  assert.equal(backup.entries[1]?.guardianAccount, undefined);
+});
+
+test("an address the backup made up is dropped rather than shown as one", () => {
+  const [alice, bob] = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(10));
+  const onChain = { root: rootOf([alice!, bob!], 2), threshold: 2, recoveryConfigured: true, configVersion: 1n };
+  const file = JSON.parse(JSON.stringify(
+    createRosterBackup({ account: ACCOUNT, chainId: 11155111, threshold: 2, entries: [alice!, bob!] })
+  ));
+  // Outside the leaf, so the root still matches: nothing else in this file can
+  // catch it, which is exactly why it is checked here.
+  file.entries[0].guardianAccount = "not an address";
+
+  const backup = parseRosterBackup(file);
+  assert.equal(backup.entries[0]?.guardianAccount, undefined);
+  assert.deepEqual(verifyRosterBackup({ backup, account: ACCOUNT, chainId: 11155111, onChain }), { ok: true });
+});

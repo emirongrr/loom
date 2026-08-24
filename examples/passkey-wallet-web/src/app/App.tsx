@@ -14,10 +14,11 @@ import { prepareInitialGuardianSetup } from "../features/onboarding/initialGuard
 import { readVerifierCodeHash } from "../features/security/guardianClient";
 import { createBrowserGuardianRoster } from "../storage/guardianRoster";
 import { useNetwork } from "../config/NetworkContext";
-import { parseAccountHandle } from "../storage/accountStore";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
 import { RecoveryPage } from "../features/recovery/RecoveryPage";
+import { findWalletsByPasskey } from "../features/onboarding/findWalletsByPasskey";
+import { assertAnyPasskey } from "../features/wallet/webauthn";
 import { StopRecoveryPage } from "../features/recovery/StopRecoveryPage";
 import { useAppNavigation } from "./useAppNavigation";
 import { safeUserMessage } from "../domain/errors/appError";
@@ -95,16 +96,6 @@ export function App() {
     } catch (error) { setMessage(safeUserMessage(error, "Wallet could not be created.", "preparation")); }
     finally { setBusy(false); }
   };
-  const importAccount = async (text: string) => {
-    setBusy(true); setMessage("");
-    try {
-      const handle = parseAccountHandle(JSON.parse(text));
-      await services.accounts.save(handle);
-      await refreshAccounts();
-      setLocked(handle); setArea("home");
-    } catch (error) { setMessage(safeUserMessage(error, "Wallet handle could not be restored.", "storage")); }
-    finally { setBusy(false); }
-  };
   const unlockAccount = async (account: AccountHandle) => {
     setBusy(true); setMessage("");
     try {
@@ -132,6 +123,64 @@ export function App() {
     await services.accounts.linkRecovered(handle);
     await refreshAccounts();
   };
+  /**
+   * Bring back a wallet this browser has never heard of, using the passkey.
+   *
+   * Nothing is stored in advance and no server is asked. The account published
+   * its public key when it installed its validator; the assertion proves which
+   * key signed; the two together name the account. A private window, a new
+   * browser, or a cleared one can all get back in with the passkey alone.
+   */
+  const findByPasskey = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const deployment = await loadWalletDeployment();
+      const assertion = await assertAnyPasskey();
+      if (!assertion) { setMessage("No passkey was offered, so there is nothing to look up."); return; }
+      const client = services.publicClients.forEndpoint(config.rpcUrl);
+      const result = await findWalletsByPasskey({
+        validator: deployment.validator,
+        assertion,
+        rpId: window.location.hostname,
+        origin: window.location.origin,
+        reader: {
+          getBlockNumber: () => client.getBlockNumber(),
+          getLogs: request => client.getLogs({
+            address: request.address,
+            fromBlock: request.fromBlock,
+            toBlock: request.toBlock,
+            ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
+          }) as never
+        }
+      });
+      if (result.unavailable) { setMessage(`The chain could not be searched: ${result.unavailable}`); return; }
+      if (!result.found) {
+        setMessage("That passkey does not match any account published on this chain. If the wallet was never used on chain, restore it from an exported handle instead.");
+        return;
+      }
+      const existing = accounts.find(candidate => candidate.account.toLowerCase() === result.found!.account.toLowerCase());
+      if (existing) { setMessage(`${existing.label} is already saved here.`); return; }
+      await services.accounts.save({
+        version: 1,
+        kind: "recovered",
+        id: `passkey:${result.found.account.toLowerCase()}`,
+        label: "Recovered wallet",
+        account: result.found.account,
+        chainId: deployment.chainId,
+        credentialId: assertion.credentialId,
+        publicKey: { x: result.found.x, y: result.found.y },
+        rpId: window.location.hostname,
+        origin: window.location.origin,
+        validator: deployment.validator
+      });
+      await refreshAccounts();
+      setMessage("Wallet found and saved. Open it to continue.");
+    } catch (issue) {
+      setMessage(issue instanceof Error ? issue.message : "The passkey could not be used.");
+    } finally { setBusy(false); }
+  };
+
   if (!accountsLoaded) return <main className="wallet-landing"><section className="landing-panel"><p>Loading saved wallets…</p></section></main>;
   if (recoveryPath === STOP_RECOVERY_PATH && selected) {
     return <><StopRecoveryPage handle={selected} onClose={closeRecovery} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
@@ -142,7 +191,7 @@ export function App() {
   // else's account, which answers a different question entirely.
   if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
-  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onImport={importAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   return <div className="app-shell">
     <aside className="sidebar">
       <button className="brand" onClick={() => setArea("home")} aria-label="Loom wallet home"><span className="brand-mark">L</span><span>Loom</span></button>
@@ -163,7 +212,8 @@ export function App() {
       lockAccount,
       () => openRecovery("/recover", selected.id),
       guardianInboundLink,
-      () => openRecovery(STOP_RECOVERY_PATH, selected.id)
+      () => openRecovery(STOP_RECOVERY_PATH, selected.id),
+      () => { void refreshAccounts(); }
     )}</main>
     <button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button>
     <nav className="bottom-nav" aria-label="Mobile navigation">{primaryNavigation.map(item => <NavButton key={item.id} item={item} current={area} onClick={setArea} />)}</nav>
@@ -174,14 +224,14 @@ function NavButton({ item, current, onClick }: { item: { id: NavigationArea; lab
   return <button className={current === item.id ? "nav-item active" : "nav-item"} aria-current={current === item.id ? "page" : undefined} onClick={() => onClick(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>;
 }
 
-function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string, stopRecovery: () => void) {
+function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string, stopRecovery: () => void, onRenamed: () => void) {
   switch (area) {
     case "home": return <HomePage account={account} onNavigate={navigate} onSwitch={switchAccount} onLock={lockAccount} onStopRecovery={stopRecovery} />;
     case "activity": return <ActivityPage account={account} />;
     case "apps": return <AppsPage account={account} />;
     case "security": return <SecurityPage account={account} onGuardian={() => navigate("guardian")} onRecovery={openRecovery} />;
     case "guardian": return <GuardianWorkspace account={account} inboundLink={guardianInboundLink} />;
-    case "developer": return <DeveloperSettings />;
+    case "developer": return <DeveloperSettings account={account} onRenamed={onRenamed} />;
   }
 }
 

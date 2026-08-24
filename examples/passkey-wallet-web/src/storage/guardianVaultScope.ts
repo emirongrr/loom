@@ -2,6 +2,7 @@ import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { encodeAbiParameters, keccak256 } from "viem";
 import type { AccountHandle } from "../types.ts";
 import type { GuardianVaultRecord } from "./guardianVault.ts";
+import { AppError } from "../domain/errors/appError.ts";
 
 /**
  * Bind a capability to the local wallet that actually holds its guardian
@@ -21,9 +22,26 @@ export function guardianCapabilityBelongsToAccount(capability: GuardianInviteV1,
   return keyCommitment?.toLowerCase() === capability.guardian.keyCommitment.toLowerCase();
 }
 
+/**
+ * Thrown as an `AppError` so the reason survives to the screen.
+ *
+ * A plain `Error` here reached the reader as "Capability could not be
+ * accepted", because the generic fallback exists to stop arbitrary internals
+ * being shown. This message is written for them and says exactly what to do:
+ * a per-guardian invitation carries that guardian's proof and salt, so it can
+ * only be accepted in the wallet whose passkey matches -- which is the
+ * difference between a wrong wallet and a broken link.
+ */
 export function assertGuardianCapabilityMatchesAccount(capability: GuardianInviteV1, account: AccountHandle): void {
   if (!guardianCapabilityBelongsToAccount(capability, account)) {
-    throw new Error("This invitation belongs to a different guardian wallet. Open that wallet before accepting it.");
+    throw new AppError({
+      code: "INVALID_INPUT",
+      userMessage: capability.chainId !== account.chainId
+        ? `This invitation is for chain ${capability.chainId}; this wallet is on chain ${account.chainId}.`
+        : "This invitation was issued to a different wallet. It carries that guardian's own proof, so open the wallet it was sent to and accept it there.",
+      retryable: false,
+      stage: "validation"
+    });
   }
 }
 

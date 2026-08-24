@@ -1,3 +1,4 @@
+import { getAddress } from "viem";
 import type { Hex } from "@loom/core";
 import { planGuardianChange, type RosterEntry } from "./guardianPlan.ts";
 
@@ -107,7 +108,19 @@ export function parseRosterBackup(value: unknown): RosterBackup {
     account: record.account,
     chainId: Number(record.chainId),
     threshold: Number(threshold),
-    entries: Object.freeze(record.entries as RosterEntry[])
+    entries: Object.freeze((record.entries as RosterEntry[]).map(entry => {
+      // The guardian's own wallet address travels with the backup so a restored
+      // list still says who each guardian is. It sits outside the leaf and
+      // grants nothing, which also means the root check that governs everything
+      // else here cannot vouch for it -- so a value that is not an address is
+      // dropped rather than shown as one.
+      const address = (entry as { guardianAccount?: unknown }).guardianAccount;
+      if (address === undefined) return entry;
+      const { guardianAccount: _dropped, ...rest } = entry;
+      return typeof address === "string" && /^0x[0-9a-fA-F]{40}$/.test(address)
+        ? { ...rest, guardianAccount: getAddress(address) }
+        : rest;
+    }))
   });
 }
 

@@ -16,7 +16,11 @@ type SafetyView =
   | { status: "loaded"; state: AccountSafetyState }
   | { status: "error"; message: string };
 
-export function SecurityPage({ account, onGuardian, onRecovery }: { readonly account: AccountHandle; readonly onGuardian: () => void; readonly onRecovery: () => void }) {
+export function SecurityPage({ account, onGuardian, onRecovery }: {
+  readonly account: AccountHandle;
+  readonly onGuardian: () => void;
+  readonly onRecovery: () => void;
+}) {
   const { config } = useNetwork();
   const localThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
   const [safety, setSafety] = useState<SafetyView>({ status: "loading" });
@@ -41,6 +45,7 @@ export function SecurityPage({ account, onGuardian, onRecovery }: { readonly acc
   const refresh = useCallback(() => setReloads(count => count + 1), []);
 
   const [roster, setRoster] = useState<"mine" | "theirs">("mine");
+
   const chain = safety.status === "loaded" ? safety.state : null;
   const threshold = chain ? chain.config.guardianThreshold : localThreshold;
 
@@ -77,18 +82,6 @@ export function SecurityPage({ account, onGuardian, onRecovery }: { readonly acc
       </SecurityStatus>;
     })()}
 
-    <section className="section-card">
-      <p className="eyebrow">Primary access</p><h2>This passkey owns the account</h2>
-      <div className="security-row">
-        <span className="round-icon" aria-hidden="true">◆</span>
-        <div><strong>{account.rpId}</strong><p>The private credential stays in this device&apos;s authenticator and never reaches the page.</p></div>
-        <span className="pill included">Active</span>
-      </div>
-      <p className="form-note">
-        Recovery is managed from here: who can restore this account, and which accounts you can help restore.
-      </p>
-      <div className="guardian-actions"><button className="secondary" onClick={onRecovery}>Start recovery</button></div>
-    </section>
 
     {/* Two rosters, one for each direction the relationship runs. They were
         separate destinations, so seeing both meant leaving and coming back --

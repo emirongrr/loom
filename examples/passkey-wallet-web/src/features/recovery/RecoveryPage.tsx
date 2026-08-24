@@ -50,6 +50,8 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   const [account, setAccount] = useState("");
   const { inspection, setInspection, showPasskey, setShowPasskey, passkeyStatus, setPasskeyStatus, passkeyPreparation, setPasskeyPreparation } = useRecoverySetupController();
   const [artifact, setArtifact] = useState("");
+  /** The session being removed, held while its confirmation is on screen. */
+  const [discarding, setDiscarding] = useState<string | null>(null);
   const [sessions, setSessions] = useState<readonly RecoverySession[]>([]);
   const [issues, setIssues] = useState<readonly RecoverySessionIssue[]>([]);
   const [message, setMessage] = useState("");
@@ -526,7 +528,46 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
     {showAllSessions && <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}
-      {sessions.length === 0 ? <div className="empty-state compact"><h3>No recovery in progress</h3><p>A recovery session will remain here through approval collection, delay, execution, cancellation, or expiry.</p></div> : <div className="wallet-list">{sessions.map(session => <button key={session.id} className="wallet-list-item" onClick={() => onNavigate(`/recover/${encodeURIComponent(session.id)}`)}><span className="identicon" /><span><strong>{shortStage(session.stage)}</strong><small>{session.request.humanCode} · {session.request.account}</small></span><span className="pill pending">Open</span></button>)}</div>}
+      {sessions.length === 0 ? <div className="empty-state compact"><h3>No recovery in progress</h3><p>A recovery session will remain here through approval collection, delay, execution, cancellation, or expiry.</p></div> : <div className="wallet-list">{sessions.map(session => <div key={session.id} className="wallet-list-item">
+          {/* The row is the container; the button that opens it sits inside,
+              as it does for saved wallets. Made the button itself, its third
+              child fell to a second line and the stage ran into the address. */}
+          <button className="wallet-list-open" onClick={() => onNavigate(`/recover/${encodeURIComponent(session.id)}`)}>
+            <span className="identicon" aria-hidden="true" />
+            <span><strong>{shortStage(session.stage)}</strong><small>{session.request.humanCode} · {shortAddress(session.request.account)}</small></span>
+            <span className="pill pending">Open</span>
+          </button>
+          <button
+            className="wallet-list-remove"
+            aria-label={`Remove the ${shortStage(session.stage).toLowerCase()} session for ${shortAddress(session.request.account)}`}
+            onClick={() => { setMessage(""); setDiscarding(session.id); }}
+          >
+            <svg className="wallet-list-remove-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M9 3h6m-9 4h12m-1 0-.6 12a2 2 0 0 1-2 2H9.6a2 2 0 0 1-2-2L7 7m3 4v6m4-6v6" /></svg>
+            <span>Remove</span>
+          </button>
+          {/* Asked before it happens, because a session can hold guardian
+              approvals that were collected but never published, and this
+              device may be the only place they exist. The recovery itself is
+              on chain and is untouched either way. */}
+          {discarding === session.id && <div className="removal-confirmation">
+            <div className="removal-warning">
+              <span aria-hidden="true">!</span>
+              <div>
+                <strong>Remove this session from this device?</strong>
+                <p>Any approvals collected here and not yet published are lost with it. Nothing on chain changes: the recovery itself, and its delay, carry on.</p>
+              </div>
+            </div>
+            <div className="guardian-actions">
+              <button className="danger-button" onClick={() => void (async () => {
+                await repository.remove(session.id);
+                setDiscarding(null);
+                await refresh();
+                setMessage("The session was removed from this device. Nothing on chain changed.");
+              })().catch(() => setMessage("That session could not be removed."))}>Remove</button>
+              <button className="text-button" onClick={() => setDiscarding(null)}>Keep it</button>
+            </div>
+          </div>}
+        </div>)}</div>}
       <details><summary>Resume from a portable request</summary><p className="form-note">Paste a versioned recovery request received through a file, QR, clipboard, or bearer-link fragment. Unknown, altered, mismatched, and expired fields fail closed.</p><label className="field"><span>Recovery request</span><textarea rows={6} value={artifact} onChange={event => setArtifact(event.target.value)} placeholder='{"format":"loom.recovery-request",…}' /></label><button className="secondary" disabled={!artifact.trim()} onClick={() => void importRequest()}>Verify and save locally</button></details>
     </section>}
   </main>;

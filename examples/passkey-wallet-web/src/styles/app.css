@@ -106,7 +106,8 @@ h1, h2, h3, p { margin-top: 0; }h2 { margin-bottom: 8px; letter-spacing: -.025em
 .landing-panel, .saved-wallets { align-self: start; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: clamp(26px, 5vw, 48px); background: var(--surface); box-shadow: var(--shadow); }
 .landing-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 48px; font-size: 21px; }.landing-panel h1 { max-width: 650px; margin: 8px 0 14px; font-size: clamp(38px, 6vw, 64px); letter-spacing: -.055em; }.landing-panel > p:not(.eyebrow,.toast) { max-width: 650px; color: var(--muted); }
 .landing-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 28px; }.choice-card { display: grid; gap: 8px; min-height: 170px; border: 1px solid var(--line); border-radius: 18px; padding: 22px; text-align: left; background: var(--surface-soft); }.choice-card:hover { border-color: var(--brand); transform: translateY(-2px); }.choice-card > span { font-size: 30px; color: var(--brand); }.choice-card strong { font-size: 18px; }.choice-card small, .wallet-list-item small, .form-note { color: var(--muted); line-height: 1.5; }
-.landing-actions { display: flex; justify-content: flex-end; gap: 10px; }.saved-wallets { padding: 26px; }.saved-wallets .compact { margin-top: 20px; padding: 30px 16px; box-shadow: none; }.wallet-list { display: grid; gap: 9px; margin-top: 20px; }.wallet-list-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px 6px 14px; text-align: left; background: var(--surface-soft); }.wallet-list-open { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; border: 0; padding: 8px 0; text-align: left; background: transparent; }.wallet-list-open > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }.wallet-list-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.wallet-list-remove { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; border: 1px solid transparent; border-radius: 10px; padding: 0 10px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 700; }.wallet-list-remove:hover { border-color: color-mix(in srgb, var(--danger) 24%, transparent); color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, transparent); }.wallet-list-remove-icon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }.removal-confirmation { margin: 18px 0 8px; border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--line)); border-radius: 15px; padding: 16px; background: color-mix(in srgb, var(--danger) 5%, var(--surface-soft)); }.removal-warning { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: start; gap: 10px; }.removal-warning > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--surface); background: var(--danger); font-size: 13px; font-weight: 850; }.removal-warning p { margin: 1px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }.removal-warning strong { display: block; margin-bottom: 2px; color: var(--ink); }.removal-confirmation .field { margin: 14px 0 0; }.removal-confirmation .field input { border-color: color-mix(in srgb, var(--danger) 28%, var(--line)); background: var(--surface); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 750; letter-spacing: .08em; }.breakable { overflow-wrap: anywhere; }.lock-layout { grid-template-columns: minmax(0, 560px); justify-content: center; }
+.landing-actions { display: flex; justify-content: flex-end; gap: 10px; }.saved-wallets { padding: 26px; }.saved-wallets .compact { margin-top: 20px; padding: 30px 16px; box-shadow: none; }.wallet-list { display: grid; gap: 9px; margin-top: 20px; }.wallet-list-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 6px 8px 6px 14px; text-align: left; background: var(--surface-soft); }.wallet-list-open { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; border: 0; padding: 8px 0; text-align: left; background: transparent; }.wallet-list-open > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }.wallet-list-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.wallet-list-remove { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; border: 1px solid transparent; border-radius: 10px; padding: 0 10px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 700; }.wallet-list-remove:hover { border-color: color-mix(in srgb, var(--danger) 24%, transparent); color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, transparent); }.wallet-list-remove-icon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }.wallet-list-item > .removal-confirmation { grid-column: 1 / -1; margin: 4px 0 6px; }
+.removal-confirmation { margin: 18px 0 8px; border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--line)); border-radius: 15px; padding: 16px; background: color-mix(in srgb, var(--danger) 5%, var(--surface-soft)); }.removal-warning { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: start; gap: 10px; }.removal-warning > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--surface); background: var(--danger); font-size: 13px; font-weight: 850; }.removal-warning p { margin: 1px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }.removal-warning strong { display: block; margin-bottom: 2px; color: var(--ink); }.removal-confirmation .field { margin: 14px 0 0; }.removal-confirmation .field input { border-color: color-mix(in srgb, var(--danger) 28%, var(--line)); background: var(--surface); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 750; letter-spacing: .08em; }.breakable { overflow-wrap: anywhere; }.lock-layout { grid-template-columns: minmax(0, 560px); justify-content: center; }
 .advanced-toggle { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0; padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface-soft); cursor: pointer; }.advanced-toggle input { margin-top: 3px; accent-color: var(--brand); }.advanced-toggle span { display: grid; gap: 4px; }.advanced-toggle small { color: var(--muted); line-height: 1.45; }.advanced-setup { margin: 0 0 18px; padding: 18px; border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--line)); border-radius: 16px; background: color-mix(in srgb, var(--brand) 4%, var(--surface)); }.advanced-setup h3 { margin: 3px 0 8px; }.advanced-setup .guardian-list { margin-bottom: 14px; }
 .advanced-toggle.compact-toggle { margin-bottom: 0; background: var(--surface); }
 details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cursor: pointer; font-weight: 700; }
@@ -197,6 +198,12 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 .guardian-row-chevron { color: var(--muted); font-size: 12px; }
 .guardian-row-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .guardian-row-panel .form-note { margin: 0 0 10px; }
+.address-copy { display: inline-flex; align-items: center; gap: 8px; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; }
+.address-copy svg { flex: none; color: var(--muted); transition: color .15s ease; }
+.address-copy:hover svg, .address-copy:focus-visible svg { color: var(--brand); }
+.guardian-address { margin: 0 0 12px; }
+.guardian-address .eyebrow { display: block; margin: 0 0 3px; }
+.guardian-address .breakable { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 /* The posture card carries the shield, then any exception beneath it, so the
    whole answer to "is my account safe" sits in one place instead of two cards
@@ -223,8 +230,36 @@ details { margin-top: 16px; color: var(--muted); font-size: 13px; }summary { cur
 
 /* One fact per guardian, carried where that guardian is. Colour is a second
    signal, never the only one: the mark and the words say the same thing. */
-.guardian-state { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 750; white-space: nowrap; }
-.guardian-state.sent { color: var(--success); background: color-mix(in srgb, var(--success) 11%, transparent); }
-.guardian-state.unsent { color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); }
 .guardian-row-open { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-@media (max-width: 760px) { .guardian-state { padding: 3px 7px; font-size: 10px; } }
+
+/* The row's children used to be icon, text and actions, so it was a three
+   column grid. It now holds one button that lays itself out, plus a panel when
+   opened -- and left as three columns the button was squeezed into the first
+   one, collapsing the name column to zero and printing the state badge on top
+   of the label. */
+.guardian-list .guardian-row { display: block; }
+.guardian-list .guardian-row-open { grid-template-columns: 38px minmax(0, 1fr) auto auto; }
+
+
+/* Removing a guardian is the one action here that takes protection away, so it
+   is coloured for it rather than hidden as a text link. */
+.guardian-row-panel .guardian-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.guardian-row-panel .danger-button:hover:not(:disabled) { color: var(--surface); background: var(--danger); border-color: var(--danger); }
+
+/* Naming, the same way wherever it appears. Reading is quiet: the label in the
+   same small caps every card uses, the name in the body weight, and a pencil
+   that only announces itself to a screen reader. */
+.inline-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 16px 0; }
+.inline-name > div { display: grid; gap: 2px; min-width: 0; }
+.inline-name strong { overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.inline-name .icon-button { color: var(--muted); }
+.inline-name .icon-button:hover { color: var(--ink); }
+.inline-name.editing { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.inline-name.editing .field { margin: 0; }
+.inline-name-actions { display: flex; align-items: center; gap: 10px; }
+.guardian-row-panel .inline-name { margin: 0 0 12px; }
+
+/* A count inside a tab sits beside the word rather than replacing the pill
+   spacing the header used. */
+.roster-tab .count-badge { margin-left: 6px; }
+

@@ -1,10 +1,17 @@
 import { useState } from "react";
+import { useAppServices } from "../../app/AppServices";
+import { InlineName } from "../../components/InlineName";
+import type { AccountHandle } from "../../types";
 import { useNetwork } from "../../config/NetworkContext";
 import { DEFAULT_NETWORK, type NetworkConfig } from "../../config/network";
 import { safeUserMessage } from "../../domain/errors/appError.ts";
 
-export function DeveloperSettings() {
+export function DeveloperSettings({ account, onRenamed }: {
+  readonly account: AccountHandle;
+  readonly onRenamed: () => void;
+}) {
   const { config, update, reset } = useNetwork();
+  const services = useAppServices();
   const [draft, setDraft] = useState<NetworkConfig>(config);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -36,6 +43,34 @@ export function DeveloperSettings() {
         It is true, and it changes nothing a person can do about it -- so it
         belongs where someone comes looking for how the wallet works, not in
         front of the list they came to read. */}
+    {/* Naming a wallet is configuring it, so it belongs with the other things
+        you set rather than under a heading about the passkey. Local: nothing
+        about the name is published, and the chain never sees it. */}
+    <section className="section-card">
+      <div className="section-heading"><div><p className="eyebrow">This wallet</p><h2>Name</h2></div></div>
+      <InlineName
+        label="Wallet name"
+        value={account.label}
+        placeholder="Everyday wallet"
+        onSave={async name => {
+          await services.accounts.save({ ...account, label: name });
+          onRenamed();
+        }}
+      />
+      <p className="form-note">Only you see it. Several wallets on one device are easier to tell apart by what they are for.</p>
+    </section>
+
+    {/* Moved out of wallet creation. It is a standing fact about this
+        deployment rather than something the person choosing guardians decides,
+        and it was the last thing they read before pressing the button. */}
+    <section className="section-card">
+      <div className="section-heading"><div><p className="eyebrow">Before real funds</p><h2>This deployment is not audited</h2></div></div>
+      <p className="form-note">
+        Verifier bytecode is rechecked through your configured RPC, but the deployment file does not yet pin audited
+        code hashes. Check the deployment yourself before using this with money you cannot lose.
+      </p>
+    </section>
+
     <section className="section-card">
       <div className="section-heading"><div><p className="eyebrow">How this wallet stores things</p><h2>Local encryption</h2></div></div>
       <p className="form-note">

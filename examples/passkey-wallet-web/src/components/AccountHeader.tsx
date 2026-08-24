@@ -15,13 +15,12 @@ export function AccountHeader({ account, network, balance, onSwitch, onLock }: {
 }) {
   return <section className="account-hero" aria-labelledby="account-title">
     <div>
-      <p className="eyebrow">Personal account · {network}</p>
+      <p className="eyebrow">{network}</p>
       <h1 id="account-title">{formatBalance(balance)}</h1>
       <div className="account-identity"><span className="identicon" aria-hidden="true" /> {account ? shorten(account) : "No account"}</div>
       {balance.status === "loaded" && balance.deployed === false && <p className="hero-note">Not yet deployed on chain · its first operation creates it</p>}
     </div>
     <div className="hero-account-controls">
-      <div className="hero-status"><span className="status-dot" /> Passkey verified</div>
       <div className="hero-session-actions">
         <button type="button" className="hero-button" onClick={onSwitch}>Switch account</button>
         <button type="button" className="hero-button" onClick={onLock}>Lock account</button>

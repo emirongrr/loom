@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
 import { loadWalletDeployment } from "../onboarding/accountLifecycle";
-import { readAccountOperations, summarizeOperation, type AccountOperation } from "../wallet/userOperationHistory";
+import { operationRow, readAccountOperations, type AccountOperation } from "../wallet/userOperationHistory";
+import { transactionUrl } from "../../config/network";
 import type { AccountHandle } from "../../types";
 
 /**
@@ -52,21 +53,7 @@ export function AccountOperations({ account }: { readonly account: AccountHandle
     return () => { cancelled = true; };
   }, [account.account, config.rpcUrl, publicClients]);
 
-  return <section className="section-card" aria-labelledby="account-operations-title">
-    <div className="section-heading">
-      <div>
-        <p className="eyebrow">Read from the EntryPoint, not an index</p>
-        <h2 id="account-operations-title">What this account did</h2>
-      </div>
-      {state.kind === "ready" && <span className="pill">{state.operations.length}</span>}
-    </div>
-
-    <p className="form-note">
-      A Loom account never sends a transaction of its own — its work travels inside someone else's bundle, which is
-      why a block explorer shows it as idle. These come from the EntryPoint's own log, so they are the account's
-      actual history.
-    </p>
-
+  return <>
     {state.kind === "loading" && <p className="form-note">Reading the EntryPoint…</p>}
 
     {state.kind === "failed" && <p className="callout warning">
@@ -82,21 +69,32 @@ export function AccountOperations({ account }: { readonly account: AccountHandle
       </p>
     </div>}
 
-    {state.kind === "ready" && state.operations.length > 0 && <div className="recovery-request-list">
-      {state.operations.map(operation => <article key={operation.userOpHash} className="recovery-request">
-        <header>
-          <strong>{summarizeOperation(operation)}</strong>
-          <span className={operation.succeeded ? "pill included" : "pill failed"}>
-            {operation.succeeded ? "succeeded" : "reverted"}
-          </span>
-        </header>
-        <p className="breakable form-note">
-          Block {String(operation.blockNumber)} · nonce {String(operation.nonce)} · {operation.transactionHash}
-        </p>
-      </article>)}
+    {/* The same row shape the transaction list uses. These are the account's
+        own history and those are transfers an index saw; showing them in two
+        different formats made them look like two different kinds of fact. */}
+    {state.kind === "ready" && state.operations.length > 0 && <>
+      <div className="timeline">
+        {state.operations.map(operation => {
+          const row = operationRow(operation);
+          return <article key={operation.userOpHash} className="timeline-item">
+            <span className={`timeline-dot ${operation.succeeded ? "finalized" : "failed"}`} aria-hidden="true" />
+            <div>
+              <strong>{row.title}</strong>
+              <p>{row.detail}</p>
+            </div>
+            <div className="timeline-side">
+              <strong>{row.fee}</strong>
+              <span className={operation.succeeded ? "pill finalized" : "pill failed"}>
+                {operation.succeeded ? "succeeded" : "reverted"}
+              </span>
+              <a className="text-button" href={transactionUrl(config, operation.transactionHash)} target="_blank" rel="noreferrer noopener">Explorer</a>
+            </div>
+          </article>;
+        })}
+      </div>
       {!state.complete && <p className="form-note">
-        Scanned back to block {String(state.scannedFromBlock)} only. Anything older is not shown, and not ruled out.
+        Scanned back to block {String(state.scannedFromBlock)}. Older operations are not shown, and not ruled out.
       </p>}
-    </div>}
-  </section>;
+    </>}
+  </>;
 }

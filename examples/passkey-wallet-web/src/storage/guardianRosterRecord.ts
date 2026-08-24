@@ -70,11 +70,13 @@ function parseRosterEntry(value: unknown): RosterEntry {
   const invitedAt = typeof entry.invitedAt === "number" && Number.isFinite(entry.invitedAt) && entry.invitedAt > 0
     ? entry.invitedAt
     : undefined;
+  const guardianAccount = address(entry.guardianAccount) ? entry.guardianAccount as `0x${string}` : undefined;
   return Object.freeze({
     id: entry.id,
     label: entry.label.trim(),
     descriptor: parseDescriptor(entry.descriptor),
-    ...(invitedAt === undefined ? {} : { invitedAt })
+    ...(invitedAt === undefined ? {} : { invitedAt }),
+    ...(guardianAccount === undefined ? {} : { guardianAccount })
   });
 }
 
