@@ -1,6 +1,7 @@
 import type { Address } from "@loom/core";
 import type { RecoverySession } from "./recoverySession";
 import type { PublishedRecoveryValidator } from "./existingPublications";
+import { mediumAddress } from "../../components/address.ts";
 
 /**
  * Every recovery in flight for one account, gathered from the places they
@@ -65,8 +66,6 @@ const SESSION_STAGE: Readonly<Record<RecoverySession["stage"], string>> = Object
 
 /** Stages that are over. They are still shown, but never as the thing to do next. */
 const FINISHED = new Set<RecoverySession["stage"]>(["completed", "cancelled", "expired"]);
-
-const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
 
 export interface OnChainPendingRecovery {
   readonly pending: boolean;
@@ -150,14 +149,14 @@ export function collectAccountRecoveryRequests(input: {
       status: proposed ? onChainStatus(input.pending!.status) : duplicate ? "Duplicate" : SESSION_STAGE[session.stage],
       detail: proposed
         ? `The guardians approved this and the manager recorded it, so the request is finished with. New validator`
-          + ` ${short(session.request.newValidator)}.`
+          + ` ${mediumAddress(session.request.newValidator)}.`
         : duplicate
-        ? `A second request for validator ${short(session.request.newValidator)}. Only one recovery can be proposed,`
+        ? `A second request for validator ${mediumAddress(session.request.newValidator)}. Only one recovery can be proposed,`
           + ` and an approval given for one request does not verify against another, so this one cannot be used`
           + ` alongside the first. It holds ${session.responses.length} approval(s).`
         : finished
-          ? `New validator ${short(session.request.newValidator)}.`
-          : `${approvals}. New validator ${short(session.request.newValidator)}.`,
+          ? `New validator ${mediumAddress(session.request.newValidator)}.`
+          : `${approvals}. New validator ${mediumAddress(session.request.newValidator)}.`,
       next: proposed
         ? { kind: "open-session" as const, sessionId: session.id, label: "Open" }
         : duplicate
@@ -194,11 +193,11 @@ export function collectAccountRecoveryRequests(input: {
       title: "Recovery passkey on this device",
       status: spare ? "Held, cannot also be used" : entry.published ? "Needs a request" : "Not published",
       detail: spare
-        ? `Validator ${short(entry.validator)} is also on this device. Only one recovery can be proposed for this`
+        ? `Validator ${mediumAddress(entry.validator)} is also on this device. Only one recovery can be proposed for this`
           + ` account, so proposing the one above leaves this one unused and its gas unrecoverable.`
         : entry.published
-          ? `Validator ${short(entry.validator)} is live on chain. It needs a guardian request before it can be proposed.`
-          : `Validator ${short(entry.validator)} is prepared. Publishing it is permissionless and grants no account authority.`,
+          ? `Validator ${mediumAddress(entry.validator)} is live on chain. It needs a guardian request before it can be proposed.`
+          : `Validator ${mediumAddress(entry.validator)} is prepared. Publishing it is permissionless and grants no account authority.`,
       next: spare
         ? { kind: "blocked" as const, reason: "Nothing to do with this one unless the recovery above is abandoned." }
         : entry.published
@@ -221,7 +220,7 @@ export function collectAccountRecoveryRequests(input: {
         id: `pending:${validator}`,
         title: "Recovery proposed on chain",
         status: onChainStatus(input.pending.status),
-        detail: `The guardians have already approved a recovery to ${short(input.pending.newValidator)}. Anyone can`
+        detail: `The guardians have already approved a recovery to ${mediumAddress(input.pending.newValidator)}. Anyone can`
           + ` execute it once the delay elapses; no session on this device is required.`,
         next: {
           kind: "blocked" as const,
@@ -240,7 +239,7 @@ export function collectAccountRecoveryRequests(input: {
       id: `published:${validator}`,
       title: "Recovery passkey published elsewhere",
       status: "Not on this device",
-      detail: `Validator ${short(entry.validator)} was published at block ${entry.blockNumber}. The gas for it is`
+      detail: `Validator ${mediumAddress(entry.validator)} was published at block ${entry.blockNumber}. The gas for it is`
         + ` already spent, and it can still be turned into a guardian request -- but only from a device that can`
         + ` name it.`,
       next: {

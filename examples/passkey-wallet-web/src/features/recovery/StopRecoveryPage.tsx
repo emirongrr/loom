@@ -16,9 +16,10 @@ import { cancellationHorizon } from "../guardians/pendingCancellations";
 import { cancelWithAccountAndGuardians, cancelWithGuardians } from "./recoveryCalls";
 import { mergeApprovals, readBoardCancellations } from "./boardApprovals";
 import { submitAccountCalls } from "../wallet/accountClient";
-import { humanDuration, planStopRecovery, preferredRoute, shortAddress, type StopRecoveryPlan } from "./stopRecovery";
+import { humanDuration, planStopRecovery, preferredRoute, type StopRecoveryPlan } from "./stopRecovery";
 import type { Address, Hex } from "@loom/core";
 import type { AccountHandle } from "../../types";
+import { mediumAddress } from "../../components/address.ts";
 
 /**
  * The page an account owner reaches from the warning on their wallet.
@@ -317,7 +318,7 @@ export function StopRecoveryPage({ handle, onClose }: {
         <p>{shown.urgency}</p>
       </div>
       <p className="breakable">
-        Control would move to {shortAddress(shown.newValidator)}. If you started this recovery, there is nothing to do here.
+        Control would move to {mediumAddress(shown.newValidator)}. If you started this recovery, there is nothing to do here.
       </p>
 
       <div className="permission-grid">

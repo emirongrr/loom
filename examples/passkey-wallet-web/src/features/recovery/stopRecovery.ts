@@ -1,4 +1,4 @@
-import type { Address, Hex } from "@loom/core";
+import type { Address } from "@loom/core";
 
 /**
  * What an account owner needs to know, and to do, about a recovery they did
@@ -173,6 +173,3 @@ export function preferredRoute(plan: StopRecoveryPlan): StopRoute {
   return plan.routes.find(route => route.available && route.needsAccount) ?? plan.routes[1] ?? plan.routes[0]!;
 }
 
-export function shortAddress(value: Address | Hex): string {
-  return `${value.slice(0, 10)}…${value.slice(-6)}`;
-}

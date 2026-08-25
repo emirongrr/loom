@@ -1,6 +1,7 @@
 import { parseAbi } from "viem";
 import type { Address } from "@loom/core";
 import { cancellationQuorum } from "../recovery/cancellationQuorum.ts";
+import { mediumAddress } from "../../components/address.ts";
 
 /**
  * What an account owner is told when someone has started recovering their
@@ -59,7 +60,7 @@ export function describePendingRecovery(input: {
       urgency: "executable" as const,
       headline: "A recovery of this account can be executed right now.",
       detail: `The delay has passed. Anyone can complete it, and the moment they do, control moves to`
-        + ` ${short(input.newValidator)} and this wallet's key stops working. If this is not yours, act now.`,
+        + ` ${mediumAddress(input.newValidator)} and this wallet's key stops working. If this is not yours, act now.`,
       cancellation,
       newValidator: input.newValidator
     });
@@ -70,13 +71,12 @@ export function describePendingRecovery(input: {
     urgency: "delay" as const,
     headline: "Someone has started recovering this account.",
     detail: `Your guardians approved it, and it becomes executable ${when(input.readyAt - input.nowSeconds)}.`
-      + ` When it executes, control moves to ${short(input.newValidator)} and this wallet's key stops working.`
+      + ` When it executes, control moves to ${mediumAddress(input.newValidator)} and this wallet's key stops working.`
       + ` If you started it, there is nothing to do.`,
     cancellation,
     newValidator: input.newValidator
   });
 }
-
 
 /**
  * How cancelling actually works, in a sentence the reader can act on. The rule
@@ -91,8 +91,6 @@ function cancellationSentence(threshold: number): string {
   // reads on from "Stopping" as it stands.
   return `Stopping ${quorum.sentence}.` + reason;
 }
-
-const short = (value: string): string => `${value.slice(0, 10)}…${value.slice(-6)}`;
 
 /** Coarse on purpose: the decision is "is there time", not "how many seconds". */
 function when(seconds: bigint): string {

@@ -17,7 +17,6 @@ import {
 } from "./guardianStatus";
 import { readScheduledOperations, type ScheduledOperation } from "./scheduledOperations";
 import { guardianSetupStep } from "./guardianSetupStep";
-import { shortAddress } from "../recovery/stopRecovery";
 import { InlineName } from "../../components/InlineName";
 import { decryptRoster, parseEncryptedRoster, rosterPrfSalt } from "./portableRoster";
 import { encryptRoster } from "./portableRoster";
@@ -34,6 +33,7 @@ import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
 import { useGuardianManagerController } from "./useGuardianManagerController";
 import { safeUserMessage } from "../../domain/errors/appError";
+import { mediumAddress } from "../../components/address.ts";
 
 export function GuardianManager({ account, deployment, onChain, onChanged }: {
   account: AccountHandle;
@@ -611,7 +611,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
  * and is kept from the moment the guardian is added.
  */
 function guardianIdentity(entry: RosterEntry): string {
-  return entry.guardianAccount ? shortAddress(entry.guardianAccount) : describeGuardian(entry.descriptor);
+  return entry.guardianAccount ? mediumAddress(entry.guardianAccount) : describeGuardian(entry.descriptor);
 }
 
 function randomBytes32(): Hex {

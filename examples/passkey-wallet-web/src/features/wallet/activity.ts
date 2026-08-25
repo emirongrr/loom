@@ -2,6 +2,7 @@ import type { Address } from "@loom/core";
 import { formatEther, formatUnits, getAddress } from "viem";
 import type { NetworkConfig } from "../../config/network";
 import type { ActivityItem, ActivityKind, ActivityStatus } from "../../types";
+import { shortAddress } from "../../components/address.ts";
 
 // How many confirmations before an inclusion is presented as settled. The
 // explorer reports confirmations; the wallet does not invent finality.
@@ -216,7 +217,7 @@ function directionOf(from: Address | null, to: Address | null, account: Address)
 function counterparty(direction: ActivityItem["direction"], from: Address | null, to: Address | null): string {
   if (direction === "self") return "Between your own account";
   const other = direction === "received" ? from : to;
-  return other ? `${direction === "received" ? "From" : "To"} ${shorten(other)}` : "Contract execution";
+  return other ? `${direction === "received" ? "From" : "To"} ${shortAddress(other)}` : "Contract execution";
 }
 
 function methodLabel(value: unknown): string | null {
@@ -259,4 +260,3 @@ function trimAmount(value: string): string {
   return trimmed ? `${whole}.${trimmed}` : whole;
 }
 
-function shorten(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }

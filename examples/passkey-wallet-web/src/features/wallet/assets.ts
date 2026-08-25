@@ -1,6 +1,7 @@
 import type { Address } from "@loom/core";
-import { createPublicClient, formatEther, formatUnits, getAddress, http } from "viem";
+import { formatEther, formatUnits, getAddress } from "viem";
 import type { NetworkConfig } from "../../config/network";
+import type { PublicClientRegistry } from "../../services/rpc/publicClients";
 
 export interface TokenAsset {
   readonly kind: "native" | "erc20";
@@ -44,8 +45,17 @@ export interface AccountBalance {
 // The account's native balance and whether it has code, read straight from the
 // RPC. No signature and no authority — just the truth the chain exposes about
 // the address, so the wallet never invents a balance or deployment status.
-export async function readAccountBalance(config: NetworkConfig, account: Address): Promise<AccountBalance> {
-  const client = createPublicClient({ transport: http(config.rpcUrl) });
+export async function readAccountBalance(
+  config: NetworkConfig,
+  account: Address,
+  publicClients: PublicClientRegistry
+): Promise<AccountBalance> {
+  // Through the shared registry rather than a client of its own. Building one
+  // here meant a new, unbatched client on every read: the two calls below went
+  // out as two requests instead of one, and nothing was reused between reads.
+  // The registry exists because a burst of separate requests is what trips a
+  // public endpoint's rate limit.
+  const client = publicClients.forEndpoint(config.rpcUrl);
   const [wei, code] = await Promise.all([
     client.getBalance({ address: account }),
     client.getCode({ address: account })
@@ -57,8 +67,12 @@ export async function readAccountBalance(config: NetworkConfig, account: Address
 // balance is read straight from the RPC; ERC-20 and NFT discovery uses the
 // configured block explorer's public index. Discovery failures degrade to
 // "native only" rather than throwing — the wallet never blocks on an indexer.
-export async function readAccountAssets(config: NetworkConfig, account: Address): Promise<AccountAssets> {
-  const balance = await readAccountBalance(config, account);
+export async function readAccountAssets(
+  config: NetworkConfig,
+  account: Address,
+  publicClients: PublicClientRegistry
+): Promise<AccountAssets> {
+  const balance = await readAccountBalance(config, account, publicClients);
   const native = nativeAsset(balance.wei, balance.eth);
   // Token and collectible discovery are settled independently: a rate-limited or
   // failing collectible lookup must never hide tokens the indexer did return.
