@@ -8,6 +8,8 @@ import { ReceiveDialog } from "../wallet/ReceiveDialog";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
+import { describeAccountControl, readAccountControl, type AccountControl } from "../wallet/accountControl";
+import { LoomAccountAbi } from "@loom/core/abi";
 import { activateAccount } from "../wallet/activate";
 import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
@@ -35,6 +37,8 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
   const notifications = useNotifications();
   const { runtime, pendingOperations, publicClients } = useAppServices();
   const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
+  /** Whether this device's key still signs for the account, read from the account. */
+  const [control, setControl] = useState<AccountControl>({ kind: "in-control" });
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [deployed, setDeployed] = useState(false);
@@ -74,13 +78,30 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
     if (!silent) setBalance({ status: "loading" });
     setRefreshing(true);
     try {
-      const [next] = await Promise.all([
+      const [next, profile] = await Promise.all([
         readAccountAssets(config, account.account, publicClients),
-        loadWalletDeployment().then(setDeployment).catch(() => setDeployment(null))
+        loadWalletDeployment().then(loaded => { setDeployment(loaded); return loaded; }).catch(() => { setDeployment(null); return null; })
       ]);
       setDeployed(next.deployed);
       setAssets(next);
       setBalance({ status: "loaded", eth: next.native.formatted, deployed: next.deployed });
+      // Asked after the balance and never in front of it: a balance is readable
+      // by anyone, while this decides whether the passkey here can still spend
+      // it. The profile may be missing, and a missing profile is not evidence
+      // about the account.
+      const validator = account.kind === "recovered" ? account.validator : profile?.validator;
+      if (validator) {
+        const client = publicClients.forEndpoint(config.rpcUrl);
+        setControl(await readAccountControl({
+          account: account.account,
+          validator,
+          deployed: next.deployed,
+          isModuleInstalled: async check => await client.readContract({
+            address: check.account, abi: LoomAccountAbi, functionName: "isModuleInstalled",
+            args: [check.moduleTypeId, check.module, "0x"]
+          }) as boolean
+        }));
+      }
     } catch {
       setBalance({ status: "error" });
     } finally { setRefreshing(false); }
@@ -123,6 +144,15 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
         is theirs. */}
     <PendingRecoveryBanner account={account} onStop={onStopRecovery} />
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
+
+    {/* Said here rather than at signing time. Unlocking is local and reading a
+        balance is permissionless, so a recovered account opens and looks normal
+        until a send fails as "AA24 signature error" -- a message that names
+        neither the recovery nor the key. */}
+    {describeAccountControl(control) && <section className={control.kind === "superseded" ? "callout warning" : "callout"}>
+      <strong>{describeAccountControl(control)!.title}</strong>
+      <p>{describeAccountControl(control)!.detail}</p>
+    </section>}
 
     <div className="quick-actions">
       <button onClick={() => setReceiveOpen(true)}><span aria-hidden="true">↓</span><span>Receive</span></button>
