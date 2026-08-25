@@ -33,6 +33,7 @@ const state = {
   expandedArchitectureGroups: [],
   recoveryMode: "recovery",
   selectedRecoveryStepId: "provision",
+  recoveryScrollLeft: 0,
   focusedNodeId: null,
   focusedSection: null,
   focusedAbiItem: null,
@@ -1709,19 +1710,75 @@ function recoveryEvidenceStatus(deployment, contractLabel) {
   return ["Source-defined only", "source"];
 }
 
+const RECOVERY_NODE_WIDTH = 220;
+const RECOVERY_NODE_HEIGHT = 126;
+
+function recoveryEdgeGeometry(edge, nodesById, graphHeight) {
+  const from = nodesById.get(edge.from);
+  const to = nodesById.get(edge.to);
+  if (!from || !to) return null;
+  if (to.x < from.x) {
+    const laneY = graphHeight - 34;
+    return {
+      path: `M ${from.x + RECOVERY_NODE_WIDTH / 2} ${from.y + RECOVERY_NODE_HEIGHT} C ${from.x + RECOVERY_NODE_WIDTH / 2} ${laneY}, ${to.x + RECOVERY_NODE_WIDTH / 2} ${laneY}, ${to.x + RECOVERY_NODE_WIDTH / 2} ${to.y + RECOVERY_NODE_HEIGHT}`,
+      labelX: (from.x + to.x + RECOVERY_NODE_WIDTH) / 2,
+      labelY: laneY - 10,
+      returning: true
+    };
+  }
+  const startsBelow = to.y > from.y + 40;
+  const startX = startsBelow ? from.x + RECOVERY_NODE_WIDTH / 2 : from.x + RECOVERY_NODE_WIDTH;
+  const startY = startsBelow ? from.y + RECOVERY_NODE_HEIGHT : from.y + RECOVERY_NODE_HEIGHT / 2;
+  const endX = startsBelow ? to.x + RECOVERY_NODE_WIDTH / 2 : to.x;
+  const endY = startsBelow ? to.y : to.y + RECOVERY_NODE_HEIGHT / 2;
+  const bend = startsBelow ? Math.max(34, (endY - startY) / 2) : Math.max(30, (endX - startX) / 2);
+  return {
+    path: startsBelow
+      ? `M ${startX} ${startY} C ${startX} ${startY + bend}, ${endX} ${endY - bend}, ${endX} ${endY}`
+      : `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`,
+    labelX: (startX + endX) / 2,
+    labelY: (startY + endY) / 2 - 11,
+    returning: false
+  };
+}
+
+function recoveryNodeTitle(title) {
+  const words = title.split(" ");
+  const lines = [""];
+  for (const word of words) {
+    const line = lines.at(-1);
+    if (line && `${line} ${word}`.length > 30 && lines.length < 2) lines.push(word);
+    else lines[lines.length - 1] = line ? `${line} ${word}` : word;
+  }
+  return lines;
+}
+
 function renderRecoveryLifecycle() {
   const deployment = currentDeployment(state.artifact?.events ?? []);
   const lifecycle = buildRecoveryLifecycle(state.recoveryMode, state.selectedRecoveryStepId);
   state.recoveryMode = lifecycle.mode;
   state.selectedRecoveryStepId = lifecycle.selected.id;
   $$('[data-recovery-mode]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.recoveryMode === lifecycle.mode)));
-  const edgesBySource = new Map();
-  for (const edge of lifecycle.edges) edgesBySource.set(edge.from, [...(edgesBySource.get(edge.from) ?? []), edge]);
-  $("#recovery-flow").innerHTML = `<header><div><p class="eyebrow">${escapeHtml(lifecycle.label)}</p><h2>${escapeHtml(lifecycle.description)}</h2></div><span>${lifecycle.nodes.length} contract-level stages</span></header><div class="recovery-node-map ${escapeHtml(lifecycle.mode)}" role="list" aria-label="${escapeHtml(lifecycle.label)} contract flow">${lifecycle.nodes.map((node, index) => {
+  const nodesById = new Map(lifecycle.nodes.map(node => [node.id, node]));
+  const selectedConnections = new Set(lifecycle.edges.flatMap(edge => edge.from === lifecycle.selected.id || edge.to === lifecycle.selected.id ? [edge.from, edge.to] : []));
+  const markerId = `recovery-arrow-${lifecycle.mode}`;
+  const edges = lifecycle.edges.map(edge => {
+    const geometry = recoveryEdgeGeometry(edge, nodesById, lifecycle.layout.height);
+    if (!geometry) return "";
+    const active = edge.from === lifecycle.selected.id || edge.to === lifecycle.selected.id;
+    return `<g class="recovery-graph-edge ${active ? "active" : ""} ${geometry.returning ? "returning" : ""}"><path d="${geometry.path}" marker-end="url(#${markerId})"/><text x="${geometry.labelX}" y="${geometry.labelY}" text-anchor="middle">${escapeHtml(edge.label)}</text></g>`;
+  }).join("");
+  const nodes = lifecycle.nodes.map((node, index) => {
     const [evidence, evidenceClass] = recoveryEvidenceStatus(deployment, node.contract);
-    const outgoing = edgesBySource.get(node.id) ?? [];
-    return `<div class="recovery-node-wrap" role="listitem"><button type="button" class="recovery-node ${node.id === lifecycle.selected.id ? "selected" : ""}" data-recovery-step="${escapeHtml(node.id)}" aria-pressed="${node.id === lifecycle.selected.id}"><span>${index + 1}</span><div><small>${escapeHtml(node.actor)}</small><strong>${escapeHtml(node.title)}</strong><code>${escapeHtml(node.contract)} · ${escapeHtml(node.function)}</code></div><em class="${evidenceClass}">${escapeHtml(evidence)}</em></button>${outgoing.map(edge => `<div class="recovery-edge"><i aria-hidden="true">→</i><span>${escapeHtml(edge.label)}</span></div>`).join("")}</div>`;
-  }).join("")}</div>`;
+    const selected = node.id === lifecycle.selected.id;
+    const related = selected || selectedConnections.has(node.id);
+    const title = recoveryNodeTitle(node.title).map(line => `<span>${escapeHtml(line)}</span>`).join("");
+    return `<foreignObject x="${node.x}" y="${node.y}" width="${RECOVERY_NODE_WIDTH}" height="${RECOVERY_NODE_HEIGHT}"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="recovery-graph-node ${selected ? "selected" : ""} ${related ? "related" : "dimmed"}" data-recovery-step="${escapeHtml(node.id)}" aria-pressed="${selected}"><span class="recovery-node-index">${index + 1}</span><span class="recovery-node-copy"><small>${escapeHtml(node.actor)}</small><strong>${title}</strong><code>${escapeHtml(node.contract)} · ${escapeHtml(node.function)}</code></span><em class="${evidenceClass}">${escapeHtml(evidence)}</em></button></foreignObject>`;
+  }).join("");
+  $("#recovery-flow").innerHTML = `<header><div><p class="eyebrow">${escapeHtml(lifecycle.label)}</p><h2>${escapeHtml(lifecycle.description)}</h2></div><span>${lifecycle.nodes.length} contract-level stages · scroll sideways</span></header><div class="recovery-graph-viewport" aria-label="${escapeHtml(lifecycle.label)} contract flow"><svg class="recovery-graph" viewBox="0 0 ${lifecycle.layout.width} ${lifecycle.layout.height}" width="${lifecycle.layout.width}" height="${lifecycle.layout.height}" role="img" aria-labelledby="recovery-graph-title recovery-graph-description"><title id="recovery-graph-title">${escapeHtml(lifecycle.label)} contract flow</title><desc id="recovery-graph-description">A left-to-right map of ${lifecycle.nodes.length} authority-bearing stages. Select a node for its contract boundary and invariant.</desc><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--green)"/></marker></defs>${edges}${nodes}</svg></div>`;
+  const viewport = $("#recovery-flow .recovery-graph-viewport");
+  viewport.scrollLeft = state.recoveryScrollLeft;
+  viewport.addEventListener("scroll", () => { state.recoveryScrollLeft = viewport.scrollLeft; }, { passive: true });
   const selected = lifecycle.selected;
   const [evidence, evidenceClass] = recoveryEvidenceStatus(deployment, selected.contract);
   const incoming = lifecycle.edges.filter(edge => edge.to === selected.id);
@@ -1824,6 +1881,7 @@ $("#panel-recovery").addEventListener("click", event => {
   if (mode) {
     state.recoveryMode = mode.dataset.recoveryMode;
     state.selectedRecoveryStepId = state.recoveryMode === "freeze" ? "freeze-digest" : "provision";
+    state.recoveryScrollLeft = 0;
     renderRecoveryLifecycle();
     return;
   }

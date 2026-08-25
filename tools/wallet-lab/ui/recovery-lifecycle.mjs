@@ -164,6 +164,35 @@ const FREEZE_EDGES = Object.freeze([
   ["freeze-block", "freeze-expire", "after 5 days"]
 ].map(([from, to, label]) => ({ from, to, label })));
 
+const RECOVERY_LAYOUTS = Object.freeze({
+  recovery: Object.freeze({
+    width: 1760,
+    height: 520,
+    positions: Object.freeze({
+      provision: { x: 40, y: 125 },
+      digest: { x: 300, y: 125 },
+      approve: { x: 560, y: 125 },
+      propose: { x: 820, y: 125 },
+      delay: { x: 1080, y: 125 },
+      execute: { x: 1460, y: 125 },
+      "cancel-account": { x: 1080, y: 335 },
+      "cancel-guardians": { x: 1400, y: 335 }
+    })
+  }),
+  freeze: Object.freeze({
+    width: 1510,
+    height: 500,
+    positions: Object.freeze({
+      "freeze-digest": { x: 40, y: 135 },
+      "freeze-verify": { x: 310, y: 135 },
+      "freeze-write": { x: 580, y: 135 },
+      "freeze-block": { x: 850, y: 135 },
+      "freeze-expire": { x: 1200, y: 135 },
+      "freeze-escape": { x: 1030, y: 335 }
+    })
+  })
+});
+
 export const RECOVERY_FLOW_MODES = Object.freeze({
   recovery: {
     label: "Guardian recovery",
@@ -181,6 +210,14 @@ export const RECOVERY_FLOW_MODES = Object.freeze({
 
 export function buildRecoveryLifecycle(mode = "recovery", selectedId = null) {
   const flow = RECOVERY_FLOW_MODES[mode] ?? RECOVERY_FLOW_MODES.recovery;
+  const resolvedMode = RECOVERY_FLOW_MODES[mode] ? mode : "recovery";
+  const layout = RECOVERY_LAYOUTS[resolvedMode];
   const selected = flow.nodes.find(node => node.id === selectedId) ?? flow.nodes[0];
-  return { ...flow, mode: RECOVERY_FLOW_MODES[mode] ? mode : "recovery", selected };
+  return {
+    ...flow,
+    mode: resolvedMode,
+    layout,
+    nodes: flow.nodes.map(node => ({ ...node, ...layout.positions[node.id] })),
+    selected
+  };
 }

@@ -44,6 +44,9 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /id="recovery-flow"/u);
   assert.match(script, /function renderRecoveryLifecycle\(/u);
   assert.match(script, /buildRecoveryLifecycle/u);
+  assert.match(script, /class="recovery-graph"/u);
+  assert.match(script, /function recoveryEdgeGeometry\(/u);
+  assert.doesNotMatch(script, /recovery-node-map/u);
   assert.match(html, /architecture-topbar/u);
   assert.match(html, /architecture-search/u);
   assert.match(html, /architecture-exit/u);

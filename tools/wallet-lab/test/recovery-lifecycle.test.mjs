@@ -23,6 +23,11 @@ test("guardian recovery exposes the complete delayed lifecycle and both cancella
   assert.match(flow.nodes.find(node => node.id === "execute").state, /guardian root and threshold rotate/u);
   assert.equal(flow.edges.some(edge => edge.from === "delay" && edge.to === "execute"), true);
   assert.equal(flow.edges.filter(edge => edge.from === "delay" && edge.to.startsWith("cancel")).length, 2);
+  assert.equal(flow.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)), true);
+  assert.equal(flow.nodes.find(node => node.id === "provision").y, flow.nodes.find(node => node.id === "execute").y);
+  assert.ok(flow.nodes.find(node => node.id === "provision").x < flow.nodes.find(node => node.id === "execute").x);
+  assert.ok(flow.nodes.find(node => node.id === "cancel-account").y > flow.nodes.find(node => node.id === "delay").y);
+  assert.ok(flow.layout.width > flow.layout.height, "the lifecycle should be a left-to-right canvas");
 });
 
 test("freeze remains a bounded veto and preserves only the exact recovery cancellation escape hatch", () => {
@@ -33,6 +38,8 @@ test("freeze remains a bounded veto and preserves only the exact recovery cancel
   assert.match(flow.nodes.find(node => node.id === "freeze-block").invariant, /never becomes execution, spending, or recovery approval authority/u);
   assert.match(flow.nodes.find(node => node.id === "freeze-escape").invariant, /Target, selector, account argument, call type, and zero value/u);
   assert.match(flow.nodes.find(node => node.id === "freeze-expire").invariant, /cannot shorten an active guardian freeze/u);
+  assert.equal(flow.nodes.find(node => node.id === "freeze-digest").y, flow.nodes.find(node => node.id === "freeze-expire").y);
+  assert.ok(flow.nodes.find(node => node.id === "freeze-escape").y > flow.nodes.find(node => node.id === "freeze-block").y);
 });
 
 test("unknown recovery modes fail closed to the primary recovery model", () => {
