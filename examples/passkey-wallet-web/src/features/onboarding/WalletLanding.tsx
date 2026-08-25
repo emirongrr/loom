@@ -140,9 +140,17 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
             whether the passkey is still reachable. */}
         <div className="callout">
           <strong>Still have the passkey?</strong>
-          <p>Use it to find the account it controls. Nothing needs to have been exported first.</p>
+          {/* One passkey per attempt, because that is all a browser will give:
+              the picker shows what is on the device and returns the one chosen.
+              A site cannot list them, which is what stops any site from
+              fingerprinting a person by their credentials. Repeating is the way
+              to bring back several, so the wording invites it. */}
+          <p>
+            Use it to find the account it controls. Nothing needs to have been exported first, and you can
+            repeat this for each passkey you hold — your browser asks which one to use.
+          </p>
           <button type="button" className="secondary" disabled={busy} onClick={() => void onFindByPasskey()}>
-            Find with a passkey
+            {accounts.length > 0 ? "Find another with a passkey" : "Find with a passkey"}
           </button>
         </div>
         <div className="callout"><strong>Lost the passkey?</strong><p>Use guardian recovery to replace account control after threshold approval and the contract delay.</p><button type="button" className="secondary" onClick={onGuardianRecover}>Start guardian recovery</button></div>
