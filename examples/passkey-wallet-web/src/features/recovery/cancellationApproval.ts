@@ -105,8 +105,11 @@ export function createGuardianCancellationResponse(input: {
   readonly signedAt: number;
 }): CancelResponseV1 {
   const { request, capability, digest } = input.review;
-  if (input.signedAt >= request.expiresAt || input.signedAt >= capability.expiresAt) {
-    throw new Error("The cancellation request or guardian capability expired before signing.");
+  // As with an approval: the request's window binds, the invitation's does not.
+  // Stopping a recovery is the more urgent of the two, and a guardian whose
+  // invitation lapsed months ago is exactly who may need to object.
+  if (input.signedAt >= request.expiresAt) {
+    throw new Error("The cancellation request expired before signing.");
   }
   return createCancelResponse({
     recoveryId: request.recoveryId,

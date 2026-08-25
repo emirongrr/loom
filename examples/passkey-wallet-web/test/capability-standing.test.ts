@@ -15,19 +15,19 @@ const live = (over: Partial<Parameters<typeof capabilityStanding>[0]["live"]> = 
 });
 
 test("a capability matching the account's published set is in force", () => {
-  const standing = capabilityStanding({ capability: capability(), live: live(), nowSeconds: NOW });
+  const standing = capabilityStanding({ capability: capability(), live: live()});
   assert.equal(standing.kind, "current");
   assert.equal(describeStanding(standing).tone, "good");
 });
 
 test("a rotated guardian set supersedes the capability issued against the old one", () => {
-  const standing = capabilityStanding({ capability: capability(), live: live({ guardianRoot: OTHER_ROOT }), nowSeconds: NOW });
+  const standing = capabilityStanding({ capability: capability(), live: live({ guardianRoot: OTHER_ROOT })});
   assert.equal(standing.kind, "superseded");
   assert.match(describeStanding(standing).detail, /new invitation/u);
 });
 
 test("a moved threshold supersedes it even when the root still matches", () => {
-  const standing = capabilityStanding({ capability: capability(), live: live({ guardianThreshold: 3 }), nowSeconds: NOW });
+  const standing = capabilityStanding({ capability: capability(), live: live({ guardianThreshold: 3 })});
   assert.equal(standing.kind, "superseded");
   // Named exactly, because "the set changed" would send the guardian looking
   // for a rotation that did not happen.
@@ -35,21 +35,31 @@ test("a moved threshold supersedes it even when the root still matches", () => {
 });
 
 test("a replaced configuration version supersedes it", () => {
-  const standing = capabilityStanding({ capability: capability(), live: live({ configVersion: 2n }), nowSeconds: NOW });
+  const standing = capabilityStanding({ capability: capability(), live: live({ configVersion: 2n })});
   assert.equal(standing.kind, "superseded");
 });
 
-test("expiry is decided before the chain, so an expired one is not called superseded", () => {
+// The invitation's expiry was the deadline for accepting the link, not a
+// lifetime for the leaf it delivered. The chain verifies an approval against
+// the guardian root and knows nothing about when the invitation was sent.
+test("an invitation past its transport deadline still counts against a matching root", () => {
   const standing = capabilityStanding({
-    capability: capability({ expiresAt: NOW - 1 }),
-    live: live({ guardianRoot: OTHER_ROOT }),
-    nowSeconds: NOW
+    capability: capability({ expiresAt: NOW - 86_400 }),
+    live: live()
   });
-  assert.equal(standing.kind, "expired");
+  assert.equal(standing.kind, "current");
+});
+
+test("a lapsed invitation against a rotated root is superseded, which is the real reason", () => {
+  const standing = capabilityStanding({
+    capability: capability({ expiresAt: NOW - 86_400 }),
+    live: live({ guardianRoot: OTHER_ROOT })
+  });
+  assert.equal(standing.kind, "superseded");
 });
 
 test("an account with recovery switched off has nothing to approve", () => {
-  const standing = capabilityStanding({ capability: capability(), live: live({ recoveryConfigured: false }), nowSeconds: NOW });
+  const standing = capabilityStanding({ capability: capability(), live: live({ recoveryConfigured: false })});
   assert.equal(standing.kind, "recovery-off");
 });
 
