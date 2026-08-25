@@ -11,21 +11,33 @@ test("guardian recovery exposes the complete delayed lifecycle and both cancella
     "approve",
     "propose",
     "delay",
+    "execute",
+    "core-handoff",
+    "core-apply",
     "cancel-account",
-    "cancel-guardians",
-    "execute"
+    "cancel-guardians"
   ]);
   assert.equal(flow.nodes.find(node => node.id === "delay").summary.includes("3-day"), false);
   assert.match(flow.nodes.find(node => node.id === "delay").title, /3 days/u);
   assert.match(flow.nodes.find(node => node.id === "delay").title, /7-day/u);
   assert.match(flow.nodes.find(node => node.id === "cancel-account").invariant, /one fewer guardian/u);
   assert.match(flow.nodes.find(node => node.id === "cancel-guardians").invariant, /full current guardian threshold/u);
-  assert.match(flow.nodes.find(node => node.id === "execute").state, /guardian root and threshold rotate/u);
+  assert.match(flow.nodes.find(node => node.id === "execute").state, /pending recovery is deleted/u);
+  assert.deepEqual(flow.nodes.find(node => node.id === "core-handoff").payload, [
+    "oldValidators[]",
+    "newValidator",
+    "initData",
+    "newGuardianRoot",
+    "newGuardianThreshold"
+  ]);
+  assert.match(flow.nodes.find(node => node.id === "core-apply").state, /guardian root and threshold rotate/u);
+  assert.equal(flow.edges.some(edge => edge.from === "execute" && edge.to === "core-handoff"), true);
+  assert.equal(flow.edges.some(edge => edge.from === "core-handoff" && edge.to === "core-apply"), true);
   assert.equal(flow.edges.some(edge => edge.from === "delay" && edge.to === "execute"), true);
   assert.equal(flow.edges.filter(edge => edge.from === "delay" && edge.to.startsWith("cancel")).length, 2);
   assert.equal(flow.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)), true);
-  assert.equal(flow.nodes.find(node => node.id === "provision").y, flow.nodes.find(node => node.id === "execute").y);
-  assert.ok(flow.nodes.find(node => node.id === "provision").x < flow.nodes.find(node => node.id === "execute").x);
+  assert.equal(flow.nodes.find(node => node.id === "provision").y, flow.nodes.find(node => node.id === "core-apply").y);
+  assert.ok(flow.nodes.find(node => node.id === "provision").x < flow.nodes.find(node => node.id === "core-apply").x);
   assert.ok(flow.nodes.find(node => node.id === "cancel-account").y > flow.nodes.find(node => node.id === "delay").y);
   assert.ok(flow.layout.width > flow.layout.height, "the lifecycle should be a left-to-right canvas");
 });
@@ -34,6 +46,15 @@ test("freeze remains a bounded veto and preserves only the exact recovery cancel
   const flow = buildRecoveryLifecycle("freeze", "freeze-block");
 
   assert.equal(flow.selected.id, "freeze-block");
+  assert.equal(flow.nodes.find(node => node.id === "freeze-submit").contract, "LoomAccount");
+  assert.deepEqual(flow.nodes.find(node => node.id === "freeze-submit").payload, [
+    "verifier",
+    "keyCommitment",
+    "salt",
+    "proof[]",
+    "signature"
+  ]);
+  assert.equal(flow.edges.some(edge => edge.from === "freeze-submit" && edge.to === "freeze-membership"), true);
   assert.match(flow.nodes.find(node => node.id === "freeze-write").title, /5-day/u);
   assert.match(flow.nodes.find(node => node.id === "freeze-block").invariant, /never becomes execution, spending, or recovery approval authority/u);
   assert.match(flow.nodes.find(node => node.id === "freeze-escape").invariant, /Target, selector, account argument, call type, and zero value/u);

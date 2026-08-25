@@ -1,6 +1,7 @@
 const RECOVERY_NODES = Object.freeze([
   {
     id: "provision",
+    layer: "validator-factory",
     actor: "Recovering device",
     contract: "P256RecoveryValidatorFactory",
     function: "deployForRecovery",
@@ -11,6 +12,7 @@ const RECOVERY_NODES = Object.freeze([
   },
   {
     id: "digest",
+    layer: "recovery-module",
     actor: "Recovery client",
     contract: "RecoveryManager",
     function: "proposalDigest",
@@ -21,6 +23,7 @@ const RECOVERY_NODES = Object.freeze([
   },
   {
     id: "approve",
+    layer: "guardian-verifier",
     actor: "Guardian threshold",
     contract: "Guardian verifiers",
     function: "verify",
@@ -31,6 +34,7 @@ const RECOVERY_NODES = Object.freeze([
   },
   {
     id: "propose",
+    layer: "recovery-module",
     actor: "Any publisher",
     contract: "RecoveryManager",
     function: "proposeRecovery",
@@ -41,6 +45,7 @@ const RECOVERY_NODES = Object.freeze([
   },
   {
     id: "delay",
+    layer: "recovery-module",
     actor: "On-chain clock",
     contract: "RecoveryManager",
     function: "RECOVERY_DELAY / RECOVERY_WINDOW",
@@ -50,7 +55,42 @@ const RECOVERY_NODES = Object.freeze([
     invariant: "The account config version must remain the version approved by guardians."
   },
   {
+    id: "execute",
+    layer: "recovery-module",
+    actor: "Any publisher",
+    contract: "RecoveryManager",
+    function: "executeRecovery",
+    title: "Re-check and consume the pending recovery",
+    summary: "The module re-hashes oldValidators and initData, checks the delay, expiry, and approved config version, then consumes the pending record before calling the account.",
+    state: "The pending recovery is deleted and recoveryNonces[account] advances before the atomic account call.",
+    invariant: "A revert in the account call rolls the deletion and nonce update back with the whole transaction."
+  },
+  {
+    id: "core-handoff",
+    layer: "module-boundary",
+    actor: "Installed recovery module",
+    contract: "RecoveryManager → LoomAccount",
+    function: "recoverConfiguration",
+    title: "Send the exact authority payload to account core",
+    summary: "RecoveryManager can call only the account's narrow recovery entry point; it does not receive execute, transfer, hook, or arbitrary-call authority.",
+    payload: ["oldValidators[]", "newValidator", "initData", "newGuardianRoot", "newGuardianThreshold"],
+    state: "One typed call crosses from the installed recovery module into LoomAccount core.",
+    invariant: "The account independently requires msg.sender to be an installed recovery module."
+  },
+  {
+    id: "core-apply",
+    layer: "account-core",
+    actor: "LoomAccount core",
+    contract: "LoomAccount",
+    function: "recoverConfiguration",
+    title: "Atomically rotate account authority",
+    summary: "Core validates the complete old validator set, the new validator contract and module type, and the fresh guardian configuration before changing state.",
+    state: "Old validators are removed, the new validator initializes, guardian root and threshold rotate, and config version advances atomically.",
+    invariant: "Recovery cannot transfer funds or call arbitrary targets; any invalid module or initialization reverts every authority change."
+  },
+  {
     id: "cancel-account",
+    layer: "recovery-module",
     actor: "Current account + guardian support",
     contract: "RecoveryManager",
     function: "cancelRecoveryWithAccountAndGuardians",
@@ -61,6 +101,7 @@ const RECOVERY_NODES = Object.freeze([
   },
   {
     id: "cancel-guardians",
+    layer: "recovery-module",
     actor: "Full guardian threshold",
     contract: "RecoveryManager",
     function: "cancelRecoveryWithGuardians",
@@ -68,16 +109,6 @@ const RECOVERY_NODES = Object.freeze([
     summary: "Guardians can reject a malicious or obsolete proposal even when the current validator is unavailable.",
     state: "Pending recovery is deleted and its nonce advances.",
     invariant: "The full current guardian threshold must approve the cancellation digest."
-  },
-  {
-    id: "execute",
-    actor: "Any publisher",
-    contract: "RecoveryManager → LoomAccount",
-    function: "executeRecovery → recoverConfiguration",
-    title: "Atomically replace authority",
-    summary: "During the window, anyone can submit the exact old validator set and init data committed by guardians.",
-    state: "Old validators are replaced, the new validator initializes, guardian root and threshold rotate, config version and recovery nonce advance.",
-    invariant: "Execution is permissionless but not discretionary: hashes and the approved config version must match exactly."
   }
 ]);
 
@@ -86,7 +117,9 @@ const RECOVERY_EDGES = Object.freeze([
   ["digest", "approve", "EIP-712 intent"],
   ["approve", "propose", "threshold approvals"],
   ["propose", "delay", "RecoveryProposed"],
-  ["delay", "execute", "ready and not expired"],
+  ["delay", "execute", "account + oldValidators[] + initData"],
+  ["execute", "core-handoff", "verified committed payload"],
+  ["core-handoff", "core-apply", "recoverConfiguration(...)"],
   ["delay", "cancel-account", "contest path"],
   ["delay", "cancel-guardians", "guardian veto"],
   ["cancel-account", "propose", "new nonce; restart only"],
@@ -96,6 +129,7 @@ const RECOVERY_EDGES = Object.freeze([
 const FREEZE_NODES = Object.freeze([
   {
     id: "freeze-digest",
+    layer: "guardian-client",
     actor: "Guardian client",
     contract: "LoomAccount",
     function: "guardianLeaf / FREEZE_TYPEHASH",
@@ -105,7 +139,31 @@ const FREEZE_NODES = Object.freeze([
     invariant: "A capability copied from another account, config version, or guardian leaf cannot be replayed."
   },
   {
+    id: "freeze-submit",
+    layer: "account-core",
+    actor: "Any publisher",
+    contract: "LoomAccount",
+    function: "freeze",
+    title: "Submit the guardian capability to account core",
+    summary: "The publisher pays gas and supplies the verifier-specific capability directly to LoomAccount; RecoveryManager is not in the freeze call path.",
+    payload: ["verifier", "keyCommitment", "salt", "proof[]", "signature"],
+    state: "No authority changes until every account-side proof and signature check succeeds.",
+    invariant: "Publishing a capability grants the publisher no spending, recovery, or cancellation authority."
+  },
+  {
+    id: "freeze-membership",
+    layer: "account-core",
+    actor: "LoomAccount core",
+    contract: "LoomAccount",
+    function: "guardianLeaf / MerkleProof.verify",
+    title: "Bind membership, nonce, and config version",
+    summary: "Core reconstructs the leaf from verifier codehash, key commitment, and salt, proves it under guardianRoot, then builds the freeze digest.",
+    state: "The leaf must be unused for the current config version and its proof must be at most the configured bound.",
+    invariant: "A capability from another account, verifier bytecode, leaf, nonce, or config version cannot be replayed."
+  },
+  {
     id: "freeze-verify",
+    layer: "guardian-verifier",
     actor: "One guardian",
     contract: "ECDSA / P256 / ERC1271 verifier",
     function: "verify",
@@ -116,6 +174,7 @@ const FREEZE_NODES = Object.freeze([
   },
   {
     id: "freeze-write",
+    layer: "account-core",
     actor: "Any publisher",
     contract: "LoomAccount",
     function: "freeze",
@@ -126,6 +185,7 @@ const FREEZE_NODES = Object.freeze([
   },
   {
     id: "freeze-block",
+    layer: "account-core",
     actor: "LoomAccount execution boundary",
     contract: "LoomAccount",
     function: "_isFrozenSafe",
@@ -136,6 +196,7 @@ const FREEZE_NODES = Object.freeze([
   },
   {
     id: "freeze-escape",
+    layer: "recovery-module",
     actor: "Account + guardian support",
     contract: "RecoveryManager",
     function: "cancelRecoveryWithAccountAndGuardians",
@@ -146,6 +207,7 @@ const FREEZE_NODES = Object.freeze([
   },
   {
     id: "freeze-expire",
+    layer: "account-core",
     actor: "On-chain clock",
     contract: "LoomAccount",
     function: "unfreeze",
@@ -157,8 +219,10 @@ const FREEZE_NODES = Object.freeze([
 ]);
 
 const FREEZE_EDGES = Object.freeze([
-  ["freeze-digest", "freeze-verify", "proof + signature"],
-  ["freeze-verify", "freeze-write", "valid guardian capability"],
+  ["freeze-digest", "freeze-submit", "signed capability"],
+  ["freeze-submit", "freeze-membership", "guardianRoot + nonce + configVersion"],
+  ["freeze-membership", "freeze-verify", "digest + signature"],
+  ["freeze-verify", "freeze-write", "valid == true"],
   ["freeze-write", "freeze-block", "frozenUntil"],
   ["freeze-block", "freeze-escape", "only allowed account call"],
   ["freeze-block", "freeze-expire", "after 5 days"]
@@ -166,7 +230,7 @@ const FREEZE_EDGES = Object.freeze([
 
 const RECOVERY_LAYOUTS = Object.freeze({
   recovery: Object.freeze({
-    width: 1760,
+    width: 2160,
     height: 520,
     positions: Object.freeze({
       provision: { x: 40, y: 125 },
@@ -174,21 +238,25 @@ const RECOVERY_LAYOUTS = Object.freeze({
       approve: { x: 560, y: 125 },
       propose: { x: 820, y: 125 },
       delay: { x: 1080, y: 125 },
-      execute: { x: 1460, y: 125 },
+      execute: { x: 1340, y: 125 },
+      "core-handoff": { x: 1600, y: 125 },
+      "core-apply": { x: 1860, y: 125 },
       "cancel-account": { x: 1080, y: 335 },
       "cancel-guardians": { x: 1400, y: 335 }
     })
   }),
   freeze: Object.freeze({
-    width: 1510,
+    width: 2050,
     height: 500,
     positions: Object.freeze({
       "freeze-digest": { x: 40, y: 135 },
-      "freeze-verify": { x: 310, y: 135 },
-      "freeze-write": { x: 580, y: 135 },
-      "freeze-block": { x: 850, y: 135 },
-      "freeze-expire": { x: 1200, y: 135 },
-      "freeze-escape": { x: 1030, y: 335 }
+      "freeze-submit": { x: 300, y: 135 },
+      "freeze-membership": { x: 560, y: 135 },
+      "freeze-verify": { x: 820, y: 135 },
+      "freeze-write": { x: 1080, y: 135 },
+      "freeze-block": { x: 1340, y: 135 },
+      "freeze-expire": { x: 1800, y: 135 },
+      "freeze-escape": { x: 1510, y: 335 }
     })
   })
 });

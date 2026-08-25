@@ -3,6 +3,7 @@ import { layoutArchitectureExplorer } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 import { buildOperationLens } from "./lab-domain.mjs";
 import { buildRecoveryLifecycle } from "./recovery-lifecycle.mjs";
+import { zoomScrollAtPoint, zoomTransformAtPoint } from "./viewport-zoom.mjs";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -33,7 +34,9 @@ const state = {
   expandedArchitectureGroups: [],
   recoveryMode: "recovery",
   selectedRecoveryStepId: "provision",
+  recoveryZoom: 1,
   recoveryScrollLeft: 0,
+  recoveryScrollTop: 0,
   focusedNodeId: null,
   focusedSection: null,
   focusedAbiItem: null,
@@ -995,9 +998,21 @@ function resetGraphView() {
   renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
 }
 
-function changeGraphZoom(delta) {
-  state.graphTransform.scale = Math.min(1.8, Math.max(.65, Number((state.graphTransform.scale + delta).toFixed(2))));
+function setGraphZoom(nextScale, focalPoint = null) {
+  state.graphTransform = zoomTransformAtPoint(state.graphTransform, nextScale, focalPoint);
   renderDeploymentGraph(currentDeployment(state.artifact?.events ?? []));
+}
+
+function changeGraphZoom(delta) {
+  setGraphZoom(state.graphTransform.scale + delta);
+}
+
+function zoomArchitectureWithWheel(event) {
+  if (event.deltaY === 0) return;
+  const focalPoint = graphPointerPosition(event);
+  if (!focalPoint) return;
+  event.preventDefault();
+  setGraphZoom(state.graphTransform.scale * (event.deltaY < 0 ? 1.1 : .9), focalPoint);
 }
 
 function renderRelationshipSummary(deployment, contract) {
@@ -1737,7 +1752,7 @@ function recoveryEdgeGeometry(edge, nodesById, graphHeight) {
       ? `M ${startX} ${startY} C ${startX} ${startY + bend}, ${endX} ${endY - bend}, ${endX} ${endY}`
       : `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`,
     labelX: (startX + endX) / 2,
-    labelY: (startY + endY) / 2 - 11,
+    labelY: startsBelow ? (startY + endY) / 2 - 11 : Math.min(from.y, to.y) - 16,
     returning: false
   };
 }
@@ -1773,17 +1788,44 @@ function renderRecoveryLifecycle() {
     const selected = node.id === lifecycle.selected.id;
     const related = selected || selectedConnections.has(node.id);
     const title = recoveryNodeTitle(node.title).map(line => `<span>${escapeHtml(line)}</span>`).join("");
-    return `<foreignObject x="${node.x}" y="${node.y}" width="${RECOVERY_NODE_WIDTH}" height="${RECOVERY_NODE_HEIGHT}"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="recovery-graph-node ${selected ? "selected" : ""} ${related ? "related" : "dimmed"}" data-recovery-step="${escapeHtml(node.id)}" aria-pressed="${selected}"><span class="recovery-node-index">${index + 1}</span><span class="recovery-node-copy"><small>${escapeHtml(node.actor)}</small><strong>${title}</strong><code>${escapeHtml(node.contract)} · ${escapeHtml(node.function)}</code></span><em class="${evidenceClass}">${escapeHtml(evidence)}</em></button></foreignObject>`;
+    const boundary = `${titleCase(node.layer)} · ${node.actor}`;
+    const payload = node.payload?.length ? `${node.payload.length} payload fields · ` : "";
+    return `<foreignObject x="${node.x}" y="${node.y}" width="${RECOVERY_NODE_WIDTH}" height="${RECOVERY_NODE_HEIGHT}"><button xmlns="http://www.w3.org/1999/xhtml" type="button" class="recovery-graph-node layer-${escapeHtml(node.layer)} ${selected ? "selected" : ""} ${related ? "related" : "dimmed"}" data-recovery-step="${escapeHtml(node.id)}" aria-pressed="${selected}"><span class="recovery-node-index">${index + 1}</span><span class="recovery-node-copy"><small>${escapeHtml(boundary)}</small><strong>${title}</strong><code>${escapeHtml(payload + node.contract)} · ${escapeHtml(node.function)}</code></span><em class="${evidenceClass}">${escapeHtml(evidence)}</em></button></foreignObject>`;
   }).join("");
-  $("#recovery-flow").innerHTML = `<header><div><p class="eyebrow">${escapeHtml(lifecycle.label)}</p><h2>${escapeHtml(lifecycle.description)}</h2></div><span>${lifecycle.nodes.length} contract-level stages · scroll sideways</span></header><div class="recovery-graph-viewport" aria-label="${escapeHtml(lifecycle.label)} contract flow"><svg class="recovery-graph" viewBox="0 0 ${lifecycle.layout.width} ${lifecycle.layout.height}" width="${lifecycle.layout.width}" height="${lifecycle.layout.height}" role="img" aria-labelledby="recovery-graph-title recovery-graph-description"><title id="recovery-graph-title">${escapeHtml(lifecycle.label)} contract flow</title><desc id="recovery-graph-description">A left-to-right map of ${lifecycle.nodes.length} authority-bearing stages. Select a node for its contract boundary and invariant.</desc><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--green)"/></marker></defs>${edges}${nodes}</svg></div>`;
+  const graphWidth = Math.round(lifecycle.layout.width * state.recoveryZoom);
+  const graphHeight = Math.round(lifecycle.layout.height * state.recoveryZoom);
+  $("#recovery-flow").innerHTML = `<header><div><p class="eyebrow">${escapeHtml(lifecycle.label)}</p><h2>${escapeHtml(lifecycle.description)}</h2></div><span>${lifecycle.nodes.length} contract-level stages · ${Math.round(state.recoveryZoom * 100)}% · wheel to zoom</span></header><div class="recovery-graph-viewport" aria-label="${escapeHtml(lifecycle.label)} contract flow"><svg class="recovery-graph" viewBox="0 0 ${lifecycle.layout.width} ${lifecycle.layout.height}" width="${graphWidth}" height="${graphHeight}" role="img" aria-labelledby="recovery-graph-title recovery-graph-description"><title id="recovery-graph-title">${escapeHtml(lifecycle.label)} contract flow</title><desc id="recovery-graph-description">A left-to-right map of ${lifecycle.nodes.length} authority-bearing stages. Select a node for its contract boundary and invariant.</desc><defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--green)"/></marker></defs>${edges}${nodes}</svg></div>`;
   const viewport = $("#recovery-flow .recovery-graph-viewport");
   viewport.scrollLeft = state.recoveryScrollLeft;
-  viewport.addEventListener("scroll", () => { state.recoveryScrollLeft = viewport.scrollLeft; }, { passive: true });
+  viewport.scrollTop = state.recoveryScrollTop;
+  viewport.addEventListener("scroll", () => {
+    state.recoveryScrollLeft = viewport.scrollLeft;
+    state.recoveryScrollTop = viewport.scrollTop;
+  }, { passive: true });
+  viewport.addEventListener("wheel", zoomRecoveryWithWheel, { passive: false });
   const selected = lifecycle.selected;
   const [evidence, evidenceClass] = recoveryEvidenceStatus(deployment, selected.contract);
   const incoming = lifecycle.edges.filter(edge => edge.to === selected.id);
   const outgoing = lifecycle.edges.filter(edge => edge.from === selected.id);
-  $("#recovery-step-detail").innerHTML = `<header><p class="eyebrow">SELECTED TRANSITION</p><span class="recovery-evidence ${evidenceClass}">${escapeHtml(evidence)}</span><h2>${escapeHtml(selected.title)}</h2><p>${escapeHtml(selected.summary)}</p></header><dl><div><dt>Actor</dt><dd>${escapeHtml(selected.actor)}</dd></div><div><dt>Contract boundary</dt><dd><code>${escapeHtml(selected.contract)}</code></dd></div><div><dt>Function / constant</dt><dd><code>${escapeHtml(selected.function)}</code></dd></div><div><dt>On-chain effect</dt><dd>${escapeHtml(selected.state)}</dd></div></dl><section><strong>Safety invariant</strong><p>${escapeHtml(selected.invariant)}</p></section><section class="recovery-connections"><strong>Flow connections</strong>${[...incoming.map(edge => `Receives ${edge.label} from ${lifecycle.nodes.find(node => node.id === edge.from)?.title}.`), ...outgoing.map(edge => `Sends ${edge.label} to ${lifecycle.nodes.find(node => node.id === edge.to)?.title}.`)].map(value => `<p>${escapeHtml(value)}</p>`).join("") || `<p>This is the terminal state for this branch.</p>`}</section>`;
+  const payloadDetail = selected.payload?.length ? `<div class="recovery-payload-row"><dt>Payload crossing the boundary</dt><dd>${selected.payload.map(value => `<code>${escapeHtml(value)}</code>`).join(" ")}</dd></div>` : "";
+  $("#recovery-step-detail").innerHTML = `<header><p class="eyebrow">SELECTED TRANSITION</p><span class="recovery-evidence ${evidenceClass}">${escapeHtml(evidence)}</span><h2>${escapeHtml(selected.title)}</h2><p>${escapeHtml(selected.summary)}</p></header><dl><div><dt>Layer</dt><dd>${escapeHtml(titleCase(selected.layer))}</dd></div><div><dt>Actor</dt><dd>${escapeHtml(selected.actor)}</dd></div><div><dt>Contract boundary</dt><dd><code>${escapeHtml(selected.contract)}</code></dd></div><div><dt>Function / constant</dt><dd><code>${escapeHtml(selected.function)}</code></dd></div>${payloadDetail}<div><dt>On-chain effect</dt><dd>${escapeHtml(selected.state)}</dd></div></dl><section><strong>Safety invariant</strong><p>${escapeHtml(selected.invariant)}</p></section><section class="recovery-connections"><strong>Flow connections</strong>${[...incoming.map(edge => `Receives ${edge.label} from ${lifecycle.nodes.find(node => node.id === edge.from)?.title}.`), ...outgoing.map(edge => `Sends ${edge.label} to ${lifecycle.nodes.find(node => node.id === edge.to)?.title}.`)].map(value => `<p>${escapeHtml(value)}</p>`).join("") || `<p>This is the terminal state for this branch.</p>`}</section>`;
+}
+
+function zoomRecoveryWithWheel(event) {
+  if (event.deltaY === 0) return;
+  const viewport = event.currentTarget;
+  const previousZoom = state.recoveryZoom;
+  const next = zoomScrollAtPoint(
+    { scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, zoom: previousZoom },
+    previousZoom * (event.deltaY < 0 ? 1.1 : .9),
+    { x: event.clientX - viewport.getBoundingClientRect().left, y: event.clientY - viewport.getBoundingClientRect().top }
+  );
+  if (next.zoom === previousZoom) return;
+  event.preventDefault();
+  state.recoveryZoom = next.zoom;
+  state.recoveryScrollLeft = next.scrollLeft;
+  state.recoveryScrollTop = next.scrollTop;
+  renderRecoveryLifecycle();
 }
 
 function renderDeployment(events = []) {
@@ -1881,7 +1923,9 @@ $("#panel-recovery").addEventListener("click", event => {
   if (mode) {
     state.recoveryMode = mode.dataset.recoveryMode;
     state.selectedRecoveryStepId = state.recoveryMode === "freeze" ? "freeze-digest" : "provision";
+    state.recoveryZoom = 1;
     state.recoveryScrollLeft = 0;
+    state.recoveryScrollTop = 0;
     renderRecoveryLifecycle();
     return;
   }
@@ -2038,6 +2082,7 @@ $("#deployment-graph").addEventListener("pointerdown", beginGraphInteraction);
 $("#deployment-graph").addEventListener("pointermove", moveGraphInteraction);
 $("#deployment-graph").addEventListener("pointerup", endGraphInteraction);
 $("#deployment-graph").addEventListener("pointercancel", endGraphInteraction);
+$("#deployment-graph").addEventListener("wheel", zoomArchitectureWithWheel, { passive: false });
 $("#graph-zoom-in").addEventListener("click", () => changeGraphZoom(.15));
 $("#graph-zoom-out").addEventListener("click", () => changeGraphZoom(-.15));
 $("#graph-reset-view").addEventListener("click", resetGraphView);
