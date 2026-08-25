@@ -1,4 +1,4 @@
-import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransactionArchitectureJourney, reduceArchitectureFocus } from "./architecture-explorer.mjs";
+import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransactionArchitectureJourney, normalizeArchitectureDeployment, reduceArchitectureFocus } from "./architecture-explorer.mjs";
 import { layoutArchitectureExplorer } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 import { buildOperationLens } from "./lab-domain.mjs";
@@ -610,7 +610,8 @@ function evmTraceEvidence(events = []) {
 }
 
 function currentDeployment(events = state.artifact?.events ?? []) {
-  return state.deploymentSource === "sepolia" ? state.sepoliaDeployment?.deployment ?? null : deploymentEvidence(events);
+  const deployment = state.deploymentSource === "sepolia" ? state.sepoliaDeployment?.deployment ?? null : deploymentEvidence(events);
+  return normalizeArchitectureDeployment(deployment);
 }
 
 function currentTrace(events = state.artifact?.events ?? []) {
@@ -670,7 +671,7 @@ function renderAccountModelExplainer(deployment) {
   }
   root.hidden = false;
   root.className = "account-model-explainer";
-  root.innerHTML = `<div class="account-model-node"><span>Shared code</span><strong>LoomAccount</strong><code>${escapeHtml(short(implementation.address, 10, 8))}</code></div><div class="delegation-arrow"><strong>DELEGATECALL</strong><span aria-hidden="true">→</span><small>code from implementation / state in proxy</small></div><div class="account-model-node instance"><span>Wallet instance</span><strong>Observed Loom account</strong><code>${escapeHtml(short(instance.address, 10, 8))}</code></div>`;
+  root.innerHTML = `<div class="account-model-node"><span>Shared implementation</span><strong>LoomAccount code</strong><code>${escapeHtml(short(implementation.address, 10, 8))}</code><small>Reusable logic · no per-wallet balance or configuration</small></div><div class="delegation-arrow"><strong>DELEGATECALL</strong><span aria-hidden="true">→</span><small>Run shared code at the wallet address, using the wallet's own state</small></div><div class="account-model-node instance"><span>Deployed wallet</span><strong>LoomAccountProxy instance</strong><code>${escapeHtml(short(instance.address, 10, 8))}</code><small>Own address · balances · nonce · validators · guardians</small></div>`;
 }
 
 function architectureView(deployment) {
@@ -694,7 +695,7 @@ function graphPositions(nodes, edges) {
 
 function edgeClass(kind) {
   if (["validates-with", "guarded-by", "recovers", "optional-validator", "optional-hook"].includes(kind)) return "authority";
-  if (["creates", "delegates", "provisions-for"].includes(kind)) return "create";
+  if (["creates", "delegates", "provisions-for", "uses-template"].includes(kind)) return "create";
   return "call";
 }
 
@@ -893,7 +894,7 @@ function renderDeploymentGraph(deployment) {
     const nodeBounds = bounds[node.id];
     if (node.id === state.focusedNodeId) return renderFocusedArchitectureNode(deployment, node, nodeBounds, functionLens);
     const selected = node.id === state.focusedNodeId ? " selected" : "";
-    const role = ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "deployment-required": "DEPLOYMENT REQUIRED", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
+    const role = node.topologyRole ?? ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "deployment-required": "DEPLOYMENT REQUIRED", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
     const verification = node.verification ? ` · ${node.verification.toUpperCase()}` : "";
     const identityClass = node.id === "LoomAccount" ? " implementation" : node.id === "ObservedAccount" ? " instance" : "";
     const displayName = node.name.length > 28 ? `${node.name.slice(0, 27)}…` : node.name;

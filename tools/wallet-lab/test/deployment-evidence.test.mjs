@@ -127,3 +127,35 @@ test("deployment evidence keeps code and claim provenance explicit", () => {
   assert.deepEqual(account.evidence.map(item => item.kind), ["manifest", "runtime-code", "artifact"]);
   assert.equal(account.evidence.every(item => ["declared", "verified", "derived"].includes(item.status)), true);
 });
+
+test("deployment evidence distinguishes shared account code from a deployed wallet proxy", () => {
+  const deployment = buildDeploymentEvidence({
+    repoRoot: fileURLToPath(new URL("../../../", import.meta.url)),
+    addresses: {
+      EntryPoint: "0x0000000000000000000000000000000000000001",
+      LoomAccount: "0x0000000000000000000000000000000000000002",
+      LoomAccountFactory: "0x0000000000000000000000000000000000000003",
+      P256Validator: "0x0000000000000000000000000000000000000005",
+      RecoveryManager: "0x0000000000000000000000000000000000000006"
+    },
+    codeHashes: {},
+    account: "0x0000000000000000000000000000000000000004"
+  });
+  const byId = id => deployment.nodes.find(node => node.id === id);
+
+  assert.equal(byId("LoomAccount").name, "LoomAccount · shared code");
+  assert.equal(byId("LoomAccountProxy").name, "LoomAccountProxy · template");
+  assert.equal(byId("ObservedAccount").name, "Loom wallet · proxy instance");
+  assert.match(byId("ObservedAccount").responsibility, /balances, nonce, validators, and guardian configuration/u);
+  assert.ok(deployment.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "LoomAccount" && edge.kind === "references"));
+  assert.ok(deployment.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "ObservedAccount" && edge.kind === "creates"));
+  assert.ok(deployment.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "ObservedAccount" && /one proxy contract per wallet/u.test(edge.label)));
+  assert.ok(deployment.edges.some(edge => edge.from === "ObservedAccount" && edge.to === "LoomAccount" && edge.kind === "delegates" && /shared code \/ wallet state/u.test(edge.label)));
+  assert.ok(deployment.edges.some(edge => edge.from === "EntryPoint" && edge.to === "ObservedAccount"));
+  assert.ok(deployment.edges.some(edge => edge.from === "ObservedAccount" && edge.to === "P256Validator"));
+  assert.ok(deployment.edges.some(edge => edge.from === "RecoveryManager" && edge.to === "ObservedAccount"));
+  assert.ok(!deployment.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "LoomAccount" && edge.kind === "creates"));
+  assert.ok(!deployment.edges.some(edge => edge.from === "EntryPoint" && edge.to === "LoomAccount"));
+  assert.ok(!deployment.edges.some(edge => edge.from === "LoomAccount" && edge.to === "P256Validator"));
+  assert.ok(!deployment.edges.some(edge => edge.from === "RecoveryManager" && edge.to === "LoomAccount"));
+});

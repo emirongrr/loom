@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransactionArchitectureJourney, reduceArchitectureFocus } from "../ui/architecture-explorer.mjs";
+import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransactionArchitectureJourney, normalizeArchitectureDeployment, reduceArchitectureFocus } from "../ui/architecture-explorer.mjs";
 
 const deployment = {
   nodes: [
@@ -35,6 +35,74 @@ test("architecture explorer starts with the required spine and deterministic col
   ]);
   assert.equal(view.groups.some(group => group.id === "group:recovery"), false);
   assert.ok(view.visibleEdges.every(edge => edge.presentationOnly !== true), "collapsed groups must not invent architectural authority edges");
+});
+
+test("legacy run artifacts receive the corrected proxy and implementation topology", () => {
+  const normalized = normalizeArchitectureDeployment({
+    nodes: [
+      { id: "LoomAccountFactory", name: "LoomAccountFactory" },
+      { id: "EntryPoint", name: "EntryPoint" },
+      { id: "LoomAccount", name: "LoomAccount", responsibility: "Legacy description" },
+      { id: "LoomAccountProxy", name: "LoomAccountProxy", responsibility: "Legacy description" },
+      { id: "ObservedAccount", name: "Observed Loom account", responsibility: "Legacy description", address: "0x0000000000000000000000000000000000000004", availability: "deployed" },
+      { id: "P256Validator", name: "P256Validator" },
+      { id: "RecoveryManager", name: "RecoveryManager" }
+    ],
+    edges: [
+      { from: "LoomAccountFactory", to: "LoomAccount", kind: "creates", label: "CREATE2 proxy / immutable implementation" },
+      { from: "LoomAccountFactory", to: "LoomAccountProxy", kind: "embeds", label: "proxy creation bytecode template" },
+      { from: "EntryPoint", to: "LoomAccount", kind: "invokes", label: "validateUserOp / execute" },
+      { from: "LoomAccount", to: "P256Validator", kind: "validates-with", label: "WebAuthn P-256 authority" },
+      { from: "RecoveryManager", to: "LoomAccount", kind: "recovers", label: "delayed validator replacement" },
+      { from: "LoomAccountFactory", to: "ObservedAccount", kind: "creates", label: "CREATE2 immutable proxy" },
+      { from: "EntryPoint", to: "ObservedAccount", kind: "invokes", label: "validateUserOp / execute" },
+      { from: "ObservedAccount", to: "LoomAccount", kind: "delegates", label: "immutable implementation" }
+    ]
+  });
+  const byId = id => normalized.nodes.find(node => node.id === id);
+
+  assert.equal(byId("LoomAccount").name, "LoomAccount · shared code");
+  assert.equal(byId("LoomAccountProxy").name, "LoomAccountProxy · template");
+  assert.equal(byId("ObservedAccount").name, "Loom wallet · proxy instance");
+  assert.equal(byId("LoomAccount").topologyRole, "ONE-TIME DEPLOYED CORE");
+  assert.equal(byId("ObservedAccount").topologyRole, "DEPLOYED WALLET PROXY");
+  assert.ok(normalized.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "LoomAccount" && edge.kind === "references"));
+  assert.ok(normalized.edges.some(edge => edge.from === "EntryPoint" && edge.to === "ObservedAccount"));
+  assert.ok(normalized.edges.some(edge => edge.from === "ObservedAccount" && edge.to === "P256Validator"));
+  assert.ok(normalized.edges.some(edge => edge.from === "RecoveryManager" && edge.to === "ObservedAccount"));
+  assert.ok(!normalized.edges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "LoomAccount" && edge.kind === "creates"));
+  assert.ok(!normalized.edges.some(edge => edge.from === "EntryPoint" && edge.to === "LoomAccount"));
+  assert.ok(!normalized.edges.some(edge => edge.from === "LoomAccount" && edge.to === "P256Validator"));
+  assert.ok(!normalized.edges.some(edge => edge.from === "RecoveryManager" && edge.to === "LoomAccount"));
+});
+
+test("a deployed wallet replaces the source-only proxy template in the visible topology", () => {
+  const withWallet = buildArchitectureExplorer({
+    nodes: [
+      { id: "LoomAccountFactory", name: "LoomAccountFactory", requirement: "core" },
+      { id: "LoomAccount", name: "LoomAccount", requirement: "core" },
+      { id: "LoomAccountProxy", name: "LoomAccountProxy", requirement: "core", availability: "source-only" },
+      { id: "ObservedAccount", name: "Observed Loom account", requirement: "core", availability: "deployed", address: "0x0000000000000000000000000000000000000004" }
+    ],
+    edges: [
+      { from: "LoomAccountFactory", to: "LoomAccountProxy", kind: "embeds", label: "proxy creation bytecode template" },
+      { from: "LoomAccountFactory", to: "ObservedAccount", kind: "creates", label: "CREATE2 immutable proxy" },
+      { from: "ObservedAccount", to: "LoomAccount", kind: "delegates", label: "immutable implementation" }
+    ]
+  });
+  const withoutWallet = buildArchitectureExplorer({
+    nodes: [
+      { id: "LoomAccountFactory", name: "LoomAccountFactory", requirement: "core" },
+      { id: "LoomAccountProxy", name: "LoomAccountProxy", requirement: "core", availability: "source-only" }
+    ],
+    edges: [{ from: "LoomAccountFactory", to: "LoomAccountProxy", kind: "embeds", label: "proxy creation bytecode template" }]
+  });
+
+  assert.ok(withWallet.visibleNodes.some(node => node.id === "ObservedAccount"));
+  assert.ok(!withWallet.visibleNodes.some(node => node.id === "LoomAccountProxy"));
+  assert.ok(withWallet.visibleEdges.some(edge => edge.from === "LoomAccountFactory" && edge.to === "ObservedAccount"));
+  assert.ok(withWallet.visibleEdges.some(edge => edge.from === "ObservedAccount" && edge.to === "LoomAccount"));
+  assert.ok(withoutWallet.visibleNodes.some(node => node.id === "LoomAccountProxy"), "the template remains discoverable when no wallet instance is selected");
 });
 
 test("architecture explorer promotes recovery infrastructure from older optional artifacts", () => {

@@ -63,10 +63,10 @@ const BEHAVIORS = Object.freeze({
 
 const CONTRACT_PROFILES = Object.freeze({
   EntryPoint: { layer: "erc-4337-transport", requirement: "transport-required", responsibility: "Canonical ERC-4337 validation, execution, and gas settlement transport. Loom direct execution remains the provider-independent fallback." },
-  LoomAccount: { layer: "loom-core", requirement: "core", responsibility: "Immutable smart-account authority boundary and guarded execution engine." },
-  LoomAccountProxy: { layer: "deployment", requirement: "core", responsibility: "Source-defined immutable proxy template used by the factory. It is not a separately deployed singleton; each wallet instance embeds its implementation pointer." },
-  ObservedAccount: { layer: "account-instance", requirement: "core", responsibility: "The deployed immutable proxy instance whose state and execution are being observed." },
-  LoomAccountFactory: { layer: "deployment", requirement: "core", responsibility: "Deterministically deploys and initializes immutable Loom account proxies; it has no later account authority." },
+  LoomAccount: { name: "LoomAccount · shared code", topologyRole: "ONE-TIME DEPLOYED CORE", layer: "loom-core", requirement: "core", responsibility: "Shared immutable account logic deployed once for this factory profile. It supplies validation and execution code but does not hold any individual wallet's balance, nonce, validator set, or guardian configuration." },
+  LoomAccountProxy: { name: "LoomAccountProxy · template", topologyRole: "WALLET BYTECODE TEMPLATE", layer: "deployment", requirement: "core", responsibility: "Source-defined creation and runtime bytecode used to deploy each wallet proxy. It is a template rather than a separately deployed singleton, so it has no single deployment address." },
+  ObservedAccount: { name: "Loom wallet · proxy instance", topologyRole: "DEPLOYED WALLET PROXY", layer: "account-instance", requirement: "core", responsibility: "One real LoomAccountProxy created by the factory and selected for inspection. Its address holds balances, nonce, validators, and guardian configuration while delegatecall runs the shared LoomAccount implementation in this wallet's state context." },
+  LoomAccountFactory: { topologyRole: "DETERMINISTIC WALLET DEPLOYER", layer: "deployment", requirement: "core", responsibility: "Uses one immutable LoomAccount implementation and deterministically deploys a separate initialized proxy contract for every Loom wallet; it has no later account authority." },
   AppAccountRegistry: { layer: "account-discovery", requirement: "core", responsibility: "Factory-owned discovery index for app-account relationships. Registration is descriptive and grants no spending or recovery authority." },
   P256Validator: { layer: "authentication", requirement: "profile-required", responsibility: "Primary passkey validator for the observed wallet profile." },
   MultiP256Validator: { layer: "authentication", requirement: "optional", responsibility: "Optional threshold passkey validator for accounts that require multiple P-256 credentials." },
@@ -371,7 +371,7 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
     const accountFunctions = accountArtifact ? catalogFunctions("LoomAccount", accountArtifact.abi ?? [], accountArtifact.ast) : [];
     nodes.push({
       id: "ObservedAccount",
-      name: "Observed Loom account",
+      name: "Loom wallet · proxy instance",
       address: account,
       runtimeCodeHash: null,
       availability: "deployed",
@@ -389,20 +389,15 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
     });
   }
   const edges = [
-    relationship("LoomAccountFactory", "LoomAccount", "creates", "CREATE2 proxy / immutable implementation"),
-    relationship("LoomAccountFactory", "LoomAccountProxy", "embeds", "proxy creation bytecode template"),
+    relationship("LoomAccountFactory", "LoomAccount", "references", "one immutable implementation shared by every wallet proxy"),
+    relationship("LoomAccountFactory", "LoomAccountProxy", "uses-template", "CREATE2 per-wallet proxy bytecode"),
     relationship("LoomAccountFactory", "AppAccountRegistry", "publishes", "immutable discovery registry"),
-    relationship("EntryPoint", "LoomAccount", "invokes", "validateUserOp / execute"),
-    relationship("LoomAccount", "P256Validator", "validates-with", "WebAuthn P-256 authority"),
-    relationship("LoomAccount", "MultiP256Validator", "optional-validator", "threshold passkey authority"),
-    relationship("LoomAccount", "PolicyHook", "guarded-by", "pre/post execution policy"),
-    relationship("RecoveryManager", "LoomAccount", "recovers", "delayed validator replacement"),
     relationship("ECDSAGuardianVerifier", "RecoveryManager", "approves", "ECDSA guardian proof"),
     relationship("P256GuardianVerifier", "RecoveryManager", "approves", "P-256 guardian proof"),
     relationship("ERC1271GuardianVerifier", "RecoveryManager", "approves", "contract guardian proof"),
     relationship("P256RecoveryValidatorFactory", "P256RecoveryValidator", "creates", "CREATE2 recovery-bound child"),
-    relationship("LoomAccountFactory", "ObservedAccount", "creates", "CREATE2 immutable proxy"),
-    relationship("ObservedAccount", "LoomAccount", "delegates", "immutable implementation"),
+    relationship("LoomAccountFactory", "ObservedAccount", "creates", "CREATE2 · one proxy contract per wallet"),
+    relationship("ObservedAccount", "LoomAccount", "delegates", "DELEGATECALL · shared code / wallet state"),
     relationship("EntryPoint", "ObservedAccount", "invokes", "validateUserOp / execute"),
     relationship("ObservedAccount", "P256Validator", "validates-with", "WebAuthn P-256 authority"),
     relationship("ObservedAccount", "PolicyHook", "guarded-by", "pre/post execution policy"),

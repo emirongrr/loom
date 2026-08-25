@@ -7,6 +7,52 @@ const DEPLOYMENT_REQUIRED_CONTRACTS = new Set([
   "ERC1271GuardianVerifier"
 ]);
 
+const ACCOUNT_TOPOLOGY = Object.freeze({
+  LoomAccount: {
+    name: "LoomAccount · shared code",
+    topologyRole: "ONE-TIME DEPLOYED CORE",
+    responsibility: "Shared immutable account logic deployed once for this factory profile. It supplies validation and execution code but does not hold any individual wallet's balance, nonce, validator set, or guardian configuration."
+  },
+  LoomAccountProxy: {
+    name: "LoomAccountProxy · template",
+    topologyRole: "WALLET BYTECODE TEMPLATE",
+    responsibility: "Source-defined creation and runtime bytecode used to deploy each wallet proxy. It is a template rather than a separately deployed singleton, so it has no single deployment address."
+  },
+  ObservedAccount: {
+    name: "Loom wallet · proxy instance",
+    topologyRole: "DEPLOYED WALLET PROXY",
+    responsibility: "One real LoomAccountProxy created by the factory and selected for inspection. Its address holds balances, nonce, validators, and guardian configuration while delegatecall runs the shared LoomAccount implementation in this wallet's state context."
+  },
+  LoomAccountFactory: {
+    topologyRole: "DETERMINISTIC WALLET DEPLOYER",
+    responsibility: "Uses one immutable LoomAccount implementation and deterministically deploys a separate initialized proxy contract for every Loom wallet; it has no later account authority."
+  }
+});
+
+export function normalizeArchitectureDeployment(deployment) {
+  if (!deployment) return null;
+  const nodes = (deployment.nodes ?? []).map(node => ACCOUNT_TOPOLOGY[node.id] ? { ...node, ...ACCOUNT_TOPOLOGY[node.id] } : node);
+  const hasObservedWallet = nodes.some(node => node.id === "ObservedAccount" && node.address && node.availability !== "source-only");
+  const normalizedEdges = (deployment.edges ?? []).map(edge => {
+    if (edge.from === "LoomAccountFactory" && edge.to === "LoomAccount") return { ...edge, kind: "references", label: "one immutable implementation shared by every wallet proxy" };
+    if (edge.from === "LoomAccountFactory" && edge.to === "LoomAccountProxy") return { ...edge, kind: "uses-template", label: "CREATE2 per-wallet proxy bytecode" };
+    if (edge.from === "LoomAccountFactory" && edge.to === "ObservedAccount") return { ...edge, kind: "creates", label: "CREATE2 · one proxy contract per wallet" };
+    if (edge.from === "ObservedAccount" && edge.to === "LoomAccount") return { ...edge, kind: "delegates", label: "DELEGATECALL · shared code / wallet state" };
+    if (hasObservedWallet && edge.from === "EntryPoint" && edge.to === "LoomAccount") return { ...edge, to: "ObservedAccount" };
+    if (hasObservedWallet && edge.from === "LoomAccount" && ["validates-with", "optional-validator", "guarded-by", "optional-hook"].includes(edge.kind)) return { ...edge, from: "ObservedAccount" };
+    if (hasObservedWallet && edge.from === "RecoveryManager" && edge.to === "LoomAccount" && edge.kind === "recovers") return { ...edge, to: "ObservedAccount" };
+    return edge;
+  });
+  const seenEdges = new Set();
+  const edges = normalizedEdges.filter(edge => {
+    const key = `${edge.from}:${edge.to}:${edge.kind}`;
+    if (seenEdges.has(key)) return false;
+    seenEdges.add(key);
+    return true;
+  });
+  return { ...deployment, nodes, edges };
+}
+
 export const ARCHITECTURE_GROUPS = Object.freeze([
   { id: "group:authentication", label: "Authentication", layers: ["authentication"] },
   { id: "group:hooks", label: "Hooks", layers: ["execution-policy", "asset-policy"] },
@@ -22,10 +68,14 @@ function groupFor(node) {
 }
 
 export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], searchQuery = "" } = {}) {
-  const nodes = (deployment?.nodes ?? []).map(node => DEPLOYMENT_REQUIRED_CONTRACTS.has(node.id) && node.requirement !== "deployment-required"
+  const normalized = normalizeArchitectureDeployment(deployment);
+  const normalizedNodes = normalized?.nodes ?? [];
+  const hasObservedWallet = normalizedNodes.some(node => node.id === "ObservedAccount" && node.address && node.availability !== "source-only");
+  const topologyNodes = hasObservedWallet ? normalizedNodes.filter(node => node.id !== "LoomAccountProxy") : normalizedNodes;
+  const nodes = topologyNodes.map(node => DEPLOYMENT_REQUIRED_CONTRACTS.has(node.id) && node.requirement !== "deployment-required"
     ? { ...node, requirement: "deployment-required" }
     : node);
-  const edges = deployment?.edges ?? [];
+  const edges = normalized?.edges ?? [];
   const expanded = new Set(expandedGroupIds);
   const query = searchQuery.trim().toLowerCase();
   const requiredNodes = nodes.filter(node => REQUIRED.has(node.requirement));

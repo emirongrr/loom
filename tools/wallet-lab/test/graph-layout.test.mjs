@@ -121,3 +121,53 @@ test("opening every optional group grows only the horizontal canvas", () => {
   assert.ok(Math.max(...nodes.slice(1).map(node => layout.positions[node.id].y)) < 720);
   assert.ok(layout.width > 1200);
 });
+
+test("account topology stacks the wallet proxy above its shared code between deployers and modules", () => {
+  const nodes = [
+    { id: "LoomAccountFactory", kind: "factory", requirement: "core" },
+    { id: "EntryPoint", kind: "protocol", requirement: "transport-required" },
+    { id: "ObservedAccount", kind: "account", requirement: "core", layer: "account-instance" },
+    { id: "LoomAccount", kind: "account", requirement: "core", layer: "loom-core" },
+    { id: "P256Validator", kind: "validator", requirement: "profile-required" }
+  ];
+  const edges = [
+    { from: "LoomAccountFactory", to: "ObservedAccount" },
+    { from: "EntryPoint", to: "ObservedAccount" },
+    { from: "ObservedAccount", to: "LoomAccount" },
+    { from: "ObservedAccount", to: "P256Validator" }
+  ];
+  const layout = layoutArchitectureExplorer(nodes, edges, { width: 1200, height: 760 });
+
+  assert.ok(layout.positions.LoomAccountFactory.x < layout.positions.ObservedAccount.x);
+  assert.ok(layout.positions.EntryPoint.x < layout.positions.ObservedAccount.x);
+  assert.equal(layout.positions.ObservedAccount.x, layout.positions.LoomAccount.x);
+  assert.ok(layout.positions.ObservedAccount.y < layout.positions.LoomAccount.y);
+  assert.ok(layout.positions.ObservedAccount.x < layout.positions.P256Validator.x);
+});
+
+test("recovery manager expands horizontally into a vertical guardian verifier stack", () => {
+  const nodes = [
+    { id: "ObservedAccount", kind: "account", requirement: "core", layer: "account-instance" },
+    { id: "RecoveryManager", kind: "recovery", requirement: "deployment-required", layer: "recovery" },
+    ...["ECDSAGuardianVerifier", "P256GuardianVerifier", "ERC1271GuardianVerifier"].map(id => ({
+      id,
+      kind: "contract",
+      requirement: "deployment-required",
+      layer: "guardian-verifier"
+    }))
+  ];
+  const edges = [
+    { from: "RecoveryManager", to: "ObservedAccount" },
+    ...nodes.slice(2).map(node => ({ from: node.id, to: "RecoveryManager" }))
+  ];
+  const layout = layoutArchitectureExplorer(nodes, edges, { width: 1200, height: 760 });
+  const verifiers = nodes.slice(2).map(node => layout.positions[node.id]);
+
+  assert.ok(layout.positions.ObservedAccount.x < layout.positions.RecoveryManager.x);
+  assert.ok(verifiers.every(point => point.x > layout.positions.RecoveryManager.x));
+  assert.equal(new Set(verifiers.map(point => point.x)).size, 1, "guardian verifiers should form one vertical column");
+  assert.equal(new Set(verifiers.map(point => point.y)).size, verifiers.length, "guardian verifiers should stack without overlap");
+  assert.ok(layout.positions.RecoveryManager.y > Math.min(...verifiers.map(point => point.y)));
+  assert.ok(layout.positions.RecoveryManager.y < Math.max(...verifiers.map(point => point.y)));
+  assert.ok(layout.width > 1200, "the recovery cluster should consume horizontal canvas instead of growing downward");
+});

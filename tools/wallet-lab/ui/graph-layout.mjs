@@ -54,11 +54,47 @@ export function layoutArchitectureExplorer(nodes, edges, { focusedNodeId = null,
     const required = nodes.filter(node => node.nodeType !== "group" && !node.architectureGroupId);
     const expanded = nodes.filter(node => node.nodeType !== "group" && node.architectureGroupId);
     const groups = nodes.filter(node => node.nodeType === "group");
+    const recoveryManager = required.find(node => node.id === "RecoveryManager");
+    const guardianVerifiers = required.filter(node => node.layer === "guardian-verifier" || node.id.endsWith("GuardianVerifier"));
+    const recoveryClusterIds = new Set([recoveryManager?.id, ...guardianVerifiers.map(node => node.id)].filter(Boolean));
+    const hasRecoveryCluster = Boolean(recoveryManager && guardianVerifiers.length);
+    const accountStack = ["ObservedAccount", "LoomAccount", "LoomAccountProxy"]
+      .map(id => required.find(node => node.id === id))
+      .filter(Boolean);
     const columns = [
       required.filter(node => ["protocol", "factory"].includes(node.kind) || node.requirement === "transport-required"),
-      required.filter(node => node.kind === "account" || node.requirement === "core").filter(node => !["protocol", "factory"].includes(node.kind)),
-      required.filter(node => !["protocol", "factory", "account"].includes(node.kind) && node.requirement !== "core" && node.requirement !== "transport-required")
+      accountStack,
+      [],
+      required.filter(node => !recoveryClusterIds.has(node.id) && !["EntryPoint", "ObservedAccount", "LoomAccount", "LoomAccountProxy"].includes(node.id) && !["protocol", "factory"].includes(node.kind) && node.requirement !== "transport-required")
     ];
+    const placeRequired = (xValues, { fixedRowGap = false } = {}) => {
+      columns.forEach((column, columnIndex) => {
+        if (columnIndex !== 3 || !hasRecoveryCluster) {
+          if (fixedRowGap) {
+            column.forEach((node, index) => { positions[node.id] = { x: xValues[columnIndex], y: 130 + index * 106 }; });
+            return;
+          }
+          const availableHeight = Math.max(1, height - 220);
+          const gap = column.length > 1 ? Math.min(106, availableHeight / (column.length - 1)) : 0;
+          column.forEach((node, index) => { positions[node.id] = { x: xValues[columnIndex], y: 110 + index * gap }; });
+          return;
+        }
+        const upperCount = Math.ceil(column.length / 2);
+        column.forEach((node, index) => {
+          const y = index < upperCount ? 100 + index * 100 : height - 100 - (column.length - 1 - index) * 100;
+          positions[node.id] = { x: xValues[columnIndex], y };
+        });
+      });
+      if (!hasRecoveryCluster) return;
+      const recoveryX = xValues[3];
+      const verifierX = recoveryX + 320;
+      const recoveryY = height / 2;
+      positions[recoveryManager.id] = { x: recoveryX, y: recoveryY };
+      const verifierGap = 104;
+      const firstVerifierY = recoveryY - ((guardianVerifiers.length - 1) * verifierGap) / 2;
+      guardianVerifiers.forEach((node, index) => { positions[node.id] = { x: verifierX, y: firstVerifierY + index * verifierGap }; });
+      layoutWidth = Math.max(layoutWidth, verifierX + 180);
+    };
     if (expanded.length) {
       const expandedByGroup = new Map();
       for (const node of expanded) {
@@ -70,16 +106,12 @@ export function layoutArchitectureExplorer(nodes, edges, { focusedNodeId = null,
         ...groups.map(node => ({ id: node.id, index: node.architectureGroupIndex ?? Number.MAX_SAFE_INTEGER, label: node.label ?? node.name ?? node.id, collapsedNode: node }))
       ].sort((left, right) => left.index - right.index || left.id.localeCompare(right.id));
       const widestGroup = Math.max(1, ...[...expandedByGroup.values()].map(members => members.length));
-      const groupRailX = 1140;
-      const memberStartX = 1350;
+      const groupRailX = hasRecoveryCluster ? 1600 : 1300;
+      const memberStartX = hasRecoveryCluster ? 1810 : 1510;
       const nodeStride = 292;
       layoutWidth = Math.max(width, memberStartX + (widestGroup - 1) * nodeStride + 190);
-      const coreX = [170, 500, 830];
-      columns.forEach((column, columnIndex) => {
-        const availableHeight = Math.max(1, height - 220);
-        const gap = column.length > 1 ? Math.min(106, availableHeight / (column.length - 1)) : 0;
-        column.forEach((node, index) => { positions[node.id] = { x: coreX[columnIndex], y: 110 + index * gap }; });
-      });
+      const coreX = [150, 450, 750, 1080];
+      placeRequired(coreX);
       const rowTop = 92;
       const rowBottom = height - 82;
       const rowGap = groupRows.length > 1 ? (rowBottom - rowTop) / (groupRows.length - 1) : 0;
@@ -94,10 +126,8 @@ export function layoutArchitectureExplorer(nodes, edges, { focusedNodeId = null,
         lanes.push({ id: group.id, label: group.label, count: group.members.length, top: y - 45, bottom: y + 45, xStart: groupRailX, xEnd: layoutWidth - 48 });
       });
     } else {
-      const xValues = [layoutWidth * .18, layoutWidth * .5, layoutWidth * .82];
-      columns.forEach((column, columnIndex) => column.forEach((node, index) => {
-        positions[node.id] = { x: xValues[columnIndex], y: 130 + index * 106 };
-      }));
+      const xValues = [140, 430, 720, 1010];
+      placeRequired(xValues, { fixedRowGap: !hasRecoveryCluster });
       if (groups.length) {
         const groupWidth = 264;
         const horizontalGap = 16;
