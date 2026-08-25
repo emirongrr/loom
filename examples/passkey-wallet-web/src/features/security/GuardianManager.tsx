@@ -27,7 +27,6 @@ import { PendingChangeCard } from "./PendingChangeCard";
 import { RestoreRoster } from "./RestoreRoster";
 import { GuardianInvitationCard, type GuardianInvitationView } from "./GuardianInvitationCard";
 import { createActiveGuardianInvitation } from "./guardianInvitation";
-import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import type { RosterPending } from "../../storage/guardianRosterRecord";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
@@ -44,8 +43,7 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   const { config } = useNetwork();
   const services = useAppServices();
   const notifications = useNotifications();
-  const { runtime, pendingOperations, publicClients } = services;
-  const roster = useMemo(() => createBrowserGuardianRoster(), []);
+  const { runtime, pendingOperations, publicClients, guardianRoster: roster } = services;
 
   const [committed, setCommitted] = useState<readonly RosterEntry[]>([]);
   const [setVersion, setSetVersion] = useState(0);
@@ -402,6 +400,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
   };
 
   const [opened, setOpened] = useState<string | null>(null);
+  /** What the account currently requires, which is what discarding returns to. */
+  const committedThreshold = clampThreshold(
+    onChain?.threshold ?? suggestedThreshold(committed.length),
+    Math.max(1, committed.length)
+  );
   const dirty = plan !== null && (plan.added.length > 0 || plan.removed.length > 0 || threshold !== (onChain?.threshold ?? 0));
 
   return <section className="section-card">
@@ -581,7 +584,11 @@ export function GuardianManager({ account, deployment, onChain, onChanged }: {
       </p>}
       <div className="guardian-actions">
         <button className="primary" disabled={!dirty || busy || !plan} onClick={() => { setError(""); setStage("review"); }}>Review changes</button>
-        {dirty && <button className="secondary" onClick={() => { setDraft(committed); setError(""); }}>Discard</button>}
+        {/* Both, not just the list. Removing a guardian clamps the threshold
+            down to fit, so restoring the entries alone left that clamp in
+            place: the screen still reported unsaved changes, and reviewing
+            them would have scheduled a quorum change nobody asked for. */}
+        {dirty && <button className="secondary" onClick={() => { setDraft(committed); setThreshold(committedThreshold); setError(""); }}>Discard</button>}
       </div>
     </>}
 

@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type PropsWithChildren } from "reac
 import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { createBrowserAccountStore, type AccountStore } from "../storage/accountStore";
 import { createBrowserGuardianVault, type GuardianVault } from "../storage/guardianVault";
+import { createBrowserGuardianRoster, type GuardianRoster } from "../storage/guardianRoster";
 import { createEncryptedLinkTransport, type InvitationTransport } from "../transports/invitations";
 import { createPublicClientRegistry, type PublicClientRegistry } from "../services/rpc/publicClients";
 import { createRuntimeVerifier, type RuntimeVerifier } from "../services/runtime/runtimeVerifier";
@@ -15,6 +16,15 @@ export interface AppServices {
   readonly accounts: AccountStore;
   /** Capabilities held for accounts this device protects as a guardian. */
   readonly guardianVault: GuardianVault;
+  /**
+   * Guardian lists this device keeps for its own accounts.
+   *
+   * The vault's counterpart, and injected for the same reason. Five components
+   * were each calling the factory themselves -- two of them inside handlers, so
+   * a fresh wrapper per click -- which put storage construction in presentation
+   * and left those screens with no way to be tested.
+   */
+  readonly guardianRoster: GuardianRoster;
   /** Bearer delivery for guardian invitations; key and ciphertext share the fragment. */
   readonly invitationLinks: InvitationTransport<GuardianInviteV1>;
   /** Cached read-only RPC clients. Components never construct endpoint clients. */
@@ -43,6 +53,7 @@ function createDefaultServices(): AppServices {
   return Object.freeze({
     accounts: createBrowserAccountStore(),
     guardianVault: createBrowserGuardianVault(),
+    guardianRoster: createBrowserGuardianRoster(),
     invitationLinks: createEncryptedLinkTransport<GuardianInviteV1>({ origin: window.location.origin }),
     publicClients,
     runtime: createRuntimeVerifier({ publicClients }),
