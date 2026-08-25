@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildGuardianDescriptor, planGuardianChange, withFreshSalts, type RosterEntry } from "../src/features/security/guardianPlan.ts";
-import { deriveGuardianSalt, withDerivedSalts } from "../src/features/security/guardianSalts.ts";
 import {
   createRosterBackup, deriveGuardianStatus, parseRosterBackup, rosterMatchesRoot, verifyRosterBackup
 } from "../src/features/security/guardianStatus.ts";
@@ -14,8 +13,6 @@ const ACCOUNT = "0xeC4B0CC77f09747a64bDd018d69394aa79847dbE";
 const ALICE = "0x00000000000000000000000000000000000000A1";
 const BOB = "0x00000000000000000000000000000000000000b2";
 const CAROL = "0x00000000000000000000000000000000000000c3";
-const MASTER = `0x${"7c".repeat(32)}` as const;
-const OTHER_MASTER = `0x${"5d".repeat(32)}` as const;
 const ZERO_ROOT = `0x${"00".repeat(32)}` as const;
 
 function entry(label: string, value: string): RosterEntry {
@@ -25,43 +22,6 @@ function entry(label: string, value: string): RosterEntry {
 function rootOf(entries: readonly RosterEntry[], threshold: number) {
   return planGuardianChange({ current: [], next: entries, threshold }).set.root;
 }
-
-// --- legacy PRF-root compatibility (read-only) ------------------------------
-
-// This is what lets a lost roster be rebuilt by re-entering the guardians: the
-// same passkey yields the same salts, so the same root.
-test("the same master and guardian always derive the same salt", () => {
-  const alice = entry("Alice", ALICE).descriptor;
-  assert.equal(deriveGuardianSalt(MASTER, alice), deriveGuardianSalt(MASTER, alice));
-});
-
-test("a different account's master derives different salts", () => {
-  const alice = entry("Alice", ALICE).descriptor;
-  assert.notEqual(deriveGuardianSalt(MASTER, alice), deriveGuardianSalt(OTHER_MASTER, alice));
-});
-
-test("different guardians never share a salt under one master", () => {
-  const salts = [ALICE, BOB, CAROL].map(address => deriveGuardianSalt(MASTER, entry("g", address).descriptor));
-  assert.equal(new Set(salts).size, 3);
-});
-
-// Salts keyed on the guardian's authority, not its position, so editing one
-// guardian does not silently change every other guardian's leaf.
-test("reordering guardians does not change their salts or the resulting root", () => {
-  const ordered = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB), entry("Carol", CAROL)], MASTER);
-  const shuffled = withDerivedSalts([entry("Carol", CAROL), entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
-  const saltOf = (entries: readonly RosterEntry[], address: string) =>
-    entries.find(item => "address" in item.descriptor && item.descriptor.address.toLowerCase() === address.toLowerCase())?.descriptor.salt;
-
-  assert.equal(saltOf(ordered, ALICE), saltOf(shuffled, ALICE));
-  assert.equal(rootOf(ordered, 2), rootOf(shuffled, 2));
-});
-
-test("removing a guardian leaves the others' salts untouched", () => {
-  const before = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB), entry("Carol", CAROL)], MASTER);
-  const after = withDerivedSalts([entry("Alice", ALICE), entry("Carol", CAROL)], MASTER);
-  assert.equal(before[0]?.descriptor.salt, after[0]?.descriptor.salt);
-});
 
 test("new guardian epochs use independent random salts even for the same roster", () => {
   const roster = [entry("Alice", ALICE), entry("Bob", BOB)];
@@ -74,37 +34,26 @@ test("new guardian epochs use independent random salts even for the same roster"
 
 // --- rebuilding the root ----------------------------------------------------
 
-test("re-entering the same guardians with the same passkey rebuilds the account's root", () => {
-  const original = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
-  const root = rootOf(original, 2);
-  const reentered = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
-
-  assert.equal(rosterMatchesRoot({ entries: reentered, threshold: 2, root }), true);
-});
-
 // The root is what proves the entered list is the real one; a near-miss must fail.
 test("a wrong, incomplete, or extra guardian fails to rebuild the root", () => {
-  const root = rootOf(withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER), 2);
-  const wrong = withDerivedSalts([entry("Alice", ALICE), entry("Carol", CAROL)], MASTER);
-  const short = withDerivedSalts([entry("Alice", ALICE)], MASTER);
-  const extra = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB), entry("Carol", CAROL)], MASTER);
+  const committed = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(41));
+  const root = rootOf(committed, 2);
+  // Salts are carried over from the committed set, so only the membership
+  // differs: this has to fail on who is in the list, not on fresh randomness.
+  const saltOf = (index: number) => committed[index]!.descriptor.salt;
+  const withSalt = (item: RosterEntry, salt: typeof committed[0]["descriptor"]["salt"]) =>
+    ({ ...item, descriptor: { ...item.descriptor, salt } });
+  const wrong = [withSalt(entry("Alice", ALICE), saltOf(0)), withSalt(entry("Carol", CAROL), saltOf(1))];
+  const short = [withSalt(entry("Alice", ALICE), saltOf(0))];
+  const extra = [...committed, withSalt(entry("Carol", CAROL), saltOf(0))];
 
   assert.equal(rosterMatchesRoot({ entries: wrong, threshold: 2, root }), false);
   assert.equal(rosterMatchesRoot({ entries: short, threshold: 2, root }), false);
   assert.equal(rosterMatchesRoot({ entries: extra, threshold: 2, root }), false);
 });
 
-// Without the account's passkey an attacker cannot derive the salts, so knowing
-// the guardian addresses is not enough to reproduce the root.
-test("the correct guardians under the wrong passkey do not rebuild the root", () => {
-  const root = rootOf(withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER), 2);
-  const guessed = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], OTHER_MASTER);
-
-  assert.equal(rosterMatchesRoot({ entries: guessed, threshold: 2, root }), false);
-});
-
 test("a threshold that differs from the account's does not match", () => {
-  const entries = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
+  const entries = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(51));
   const root = rootOf(entries, 2);
   assert.equal(rosterMatchesRoot({ entries, threshold: 2, root }), true);
   assert.equal(rosterMatchesRoot({ entries: [], threshold: 2, root }), false);
@@ -128,13 +77,13 @@ test("an account with no guardian root is unprotected", () => {
 });
 
 test("a local list that rebuilds the root is in sync", () => {
-  const entries = withDerivedSalts([entry("Alice", ALICE), entry("Bob", BOB)], MASTER);
+  const entries = withFreshSalts([entry("Alice", ALICE), entry("Bob", BOB)], seeded(52));
   const status = deriveGuardianStatus({ onChain: { root: rootOf(entries, 2), threshold: 2, recoveryConfigured: true, configVersion: 1n }, entries });
   assert.deepEqual(status, { kind: "in-sync", threshold: 2 });
 });
 
 test("a stale local list is reported as a mismatch, not as the truth", () => {
-  const stale = withDerivedSalts([entry("Alice", ALICE)], MASTER);
+  const stale = withFreshSalts([entry("Alice", ALICE)], seeded(53));
   const status = deriveGuardianStatus({ onChain: { root: `0x${"99".repeat(32)}`, threshold: 2, recoveryConfigured: true, configVersion: 1n }, entries: stale });
   assert.deepEqual(status, { kind: "list-mismatch", threshold: 2 });
 });
