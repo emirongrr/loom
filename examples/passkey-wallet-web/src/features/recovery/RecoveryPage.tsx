@@ -9,7 +9,6 @@ import { createAccountGuardianClient } from "../security/guardianClient";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
 import { createRecoverySession, createRecoverySessionRepository, type RecoverySession, type RecoverySessionIssue } from "./recoverySession";
 import { prepareNewRecoveryPasskey, publishRecoveryValidator, type Eip1193Provider } from "./recoveryPasskey";
-import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import { planGuardianChange, withFreshSalts } from "../security/guardianPlan";
 import { rosterMatchesRoot } from "../security/guardianStatus";
 import { assertSuccessfulTransactionReceipt } from "./recoveryProposal";
@@ -40,7 +39,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
   readonly onRecovered: (handle: AccountHandle) => Promise<void>;
 }) {
   const { config } = useNetwork();
-  const { publicClients, runtime, pendingOperations } = useAppServices();
+  const { publicClients, runtime, pendingOperations, guardianRoster } = useAppServices();
   const repository = useMemo(() => createRecoverySessionRepository(), []);
   const draftRepository = useMemo(() => createRecoveryDraftRepository(), []);
   const recoveryLinks = useMemo(() => createEncryptedLinkTransport<RecoveryRequestV1>({ origin: window.location.origin }), []);
@@ -268,7 +267,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       // commits to it. It also has to come from a roster that matches the live
       // root, or the guardians being rotated away from could not approve.
       const accountId = `${inspection.deployment.chainId}:${inspection.account.toLowerCase()}`;
-      const roster = await createBrowserGuardianRoster().read(accountId);
+      const roster = await guardianRoster.read(accountId);
       if (!rosterMatchesRoot({ entries: roster.entries, threshold: live.guardianThreshold, root: live.guardianRoot })) {
         throw new Error("This device does not hold the current guardian roster, so it cannot choose the set this recovery rotates to. Restore its encrypted guardian backup first.");
       }
@@ -394,7 +393,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         throw new Error("Account recovery state changed. Check the account again before requesting approvals.");
       }
       const accountId = `${inspection.deployment.chainId}:${inspection.account.toLowerCase()}`;
-      const roster = await createBrowserGuardianRoster().read(accountId);
+      const roster = await guardianRoster.read(accountId);
       if (!rosterMatchesRoot({ entries: roster.entries, threshold: live.guardianThreshold, root: live.guardianRoot })) {
         throw new Error("This device does not hold the current guardian roster. Restore its encrypted guardian backup before creating a recovery request.");
       }

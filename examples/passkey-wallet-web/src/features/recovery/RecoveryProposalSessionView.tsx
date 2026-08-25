@@ -11,7 +11,6 @@ import { recoverySessionView } from "./recoverySessionView";
 import { announceRecovery, oldValidatorsHash } from "./recoveryCalls";
 import { CollectedFromChain, ExecutionReceipt, ImportResponse, PaidStep, ProposalReceipt, SendToGuardians } from "./RecoverySessionPanels";
 import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
-import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import { planGuardianChange } from "../security/guardianPlan";
 import { assertPendingRecoveryMatchesPrepared, assertPreparedRecoveryMatchesRequest, assertSuccessfulTransactionReceipt, restorePreparedRecovery, verifyRecoveryResponseForProposal } from "./recoveryProposal";
 import type { AccountHandle } from "../../types";
@@ -38,7 +37,7 @@ export function RecoveryProposalSessionView({ session, repository, accounts, onC
   readonly onBack: () => void;
 }) {
   const { config } = useNetwork();
-  const { publicClients, runtime, pendingOperations } = useAppServices();
+  const { publicClients, runtime, pendingOperations, guardianRoster } = useAppServices();
   // Announcing costs a transaction and grants nobody anything, so any wallet
   // can pay for it -- including one of this device's own. Requiring an injected
   // browser wallet was a wallet requirement, not a protocol one.
@@ -114,7 +113,7 @@ export function RecoveryProposalSessionView({ session, repository, accounts, onC
       origin: session.local.origin,
       validator: session.request.newValidator
     });
-    await createBrowserGuardianRoster().write(handle.id, { entries: session.local.freshGuardianEntries, version: Date.now(), pending: null });
+    await guardianRoster.write(handle.id, { entries: session.local.freshGuardianEntries, version: Date.now(), pending: null });
     await onRecovered(handle);
   };
 

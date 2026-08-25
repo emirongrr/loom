@@ -12,7 +12,6 @@ import type { WalletCreationRequest } from "../features/onboarding/WalletLanding
 import { authenticateBrowserAccount, deriveCreatedAccountHandle, loadWalletDeployment, migrateLegacyAccountHandles, registerBrowserPasskey } from "../features/onboarding/accountLifecycle";
 import { prepareInitialGuardianSetup } from "../features/onboarding/initialGuardianSetup";
 import { readVerifierCodeHash } from "../features/security/guardianClient";
-import { createBrowserGuardianRoster } from "../storage/guardianRoster";
 import { useNetwork } from "../config/NetworkContext";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
@@ -84,7 +83,7 @@ export function App() {
         // The encrypted private roster is written before the public handle. If
         // the second write fails, an unlisted orphan is safer than a protected
         // wallet whose guardian tree this device can no longer reconstruct.
-        await createBrowserGuardianRoster().write(handle.id, {
+        await services.guardianRoster.write(handle.id, {
           entries: initial.entries,
           version: Date.now(),
           pending: null
