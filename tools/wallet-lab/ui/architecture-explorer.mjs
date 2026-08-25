@@ -30,9 +30,9 @@ export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], s
   const query = searchQuery.trim().toLowerCase();
   const requiredNodes = nodes.filter(node => REQUIRED.has(node.requirement));
   const optionalNodes = nodes.filter(node => !REQUIRED.has(node.requirement));
-  const groups = ARCHITECTURE_GROUPS.map(definition => {
+  const groups = ARCHITECTURE_GROUPS.map((definition, architectureGroupIndex) => {
     const members = optionalNodes.filter(node => groupFor(node).id === definition.id);
-    return { ...definition, members, count: members.length, expanded: expanded.has(definition.id) };
+    return { ...definition, architectureGroupIndex, members, count: members.length, expanded: expanded.has(definition.id) };
   }).filter(group => group.count > 0);
   const visibleOptional = [];
   const visibleGroups = [];
@@ -42,6 +42,7 @@ export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], s
       ...node,
       architectureGroupId: group.id,
       architectureGroupLabel: group.label,
+      architectureGroupIndex: group.architectureGroupIndex,
       architectureGroupOrder: index
     }));
     if (group.expanded) visibleOptional.push(...presentMembers(group.members));
@@ -54,6 +55,7 @@ export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], s
       kind: "group",
       requirement: group.requirement ?? "optional",
       layer: "presentation-group",
+      architectureGroupIndex: group.architectureGroupIndex,
       count: group.count,
       memberIds: group.members.map(node => node.id),
       responsibility: `${group.count} discoverable contract${group.count === 1 ? "" : "s"}. This is a visual group, not an on-chain authority boundary.`

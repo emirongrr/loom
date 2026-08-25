@@ -75,10 +75,10 @@ test("expanded groups form stacked horizontal relationship lanes instead of one 
     { id: "EntryPoint", kind: "protocol", requirement: "transport-required" },
     { id: "Account", kind: "account", requirement: "core" },
     { id: "RecoveryManager", kind: "recovery", requirement: "deployment-required" },
-    ...["AuthA", "AuthB", "AuthC"].map(id => ({ id, kind: "validator", requirement: "optional", architectureGroupId: "group:authentication", architectureGroupLabel: "Authentication" })),
-    ...["HookA", "HookB"].map(id => ({ id, kind: "hook", requirement: "optional", architectureGroupId: "group:hooks", architectureGroupLabel: "Hooks" })),
-    { id: "group:sessions", nodeType: "group", count: 2 },
-    { id: "group:lab-only", nodeType: "group", count: 1 }
+    ...["AuthA", "AuthB", "AuthC"].map(id => ({ id, kind: "validator", requirement: "optional", architectureGroupId: "group:authentication", architectureGroupLabel: "Authentication", architectureGroupIndex: 0 })),
+    ...["HookA", "HookB"].map(id => ({ id, kind: "hook", requirement: "optional", architectureGroupId: "group:hooks", architectureGroupLabel: "Hooks", architectureGroupIndex: 1 })),
+    { id: "group:sessions", nodeType: "group", count: 2, architectureGroupIndex: 2 },
+    { id: "group:lab-only", nodeType: "group", count: 1, architectureGroupIndex: 3 }
   ];
   const edges = [
     { from: "Account", to: "AuthA" },
@@ -97,4 +97,27 @@ test("expanded groups form stacked horizontal relationship lanes instead of one 
   assert.ok(hooks[0].y > auth[0].y, "expanded groups should occupy separate stacked lanes");
   assert.deepEqual(layout.lanes.map(lane => lane.id), ["group:authentication", "group:hooks"]);
   assert.ok(layout.width > 1200, "expanded groups should consume horizontal canvas instead of shrinking into a tall fixed-width viewBox");
+  assert.equal(layout.height, 760, "opening groups must not grow the canvas downward");
+  assert.ok(layout.positions.AuthC.x > layout.positions.AuthA.x, "group members should consume horizontal space");
+  assert.ok(layout.positions["group:sessions"].y > hooks[0].y, "collapsed and expanded groups should share the same fixed lane stack");
+});
+
+test("opening every optional group grows only the horizontal canvas", () => {
+  const nodes = [
+    { id: "Account", kind: "account", requirement: "core" },
+    ...Array.from({ length: 7 }, (_, groupIndex) => ({
+      id: `Module${groupIndex}`,
+      kind: "validator",
+      requirement: "optional",
+      architectureGroupId: `group:${groupIndex}`,
+      architectureGroupLabel: `Group ${groupIndex + 1}`,
+      architectureGroupIndex: groupIndex
+    }))
+  ];
+  const edges = nodes.slice(1).map(node => ({ from: "Account", to: node.id }));
+  const layout = layoutArchitectureExplorer(nodes, edges, { width: 1200, height: 760 });
+
+  assert.equal(layout.height, 760);
+  assert.ok(Math.max(...nodes.slice(1).map(node => layout.positions[node.id].y)) < 720);
+  assert.ok(layout.width > 1200);
 });
