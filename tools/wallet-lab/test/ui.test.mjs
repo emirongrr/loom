@@ -21,7 +21,7 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   const architectureExplorer = readFileSync(new URL("architecture-explorer.mjs", uiRoot), "utf8");
   const styles = readFileSync(new URL("styles.css", uiRoot), "utf8");
 
-  for (const panel of ["architecture", "network", "authority", "evm", "privacy", "execution"]) {
+  for (const panel of ["architecture", "recovery", "network", "authority", "evm", "privacy", "execution"]) {
     assert.match(html, new RegExp(`id="tab-${panel}"[^>]+role="tab"|role="tab"[^>]+id="tab-${panel}"`, "u"));
     assert.match(html, new RegExp(`id="panel-${panel}"[^>]+role="tabpanel"|role="tabpanel"[^>]+id="panel-${panel}"`, "u"));
   }
@@ -40,6 +40,10 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(html, /Connect Sepolia deployment/u);
   assert.match(html, /sepolia-provider/u);
   assert.match(html, /Loom architecture/u);
+  assert.match(html, /Recovery &amp; freeze/u);
+  assert.match(html, /id="recovery-flow"/u);
+  assert.match(script, /function renderRecoveryLifecycle\(/u);
+  assert.match(script, /buildRecoveryLifecycle/u);
   assert.match(html, /architecture-topbar/u);
   assert.match(html, /architecture-search/u);
   assert.match(html, /architecture-exit/u);

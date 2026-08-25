@@ -5,20 +5,42 @@ import { keccak256, stringToHex } from "viem";
 const ARTIFACTS = Object.freeze({
   EntryPoint: ["out", "EntryPoint.sol", "EntryPoint.json"],
   LoomAccount: ["out", "LoomAccount.sol", "LoomAccount.json"],
+  LoomAccountProxy: ["out", "LoomAccountProxy.sol", "LoomAccountProxy.json"],
   LoomAccountFactory: ["out", "LoomAccountFactory.sol", "LoomAccountFactory.json"],
+  AppAccountRegistry: ["out", "AppAccountRegistry.sol", "AppAccountRegistry.json"],
   P256Validator: ["out", "P256Validator.sol", "P256Validator.json"],
+  MultiP256Validator: ["out", "MultiP256Validator.sol", "MultiP256Validator.json"],
   PolicyHook: ["out", "PolicyHook.sol", "PolicyHook.json"],
   VaultHook: ["out", "VaultHook.sol", "VaultHook.json"],
   ECDSAValidator: ["out", "ECDSAValidator.sol", "ECDSAValidator.json"],
   P256RecoveryValidatorFactory: ["out", "P256RecoveryValidatorFactory.sol", "P256RecoveryValidatorFactory.json"],
+  P256RecoveryValidator: ["out", "P256RecoveryValidator.sol", "P256RecoveryValidator.json"],
   ExactCallSessionValidator: ["out", "ExactCallSessionValidator.sol", "ExactCallSessionValidator.json"],
   GranularSessionValidator: ["out", "GranularSessionValidator.sol", "GranularSessionValidator.json"],
   RecoveryManager: ["out", "RecoveryManager.sol", "RecoveryManager.json"],
   ECDSAGuardianVerifier: ["out", "ECDSAGuardianVerifier.sol", "ECDSAGuardianVerifier.json"],
   P256GuardianVerifier: ["out", "P256GuardianVerifier.sol", "P256GuardianVerifier.json"],
   ERC1271GuardianVerifier: ["out", "ERC1271GuardianVerifier.sol", "ERC1271GuardianVerifier.json"],
+  LoomKeystore: ["out", "LoomKeystore.sol", "LoomKeystore.json"],
+  EthereumL1KeystoreVerifier: ["out", "EthereumL1KeystoreVerifier.sol", "EthereumL1KeystoreVerifier.json"],
+  OPStackL2KeystoreVerifier: ["out", "OPStackL2KeystoreVerifier.sol", "OPStackL2KeystoreVerifier.json"],
+  KeystoreSyncRecoveryModule: ["out", "KeystoreSyncRecoveryModule.sol", "KeystoreSyncRecoveryModule.json"],
+  ERC7579HookShim: ["out", "ERC7579HookShim.sol", "ERC7579HookShim.json"],
+  ERC7579ValidatorShim: ["out", "ERC7579ValidatorShim.sol", "ERC7579ValidatorShim.json"],
   DevnetTarget: ["out", "DeployDevnet.s.sol", "DevnetTarget.json"]
 });
+
+const SOURCE_CATALOG = Object.freeze([
+  "LoomAccountProxy",
+  "AppAccountRegistry",
+  "P256RecoveryValidator",
+  "LoomKeystore",
+  "EthereumL1KeystoreVerifier",
+  "OPStackL2KeystoreVerifier",
+  "KeystoreSyncRecoveryModule",
+  "ERC7579HookShim",
+  "ERC7579ValidatorShim"
+]);
 
 const BEHAVIORS = Object.freeze({
   "EntryPoint.handleOps": "Validates each ERC-4337 operation, invokes the sender account, executes accepted calls, and settles gas with the beneficiary.",
@@ -29,6 +51,8 @@ const BEHAVIORS = Object.freeze({
   "LoomAccount.uninstallModule": "Changes account authority by removing an installed module through the account's constrained configuration path.",
   "LoomAccount.freeze": "Verifies one configured guardian capability and pauses ordinary account execution for the contract's bounded emergency window.",
   "LoomAccountFactory.createAccount": "Deploys the immutable account proxy at its deterministic CREATE2 address and initializes the committed account configuration.",
+  "AppAccountRegistry.registerAppAccount": "Records an app-account association explicitly submitted by the account; the registry does not gain execution authority over either account.",
+  "MultiP256Validator.validateUserOp": "Checks the configured threshold of distinct WebAuthn P-256 credentials and the account-bound policy hook.",
   "P256Validator.validateUserOp": "Checks WebAuthn origin, RP ID, challenge, UP/UV flags, and a low-s P-256 signature for the canonical UserOperation hash.",
   "PolicyHook.preCheck": "Runs before account execution and rejects calls that exceed the installed target, selector, counterparty, or spending policy.",
   "PolicyHook.postCheck": "Runs after execution to finalize policy accounting for the successfully completed call.",
@@ -40,9 +64,12 @@ const BEHAVIORS = Object.freeze({
 const CONTRACT_PROFILES = Object.freeze({
   EntryPoint: { layer: "erc-4337-transport", requirement: "transport-required", responsibility: "Canonical ERC-4337 validation, execution, and gas settlement transport. Loom direct execution remains the provider-independent fallback." },
   LoomAccount: { layer: "loom-core", requirement: "core", responsibility: "Immutable smart-account authority boundary and guarded execution engine." },
+  LoomAccountProxy: { layer: "deployment", requirement: "core", responsibility: "Source-defined immutable proxy template used by the factory. It is not a separately deployed singleton; each wallet instance embeds its implementation pointer." },
   ObservedAccount: { layer: "account-instance", requirement: "core", responsibility: "The deployed immutable proxy instance whose state and execution are being observed." },
   LoomAccountFactory: { layer: "deployment", requirement: "core", responsibility: "Deterministically deploys and initializes immutable Loom account proxies; it has no later account authority." },
+  AppAccountRegistry: { layer: "account-discovery", requirement: "core", responsibility: "Factory-owned discovery index for app-account relationships. Registration is descriptive and grants no spending or recovery authority." },
   P256Validator: { layer: "authentication", requirement: "profile-required", responsibility: "Primary passkey validator for the observed wallet profile." },
+  MultiP256Validator: { layer: "authentication", requirement: "optional", responsibility: "Optional threshold passkey validator for accounts that require multiple P-256 credentials." },
   PolicyHook: { layer: "execution-policy", requirement: "profile-required", responsibility: "Applies the observed account's low-risk execution and spending policy." },
   ECDSAValidator: { layer: "authentication", requirement: "optional", responsibility: "Optional validator for migration, testing, and hardware-wallet integrations." },
   ExactCallSessionValidator: { layer: "session", requirement: "optional", responsibility: "Optional time-, use-, call-, and paymaster-bound session authority." },
@@ -50,9 +77,16 @@ const CONTRACT_PROFILES = Object.freeze({
   VaultHook: { layer: "asset-policy", requirement: "optional", responsibility: "Optional daily-spend and delayed-withdrawal policy for protected assets." },
   RecoveryManager: { layer: "recovery", requirement: "deployment-required", responsibility: "Required deployment-level delayed guardian-threshold validator and guardian replacement path. Each account still configures its own guardian set." },
   P256RecoveryValidatorFactory: { layer: "recovery", requirement: "deployment-required", responsibility: "Required permissionless provisioning path for a recovered P-256 validator." },
+  P256RecoveryValidator: { layer: "recovery", requirement: "optional", responsibility: "Deterministic per-recovery validator child whose factory reservation binds one account, recovery nonce, and initialization-data hash." },
   ECDSAGuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for ECDSA guardian proofs bound into guardian leaves." },
   P256GuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for P-256 passkey guardian proofs bound into guardian leaves." },
   ERC1271GuardianVerifier: { layer: "guardian-verifier", requirement: "deployment-required", responsibility: "Required deployment support for contract-wallet guardian proofs using ERC-1271." },
+  LoomKeystore: { layer: "keystore", requirement: "optional", responsibility: "Optional L1 controller and version commitment for cross-chain account configuration synchronization." },
+  EthereumL1KeystoreVerifier: { layer: "keystore", requirement: "optional", responsibility: "Optional same-chain verifier that reads the canonical Loom keystore directly on Ethereum L1." },
+  OPStackL2KeystoreVerifier: { layer: "keystore", requirement: "optional", responsibility: "Experimental OP Stack proof verifier whose evidence depends on the chain's canonical L1Block predeploy." },
+  KeystoreSyncRecoveryModule: { layer: "recovery", requirement: "optional", responsibility: "Optional delayed recovery module that applies a proven L1 keystore configuration to an app account." },
+  ERC7579HookShim: { layer: "compatibility", requirement: "optional", responsibility: "Compatibility boundary that adapts an ERC-7579 hook to Loom's narrow hook interface without making ERC-7579 core authority." },
+  ERC7579ValidatorShim: { layer: "compatibility", requirement: "optional", responsibility: "Compatibility boundary that adapts an ERC-7579 validator to Loom's validator interface while preserving account-owned installation." },
   DevnetTarget: { layer: "scenario", requirement: "test-only", responsibility: "Local-only target used to make the test state transition independently observable." }
 });
 
@@ -295,6 +329,9 @@ function sourceEvidence(repoRoot, artifact) {
 }
 
 function nodeEvidence({ address, runtimeCodeHash, artifact, source }) {
+  if (!address) {
+    return artifact ? [{ kind: "artifact", status: "derived", label: "Source catalog only", detail: source?.path ?? "Foundry artifact" }] : [];
+  }
   return [
     { kind: "manifest", status: "declared", label: "Deployment manifest", detail: `Address ${address}` },
     ...(runtimeCodeHash ? [{ kind: "runtime-code", status: "declared", label: "Runtime bytecode commitment", detail: runtimeCodeHash }] : []),
@@ -303,7 +340,8 @@ function nodeEvidence({ address, runtimeCodeHash, artifact, source }) {
 }
 
 export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, account }) {
-  const nodes = Object.entries(addresses).map(([name, address]) => {
+  const catalogEntries = [...Object.entries(addresses), ...SOURCE_CATALOG.filter(name => !addresses[name]).map(name => [name, null])];
+  const nodes = catalogEntries.map(([name, address]) => {
     const artifactParts = ARTIFACTS[name];
     const artifactPath = artifactParts ? join(repoRoot, ...artifactParts) : null;
     const artifact = artifactPath && existsSync(artifactPath) ? JSON.parse(readFileSync(artifactPath, "utf8")) : null;
@@ -315,6 +353,7 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
       name,
       address,
       runtimeCodeHash,
+      availability: address ? "deployed" : "source-only",
       kind: name === "EntryPoint" ? "protocol" : name === "LoomAccount" ? "account" : name.includes("Factory") ? "factory" : name.includes("Validator") ? "validator" : name.includes("Hook") ? "hook" : name === "RecoveryManager" ? "recovery" : "contract",
       ...(CONTRACT_PROFILES[name] ?? { layer: "external", requirement: "deployed", responsibility: "Deployed contract discovered in this manifest." }),
       functions,
@@ -335,6 +374,7 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
       name: "Observed Loom account",
       address: account,
       runtimeCodeHash: null,
+      availability: "deployed",
       kind: "account",
       ...CONTRACT_PROFILES.ObservedAccount,
       functions: accountFunctions,
@@ -350,14 +390,17 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
   }
   const edges = [
     relationship("LoomAccountFactory", "LoomAccount", "creates", "CREATE2 proxy / immutable implementation"),
+    relationship("LoomAccountFactory", "LoomAccountProxy", "embeds", "proxy creation bytecode template"),
+    relationship("LoomAccountFactory", "AppAccountRegistry", "publishes", "immutable discovery registry"),
     relationship("EntryPoint", "LoomAccount", "invokes", "validateUserOp / execute"),
     relationship("LoomAccount", "P256Validator", "validates-with", "WebAuthn P-256 authority"),
+    relationship("LoomAccount", "MultiP256Validator", "optional-validator", "threshold passkey authority"),
     relationship("LoomAccount", "PolicyHook", "guarded-by", "pre/post execution policy"),
     relationship("RecoveryManager", "LoomAccount", "recovers", "delayed validator replacement"),
     relationship("ECDSAGuardianVerifier", "RecoveryManager", "approves", "ECDSA guardian proof"),
     relationship("P256GuardianVerifier", "RecoveryManager", "approves", "P-256 guardian proof"),
     relationship("ERC1271GuardianVerifier", "RecoveryManager", "approves", "contract guardian proof"),
-    relationship("P256RecoveryValidatorFactory", "P256Validator", "creates", "recovered passkey validator"),
+    relationship("P256RecoveryValidatorFactory", "P256RecoveryValidator", "creates", "CREATE2 recovery-bound child"),
     relationship("LoomAccountFactory", "ObservedAccount", "creates", "CREATE2 immutable proxy"),
     relationship("ObservedAccount", "LoomAccount", "delegates", "immutable implementation"),
     relationship("EntryPoint", "ObservedAccount", "invokes", "validateUserOp / execute"),
@@ -368,7 +411,15 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
     relationship("P256RecoveryValidatorFactory", "ObservedAccount", "provisions-for", "recovered validator"),
     relationship("ObservedAccount", "VaultHook", "optional-hook", "asset withdrawal policy"),
     relationship("ObservedAccount", "ExactCallSessionValidator", "optional-validator", "exact-call session"),
-    relationship("ObservedAccount", "GranularSessionValidator", "optional-validator", "bounded reusable session")
+    relationship("ObservedAccount", "GranularSessionValidator", "optional-validator", "bounded reusable session"),
+    relationship("P256RecoveryValidator", "ObservedAccount", "initializes-for", "exact committed recovery initialization"),
+    relationship("LoomKeystore", "EthereumL1KeystoreVerifier", "proves-to", "direct L1 keystore state"),
+    relationship("LoomKeystore", "OPStackL2KeystoreVerifier", "proves-to", "OP Stack L1 origin proof"),
+    relationship("EthereumL1KeystoreVerifier", "KeystoreSyncRecoveryModule", "verifies", "authorized keystore version"),
+    relationship("OPStackL2KeystoreVerifier", "KeystoreSyncRecoveryModule", "verifies", "authorized L1 state root proof"),
+    relationship("KeystoreSyncRecoveryModule", "ObservedAccount", "recovers", "delayed keystore-synchronized configuration"),
+    relationship("ERC7579ValidatorShim", "ObservedAccount", "adapts", "optional ERC-7579 validator"),
+    relationship("ERC7579HookShim", "ObservedAccount", "adapts", "optional ERC-7579 hook")
   ].filter(edge => nodes.some(node => node.id === edge.from) && nodes.some(node => node.id === edge.to));
   return { nodes, edges };
 }
@@ -376,7 +427,7 @@ export function buildDeploymentEvidence({ repoRoot, addresses, codeHashes, accou
 export function normalizeCallTrace(trace, catalog, depth = 0) {
   if (!trace || typeof trace !== "object") return null;
   const address = typeof trace.to === "string" ? trace.to.toLowerCase() : null;
-  const contract = catalog.nodes.find(node => node.address.toLowerCase() === address);
+  const contract = catalog.nodes.find(node => typeof node.address === "string" && node.address.toLowerCase() === address);
   const selector = typeof trace.input === "string" && trace.input.length >= 10 ? trace.input.slice(0, 10).toLowerCase() : "0x";
   const fn = contract?.functions.find(candidate => candidate.selector.toLowerCase() === selector);
   return {

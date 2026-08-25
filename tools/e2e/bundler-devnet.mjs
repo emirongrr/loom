@@ -37,7 +37,7 @@ import {
   createPasskeySigner,
   createRpcStateTransport
 } from "../../packages/sdk/dist/index.js";
-import { encodeAbiParameters, encodeFunctionData, keccak256, stringToHex } from "viem";
+import { encodeAbiParameters, encodeFunctionData, getAddress, keccak256, stringToHex } from "viem";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RP_ID = "wallet.example";
@@ -65,7 +65,13 @@ try {
   }
   console.log(`    rpc ${state.rpcUrl} · bundler ${state.bundlerUrl} · alto ${state.alto}`);
 
-  const { rpcUrl, bundlerUrl, addresses } = state;
+  const { rpcUrl, bundlerUrl } = state;
+  const registryCall = encodeFunctionData({
+    abi: [{ type: "function", name: "registry", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] }],
+    functionName: "registry"
+  });
+  const registryResult = await rpcCall(rpcUrl, "eth_call", [{ to: state.addresses.LoomAccountFactory, data: registryCall }, "latest"]);
+  const addresses = { ...state.addresses, AppAccountRegistry: getAddress(`0x${registryResult.slice(-40)}`) };
   const entryPoint = addresses.EntryPoint;
   const factory = addresses.LoomAccountFactory;
   const validator = addresses.P256Validator;

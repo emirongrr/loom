@@ -44,6 +44,7 @@
 
         <nav class="workspace-tabs" role="tablist" aria-label="Wallet Lab panels">
           <button type="button" role="tab" id="tab-architecture" aria-controls="panel-architecture" aria-selected="true" data-tab="architecture">Loom architecture <span id="contract-count">0</span></button>
+          <button type="button" role="tab" id="tab-recovery" aria-controls="panel-recovery" aria-selected="false" data-tab="recovery">Recovery &amp; freeze</button>
           <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">RPC &amp; SDK <span id="network-count">0</span></button>
           <button type="button" role="tab" id="tab-authority" aria-controls="panel-authority" aria-selected="false" data-tab="authority">Authority</button>
           <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">Effects &amp; EVM</button>
@@ -61,6 +62,12 @@
             <div class="graph-tools" aria-label="Graph view controls"><button type="button" id="architecture-transaction-toggle" hidden>Trace transaction</button><button type="button" id="trace-overlay-toggle" aria-pressed="false">Observed trace</button><button type="button" id="graph-zoom-out" aria-label="Zoom out">−</button><strong id="graph-zoom-level">100%</strong><button type="button" id="graph-zoom-in" aria-label="Zoom in">+</button><button type="button" id="graph-reset-view">Reset</button><details class="architecture-help"><summary aria-label="How to read this map">?</summary><p><strong>How to read this map</strong> Solid nodes are deployed contracts. Dashed group nodes reveal optional capabilities. Edge labels describe direction without assigning ownership. Select a node to expand it in place.</p></details></div>
           </header>
           <div class="architecture-canvas"><div id="architecture-expanded-groups" class="architecture-expanded-groups" aria-label="Expanded optional groups"></div><div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div><aside id="architecture-transaction-dock" class="architecture-transaction-dock" hidden></aside><div id="architecture-live" class="sr-only" aria-live="polite"></div></div>
+        </section>
+
+        <section id="panel-recovery" class="workspace-panel" role="tabpanel" aria-labelledby="tab-recovery" hidden>
+          <article class="surface recovery-intro"><div><p class="eyebrow">RECOVERY AUTHORITY</p><h2>Follow every authority-bearing transition</h2><p>This map separates signed intent, on-chain publication, delay, veto, and final execution. Select a node to inspect its exact contract boundary and safety invariant.</p></div><div class="recovery-mode-switch" role="group" aria-label="Recovery mechanism"><button type="button" data-recovery-mode="recovery" aria-pressed="true">Guardian recovery</button><button type="button" data-recovery-mode="freeze" aria-pressed="false">Emergency freeze</button></div></article>
+          <div class="recovery-layout"><div id="recovery-flow" class="recovery-flow"></div><aside id="recovery-step-detail" class="surface recovery-step-detail" aria-live="polite"></aside></div>
+          <p class="recovery-evidence-note">Contract behavior is derived from the compiler artifacts in this checkout. A local run proves deployment and observed execution only for contracts and call paths present in that run.</p>
         </section>
 
         <section id="panel-network" class="workspace-panel" role="tabpanel" aria-labelledby="tab-network" hidden>

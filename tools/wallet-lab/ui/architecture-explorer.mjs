@@ -11,6 +11,8 @@ export const ARCHITECTURE_GROUPS = Object.freeze([
   { id: "group:authentication", label: "Authentication", layers: ["authentication"] },
   { id: "group:hooks", label: "Hooks", layers: ["execution-policy", "asset-policy"] },
   { id: "group:recovery", label: "Recovery", layers: ["recovery", "guardian-verifier"] },
+  { id: "group:keystore", label: "Cross-chain keystore", layers: ["keystore"] },
+  { id: "group:compatibility", label: "Compatibility", layers: ["compatibility"] },
   { id: "group:sessions", label: "Sessions", layers: ["session"] },
   { id: "group:lab-only", label: "Lab only", requirement: "test-only" }
 ]);

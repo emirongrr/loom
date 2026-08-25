@@ -2,6 +2,7 @@ import { buildArchitectureExplorer, buildFunctionExecutionLens, buildTransaction
 import { layoutArchitectureExplorer } from "./graph-layout.mjs";
 import { defaultExecutionArgument, executionArgumentExample } from "./execution-defaults.mjs";
 import { buildOperationLens } from "./lab-domain.mjs";
+import { buildRecoveryLifecycle } from "./recovery-lifecycle.mjs";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -30,6 +31,8 @@ const state = {
   architectureSearch: "",
   architectureTransactionOpen: false,
   expandedArchitectureGroups: [],
+  recoveryMode: "recovery",
+  selectedRecoveryStepId: "provision",
   focusedNodeId: null,
   focusedSection: null,
   focusedAbiItem: null,
@@ -897,7 +900,9 @@ function renderDeploymentGraph(deployment) {
       ? !functionObservedIds.has(node.id) && !functionPossibleIds.has(node.id) ? " unrelated" : ""
       : state.focusedNodeId && !neighborIds.has(node.id) ? " unrelated" : "";
     if (node.nodeType === "group") return `<g class="graph-node architecture-group${unrelated}" data-architecture-group="${escapeHtml(node.id)}" role="button" tabindex="0" aria-label="Expand ${escapeHtml(node.name)} group with ${node.count} contracts"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="18"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 5}">OPTIONAL GROUP · ${node.count}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 18}">${escapeHtml(displayName)}</text><text class="group-open" x="${nodeBounds.x + nodeBounds.width - 25}" y="${point.y + 7}">+</text></g>`;
-    return `<g class="graph-node ${escapeHtml(node.kind)} ${escapeHtml(node.requirement ?? "optional")}${identityClass}${selected}${traceClass}${unrelated}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-pressed="${node.id === state.focusedNodeId}" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="12"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 12}">${escapeHtml(role + verification)}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 10}">${escapeHtml(displayName)}</text><text class="node-address" x="${nodeBounds.x + 20}" y="${point.y + 29}">${escapeHtml(short(node.address, 10, 8))}</text></g>`;
+    const availability = node.availability === "source-only" ? " source-only" : "";
+    const identity = node.address ? short(node.address, 10, 8) : "SOURCE ONLY · NOT DEPLOYED";
+    return `<g class="graph-node ${escapeHtml(node.kind)} ${escapeHtml(node.requirement ?? "optional")}${availability}${identityClass}${selected}${traceClass}${unrelated}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-pressed="${node.id === state.focusedNodeId}" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="12"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 12}">${escapeHtml(role + verification)}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 10}">${escapeHtml(displayName)}</text><text class="node-address" x="${nodeBounds.x + 20}" y="${point.y + 29}">${escapeHtml(identity)}</text></g>`;
   }).join("");
   const transform = state.graphTransform;
   const zoomClass = transform.scale < .8 ? "zoom-far" : transform.scale > 1.2 ? "zoom-near" : "zoom-normal";
@@ -1067,6 +1072,9 @@ function explorerAddressUrl(address) {
 }
 
 function renderContractAddress(contract) {
+  if (!contract.address) {
+    return `<div class="contract-address-local source-only"><code>Not deployed in this run</code><span>Compiler-derived source catalog · no on-chain address claimed</span></div>`;
+  }
   const explorerUrl = explorerAddressUrl(contract.address);
   if (explorerUrl) {
     return `<a class="contract-address-link" href="${escapeHtml(explorerUrl)}" target="_blank" rel="noopener noreferrer" aria-label="View ${escapeHtml(contract.name)} on Sepolia Blockscout"><code>${escapeHtml(contract.address)}</code><span>View on Sepolia Blockscout <b aria-hidden="true">↗</b></span></a>`;
@@ -1689,6 +1697,38 @@ function renderEvmTrace(tracePayload) {
   root.innerHTML = `<div class="trace-provenance">${field("Transaction", tracePayload.transactionHash, { code: true, short: true })}${field("Tracer", tracePayload.method, { code: true })}${field("Root gas used", formatTraceNumber(allFrames[0]?.gasUsed), { code: true })}${field("Call frames", summary.calls, { code: true })}${field("Maximum depth", summary.maxDepth, { code: true })}${field("Reverted frames", summary.errors, { code: true })}</div><div class="trace-toolbar"><label><span>Find a call</span><input id="trace-search" type="search" value="${escapeHtml(state.traceSearch)}" placeholder="Contract, function, address..." /></label><label><span>Call type</span><select id="trace-type"><option value="all">All call types</option>${callTypes.map(type => `<option value="${escapeHtml(type)}"${type === state.traceType ? " selected" : ""}>${escapeHtml(type)}</option>`).join("")}</select></label></div><section class="gas-distribution"><div class="section-title"><div><p class="eyebrow">INCLUSIVE COST</p><h2>Gas distribution</h2></div><span>Child frames overlap their parents</span></div><div class="gas-summary"><div><strong>${escapeHtml(formatTraceNumber(rootGas))}</strong><span>root frame gas</span></div><div><strong>${escapeHtml(formatTraceNumber(totalChildGas))}</strong><span>child frame total</span></div><div><strong>${escapeHtml(profile?.totalSteps ?? EMPTY)}</strong><span>opcode steps</span></div></div></section><div class="trace-debugger"><section class="trace-waterfall"><div class="section-title"><div><p class="eyebrow">CALL STACK</p><h2>Call waterfall</h2></div><span>${frames.length} of ${allFrames.length} frames</span></div>${renderTraceWaterfall(frames, rootGas)}</section><aside id="trace-frame-inspector" class="trace-frame-inspector">${renderTraceFrameInspector(selectedFrame)}</aside></div>${renderOpcodeExplorer(profile)}`;
 }
 
+function recoveryEvidenceStatus(deployment, contractLabel) {
+  const aliases = {
+    "Guardian verifiers": ["ECDSAGuardianVerifier", "P256GuardianVerifier", "ERC1271GuardianVerifier"],
+    "ECDSA / P256 / ERC1271 verifier": ["ECDSAGuardianVerifier", "P256GuardianVerifier", "ERC1271GuardianVerifier"]
+  };
+  const names = aliases[contractLabel] ?? contractLabel.split(" → ");
+  const matched = names.map(name => deployment?.nodes?.find(node => node.name === name || node.id === name)).filter(Boolean);
+  if (!matched.length) return ["Source-defined", "source"];
+  if (matched.every(node => node.address)) return ["Deployed in this run", "deployed"];
+  return ["Source-defined only", "source"];
+}
+
+function renderRecoveryLifecycle() {
+  const deployment = currentDeployment(state.artifact?.events ?? []);
+  const lifecycle = buildRecoveryLifecycle(state.recoveryMode, state.selectedRecoveryStepId);
+  state.recoveryMode = lifecycle.mode;
+  state.selectedRecoveryStepId = lifecycle.selected.id;
+  $$('[data-recovery-mode]').forEach(button => button.setAttribute("aria-pressed", String(button.dataset.recoveryMode === lifecycle.mode)));
+  const edgesBySource = new Map();
+  for (const edge of lifecycle.edges) edgesBySource.set(edge.from, [...(edgesBySource.get(edge.from) ?? []), edge]);
+  $("#recovery-flow").innerHTML = `<header><div><p class="eyebrow">${escapeHtml(lifecycle.label)}</p><h2>${escapeHtml(lifecycle.description)}</h2></div><span>${lifecycle.nodes.length} contract-level stages</span></header><div class="recovery-node-map ${escapeHtml(lifecycle.mode)}" role="list" aria-label="${escapeHtml(lifecycle.label)} contract flow">${lifecycle.nodes.map((node, index) => {
+    const [evidence, evidenceClass] = recoveryEvidenceStatus(deployment, node.contract);
+    const outgoing = edgesBySource.get(node.id) ?? [];
+    return `<div class="recovery-node-wrap" role="listitem"><button type="button" class="recovery-node ${node.id === lifecycle.selected.id ? "selected" : ""}" data-recovery-step="${escapeHtml(node.id)}" aria-pressed="${node.id === lifecycle.selected.id}"><span>${index + 1}</span><div><small>${escapeHtml(node.actor)}</small><strong>${escapeHtml(node.title)}</strong><code>${escapeHtml(node.contract)} · ${escapeHtml(node.function)}</code></div><em class="${evidenceClass}">${escapeHtml(evidence)}</em></button>${outgoing.map(edge => `<div class="recovery-edge"><i aria-hidden="true">→</i><span>${escapeHtml(edge.label)}</span></div>`).join("")}</div>`;
+  }).join("")}</div>`;
+  const selected = lifecycle.selected;
+  const [evidence, evidenceClass] = recoveryEvidenceStatus(deployment, selected.contract);
+  const incoming = lifecycle.edges.filter(edge => edge.to === selected.id);
+  const outgoing = lifecycle.edges.filter(edge => edge.from === selected.id);
+  $("#recovery-step-detail").innerHTML = `<header><p class="eyebrow">SELECTED TRANSITION</p><span class="recovery-evidence ${evidenceClass}">${escapeHtml(evidence)}</span><h2>${escapeHtml(selected.title)}</h2><p>${escapeHtml(selected.summary)}</p></header><dl><div><dt>Actor</dt><dd>${escapeHtml(selected.actor)}</dd></div><div><dt>Contract boundary</dt><dd><code>${escapeHtml(selected.contract)}</code></dd></div><div><dt>Function / constant</dt><dd><code>${escapeHtml(selected.function)}</code></dd></div><div><dt>On-chain effect</dt><dd>${escapeHtml(selected.state)}</dd></div></dl><section><strong>Safety invariant</strong><p>${escapeHtml(selected.invariant)}</p></section><section class="recovery-connections"><strong>Flow connections</strong>${[...incoming.map(edge => `Receives ${edge.label} from ${lifecycle.nodes.find(node => node.id === edge.from)?.title}.`), ...outgoing.map(edge => `Sends ${edge.label} to ${lifecycle.nodes.find(node => node.id === edge.to)?.title}.`)].map(value => `<p>${escapeHtml(value)}</p>`).join("") || `<p>This is the terminal state for this branch.</p>`}</section>`;
+}
+
 function renderDeployment(events = []) {
   const deployment = currentDeployment(events);
   const tracePayload = currentTrace(events);
@@ -1708,6 +1748,7 @@ function renderDeployment(events = []) {
   renderSharedOperationLens(events);
   $("#contract-count").textContent = deployment?.nodes?.length ?? 0;
   renderDeploymentVerification();
+  renderRecoveryLifecycle();
 }
 
 function switchTab(tab, focus = false) {
@@ -1776,6 +1817,20 @@ $(".workspace-tabs").addEventListener("keydown", event => {
   const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
   event.preventDefault();
   switchTab(tabs[next].dataset.tab, true);
+});
+
+$("#panel-recovery").addEventListener("click", event => {
+  const mode = event.target.closest("[data-recovery-mode]");
+  if (mode) {
+    state.recoveryMode = mode.dataset.recoveryMode;
+    state.selectedRecoveryStepId = state.recoveryMode === "freeze" ? "freeze-digest" : "provision";
+    renderRecoveryLifecycle();
+    return;
+  }
+  const step = event.target.closest("[data-recovery-step]");
+  if (!step) return;
+  state.selectedRecoveryStepId = step.dataset.recoveryStep;
+  renderRecoveryLifecycle();
 });
 
 $("#network-rows").addEventListener("click", event => {

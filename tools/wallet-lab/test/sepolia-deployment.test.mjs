@@ -49,8 +49,10 @@ test("Sepolia deployment inspection verifies chain identity and every published 
   assert.equal(report.status, "verified");
   assert.equal(report.chainId, 11155111);
   assert.equal(report.checks.length, 10);
-  assert.equal(report.deployment.nodes.length, 10);
-  assert.ok(report.deployment.nodes.every(node => node.verification === "verified"));
+  const deployedNodes = report.deployment.nodes.filter(node => node.availability === "deployed");
+  assert.equal(deployedNodes.length, 10);
+  assert.ok(deployedNodes.every(node => node.verification === "verified"));
+  assert.ok(report.deployment.nodes.filter(node => node.availability === "source-only").every(node => node.verification === "unverified"));
 });
 
 test("Sepolia deployment inspection fails closed on chain or bytecode drift", async () => {

@@ -76,7 +76,13 @@ test("deployment evidence distinguishes core, profile, optional, and test-only c
   const deployment = buildDeploymentEvidence({ repoRoot: fileURLToPath(new URL("../../../", import.meta.url)), addresses, codeHashes: {} });
   const roles = Object.fromEntries(deployment.nodes.map(node => [node.id, node.requirement]));
 
-  assert.deepEqual(deployment.nodes.map(node => node.id).sort(), Object.keys(addresses).sort());
+  assert.deepEqual(deployment.nodes.filter(node => node.availability === "deployed").map(node => node.id).sort(), Object.keys(addresses).sort());
+  for (const name of ["LoomAccountProxy", "P256RecoveryValidator", "LoomKeystore", "KeystoreSyncRecoveryModule", "ERC7579HookShim", "ERC7579ValidatorShim"]) {
+    const node = deployment.nodes.find(candidate => candidate.id === name);
+    assert.equal(node.availability, "source-only");
+    assert.equal(node.address, null);
+    assert.equal(node.evidence.some(item => item.label === "Source catalog only"), true);
+  }
   assert.equal(roles.LoomAccount, "core");
   assert.equal(roles.EntryPoint, "transport-required");
   assert.equal(roles.P256Validator, "profile-required");
@@ -99,7 +105,7 @@ test("deployment evidence keeps code and claim provenance explicit", () => {
     addresses: { LoomAccount: "0x0000000000000000000000000000000000000002" },
     codeHashes: { LoomAccount: "0x1234" }
   });
-  const account = deployment.nodes[0];
+  const account = deployment.nodes.find(node => node.id === "LoomAccount");
 
   assert.equal(account.source.path, "src/LoomAccount.sol");
   assert.equal(account.source.declarationLine > 0, true);
