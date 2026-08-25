@@ -278,6 +278,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       const prepared = await prepareNewRecoveryPasskey({
         deployment: inspection.deployment,
         label: passkeyLabel,
+        account: inspection.account,
         rpId: window.location.hostname,
         origin: window.location.origin,
         register: registerBrowserPasskey,
@@ -475,10 +476,16 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
       {inspection.status === "protected" && <div className="callout success"><strong>Guardian recovery is active.</strong><p>{inspection.threshold} approvals required · config version {inspection.configVersion} · {inspection.validators} validator(s)</p></div>}
       {inspection.status === "protected" && preferredGasPayer?.chainId === inspection.deployment.chainId && preferredGasPayer.account.toLowerCase() === inspection.account.toLowerCase() && <div className="callout warning"><strong>This wallet is the recovery target.</strong><p>It cannot pay its own recovery factory gas while its old passkey is unavailable. Choose another Saved Wallet in the publication step.</p></div>}
       {inspection.status === "protected" && !inspection.deployment.recoveryValidatorProvisioner && <div className="callout warning"><strong>New validator provisioning is unavailable.</strong><p>This deployment does not publish a trusted one-time recovered-validator provisioning path. Recovery stops safely before creating a passkey, request, approval, or transaction.</p><code>UNSUPPORTED_RECOVERED_VALIDATOR_PATH</code></div>}
-      {inspection.status === "protected" && inspection.deployment.recoveryValidatorProvisioner && showPasskey && <div className="callout success"><strong>Permissionless validator provisioning is verified.</strong><p>The deployment publishes the factory and child bytecode commitments required for a new recovery passkey.</p></div>}
-      {inspection.status === "protected" && showPasskey && <div className="recovery-passkey-stage">
+      {inspection.status === "protected" && inspection.deployment.recoveryValidatorProvisioner && showPasskey && !onChainPending?.pending && <div className="callout success"><strong>Permissionless validator provisioning is verified.</strong><p>The deployment publishes the factory and child bytecode commitments required for a new recovery passkey.</p></div>}
+      {inspection.status === "protected" && showPasskey && onChainPending?.pending && <div className="callout success">
+        <strong>This account already has a recovery under way.</strong>
+        <p>
+          A recovery passkey was published and the guardians approved it, so there is nothing to create here.
+          Its stage and what to do next are below.
+        </p>
+      </div>}
+      {inspection.status === "protected" && showPasskey && !onChainPending?.pending && <div className="recovery-passkey-stage">
         <p className="eyebrow">Step 2 of 4</p><h2>Create a new recovery passkey</h2>
-        <p>This passkey becomes authoritative only after guardian approval, the on-chain delay, and recovery execution. Your current validators remain unchanged now.</p>
         {publications.kind === "orphaned" && <p className="callout warning"><strong>A recovery passkey was already published for this account.</strong> {publications.message}</p>}
         {/* A scan that could not reach the start of the chain has found nothing
             and proved nothing. Rendering that as silence would let the reader
@@ -488,8 +495,16 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           {" "}A draft that fails here is a storage problem, not a lost passkey — publishing another validator
           would cost gas without addressing it.
         </p>}
-        {publications.kind === "unknown" && <p className="callout"><strong>This check could not read the whole chain.</strong> {publications.message}</p>}
-        {!passkeyPreparation && <><p className="callout warning">A validator deployment alone cannot restore its passkey metadata. If this recovery was started before encrypted drafts were supported, create one new recovery passkey; this attempt will be saved before any factory transaction and will resume after reload.</p><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
+        {publications.kind === "unknown" && <p className="callout">
+          {/* Shortened once already, into uselessness: "this is not proof" is
+              true and tells the reader nothing they can act on. What matters is
+              what an unfinished search costs them. */}
+          <strong>This account may already have a recovery passkey.</strong>{" "}
+          None was found, but the search could not reach the start of the chain, so it cannot rule one out.
+          Creating another costs gas for a validator you may not need. An RPC endpoint that serves the full
+          log history would settle it.
+        </p>}
+        {!passkeyPreparation && <><label className="field"><span>Passkey name</span><input value={passkeyLabel} maxLength={80} onChange={event => setPasskeyLabel(event.target.value)} /></label><div className="landing-actions"><button className="secondary" onClick={() => setShowPasskey(false)}>Back</button><button className="primary" disabled={passkeyStatus === "creating"} onClick={() => void createPasskey()}>{passkeyStatus === "creating" ? "Creating passkey…" : "Create recovery passkey"}</button></div></>}
         {passkeyPreparation && <><div className="callout"><strong>Recovery validator</strong><p className="breakable">{passkeyPreparation.validator}</p></div>
           {passkeyStatus !== "published" ? <><p className="form-note">Publishing this exact factory call is permissionless and grants no account authority. The publishing wallet only pays network gas.</p>
             {gasPayers.length > 0 && <div className="callout">
@@ -529,7 +544,7 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         no passkey (ADR-0025), only the address and gas. This appears exactly
         when the chain says there is something to finish. */}
     {inspection.status === "protected" && onChainPending?.pending
-      && <RecoveryLookupPanel fixedAccount={inspection.account} />}
+      && <RecoveryLookupPanel fixedAccount={inspection.account} accounts={accounts} />}
     {showAllSessions && <section className="saved-wallets" aria-labelledby="recovery-sessions-title">
       <div className="section-heading"><div><p className="eyebrow">Encrypted on this device</p><h2 id="recovery-sessions-title">Recovery sessions</h2></div><span className="pill">{sessions.length}</span></div>
       {issues.length > 0 && <p className="callout warning">{issues.length} unreadable local record(s) were isolated. Healthy sessions remain available.</p>}
