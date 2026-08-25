@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type PropsWithChildren } from "react";
 import type { NavigationArea } from "../types";
 import { primaryNavigation } from "./navigation";
 import { HomePage } from "../features/home/HomePage";
 import { ActivityPage } from "../features/activity/ActivityPage";
 import { AppsPage } from "../features/apps/AppsPage";
-import { SecurityPage } from "../features/security/SecurityPage";
-import { GuardianWorkspace } from "../features/guardians/GuardianWorkspace";
 import { DeveloperSettings } from "../features/developer/DeveloperSettings";
 import { WalletLanding, WalletLock } from "../features/onboarding/WalletLanding";
 import type { WalletCreationRequest } from "../features/onboarding/WalletLanding";
@@ -15,12 +13,30 @@ import { readVerifierCodeHash } from "../features/security/guardianClient";
 import { useNetwork } from "../config/NetworkContext";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
-import { RecoveryPage } from "../features/recovery/RecoveryPage";
 import { findWalletsByPasskey } from "../features/onboarding/findWalletsByPasskey";
 import { assertAnyPasskey } from "../features/wallet/webauthn";
-import { StopRecoveryPage } from "../features/recovery/StopRecoveryPage";
 import { useAppNavigation } from "./useAppNavigation";
 import { safeUserMessage } from "../domain/errors/appError";
+
+/**
+ * Recovery, stopping a recovery, the security screen and the guardian workspace
+ * are each reached by their own route and by no other path. Loaded with the
+ * rest, they made someone opening the wallet to read a balance download the
+ * whole of both flows first.
+ */
+const SecurityPage = lazy(() => import("../features/security/SecurityPage").then(module => ({ default: module.SecurityPage })));
+const GuardianWorkspace = lazy(() => import("../features/guardians/GuardianWorkspace").then(module => ({ default: module.GuardianWorkspace })));
+const RecoveryPage = lazy(() => import("../features/recovery/RecoveryPage").then(module => ({ default: module.RecoveryPage })));
+const StopRecoveryPage = lazy(() => import("../features/recovery/StopRecoveryPage").then(module => ({ default: module.StopRecoveryPage })));
+
+/**
+ * What a route shows while its chunk arrives. Deliberately plain: a spinner
+ * that appears for a few hundred milliseconds and then vanishes reads as
+ * something going wrong more often than it reads as progress.
+ */
+function RouteChunk({ children }: PropsWithChildren) {
+  return <Suspense fallback={<main className="wallet-landing"><section className="landing-panel"><p>Opening…</p></section></main>}>{children}</Suspense>;
+}
 
 export function App() {
   const services = useAppServices();
@@ -182,13 +198,13 @@ export function App() {
 
   if (!accountsLoaded) return <main className="wallet-landing"><section className="landing-panel"><p>Loading saved wallets…</p></section></main>;
   if (recoveryPath === STOP_RECOVERY_PATH && selected) {
-    return <><StopRecoveryPage handle={selected} onClose={closeRecovery} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+    return <><RouteChunk><StopRecoveryPage handle={selected} onClose={closeRecovery} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   }
   // Reached only with an account open, since stopping a recovery is something
   // an owner does about their own account. Visiting the path without one falls
   // through to the lock screen rather than to the page for recovering someone
   // else's account, which answers a different question entirely.
-  if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RouteChunk><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   return <div className="app-shell">
@@ -203,7 +219,7 @@ export function App() {
       <div className="sidebar-session-actions"><button onClick={switchAccount}>Switch account</button><button onClick={lockAccount}>Lock account</button></div>
     </aside>
     <header className="mobile-header"><button className="brand" onClick={() => setArea("home")}><span className="brand-mark">L</span><span>Loom</span></button><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></header>
-    <main id="main-content">{renderArea(
+    <main id="main-content"><RouteChunk>{renderArea(
       area,
       setArea,
       selected,
@@ -213,7 +229,7 @@ export function App() {
       guardianInboundLink,
       () => openRecovery(STOP_RECOVERY_PATH, selected.id),
       () => { void refreshAccounts(); }
-    )}</main>
+    )}</RouteChunk></main>
     <button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button>
     <nav className="bottom-nav" aria-label="Mobile navigation">{primaryNavigation.map(item => <NavButton key={item.id} item={item} current={area} onClick={setArea} />)}</nav>
   </div>;
