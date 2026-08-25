@@ -80,14 +80,13 @@ export function createBrowserGuardianVault(options: { dbName?: string } = {}): G
 
 export async function decodeGuardianVaultEntries(
   entries: readonly { readonly key: IDBValidKey; readonly envelope: unknown }[],
-  key: CryptoKey,
-  nowSeconds = Math.floor(Date.now() / 1000)
+  key: CryptoKey
 ): Promise<GuardianVaultSnapshot> {
   const records: GuardianVaultRecord[] = [];
   const issues: GuardianVaultIssue[] = [];
   for (const entry of entries) {
     try {
-      const record = await decryptRecord(key, entry.envelope, nowSeconds, String(entry.key));
+      const record = await decryptRecord(key, entry.envelope, String(entry.key));
       // This is what binds a record to its key here, and it is why version 1
       // envelopes -- written before the key became additional authenticated
       // data -- are not the exposure in this store that they are in
@@ -186,7 +185,7 @@ async function encryptRecord(key: CryptoKey, record: GuardianVaultRecord, record
   return { version: 2, iv: base64(iv), ciphertext: base64(new Uint8Array(ciphertext)) };
 }
 
-async function decryptRecord(key: CryptoKey, value: unknown, nowSeconds: number, recordKey: string): Promise<GuardianVaultRecord> {
+async function decryptRecord(key: CryptoKey, value: unknown, recordKey: string): Promise<GuardianVaultRecord> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("guardian vault envelope is invalid");
   const envelope = value as Partial<StoredEnvelope>;
   if ((envelope.version !== 1 && envelope.version !== 2) || typeof envelope.iv !== "string" || typeof envelope.ciphertext !== "string") throw new Error("unsupported guardian vault envelope");
@@ -194,7 +193,7 @@ async function decryptRecord(key: CryptoKey, value: unknown, nowSeconds: number,
   const ciphertext = unbase64(envelope.ciphertext);
   try {
     const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buffer(iv), ...(envelope.version === 2 ? { additionalData: vaultAad(recordKey) } : {}) }, key, buffer(ciphertext));
-    return validateGuardianVaultRecord(JSON.parse(new TextDecoder().decode(plaintext)), nowSeconds);
+    return validateGuardianVaultRecord(JSON.parse(new TextDecoder().decode(plaintext)));
   } catch (cause) {
     throw new Error("guardian vault decryption failed", { cause });
   }
@@ -204,7 +203,7 @@ function vaultAad(recordKey: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(`loom.guardian-vault.v2:${recordKey}`);
 }
 
-export function validateGuardianVaultRecord(value: unknown, nowSeconds = Math.floor(Date.now() / 1000)): GuardianVaultRecord {
+export function validateGuardianVaultRecord(value: unknown): GuardianVaultRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("guardian vault record is invalid");
   const record = value as Record<string, unknown>;
   const status = record.status;
@@ -216,7 +215,13 @@ export function validateGuardianVaultRecord(value: unknown, nowSeconds = Math.fl
     capability,
     acceptedAt: Number(record.acceptedAt),
     ...(record.lastVerifiedAt === undefined ? {} : { lastVerifiedAt: Number(record.lastVerifiedAt) }),
-    status: capability.expiresAt <= nowSeconds && status !== "removed" ? "stale" : status as GuardianVaultRecord["status"]
+    // `expiresAt` is the deadline for accepting the link, not a lifetime for
+    // what the link delivered. The chain has no notion of it: an approval is
+    // checked against the guardian root, and a leaf in that root does not
+    // lapse. Marking an accepted record stale on a clock cut a guardian off
+    // from an account they could still help, and implied a revocation the
+    // protocol does not offer -- only rotating the root revokes.
+    status: status as GuardianVaultRecord["status"]
   });
 }
 

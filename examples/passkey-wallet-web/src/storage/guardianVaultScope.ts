@@ -52,15 +52,20 @@ export function guardianVaultRecordsForAccount(
   return Object.freeze(records.filter(record => guardianCapabilityBelongsToAccount(record.capability, account)));
 }
 
-/** Recovery signing UI exists only for the open wallet's usable accepted capabilities. */
+/**
+ * The accepted capabilities the open wallet can still act on.
+ *
+ * Whether one still counts is decided against the account's live guardian root,
+ * not against a clock: the root is what an approval is verified by, and a leaf
+ * in it does not lapse. Filtering here on the invitation's transport deadline
+ * removed the account from the guardian's workspace entirely -- so they never
+ * saw a recovery, and never learned they had been dropped.
+ */
 export function reviewableGuardianCapabilitiesForAccount(
   records: readonly GuardianVaultRecord[],
-  account: AccountHandle,
-  nowSeconds: number
+  account: AccountHandle
 ): readonly GuardianVaultRecord[] {
   return Object.freeze(guardianVaultRecordsForAccount(records, account).filter(record =>
-    record.status !== "stale"
-    && record.status !== "removed"
-    && record.capability.expiresAt > nowSeconds
+    record.status !== "removed"
   ));
 }

@@ -24,8 +24,6 @@ export type CapabilityStanding =
   | { readonly kind: "superseded"; readonly detail: string }
   /** The account no longer has guardian recovery configured at all. */
   | { readonly kind: "recovery-off" }
-  /** Past its own expiry, whatever the account says. */
-  | { readonly kind: "expired" }
   /** The account could not be read. Absence of an answer is not an answer. */
   | { readonly kind: "unreadable"; readonly detail: string };
 
@@ -45,18 +43,19 @@ export interface CapabilityFacts {
 }
 
 /**
- * Expiry is checked before the chain, because a capability past its own expiry
- * is finished regardless of what the account currently publishes, and saying
- * "superseded" about it would send the guardian looking for a rotation that
- * may never have happened.
+ * Decided entirely against the account, never against a clock.
+ *
+ * The invitation carried an expiry, but that was the deadline for accepting the
+ * link, not a lifetime for the leaf it delivered. The chain verifies an approval
+ * against the guardian root and has no notion of when the invitation was sent,
+ * so a lapsed one is not a dead capability -- and reporting it as one told a
+ * guardian they could not help with an account they could.
  */
 export function capabilityStanding(input: {
   readonly capability: CapabilityFacts;
   readonly live: LiveAccountConfiguration;
-  readonly nowSeconds: number;
 }): CapabilityStanding {
   const { capability, live } = input;
-  if (capability.expiresAt <= input.nowSeconds) return Object.freeze({ kind: "expired" as const });
   if (!live.recoveryConfigured) return Object.freeze({ kind: "recovery-off" as const });
 
   if (capability.guardianRoot.toLowerCase() !== live.guardianRoot.toLowerCase()) {
@@ -107,12 +106,6 @@ export function describeStanding(standing: CapabilityStanding): {
         label: "Not in use",
         tone: "warning" as const,
         detail: "This account no longer has guardian recovery configured, so there is nothing to approve."
-      });
-    case "expired":
-      return Object.freeze({
-        label: "Expired",
-        tone: "warning" as const,
-        detail: "This invitation has passed its expiry. Ask the owner for a new one."
       });
     case "unreadable":
       return Object.freeze({

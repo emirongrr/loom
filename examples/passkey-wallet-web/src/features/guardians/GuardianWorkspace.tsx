@@ -101,7 +101,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
           return;
         }
         const request = parseRecoveryRequest(payload);
-        const matchesOpenWallet = reviewableGuardianCapabilitiesForAccount(records, account, Math.floor(services.now() / 1000)).some(record =>
+        const matchesOpenWallet = reviewableGuardianCapabilitiesForAccount(records, account).some(record =>
           record.capability.chainId === request.chainId
           && record.capability.account.toLowerCase() === request.account.toLowerCase()
         );
@@ -130,7 +130,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
     }
   };
   const visibleRecords = guardianVaultRecordsForAccount(records, account);
-  const reviewableRecords = reviewableGuardianCapabilitiesForAccount(records, account, Math.floor(services.now() / 1000));
+  const reviewableRecords = reviewableGuardianCapabilitiesForAccount(records, account);
   const protectedAccountKey = protectedAccountsKey(reviewableRecords);
 
   /**
@@ -203,8 +203,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       const request = recoveryArtifact.trim().startsWith("{")
         ? parseRecoveryRequest(recoveryArtifact)
         : parseRecoveryRequest(await createEncryptedLinkTransport<RecoveryRequestV1>({ origin: window.location.origin, path: "/guardian" }).receive(recoveryArtifact));
-      const now = Math.floor(services.now() / 1000);
-      const record = reviewableGuardianCapabilitiesForAccount(records, account, now).find(candidate =>
+      const record = reviewableGuardianCapabilitiesForAccount(records, account).find(candidate =>
         candidate.capability.chainId === request.chainId
         && candidate.capability.account.toLowerCase() === request.account.toLowerCase()
       );
@@ -259,7 +258,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
             for (const record of reviewableRecords) {
               if (record.capability.account.toLowerCase() !== capability.account.toLowerCase()) continue;
               readStandings[record.capability.capabilityId] = capabilityStanding({
-                capability: record.capability, live, nowSeconds: now
+                capability: record.capability, live
               });
             }
             const view = describePendingCancellation({ capability, recoveryManager: manager, live, pending, nowSeconds: now });
@@ -306,8 +305,7 @@ export function GuardianWorkspace({ account, inboundLink = "", embedded = false 
       const request = cancelArtifact.trim().startsWith("{")
         ? parseCancelRequest(cancelArtifact)
         : parseCancelRequest(await createEncryptedLinkTransport<CancelRequestV1>({ origin: window.location.origin, path: "/guardian" }).receive(cancelArtifact));
-      const now = Math.floor(services.now() / 1000);
-      const record = reviewableGuardianCapabilitiesForAccount(records, account, now).find(candidate =>
+      const record = reviewableGuardianCapabilitiesForAccount(records, account).find(candidate =>
         candidate.capability.chainId === request.chainId
         && candidate.capability.account.toLowerCase() === request.account.toLowerCase()
       );
