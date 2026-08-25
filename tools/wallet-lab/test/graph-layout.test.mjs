@@ -69,3 +69,32 @@ test("expanded optional contracts never overlap the remaining collapsed groups",
   }
   assert.ok(layout.height > 720, "the canvas must grow when expanded modules need more rows");
 });
+
+test("expanded groups form stacked horizontal relationship lanes instead of one vertical module column", () => {
+  const nodes = [
+    { id: "EntryPoint", kind: "protocol", requirement: "transport-required" },
+    { id: "Account", kind: "account", requirement: "core" },
+    { id: "RecoveryManager", kind: "recovery", requirement: "deployment-required" },
+    ...["AuthA", "AuthB", "AuthC"].map(id => ({ id, kind: "validator", requirement: "optional", architectureGroupId: "group:authentication", architectureGroupLabel: "Authentication" })),
+    ...["HookA", "HookB"].map(id => ({ id, kind: "hook", requirement: "optional", architectureGroupId: "group:hooks", architectureGroupLabel: "Hooks" })),
+    { id: "group:sessions", nodeType: "group", count: 2 },
+    { id: "group:lab-only", nodeType: "group", count: 1 }
+  ];
+  const edges = [
+    { from: "Account", to: "AuthA" },
+    { from: "AuthA", to: "AuthB" },
+    { from: "AuthB", to: "AuthC" },
+    { from: "Account", to: "HookA" },
+    { from: "HookA", to: "HookB" }
+  ];
+  const layout = layoutArchitectureExplorer(nodes, edges, { width: 1200, height: 760 });
+  const auth = ["AuthA", "AuthB", "AuthC"].map(id => layout.positions[id]);
+  const hooks = ["HookA", "HookB"].map(id => layout.positions[id]);
+
+  assert.equal(new Set(auth.map(point => point.y)).size, 1, "one expanded group should read left to right");
+  assert.deepEqual(auth.map(point => point.x), [...auth.map(point => point.x)].sort((left, right) => left - right));
+  assert.equal(new Set(hooks.map(point => point.y)).size, 1);
+  assert.ok(hooks[0].y > auth[0].y, "expanded groups should occupy separate stacked lanes");
+  assert.deepEqual(layout.lanes.map(lane => lane.id), ["group:authentication", "group:hooks"]);
+  assert.ok(layout.width > 1200, "expanded groups should consume horizontal canvas instead of shrinking into a tall fixed-width viewBox");
+});

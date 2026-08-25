@@ -849,7 +849,7 @@ function renderDeploymentGraph(deployment) {
     state.focusedSection = null;
     state.focusedAbiItem = null;
   }
-  const { positions, bounds, height, neighborIds } = graphPositions(view.visibleNodes, view.visibleEdges);
+  const { positions, bounds, width: graphWidth, height, neighborIds, lanes } = graphPositions(view.visibleNodes, view.visibleEdges);
   const functionLens = selectedFunctionLens(deployment);
   const traceOverlay = observedTraceOverlay(deployment, currentTrace(state.artifact?.events ?? []));
   const overlay = functionLens?.status === "observed"
@@ -908,9 +908,10 @@ function renderDeploymentGraph(deployment) {
     const identity = node.address ? short(node.address, 10, 8) : "SOURCE ONLY · NOT DEPLOYED";
     return `<g class="graph-node ${escapeHtml(node.kind)} ${escapeHtml(node.requirement ?? "optional")}${availability}${identityClass}${selected}${traceClass}${unrelated}" data-contract-id="${escapeHtml(node.id)}" role="button" tabindex="0" aria-pressed="${node.id === state.focusedNodeId}" aria-label="Inspect ${escapeHtml(node.name)}"><rect x="${nodeBounds.x}" y="${nodeBounds.y}" width="${nodeBounds.width}" height="${nodeBounds.height}" rx="12"></rect><text class="node-kind" x="${nodeBounds.x + 20}" y="${point.y - 12}">${escapeHtml(role + verification)}</text><text class="node-name" x="${nodeBounds.x + 20}" y="${point.y + 10}">${escapeHtml(displayName)}</text><text class="node-address" x="${nodeBounds.x + 20}" y="${point.y + 29}">${escapeHtml(identity)}</text></g>`;
   }).join("");
+  const laneMarks = lanes.map(lane => `<g class="architecture-group-lane" aria-hidden="true"><text x="48" y="${lane.top + 19}">OPTIONAL GROUP · ${escapeHtml(lane.label)} · ${lane.count}</text><path d="M 48 ${lane.top + 31} H ${graphWidth - 48}"/></g>`).join("");
   const transform = state.graphTransform;
   const zoomClass = transform.scale < .8 ? "zoom-far" : transform.scale > 1.2 ? "zoom-near" : "zoom-normal";
-  root.innerHTML = `<svg viewBox="0 0 1200 ${height}" role="img" aria-label="Loom deployment contract relationship graph"><defs><marker id="arrow-authority" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-call" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-create" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-observed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs><g class="graph-stage ${zoomClass}" transform="translate(${transform.x} ${transform.y}) scale(${transform.scale})">${edges}${observedEdges}${nodes}</g></svg>`;
+  root.innerHTML = `<svg viewBox="0 0 ${graphWidth} ${height}" role="img" aria-label="Loom deployment contract relationship graph"><defs><marker id="arrow-authority" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-call" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-create" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker><marker id="arrow-observed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs><g class="graph-stage ${zoomClass}" transform="translate(${transform.x} ${transform.y}) scale(${transform.scale})">${laneMarks}${edges}${observedEdges}${nodes}</g></svg>`;
   $("#graph-zoom-level").textContent = `${Math.round(transform.scale * 100)}%`;
   const overlayButton = $("#trace-overlay-toggle");
   const hasTrace = Boolean(currentTrace(state.artifact?.events ?? [])?.trace);

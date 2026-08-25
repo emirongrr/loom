@@ -57,6 +57,8 @@ test("expanding a group reveals only its real contracts and real edges", () => {
   const view = buildArchitectureExplorer(deployment, { expandedGroupIds: ["group:sessions"] });
 
   assert.ok(view.visibleNodes.some(node => node.id === "SessionValidator"));
+  assert.equal(view.visibleNodes.find(node => node.id === "SessionValidator").architectureGroupId, "group:sessions");
+  assert.equal(view.visibleNodes.find(node => node.id === "SessionValidator").architectureGroupLabel, "Sessions");
   assert.ok(!view.visibleNodes.some(node => node.id === "group:sessions"));
   assert.ok(view.visibleNodes.some(node => node.id === "group:authentication"));
   assert.deepEqual(view.visibleEdges.map(edge => [edge.from, edge.to]), [

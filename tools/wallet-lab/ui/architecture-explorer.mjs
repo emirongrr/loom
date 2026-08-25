@@ -38,8 +38,14 @@ export function buildArchitectureExplorer(deployment, { expandedGroupIds = [], s
   const visibleGroups = [];
   for (const group of groups) {
     const matches = query ? group.members.filter(node => [node.id, node.name, node.layer, node.responsibility].some(value => String(value ?? "").toLowerCase().includes(query))) : [];
-    if (group.expanded) visibleOptional.push(...group.members);
-    else if (matches.length) visibleOptional.push(...matches);
+    const presentMembers = members => members.map((node, index) => ({
+      ...node,
+      architectureGroupId: group.id,
+      architectureGroupLabel: group.label,
+      architectureGroupOrder: index
+    }));
+    if (group.expanded) visibleOptional.push(...presentMembers(group.members));
+    else if (matches.length) visibleOptional.push(...presentMembers(matches));
     else visibleGroups.push({
       id: group.id,
       name: group.label,

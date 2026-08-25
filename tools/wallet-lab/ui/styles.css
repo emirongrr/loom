@@ -442,6 +442,8 @@ td button { width: 1.7rem; height: 1.7rem; border: 1px solid var(--line-strong);
 .architecture-transaction-note { margin: .5rem 0 0; color: var(--muted); font-size: .52rem; line-height: 1.45; }
 .architecture-canvas .deployment-graph { width: 100%; height: 100%; min-height: 0; border-top: 0; border-radius: 0 0 12px 12px; background-color: #080c0a; background-image: radial-gradient(circle, rgba(93, 121, 103, .22) 1px, transparent 1px), radial-gradient(circle at 50% 38%, #132019 0, transparent 52%); background-size: 22px 22px, 100% 100%; }
 .architecture-canvas .deployment-graph svg { min-width: 0; }
+.architecture-group-lane text { fill: var(--green); font: 700 10px ui-monospace, monospace; letter-spacing: .08em; }
+.architecture-group-lane path { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 5 7; }
 .graph-node.unrelated, .graph-edge.unrelated { opacity: .16; }
 .graph-node, .graph-edge { transition: opacity .18s ease, filter .18s ease; }
 .graph-edge { cursor: pointer; }
