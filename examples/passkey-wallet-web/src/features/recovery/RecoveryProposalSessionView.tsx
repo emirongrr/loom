@@ -6,15 +6,11 @@ import { useNetwork } from "../../config/NetworkContext";
 import { loadWalletDeployment } from "../onboarding/accountLifecycle";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
-import {
-transitionRecoverySession, type RecoverySession, type RecoverySessionRepository
-} from "./recoverySession";
+import { transitionRecoverySession, type RecoverySession, type RecoverySessionRepository } from "./recoverySession";
 import { recoverySessionView } from "./recoverySessionView";
 import { announceRecovery, oldValidatorsHash } from "./recoveryCalls";
 import { CollectedFromChain, ExecutionReceipt, ImportResponse, PaidStep, ProposalReceipt, SendToGuardians } from "./RecoverySessionPanels";
-import {
-sendEip1193Transaction, type Eip1193Provider
-} from "./recoveryPasskey";
+import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey";
 import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import { planGuardianChange } from "../security/guardianPlan";
 import { assertPendingRecoveryMatchesPrepared, assertPreparedRecoveryMatchesRequest, assertSuccessfulTransactionReceipt, restorePreparedRecovery, verifyRecoveryResponseForProposal } from "./recoveryProposal";
