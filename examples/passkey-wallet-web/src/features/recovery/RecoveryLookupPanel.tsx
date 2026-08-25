@@ -8,6 +8,10 @@ import { sendEip1193Transaction, type Eip1193Provider } from "./recoveryPasskey"
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
 import { readPublishedRecoveryValidators, type PublicationScan } from "./existingPublications";
 import { RecoveryManagerAbi } from "@loom/core/abi";
+import { recoveryGasPayers, selectRecoveryGasPayer } from "./recoveryGasPayer";
+import { GasPayerChoice } from "./GasPayerChoice";
+import { submitAccountCalls } from "../wallet/accountClient";
+import type { AccountHandle } from "../../types";
 
 /**
  * Look up a recovery for any account, and finish it, from nothing but its
@@ -22,21 +26,31 @@ import { RecoveryManagerAbi } from "@loom/core/abi";
  * What this cannot do is decide that a recovery is legitimate. It reports what
  * the chain says and refuses to offer a call the manager would reject.
  */
-export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: Address } = {}) {
+export function RecoveryLookupPanel({ fixedAccount, accounts = [] }: {
+  readonly fixedAccount?: Address;
+  /** Saved wallets that could pay for the execution, so paying does not
+      require a browser extension. */
+  readonly accounts?: readonly AccountHandle[];
+} = {}) {
   const { config } = useNetwork();
-  const { publicClients, runtime } = useAppServices();
+  const { publicClients, runtime, pendingOperations } = useAppServices();
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [deploymentError, setDeploymentError] = useState("");
   const [address, setAddress] = useState<string>(fixedAccount ?? "");
   const [result, setResult] = useState<RecoveryLookupResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [sent, setSent] = useState<Hex | "">("");
+  /** Set once this panel finished a recovery, so the screen can say so
+      after the record it was reading is gone from the chain. */
+  const [executed, setExecuted] = useState<Hex | "">("");
   // Publishing a recovery passkey and proposing a recovery are separate steps,
   // and only the second one writes the record this panel reads. An account
   // stranded between them looks identical to an account that never started,
   // which reads as the chain having lost the publication it was paid for.
   const [published, setPublished] = useState<PublicationScan | null>(null);
+  /** Which wallet pays. Asked once, when there is more than one way to pay. */
+  const [choosing, setChoosing] = useState(false);
+  const [payerId, setPayerId] = useState("");
 
   // Load the profile and check the deployed bytecode against it before offering
   // anything. Reading a recovery from a manager this build does not recognise
@@ -64,7 +78,7 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
   const blockers = result ? executionBlockers({ lookup: result.lookup }) : [];
 
   const look = async () => {
-    setError(""); setResult(null); setSent(""); setPublished(null);
+    setError(""); setResult(null); setExecuted(""); setPublished(null);
     if (!manager) { setError("The deployment profile has not loaded, so there is no recovery manager to ask."); return; }
     if (!isAddress(address.trim())) { setError("Enter a valid account address."); return; }
     setBusy(true);
@@ -94,11 +108,16 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
     } finally { setBusy(false); }
   };
 
-  const execute = async () => {
-    setError(""); setSent("");
-    const provider = (window as { ethereum?: Eip1193Provider }).ethereum;
-    if (!provider) { setError("No browser wallet is available to pay for this transaction."); return; }
+  const loomCandidates = result ? recoveryGasPayers(accounts, deployment?.chainId ?? 0, result.account) : [];
+  const loomPayer = selectRecoveryGasPayer(loomCandidates, payerId);
+  const browserWallet = Boolean((window as { ethereum?: Eip1193Provider }).ethereum);
+
+  const execute = async (via: "loom" | "browser") => {
+    setError("");
     if (!manager || !result || !record) return;
+    const provider = (window as { ethereum?: Eip1193Provider }).ethereum;
+    if (via === "browser" && !provider) { setError("No browser wallet is available to pay for this transaction."); return; }
+    if (via === "loom" && !loomPayer) return;
     setBusy(true);
     try {
       // Re-read immediately before submitting. The delay may have expired, or
@@ -115,13 +134,20 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
       if (!recheck.ok) { setResult(fresh); setError(recheck.problems.join(" ")); return; }
 
       const call = encodeExecuteRecovery({ account: fresh.account, oldValidators: fresh.oldValidators });
-      const hash = await sendEip1193Transaction({
-        provider,
-        chainId: deployment!.chainId,
-        to: manager,
-        data: encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args as never })
-      });
-      setSent(hash);
+      const data = encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args as never });
+      // Identical calldata either way. Who pays changes nothing the manager
+      // checks: it verifies the recovery, never the sender.
+      const hash = via === "loom"
+        ? await submitAccountCalls({
+          config, account: loomPayer!, deployment: deployment!,
+          calls: [{ target: manager, value: 0n, data }],
+          pendingOperations, runtime, publicClients
+        }).then(submitted => submitted.transactionHash ?? submitted.userOpHash)
+        : await sendEip1193Transaction({
+          provider: provider!, chainId: deployment!.chainId, to: manager, data
+        });
+      setExecuted(hash);
+      setChoosing(false);
       setResult(await lookupRecovery({
         publicClient: publicClients.forEndpoint(config.rpcUrl), recoveryManager: manager, account: result.account
       }));
@@ -163,7 +189,7 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
     {deploymentError && <p className="callout warning">{deploymentError}</p>}
     {error && <p className="callout warning">{error}</p>}
 
-    {result && result.lookup.kind === "none" && <div className="callout">
+    {result && result.lookup.kind === "none" && !executed && <div className="callout">
       <p>No recovery is pending for this account at block {String(result.blockNumber)}.</p>
       {published && published.published.length > 0 && <>
         <p>
@@ -187,7 +213,16 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
       </p>}
     </div>}
 
-    {result && found && record && <>
+    {executed && <div className="callout success">
+      <strong>Recovery complete.</strong>
+      <p>
+        The account's validators have been replaced. Its address is unchanged, and the recovery passkey now
+        controls it. Nothing here is left to do.
+      </p>
+      <p className="breakable">Transaction {executed}</p>
+    </div>}
+
+    {result && found && record && !executed && <>
       <div className="callout">
         <strong>{statusLabel(found.kind)}</strong>
         <p className="breakable">
@@ -206,13 +241,39 @@ export function RecoveryLookupPanel({ fixedAccount }: { readonly fixedAccount?: 
 
       {blockers.length > 0 && <ul className="form-note">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
 
-      <button className="primary" disabled={busy || blockers.length > 0} onClick={() => void execute()}>
-        {busy ? "Working…" : "Execute recovery"}
-      </button>
-      <p className="form-note">
-        Execution is permissionless: any wallet may pay for it and none of them gain authority over the account.
-      </p>
-      {sent && <p className="callout success breakable">Submitted: {sent}</p>}
+      {!choosing
+        ? <button className="primary" disabled={busy || blockers.length > 0} onClick={() => { setError(""); setChoosing(true); }}>
+          {busy ? "Working…" : "Execute recovery"}
+        </button>
+        : <div className="callout">
+          <strong>Who pays the gas?</strong>
+          {/* Paying grants nothing. The manager verifies the recovery, never
+              the sender, so this is a question about a fee and not about
+              authority -- said once, here, rather than beside every button. */}
+          <p className="form-note">Whoever pays gains no authority over the account being recovered.</p>
+
+          {loomCandidates.length > 0 && <>
+            <GasPayerChoice
+              label="A saved Loom wallet"
+              candidates={loomCandidates}
+              selected={loomPayer}
+              disabled={busy}
+              onSelect={setPayerId}
+            />
+            <button className="primary" disabled={busy || !loomPayer} onClick={() => void execute("loom")}>
+              {busy ? "Confirm on your device…" : "Pay with this Loom wallet"}
+            </button>
+          </>}
+
+          {browserWallet
+            ? <button className="secondary" disabled={busy} onClick={() => void execute("browser")}>Pay with a browser wallet</button>
+            : <p className="form-note">No browser wallet is available on this device.</p>}
+
+          {loomCandidates.length === 0 && !browserWallet
+            && <p className="callout warning">Nothing here can pay for it. Save a funded Loom wallet on this chain, or open this page where a browser wallet is available.</p>}
+
+          <button className="text-button" disabled={busy} onClick={() => setChoosing(false)}>Cancel</button>
+        </div>}
     </>}
   </>;
 
