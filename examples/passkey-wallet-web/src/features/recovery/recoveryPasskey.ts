@@ -29,7 +29,8 @@ export async function prepareNewRecoveryPasskey(input: {
   readonly label: string;
   readonly rpId: string;
   readonly origin: string;
-  readonly register: (label: string) => Promise<RegisteredPasskey>;
+  readonly account: Address;
+  readonly register: (label: string, account?: string) => Promise<RegisteredPasskey>;
   readonly prepare: (input: { initData: Hex }) => Promise<{
     readonly validator: Address;
     readonly initDataHash: Hex;
@@ -42,7 +43,7 @@ export async function prepareNewRecoveryPasskey(input: {
   }
   const label = input.label.trim();
   if (!label || label.length > 80) throw new Error("Give the recovery passkey a name of 1 to 80 characters.");
-  const passkey = await input.register(label);
+  const passkey = await input.register(label, input.account);
   const initData = encodeRecoveryPasskeyInitData({
     passkey,
     rpId: input.rpId,
