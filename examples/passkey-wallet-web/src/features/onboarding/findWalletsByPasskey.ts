@@ -24,8 +24,7 @@ export interface WalletDiscoveryResult {
 
 export interface LogReader {
   getLogs(request: {
-    /** Omitted to search every validator, including ones a recovery deployed. */
-    address?: Address;
+    address: readonly Address[];
     fromBlock: bigint;
     toBlock: bigint;
     topics: readonly Hex[];
@@ -42,7 +41,14 @@ const WINDOW = 40_000n;
 const MAX_WINDOWS = 40;
 
 export async function findWalletsByPasskey(input: {
-  readonly validator: Address;
+  /**
+   * Every validator worth asking: the deployment's own, and each one a recovery
+   * deployed. A recovered account's key is published by the validator its
+   * recovery installed, so a search limited to the profile's address finds the
+   * key the account had before it was recovered and misses the one controlling
+   * it now.
+   */
+  readonly validators: readonly Address[];
   readonly assertion: PasskeyAssertion;
   readonly rpId: string;
   readonly origin: string;
@@ -60,41 +66,34 @@ export async function findWalletsByPasskey(input: {
   try {
     const head = await input.reader.getBlockNumber();
 
-    /**
-     * Searched across every validator when the endpoint allows it.
-     *
-     * A recovery installs a validator of its own, and the recovered account's
-     * key is published there rather than on the one named in the deployment
-     * profile. Searching only the profile's address finds the key the account
-     * had before it was recovered and misses the one that controls it now --
-     * which reads as "that passkey matches no account".
-     *
-     * Some endpoints refuse a query with no address. Those fall back to the
-     * profile's validator, which is better than nothing and is what this did
-     * before; a log from an unrelated contract is discarded by `decode`, and
-     * anything that survives still has to produce the signature.
-     */
-    let anyValidator = true;
-    for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
-      const from = end > WINDOW ? end - WINDOW + 1n : 0n;
-      const window = { fromBlock: from, toBlock: end, topics: [topic] };
-      let logs;
-      if (anyValidator) {
-        try {
-          logs = await input.reader.getLogs(window);
-        } catch {
-          anyValidator = false;
-          logs = await input.reader.getLogs({ ...window, address: input.validator });
-        }
-      } else {
-        logs = await input.reader.getLogs({ ...window, address: input.validator });
-      }
-      scannedWindows += 1;
+    // One query when the endpoint will answer one. Measured against Sepolia:
+    // the factory's announcements and the whole key history came back in two
+    // requests and under half a second, where a windowed walk of the same
+    // ground made forty and tripped the endpoint's rate limit.
+    const collect = (logs: readonly { readonly address: Address; readonly data: Hex; readonly topics: readonly Hex[] }[]) => {
       for (const log of logs) {
         const decoded = decode(log);
         if (decoded) candidates.push(decoded);
       }
-      if (from === 0n) break;
+    };
+
+    try {
+      collect(await input.reader.getLogs({
+        address: input.validators, fromBlock: 0n, toBlock: head, topics: [topic]
+      }));
+      scannedWindows = 1;
+    } catch {
+      // Endpoints that cap how wide a range may be are walked in windows. The
+      // cap is the reason for the walk, so nothing here treats it as a failure.
+      candidates.length = 0;
+      for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
+        const from = end > WINDOW ? end - WINDOW + 1n : 0n;
+        collect(await input.reader.getLogs({
+          address: input.validators, fromBlock: from, toBlock: end, topics: [topic]
+        }));
+        scannedWindows += 1;
+        if (from === 0n) break;
+      }
     }
   } catch (cause) {
     return Object.freeze({

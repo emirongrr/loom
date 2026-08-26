@@ -44,6 +44,52 @@ function hostOf(endpoint: string): string {
   try { return new URL(endpoint).host; } catch { return endpoint; }
 }
 
+/**
+ * Every validator a key could have been published by.
+ *
+ * The deployment's own, plus each one a recovery deployed -- read from the
+ * factory's own announcements, which is one query rather than a scan of the
+ * chain for anything that ever emitted a key. A recovered account's key lives
+ * on the validator its recovery installed, so leaving those out is what made a
+ * recovered wallet unfindable by its own passkey.
+ *
+ * A factory that cannot be read yields the profile's validator alone: fewer
+ * places to look, not a failure.
+ */
+async function validatorsToSearch(
+  deployment: Awaited<ReturnType<typeof loadWalletDeployment>>,
+  client: { getLogs: (request: never) => Promise<readonly { readonly data: `0x${string}` }[]> }
+): Promise<readonly `0x${string}`[]> {
+  const factory = deployment.recoveryValidatorProvisioner?.address;
+  if (!factory) return [deployment.validator];
+  try {
+    const logs = await client.getLogs({
+      address: factory,
+      fromBlock: 0n,
+      toBlock: "latest",
+      event: RECOVERY_VALIDATOR_DEPLOYED
+    } as never);
+    const deployed = logs.map(log => `0x${log.data.slice(26, 66)}` as `0x${string}`);
+    return [deployment.validator, ...new Set(deployed)];
+  } catch {
+    return [deployment.validator];
+  }
+}
+
+const RECOVERY_VALIDATOR_DEPLOYED = {
+  type: "event",
+  name: "RecoveryValidatorDeployed",
+  inputs: [
+    { name: "account", type: "address", indexed: true },
+    { name: "recoveryNonce", type: "uint64", indexed: true },
+    { name: "initDataHash", type: "bytes32", indexed: true },
+    { name: "validator", type: "address" },
+    { name: "newGuardianRoot", type: "bytes32" },
+    { name: "newGuardianThreshold", type: "uint8" }
+  ]
+} as const;
+
+
 export function App() {
   const services = useAppServices();
   const { config } = useNetwork();
@@ -175,14 +221,14 @@ export function App() {
       const deployment = await loadWalletDeployment();
       const client = services.publicClients.forEndpoint(config.rpcUrl);
       const result = await findWalletsByPasskey({
-        validator: deployment.validator,
+        validators: await validatorsToSearch(deployment, client as never),
         assertion,
         rpId: window.location.hostname,
         origin: window.location.origin,
         reader: {
           getBlockNumber: () => client.getBlockNumber(),
           getLogs: request => client.getLogs({
-            ...(request.address ? { address: request.address } : {}),
+            address: [...request.address],
             fromBlock: request.fromBlock,
             toBlock: request.toBlock,
             ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
