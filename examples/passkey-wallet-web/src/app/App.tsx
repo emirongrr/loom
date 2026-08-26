@@ -166,9 +166,13 @@ export function App() {
     setBusy(true);
     setMessage("");
     try {
-      const deployment = await loadWalletDeployment();
+      // Asked first, before anything is awaited. `navigator.credentials.get`
+      // needs the transient activation the click granted, and awaiting a fetch
+      // ahead of it spends that activation -- the browser then rejects the call
+      // without ever showing its picker, which looks like nothing happening.
       const assertion = await assertAnyPasskey();
       if (!assertion) { setMessage("No passkey was offered, so there is nothing to look up."); return; }
+      const deployment = await loadWalletDeployment();
       const client = services.publicClients.forEndpoint(config.rpcUrl);
       const result = await findWalletsByPasskey({
         validator: deployment.validator,
