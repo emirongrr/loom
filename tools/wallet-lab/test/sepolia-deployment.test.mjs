@@ -17,6 +17,7 @@ function manifest() {
     validator: address("4"),
     policyHook: address("5"),
     recoveryModule: address("6"),
+    recoveryIntentBoard: address("11"),
     guardianVerifiers: { ecdsa: address("7"), p256: address("8"), erc1271: address("9") },
     recoveryValidatorProvisioner: {
       address: address("10"),
@@ -31,6 +32,7 @@ function manifest() {
       validator: HASH,
       policyHook: HASH,
       recoveryModule: HASH,
+      recoveryIntentBoard: HASH,
       ecdsaGuardianVerifier: HASH,
       p256GuardianVerifier: HASH,
       erc1271GuardianVerifier: HASH
@@ -48,11 +50,27 @@ test("Sepolia deployment inspection verifies chain identity and every published 
 
   assert.equal(report.status, "verified");
   assert.equal(report.chainId, 11155111);
-  assert.equal(report.checks.length, 10);
+  assert.equal(report.checks.length, 11);
   const deployedNodes = report.deployment.nodes.filter(node => node.availability === "deployed");
-  assert.equal(deployedNodes.length, 10);
+  assert.equal(deployedNodes.length, 11);
   assert.ok(deployedNodes.every(node => node.verification === "verified"));
   assert.ok(report.deployment.nodes.filter(node => node.availability === "source-only").every(node => node.verification === "unverified"));
+});
+
+test("Sepolia deployment inspection keeps the recovery intent board optional", async () => {
+  const withoutBoard = manifest();
+  delete withoutBoard.recoveryIntentBoard;
+  delete withoutBoard.runtimeCodeHashes.recoveryIntentBoard;
+  const report = await inspectSepoliaDeployment({
+    repoRoot: new URL("../../../", import.meta.url),
+    manifest: withoutBoard,
+    rpc: async (method, params) => method === "eth_chainId" ? "0xaa36a7" : params[0] ? CODE : null,
+    endpointOrigin: "https://rpc.example"
+  });
+
+  assert.equal(report.status, "verified");
+  assert.equal(report.checks.length, 10);
+  assert.equal(report.deployment.nodes.find(node => node.id === "RecoveryIntentBoard")?.availability, "source-only");
 });
 
 test("Sepolia deployment inspection fails closed on chain or bytecode drift", async () => {

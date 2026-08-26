@@ -894,7 +894,10 @@ function renderDeploymentGraph(deployment) {
     const nodeBounds = bounds[node.id];
     if (node.id === state.focusedNodeId) return renderFocusedArchitectureNode(deployment, node, nodeBounds, functionLens);
     const selected = node.id === state.focusedNodeId ? " selected" : "";
-    const role = node.topologyRole ?? ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "deployment-required": "DEPLOYMENT REQUIRED", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement] ?? titleCase(node.requirement);
+    const role = node.topologyRole
+      ?? (node.layer === "recovery-discovery" ? "OPTIONAL DISCOVERY" : null)
+      ?? ({ core: "CORE", "transport-required": "ERC-4337 TRANSPORT", "deployment-required": "DEPLOYMENT REQUIRED", "profile-required": "ACTIVE PROFILE", optional: "OPTIONAL MODULE", "test-only": "LAB ONLY" })[node.requirement]
+      ?? titleCase(node.requirement);
     const verification = node.verification ? ` · ${node.verification.toUpperCase()}` : "";
     const identityClass = node.id === "LoomAccount" ? " implementation" : node.id === "ObservedAccount" ? " instance" : "";
     const displayName = node.name.length > 28 ? `${node.name.slice(0, 27)}…` : node.name;

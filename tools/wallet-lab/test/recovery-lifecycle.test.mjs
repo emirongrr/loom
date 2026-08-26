@@ -8,12 +8,16 @@ test("guardian recovery exposes the complete delayed lifecycle and both cancella
   assert.deepEqual(flow.nodes.map(node => node.id), [
     "provision",
     "digest",
+    "announce",
     "approve",
+    "publish-approval",
+    "assemble",
     "propose",
     "delay",
     "execute",
     "core-handoff",
     "core-apply",
+    "publish-cancellation",
     "cancel-account",
     "cancel-guardians"
   ]);
@@ -23,14 +27,22 @@ test("guardian recovery exposes the complete delayed lifecycle and both cancella
   assert.match(flow.nodes.find(node => node.id === "cancel-account").invariant, /one fewer guardian/u);
   assert.match(flow.nodes.find(node => node.id === "cancel-guardians").invariant, /full current guardian threshold/u);
   assert.match(flow.nodes.find(node => node.id === "execute").state, /pending recovery is deleted/u);
+  assert.match(flow.nodes.find(node => node.id === "provision").state, /already initialized/u);
+  assert.match(flow.nodes.find(node => node.id === "announce").invariant, /unverified/u);
+  assert.match(flow.nodes.find(node => node.id === "publish-approval").invariant, /irreversibly reveals/u);
+  assert.match(flow.nodes.find(node => node.id === "publish-cancellation").invariant, /event only/u);
+  assert.equal(flow.nodes.find(node => node.id === "assemble").contract, "Off-chain client");
   assert.deepEqual(flow.nodes.find(node => node.id === "core-handoff").payload, [
     "oldValidators[]",
     "newValidator",
-    "initData",
+    "initData = 0x (already initialized)",
     "newGuardianRoot",
     "newGuardianThreshold"
   ]);
-  assert.match(flow.nodes.find(node => node.id === "core-apply").state, /guardian root and threshold rotate/u);
+  assert.match(flow.nodes.find(node => node.id === "core-apply").state, /already-initialized validator/u);
+  assert.equal(flow.edges.some(edge => edge.from === "approve" && edge.to === "assemble" && /private/u.test(edge.label)), true);
+  assert.equal(flow.edges.some(edge => edge.from === "approve" && edge.to === "publish-approval"), true);
+  assert.equal(flow.edges.some(edge => edge.from === "publish-approval" && edge.to === "assemble"), true);
   assert.equal(flow.edges.some(edge => edge.from === "execute" && edge.to === "core-handoff"), true);
   assert.equal(flow.edges.some(edge => edge.from === "core-handoff" && edge.to === "core-apply"), true);
   assert.equal(flow.edges.some(edge => edge.from === "delay" && edge.to === "execute"), true);

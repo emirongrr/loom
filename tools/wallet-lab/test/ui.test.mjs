@@ -84,6 +84,7 @@ test("Wallet Lab presents architecture, network, EVM, and execution evidence wit
   assert.match(script, /buildArchitectureExplorer/u);
   assert.match(script, /architecture-group-lane/u);
   assert.match(script, /function renderFocusedArchitectureNode\(/u);
+  assert.match(script, /node\.layer === "recovery-discovery" \? "OPTIONAL DISCOVERY"/u);
   assert.match(script, /function runOutcomeLabel\(/u);
   assert.match(script, /function networkLabel\(/u);
   assert.doesNotMatch(script, /does not include both an implementation and an observed account instance/u);

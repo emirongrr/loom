@@ -236,8 +236,9 @@ export async function runBrowserWalletFlow(input) {
     await rpcCall(rpcUrl, "eth_sendTransaction", [{ from: input.deployer, to: account.account, value: "0xde0b6b3a7640000" }]);
     currentNetworkOperation = "account-activation";
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await page.getByRole("button", { name: "Activate account" }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Activate account" }).click();
+    const createAccountButton = page.getByRole("button", { name: /^(?:Activate account|Create account now)$/u });
+    await createAccountButton.waitFor({ state: "visible" });
+    await createAccountButton.click();
     const activationSuccess = page.getByText("Account created", { exact: true });
     const activationFailure = page.getByText("Account could not be created", { exact: true });
     await activationSuccess.or(activationFailure).waitFor({ timeout: 60_000 });

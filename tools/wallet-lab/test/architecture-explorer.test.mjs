@@ -10,6 +10,7 @@ const deployment = {
     { id: "ECDSAValidator", name: "ECDSAValidator", requirement: "optional", layer: "authentication" },
     { id: "VaultHook", name: "VaultHook", requirement: "optional", layer: "asset-policy" },
     { id: "RecoveryManager", name: "RecoveryManager", requirement: "deployment-required", layer: "recovery" },
+    { id: "RecoveryIntentBoard", name: "RecoveryIntentBoard", requirement: "optional", layer: "recovery-discovery" },
     { id: "P256RecoveryValidatorFactory", name: "P256RecoveryValidatorFactory", requirement: "deployment-required", layer: "recovery" },
     { id: "P256GuardianVerifier", name: "P256GuardianVerifier", requirement: "deployment-required", layer: "guardian-verifier" },
     { id: "SessionValidator", name: "SessionValidator", requirement: "optional", layer: "session" },
@@ -20,7 +21,8 @@ const deployment = {
     { from: "LoomAccount", to: "P256Validator", kind: "validates-with", label: "validates with" },
     { from: "LoomAccount", to: "RecoveryManager", kind: "recovers", label: "delayed recovery" },
     { from: "P256GuardianVerifier", to: "RecoveryManager", kind: "approves", label: "guardian proof" },
-    { from: "P256RecoveryValidatorFactory", to: "P256Validator", kind: "creates", label: "recovered validator" }
+    { from: "P256RecoveryValidatorFactory", to: "P256Validator", kind: "creates", label: "recovered validator" },
+    { from: "RecoveryIntentBoard", to: "RecoveryManager", kind: "reads-recovery-state", label: "logs only" }
   ]
 };
 
@@ -31,9 +33,9 @@ test("architecture explorer starts with the required spine and deterministic col
     "EntryPoint", "LoomAccount", "P256Validator", "RecoveryManager", "P256RecoveryValidatorFactory", "P256GuardianVerifier"
   ]);
   assert.deepEqual(view.visibleNodes.filter(node => node.nodeType === "group").map(node => node.id), [
-    "group:authentication", "group:hooks", "group:sessions", "group:lab-only"
+    "group:authentication", "group:hooks", "group:recovery", "group:sessions", "group:lab-only"
   ]);
-  assert.equal(view.groups.some(group => group.id === "group:recovery"), false);
+  assert.equal(view.groups.find(group => group.id === "group:recovery")?.count, 1);
   assert.ok(view.visibleEdges.every(edge => edge.presentationOnly !== true), "collapsed groups must not invent architectural authority edges");
 });
 
@@ -118,7 +120,17 @@ test("architecture explorer promotes recovery infrastructure from older optional
   for (const id of ["RecoveryManager", "P256RecoveryValidatorFactory", "P256GuardianVerifier"]) {
     assert.equal(view.visibleNodes.find(node => node.id === id)?.requirement, "deployment-required");
   }
-  assert.equal(view.visibleNodes.some(node => node.id === "group:recovery"), false);
+  assert.equal(view.visibleNodes.find(node => node.id === "group:recovery")?.count, 1);
+});
+
+test("the recovery intent board stays an optional discovery surface", () => {
+  const collapsed = buildArchitectureExplorer(deployment);
+  const expanded = buildArchitectureExplorer(deployment, { expandedGroupIds: ["group:recovery"] });
+
+  assert.equal(collapsed.visibleNodes.some(node => node.id === "RecoveryIntentBoard"), false);
+  assert.equal(collapsed.visibleNodes.find(node => node.id === "group:recovery")?.count, 1);
+  assert.equal(expanded.visibleNodes.find(node => node.id === "RecoveryIntentBoard")?.requirement, "optional");
+  assert.ok(expanded.visibleEdges.some(edge => edge.from === "RecoveryIntentBoard" && edge.to === "RecoveryManager"));
 });
 
 test("expanding a group reveals only its real contracts and real edges", () => {

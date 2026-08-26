@@ -4,11 +4,11 @@ const RECOVERY_NODES = Object.freeze([
     layer: "validator-factory",
     actor: "Recovering device",
     contract: "P256RecoveryValidatorFactory",
-    function: "deployForRecovery",
-    title: "Commit the new passkey validator",
-    summary: "CREATE2 reserves a validator for one account, recovery nonce, and initialization-data hash.",
-    state: "A deterministic P256RecoveryValidator exists and accepts only the committed initialization.",
-    invariant: "The factory is ownerless and cannot redirect or reuse the reservation."
+    function: "deploy",
+    title: "Deploy and initialize the new passkey validator",
+    summary: "CREATE2 binds the validator address to the account, recovery nonce, passkey initialization hash, and complete rotated guardian set.",
+    state: "A deterministic P256RecoveryValidator already initialized with the new passkey exists before guardian approval collection begins.",
+    invariant: "The ownerless factory cannot redirect the reservation, and a different guardian root or threshold produces a different address."
   },
   {
     id: "digest",
@@ -22,6 +22,17 @@ const RECOVERY_NODES = Object.freeze([
     invariant: "Changing any authority-bearing field invalidates every collected approval."
   },
   {
+    id: "announce",
+    layer: "optional-discovery",
+    actor: "Any publisher",
+    contract: "RecoveryIntentBoard",
+    function: "announce",
+    title: "Optionally announce the intent",
+    summary: "The board checks the account's installed RecoveryManager, reads live config and nonce, then emits a discovery hint. It writes no storage.",
+    state: "RecoveryAnnounced is a log only; no pending recovery, delay, nonce, account field, or authority changes.",
+    invariant: "The announcement is unverified and optional; clients must re-derive the recovery ID and preserve private request sharing."
+  },
+  {
     id: "approve",
     layer: "guardian-verifier",
     actor: "Guardian threshold",
@@ -31,6 +42,28 @@ const RECOVERY_NODES = Object.freeze([
     summary: "Sorted Merkle proofs bind each guardian verifier, verifier code hash, key commitment, and salt to the current guardian root.",
     state: "Approvals remain portable evidence until proposal submission; they grant no spending authority.",
     invariant: "Duplicate leaves, duplicate commitments, invalid proofs, and verifier failures reject the proposal."
+  },
+  {
+    id: "publish-approval",
+    layer: "optional-discovery",
+    actor: "One guardian",
+    contract: "RecoveryIntentBoard",
+    function: "publishApproval",
+    title: "Optionally publish one approval",
+    summary: "The board reads the manager's exact digest, verifies one live guardian at threshold one, and emits the portable approval tuple for later collection.",
+    state: "RecoveryApprovalPublished adds a public log but no approval counter, pending recovery, or account state.",
+    invariant: "Publishing irreversibly reveals that guardian if recovery is abandoned; private sharing remains the default and RecoveryManager re-verifies everything."
+  },
+  {
+    id: "assemble",
+    layer: "client-coordination",
+    actor: "Any independent client",
+    contract: "Off-chain client",
+    function: "bounded log scan + local verification",
+    title: "Assemble a portable threshold bundle",
+    summary: "A client combines private responses and optional board logs, removes duplicates, handles reorg rollback, and independently verifies each candidate.",
+    state: "No authority changes; the resulting sorted approval array can be carried to any publisher.",
+    invariant: "The board and RPC are discovery hints, not sources of truth; manual QR, file, and clipboard paths remain sufficient."
   },
   {
     id: "propose",
@@ -61,7 +94,7 @@ const RECOVERY_NODES = Object.freeze([
     contract: "RecoveryManager",
     function: "executeRecovery",
     title: "Re-check and consume the pending recovery",
-    summary: "The module re-hashes oldValidators and initData, checks the delay, expiry, and approved config version, then consumes the pending record before calling the account.",
+    summary: "The module re-hashes oldValidators, checks the delay, expiry, and approved config version, then consumes the pending record before calling the account. No initializer is supplied at execution.",
     state: "The pending recovery is deleted and recoveryNonces[account] advances before the atomic account call.",
     invariant: "A revert in the account call rolls the deletion and nonce update back with the whole transaction."
   },
@@ -73,7 +106,7 @@ const RECOVERY_NODES = Object.freeze([
     function: "recoverConfiguration",
     title: "Send the exact authority payload to account core",
     summary: "RecoveryManager can call only the account's narrow recovery entry point; it does not receive execute, transfer, hook, or arbitrary-call authority.",
-    payload: ["oldValidators[]", "newValidator", "initData", "newGuardianRoot", "newGuardianThreshold"],
+    payload: ["oldValidators[]", "newValidator", "initData = 0x (already initialized)", "newGuardianRoot", "newGuardianThreshold"],
     state: "One typed call crosses from the installed recovery module into LoomAccount core.",
     invariant: "The account independently requires msg.sender to be an installed recovery module."
   },
@@ -85,8 +118,19 @@ const RECOVERY_NODES = Object.freeze([
     function: "recoverConfiguration",
     title: "Atomically rotate account authority",
     summary: "Core validates the complete old validator set, the new validator contract and module type, and the fresh guardian configuration before changing state.",
-    state: "Old validators are removed, the new validator initializes, guardian root and threshold rotate, and config version advances atomically.",
+    state: "Old validators are removed, the already-initialized validator is installed, guardian root and threshold rotate, and config version advances atomically.",
     invariant: "Recovery cannot transfer funds or call arbitrary targets; any invalid module or initialization reverts every authority change."
+  },
+  {
+    id: "publish-cancellation",
+    layer: "optional-discovery",
+    actor: "One guardian",
+    contract: "RecoveryIntentBoard",
+    function: "publishCancellation",
+    title: "Optionally publish one cancellation approval",
+    summary: "The board reads the actual pending recovery, verifies one guardian's cancellation digest, and emits a separate cancellation event for quorum assembly.",
+    state: "The recovery remains pending until someone submits a valid cancellation bundle to RecoveryManager.",
+    invariant: "This is an event only, cannot be confused with a proposal approval, and gives the board no cancellation authority."
   },
   {
     id: "cancel-account",
@@ -114,14 +158,22 @@ const RECOVERY_NODES = Object.freeze([
 
 const RECOVERY_EDGES = Object.freeze([
   ["provision", "digest", "validator + initDataHash"],
-  ["digest", "approve", "EIP-712 intent"],
-  ["approve", "propose", "threshold approvals"],
+  ["digest", "approve", "private request (default)"],
+  ["digest", "announce", "optional discovery log"],
+  ["announce", "approve", "unverified hint; verify independently"],
+  ["approve", "assemble", "private approval (default)"],
+  ["approve", "publish-approval", "optional public approval"],
+  ["publish-approval", "assemble", "log + independent re-verification"],
+  ["assemble", "propose", "sorted threshold bundle"],
   ["propose", "delay", "RecoveryProposed"],
-  ["delay", "execute", "account + oldValidators[] + initData"],
+  ["delay", "execute", "account + oldValidators[]"],
   ["execute", "core-handoff", "verified committed payload"],
   ["core-handoff", "core-apply", "recoverConfiguration(...)"],
   ["delay", "cancel-account", "contest path"],
   ["delay", "cancel-guardians", "guardian veto"],
+  ["delay", "publish-cancellation", "optional asynchronous objection"],
+  ["publish-cancellation", "cancel-account", "reduced quorum bundle"],
+  ["publish-cancellation", "cancel-guardians", "full quorum bundle"],
   ["cancel-account", "propose", "new nonce; restart only"],
   ["cancel-guardians", "propose", "new nonce; restart only"]
 ].map(([from, to, label]) => ({ from, to, label })));
@@ -230,19 +282,23 @@ const FREEZE_EDGES = Object.freeze([
 
 const RECOVERY_LAYOUTS = Object.freeze({
   recovery: Object.freeze({
-    width: 2160,
-    height: 520,
+    width: 2420,
+    height: 560,
     positions: Object.freeze({
       provision: { x: 40, y: 125 },
       digest: { x: 300, y: 125 },
+      announce: { x: 300, y: 350 },
       approve: { x: 560, y: 125 },
-      propose: { x: 820, y: 125 },
-      delay: { x: 1080, y: 125 },
-      execute: { x: 1340, y: 125 },
-      "core-handoff": { x: 1600, y: 125 },
-      "core-apply": { x: 1860, y: 125 },
-      "cancel-account": { x: 1080, y: 335 },
-      "cancel-guardians": { x: 1400, y: 335 }
+      "publish-approval": { x: 560, y: 350 },
+      assemble: { x: 820, y: 125 },
+      propose: { x: 1080, y: 125 },
+      delay: { x: 1340, y: 125 },
+      execute: { x: 1600, y: 125 },
+      "core-handoff": { x: 1860, y: 125 },
+      "core-apply": { x: 2120, y: 125 },
+      "publish-cancellation": { x: 1340, y: 350 },
+      "cancel-account": { x: 1660, y: 350 },
+      "cancel-guardians": { x: 1980, y: 350 }
     })
   }),
   freeze: Object.freeze({

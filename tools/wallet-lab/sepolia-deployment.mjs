@@ -20,6 +20,7 @@ const COMPONENTS = Object.freeze([
   ["P256Validator", "validator", "validator"],
   ["PolicyHook", "policyHook", "policyHook"],
   ["RecoveryManager", "recoveryModule", "recoveryModule"],
+  ["RecoveryIntentBoard", "recoveryIntentBoard", "recoveryIntentBoard", true],
   ["ECDSAGuardianVerifier", "guardianVerifiers.ecdsa", "ecdsaGuardianVerifier"],
   ["P256GuardianVerifier", "guardianVerifiers.p256", "p256GuardianVerifier"],
   ["ERC1271GuardianVerifier", "guardianVerifiers.erc1271", "erc1271GuardianVerifier"],
@@ -33,9 +34,10 @@ function at(value, path) {
 function requireProfile(manifest) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("Sepolia deployment profile must be an object");
   if (manifest.chainId !== 11155111) throw new Error("Sepolia deployment profile must declare chainId 11155111");
-  for (const [, addressPath, hashPath] of COMPONENTS) {
+  for (const [, addressPath, hashPath, optional = false] of COMPONENTS) {
     const address = at(manifest, addressPath);
     const expectedHash = hashPath.startsWith("recoveryValidatorProvisioner.") ? at(manifest, hashPath) : manifest.runtimeCodeHashes?.[hashPath];
+    if (optional && address === undefined && expectedHash === undefined) continue;
     if (!ADDRESS.test(address ?? "")) throw new Error(`Sepolia deployment profile has an invalid ${addressPath}`);
     if (!HASH.test(expectedHash ?? "")) throw new Error(`Sepolia deployment profile has an invalid ${hashPath} code hash`);
   }
@@ -96,9 +98,10 @@ export async function inspectSepoliaDeployment({ repoRoot, manifest: input, rpc,
   const addresses = {};
   const codeHashes = {};
   const checks = [];
-  for (const [name, addressPath, hashPath] of COMPONENTS) {
+  for (const [name, addressPath, hashPath, optional = false] of COMPONENTS) {
     const address = at(manifest, addressPath);
     const expected = hashPath.startsWith("recoveryValidatorProvisioner.") ? at(manifest, hashPath) : manifest.runtimeCodeHashes[hashPath];
+    if (optional && address === undefined && expected === undefined) continue;
     const code = await rpc("eth_getCode", [address, "latest"]);
     const observed = typeof code === "string" && code !== "0x" ? keccak256(code) : null;
     addresses[name] = address;

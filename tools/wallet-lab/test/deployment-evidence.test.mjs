@@ -68,15 +68,24 @@ test("deployment evidence distinguishes core, profile, optional, and test-only c
     VaultHook: "0x0000000000000000000000000000000000000004",
     DevnetTarget: "0x0000000000000000000000000000000000000005",
     RecoveryManager: "0x0000000000000000000000000000000000000006",
+    RecoveryIntentBoard: "0x000000000000000000000000000000000000000b",
     P256RecoveryValidatorFactory: "0x0000000000000000000000000000000000000007",
     ECDSAGuardianVerifier: "0x0000000000000000000000000000000000000008",
     P256GuardianVerifier: "0x0000000000000000000000000000000000000009",
     ERC1271GuardianVerifier: "0x000000000000000000000000000000000000000a"
   };
-  const deployment = buildDeploymentEvidence({ repoRoot: fileURLToPath(new URL("../../../", import.meta.url)), addresses, codeHashes: {} });
+  const deployment = buildDeploymentEvidence({
+    repoRoot: fileURLToPath(new URL("../../../", import.meta.url)),
+    addresses,
+    codeHashes: {},
+    account: "0x000000000000000000000000000000000000000c"
+  });
   const roles = Object.fromEntries(deployment.nodes.map(node => [node.id, node.requirement]));
 
-  assert.deepEqual(deployment.nodes.filter(node => node.availability === "deployed").map(node => node.id).sort(), Object.keys(addresses).sort());
+  assert.deepEqual(
+    deployment.nodes.filter(node => node.availability === "deployed").map(node => node.id).sort(),
+    [...Object.keys(addresses), "ObservedAccount"].sort()
+  );
   for (const name of ["LoomAccountProxy", "P256RecoveryValidator", "LoomKeystore", "KeystoreSyncRecoveryModule", "ERC7579HookShim", "ERC7579ValidatorShim"]) {
     const node = deployment.nodes.find(candidate => candidate.id === name);
     assert.equal(node.availability, "source-only");
@@ -90,7 +99,28 @@ test("deployment evidence distinguishes core, profile, optional, and test-only c
     assert.equal(roles[name], "deployment-required");
   }
   assert.equal(roles.VaultHook, "optional");
+  assert.equal(roles.RecoveryIntentBoard, "optional");
   assert.equal(roles.DevnetTarget, "test-only");
+  const intentBoard = deployment.nodes.find(node => node.id === "RecoveryIntentBoard");
+  assert.deepEqual(intentBoard.functions.map(item => item.signature).sort(), [
+    "MAX_SIGNATURE_BYTES()",
+    "announce(address,address,bytes32,address,bytes32,bytes32,uint8,uint48)",
+    "publishApproval(address,address,bytes32,address,bytes32,bytes32,uint8,(address,bytes32,bytes32,bytes,bytes32[])[])",
+    "publishCancellation(address,address,(address,bytes32,bytes32,bytes,bytes32[])[])"
+  ].sort());
+  assert.deepEqual(intentBoard.events.map(item => item.name).sort(), [
+    "RecoveryAnnounced", "RecoveryApprovalPublished", "RecoveryCancellationPublished"
+  ]);
+  assert.deepEqual(intentBoard.errors.map(item => item.name).sort(), [
+    "InvalidApproval", "NoPendingRecovery", "SignatureTooLarge", "SingleApprovalRequired", "UnknownRecoveryManager"
+  ]);
+  assert.deepEqual(intentBoard.fields.map(field => [field.name, field.category, field.resolvedValue]), [
+    ["MAX_SIGNATURE_BYTES", "constant", "4096"]
+  ]);
+  assert.equal(intentBoard.fields.some(field => field.category === "storage"), false);
+  assert.ok(deployment.edges.some(edge => edge.from === "RecoveryIntentBoard" && edge.to === "RecoveryManager" && edge.kind === "reads-recovery-state"));
+  assert.ok(deployment.edges.some(edge => edge.from === "RecoveryIntentBoard" && edge.to === "ObservedAccount" && edge.kind === "reads-account-state"));
+  assert.ok(!deployment.edges.some(edge => edge.from === "RecoveryIntentBoard" && edge.kind === "recovers"));
   const entryPoint = deployment.nodes.find(node => node.id === "EntryPoint");
   assert.deepEqual(entryPoint.source.upstream, {
     repository: "eth-infinitism/account-abstraction",
