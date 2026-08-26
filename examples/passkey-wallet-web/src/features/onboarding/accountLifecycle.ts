@@ -43,7 +43,13 @@ export async function registerBrowserPasskey(label: string, account?: string): P
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rp: { id: rpId, name: "Loom" },
       user: {
-        id: crypto.getRandomValues(new Uint8Array(16)),
+        // The account, when it is already known, so an assertion can name it.
+        // WebAuthn hands this back as `userHandle`, and without it the only way
+        // to learn which account a passkey opens is to collect every key ever
+        // published and check the signature against each -- the chain keeps no
+        // index from a key back to its account. A wallet being created has no
+        // address yet; that case keeps random bytes.
+        id: account ? hexBytes(account as `0x${string}`) : crypto.getRandomValues(new Uint8Array(16)),
         name: account ? `${label} (${account.slice(0, 6)}…${account.slice(-4)})` : label,
         displayName: label
       },
