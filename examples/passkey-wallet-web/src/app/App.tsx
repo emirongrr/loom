@@ -12,6 +12,10 @@ import { authenticateBrowserAccount, deriveCreatedAccountHandle, loadWalletDeplo
 import { prepareInitialGuardianSetup } from "../features/onboarding/initialGuardianSetup";
 import { readVerifierCodeHash } from "../features/security/guardianClient";
 import { useNetwork } from "../config/NetworkContext";
+import { DEFAULT_NETWORK } from "../config/network";
+import { P256ValidatorAbi } from "@loom/core/abi";
+import type { Hex } from "@loom/core";
+import { candidateSigned, derToRawSignature, webauthnSignedMessage } from "../features/onboarding/passkeyDiscovery";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
 import { findWalletsByPasskey } from "../features/onboarding/findWalletsByPasskey";
@@ -92,7 +96,7 @@ const RECOVERY_VALIDATOR_DEPLOYED = {
 
 export function App() {
   const services = useAppServices();
-  const { config } = useNetwork();
+  const { config, update: updateNetwork } = useNetwork();
   const { area, setArea, recoveryPath, recoveryPayerId, guardianInboundLink, theme, setTheme, openRecovery, closeRecovery } = useAppNavigation();
   const [accounts, setAccounts] = useState<readonly AccountHandle[]>([]);
   const [selected, setSelected] = useState<AccountHandle | null>(null);
@@ -101,6 +105,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   /** A passkey's account, shown for confirmation before it is saved. */
+  /** Set when a search failed because the endpoint will not serve its logs. */
+  const [endpointCannotSearch, setEndpointCannotSearch] = useState("");
   const [foundByPasskey, setFoundByPasskey] = useState<{
     readonly account: `0x${string}`;
     readonly validator: `0x${string}`;
@@ -208,6 +214,28 @@ export function App() {
    * key signed; the two together name the account. A private window, a new
    * browser, or a cleared one can all get back in with the passkey alone.
    */
+  /** What both routes end at: the finding, shown before anything is saved. */
+  const offerFoundWallet = async (found: {
+    readonly account: `0x${string}`;
+    readonly validator: `0x${string}`;
+    readonly publicKey: { readonly x: Hex; readonly y: Hex };
+    readonly credentialId: Hex;
+    readonly chainId: number;
+    readonly client: { getCode: (input: { address: `0x${string}` }) => Promise<string | undefined> };
+  }) => {
+    const existing = accounts.find(candidate => candidate.account.toLowerCase() === found.account.toLowerCase());
+    const code = await found.client.getCode({ address: found.account }).catch(() => undefined);
+    setFoundByPasskey({
+      account: found.account,
+      validator: found.validator,
+      publicKey: found.publicKey,
+      credentialId: found.credentialId,
+      chainId: found.chainId,
+      deployed: Boolean(code && code !== "0x"),
+      alreadySaved: existing?.label ?? null
+    });
+  };
+
   const findByPasskey = async () => {
     setBusy(true);
     setMessage("");
@@ -220,8 +248,37 @@ export function App() {
       if (!assertion) { setMessage("No passkey was offered, so there is nothing to look up."); return; }
       const deployment = await loadWalletDeployment();
       const client = services.publicClients.forEndpoint(config.rpcUrl);
+      const validators = await validatorsToSearch(deployment, client as never);
+
+      // A recovery passkey was registered against a known account and carries
+      // it. Asking the validators for that one account's key is a handful of
+      // reads; collecting every key ever published and testing the signature
+      // against each is what the chain forces only when nothing names it.
+      const named = assertion.userHandle;
+      if (named) {
+        for (const validator of validators) {
+          const key = await client.readContract({
+            address: validator, abi: P256ValidatorAbi, functionName: "publicKeys", args: [named]
+          }).catch(() => null) as readonly [Hex, Hex, Hex, Hex] | null;
+          if (!key || BigInt(key[0]) === 0n) continue;
+          const message = await webauthnSignedMessage(assertion);
+          const signed = await candidateSigned({
+            candidate: { x: key[0], y: key[1] },
+            message,
+            rawSignature: derToRawSignature(assertion.signature)
+          });
+          if (!signed) continue;
+          await offerFoundWallet({
+            account: named, validator, publicKey: { x: key[0], y: key[1] },
+            credentialId: assertion.credentialId, chainId: deployment.chainId, client
+          });
+          return;
+        }
+      }
+
       const result = await findWalletsByPasskey({
-        validators: await validatorsToSearch(deployment, client as never),
+        validators,
+        endpointName: hostOf(config.rpcUrl),
         assertion,
         rpId: window.location.hostname,
         origin: window.location.origin,
@@ -235,24 +292,30 @@ export function App() {
           }) as never
         }
       });
-      if (result.unavailable) { setMessage(`The chain could not be searched: ${result.unavailable}`); return; }
-      if (!result.found) {
-        setMessage("That passkey does not match any account published on this chain. If the wallet was never used on chain, restore it from an exported handle instead.");
+      if (result.unavailable) {
+        // A configured endpoint that will not serve old logs is a setting, not
+        // a dead end. Offered rather than switched: the endpoint is the owner's
+        // choice, and replacing it without asking would undo a decision they
+        // made on purpose.
+        if (config.rpcUrl !== DEFAULT_NETWORK.rpcUrl) setEndpointCannotSearch(result.unavailable);
+        else setMessage(`The chain could not be searched: ${result.unavailable}`);
         return;
       }
-      const existing = accounts.find(candidate => candidate.account.toLowerCase() === result.found!.account.toLowerCase());
-      const code = await client.getCode({ address: result.found.account }).catch(() => undefined);
-      // Shown before anything is written down. Which account a passkey opens is
-      // the one thing the reader cannot check for themselves, and saving first
-      // makes the answer something they have to undo rather than accept.
-      setFoundByPasskey({
+      if (!result.found) {
+        // Says how many keys were weighed, so "the search found nothing" and
+        // "the search ran and your key is not among them" stop reading alike.
+        // A wallet created but never used on chain has no key published at all:
+        // its validator is installed by its first operation.
+        setMessage(`That passkey is not among the ${result.candidatesScanned} account key(s) published on this chain. A wallet that has never made a transaction has no key published yet — restore that one from an exported handle instead.`);
+        return;
+      }
+      await offerFoundWallet({
         account: result.found.account,
         validator: result.found.validator,
         publicKey: { x: result.found.x, y: result.found.y },
         credentialId: assertion.credentialId,
         chainId: deployment.chainId,
-        deployed: Boolean(code && code !== "0x"),
-        alreadySaved: existing?.label ?? null
+        client
       });
       return;
     } catch (issue) {
@@ -306,6 +369,24 @@ export function App() {
   if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RouteChunk><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} />
+    {endpointCannotSearch && <Dialog label="This endpoint cannot search" busy={busy} onClose={() => setEndpointCannotSearch("")}>
+      <p className="eyebrow">Recovering a wallet by passkey</p>
+      <h2>This endpoint does not serve old logs</h2>
+      <p className="form-note">{endpointCannotSearch}</p>
+      <div className="permission-grid">
+        <div><span>Now using</span><strong className="breakable">{hostOf(config.rpcUrl)}</strong></div>
+        <div><span>Default</span><strong className="breakable">{hostOf(DEFAULT_NETWORK.rpcUrl)}</strong></div>
+      </div>
+      <p className="form-note">Your endpoint stays whatever you choose. Nothing else about the wallet changes either way.</p>
+      <div className="landing-actions">
+        <button className="secondary" disabled={busy} onClick={() => setEndpointCannotSearch("")}>Keep mine</button>
+        <button className="primary" disabled={busy} onClick={() => {
+          updateNetwork({ rpcUrl: DEFAULT_NETWORK.rpcUrl });
+          setEndpointCannotSearch("");
+          setMessage("Switched to the default endpoint. Try finding the wallet again.");
+        }}>Use the default</button>
+      </div>
+    </Dialog>}
     {foundByPasskey && <Dialog label="Wallet found" busy={busy} onClose={() => setFoundByPasskey(null)}>
       <p className="eyebrow">This passkey opens</p>
       <h2 className="breakable">{foundByPasskey.account}</h2>

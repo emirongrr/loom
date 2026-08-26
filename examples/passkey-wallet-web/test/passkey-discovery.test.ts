@@ -177,7 +177,7 @@ test("finding a wallet by passkey does not call an empty history a missing walle
     subtle
   });
   assert.equal(result.found, null);
-  assert.match(result.unavailable ?? "", /no account history/u);
+  assert.match(result.unavailable ?? "", /No account history/u);
 });
 
 // A windowed walk of the whole chain was slow enough to look broken and tripped

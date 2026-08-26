@@ -102,6 +102,8 @@ export async function assertAnyPasskey(): Promise<{
   readonly authenticatorData: Uint8Array;
   readonly clientDataJSON: Uint8Array;
   readonly signature: Uint8Array;
+  /** What registration wrote into the credential; an account when one was known. */
+  readonly userHandle?: Hex;
 } | null> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
   const credential = await navigator.credentials.get({
@@ -123,8 +125,13 @@ export async function assertAnyPasskey(): Promise<{
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
     return null;
   }
+  const handle = credential.response.userHandle;
   return Object.freeze({
     credentialId: hexFromBytes(new Uint8Array(credential.rawId)),
+    // Twenty bytes is an address this wallet wrote at registration. Anything
+    // else was written by something that is not this wallet, or is the random
+    // filler a created wallet uses, and names nothing.
+    ...(handle && handle.byteLength === 20 ? { userHandle: hexFromBytes(new Uint8Array(handle)) } : {}),
     authenticatorData: new Uint8Array(credential.response.authenticatorData),
     clientDataJSON: new Uint8Array(credential.response.clientDataJSON),
     signature: new Uint8Array(credential.response.signature)

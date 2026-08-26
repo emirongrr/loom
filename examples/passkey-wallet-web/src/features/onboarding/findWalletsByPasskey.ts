@@ -53,6 +53,8 @@ export async function findWalletsByPasskey(input: {
   readonly rpId: string;
   readonly origin: string;
   readonly reader: LogReader;
+  /** Named in the failure, so a search that found nothing says who it asked. */
+  readonly endpointName?: string;
   readonly subtle?: SubtleCrypto;
 }): Promise<WalletDiscoveryResult> {
   // The account committed to a hash of its relying party and origin, so the
@@ -77,15 +79,28 @@ export async function findWalletsByPasskey(input: {
       }
     };
 
+    let answered = false;
     try {
       collect(await input.reader.getLogs({
         address: input.validators, fromBlock: 0n, toBlock: head, topics: [topic]
       }));
       scannedWindows = 1;
+      // Nothing at all, from a query covering the whole chain against validators
+      // this deployment created accounts through, is more likely an endpoint
+      // that truncated silently than a chain where no account was ever made.
+      // Some answer a range they will not serve with an empty list rather than
+      // an error, and believing that reports "no history" for a wallet that is
+      // plainly there. Walking windows costs a little and settles it.
+      answered = candidates.length > 0;
     } catch {
+      answered = false;
+    }
+
+    if (!answered) {
       // Endpoints that cap how wide a range may be are walked in windows. The
       // cap is the reason for the walk, so nothing here treats it as a failure.
       candidates.length = 0;
+      scannedWindows = 0;
       for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
         const from = end > WINDOW ? end - WINDOW + 1n : 0n;
         collect(await input.reader.getLogs({
@@ -112,7 +127,7 @@ export async function findWalletsByPasskey(input: {
     return Object.freeze({
       found: null,
       candidatesScanned: 0,
-      unavailable: "This endpoint returned no account history, so there is nothing to search. Try another RPC endpoint in Developer settings."
+      unavailable: `No account history came back from ${input.endpointName ?? "this endpoint"}, searched across ${input.validators.length} validator(s) over ${scannedWindows} range(s). Either nothing was ever created here, or the endpoint is not serving its logs. Try another RPC endpoint in Developer settings.`
     });
   }
 
