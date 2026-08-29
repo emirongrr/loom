@@ -14,6 +14,10 @@
     "./recovery": {
       "types": "./dist/recovery.d.ts",
       "default": "./dist/recovery.js"
+    },
+    "./account-discovery": {
+      "types": "./dist/accountDiscovery.d.ts",
+      "default": "./dist/accountDiscovery.js"
     }
   },
   "sideEffects": false,

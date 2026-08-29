@@ -37,6 +37,7 @@ import type { AccountLifecycleClient, LifecycleIntent } from "./lifecycle.js";
 
 export * from "./lifecycle.js";
 export * from "./types.js";
+export * from "./accountDiscovery.js";
 
 type BlockTag = "latest" | "safe" | "finalized" | "pending" | "earliest" | `0x${string}` | number | bigint;
 
