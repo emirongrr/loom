@@ -65,7 +65,19 @@ function parseRosterEntry(value: unknown): RosterEntry {
   const entry = value as Record<string, unknown>;
   if (typeof entry.id !== "string" || entry.id.length === 0 || entry.id.length > 100) throw new Error("guardian entry id is invalid");
   if (typeof entry.label !== "string" || entry.label.trim().length === 0 || entry.label.length > 80) throw new Error("guardian entry label is invalid");
-  return Object.freeze({ id: entry.id, label: entry.label.trim(), descriptor: parseDescriptor(entry.descriptor) });
+  // Optional and forward-compatible: records written before invitations were
+  // tracked simply have none, which reads as "not sent" rather than as invalid.
+  const invitedAt = typeof entry.invitedAt === "number" && Number.isFinite(entry.invitedAt) && entry.invitedAt > 0
+    ? entry.invitedAt
+    : undefined;
+  const guardianAccount = address(entry.guardianAccount) ? entry.guardianAccount as `0x${string}` : undefined;
+  return Object.freeze({
+    id: entry.id,
+    label: entry.label.trim(),
+    descriptor: parseDescriptor(entry.descriptor),
+    ...(invitedAt === undefined ? {} : { invitedAt }),
+    ...(guardianAccount === undefined ? {} : { guardianAccount })
+  });
 }
 
 function parseDescriptor(value: unknown): GuardianDescriptor {

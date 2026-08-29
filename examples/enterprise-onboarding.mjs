@@ -185,8 +185,11 @@ async function main() {
 
     // Sanity: any provider access that happened used Acme's endpoint, never a
     // Loom default. (Pure-preparation steps above made zero network calls.)
+    // Compared by origin, not by prefix: "https://rpc.acme-pay.example.other"
+    // starts with Acme's endpoint and is a different host entirely, so a prefix
+    // check would let exactly the thing this asserts against slip through.
     for (const url of acmeRpcCalls) {
-      assert.ok(url.startsWith(ACME_RPC), `unexpected endpoint ${url}`);
+      assert.equal(new URL(url).origin, new URL(ACME_RPC).origin, `unexpected endpoint ${url}`);
     }
 
     section("Result");

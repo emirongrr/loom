@@ -95,7 +95,7 @@ test("switching wallets clears the previous guardian relationships before loadin
 });
 
 // A guardian who has not accepted an invitation used to find no paste field at
-// all: "Review a recovery request" rendered only once the wallet already held a
+// all: the review section rendered only once the wallet already held a
 // usable capability. With nothing on screen and no reason given, the only field
 // there was is the invitation box -- which is exactly where recovery requests
 // were being pasted, and where they silently failed.
@@ -123,16 +123,15 @@ test("the recovery review section is present before any invitation is accepted, 
   );
   const panel = within(view.container);
 
-  await panel.findByRole("heading", { name: "Review a recovery request" });
-  await panel.findByText(/No accepted invitation for this account yet/iu);
+  await panel.findByRole("heading", { name: "Review a request" });
   // The invitation is the way in, and the reason is stated rather than left as
-  // a rule: the same capability that lets a guardian approve is what lets an
-  // approval be published on chain.
-  expect(panel.getByText(/published on chain/iu)).toBeTruthy();
-  expect(panel.getByText(/issuing one costs them nothing/iu)).toBeTruthy();
+  // a rule: a guardian signs with the proof their invitation carries, so there
+  // is nothing to review until one is accepted.
+  await panel.findByText(/Accept your invitation first/iu);
+  expect(panel.getByText(/proof it carries/iu)).toBeTruthy();
 
   // Closed until the invitation is accepted, rather than absent with no reason.
-  const boxes = panel.getAllByPlaceholderText(/loom\.recovery-request/iu) as HTMLTextAreaElement[];
+  const boxes = panel.getAllByPlaceholderText(/paste the request/iu) as HTMLTextAreaElement[];
   expect(boxes.length).toBe(1);
   expect(boxes[0]!.disabled).toBe(true);
 });

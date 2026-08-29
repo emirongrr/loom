@@ -25,3 +25,32 @@ test("guardian refuses a request bound to a stale validator set or configuration
   assert.throws(() => prepareGuardianRecoveryReview({ request, capability, live: { guardianRoot: set.root, guardianThreshold: 1, configVersion: 4n, validators: ["0x8888888888888888888888888888888888888888"] } }), /validator set/u);
   assert.throws(() => prepareGuardianRecoveryReview({ request, capability, live: { guardianRoot: set.root, guardianThreshold: 1, configVersion: 5n, validators } }), /configuration is stale/u);
 });
+
+// The invitation's expiry was the deadline for accepting the link. Refusing to
+// sign after it passed cut a guardian off from an account they could still help
+// with -- the chain verifies an approval against the guardian root and knows
+// nothing about when the invitation was sent.
+test("a guardian whose invitation lapsed can still sign for a matching root", () => {
+  const lapsed = { ...capability, expiresAt: 1_800_000_000 };
+  const review = prepareGuardianRecoveryReview({
+    request, capability: lapsed,
+    live: { guardianRoot: set.root, guardianThreshold: 1, configVersion: 4n, validators }
+  });
+
+  const response = createGuardianRecoveryResponse({ review, signature: "0x1234", signedAt: 1_900_000_010 });
+  assert.equal(response.guardianLeaf, lapsed.guardian.leaf);
+});
+
+// The recovery's own window is a different thing and still binds: it is the
+// window the account itself published.
+test("the recovery request's own expiry still refuses a late signature", () => {
+  const review = prepareGuardianRecoveryReview({
+    request, capability,
+    live: { guardianRoot: set.root, guardianThreshold: 1, configVersion: 4n, validators }
+  });
+
+  assert.throws(
+    () => createGuardianRecoveryResponse({ review, signature: "0x1234", signedAt: request.expiresAt + 1 }),
+    /recovery request expired/u
+  );
+});

@@ -218,3 +218,32 @@ export function summarizeOperation(operation: AccountOperation): string {
     }
   }
 }
+
+/**
+ * The same operation split into the parts a row shows, rather than one
+ * sentence carrying all of them.
+ *
+ * The single-line summary put the fee, the outcome and the decoding caveat in
+ * the title, so every row read as a paragraph. A transaction list reads better
+ * when the title says what happened and everything else has its own place.
+ */
+export function operationRow(operation: AccountOperation): {
+  readonly title: string;
+  readonly detail: string;
+  readonly fee: string;
+} {
+  const fee = `${formatEther(operation.feePaid)} ETH`;
+  switch (operation.action.kind) {
+    case "deployment":
+      return { title: "Account created", detail: `Block ${operation.blockNumber}`, fee };
+    case "batch":
+      return { title: `${operation.action.count} calls`, detail: `Block ${operation.blockNumber}`, fee };
+    case "unreadable":
+      return { title: "Operation", detail: operation.action.reason, fee };
+    case "call": {
+      const target = operation.action.label || `${operation.action.target.slice(0, 10)}…`;
+      const sent = operation.action.value > 0n ? ` · sent ${formatEther(operation.action.value)} ETH` : "";
+      return { title: target, detail: `Block ${operation.blockNumber}${sent}`, fee };
+    }
+  }
+}

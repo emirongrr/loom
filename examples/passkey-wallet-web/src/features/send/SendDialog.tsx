@@ -19,6 +19,7 @@ import { buildSendReview } from "../wallet/sendReview";
 import { parseScannedRecipient } from "../wallet/scannedRecipient";
 import { createRecipientScanner } from "../wallet/scanRecipient";
 import { formatUnits, isAddress } from "viem";
+import { shortAddress } from "../../components/address.ts";
 
 export function SendDialog({ account, deployment, deployed, assets, preselect, onClose, onSent }: {
   account: AccountHandle;
@@ -152,13 +153,13 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
     }
 
     const label = assetLabel(asset);
-    const toastId = notifications.notify({ status: "pending", title: `Sending ${label}`, detail: `To ${short(recipient)} · waiting for confirmation` });
+    const toastId = notifications.notify({ status: "pending", title: `Sending ${label}`, detail: `To ${shortAddress(recipient)} · waiting for confirmation` });
     try {
       const result = await submitAccountCalls({ config, account, deployment, calls: [call], ...(activation ? { activation } : {}), onState: setOperation, pendingOperations, runtime, publicClients });
       notifications.update(toastId, {
         status: "success",
         title: `Sent ${label}`,
-        detail: `To ${short(recipient)}`,
+        detail: `To ${shortAddress(recipient)}`,
         ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
       });
       onSent?.();
@@ -220,7 +221,7 @@ export function SendDialog({ account, deployment, deployed, assets, preselect, o
         {review.amount && <div><span>Amount</span><strong>{review.amount}</strong></div>}
         <div><span>To</span><strong className="breakable">{review.recipient ?? "Enter a recipient address"}</strong></div>
         <div><span>Network</span><strong>{review.network}</strong></div>
-        <div><span>Gas paid by</span><strong className="breakable">This account ({short(account.account)})</strong></div>
+        <div><span>Gas paid by</span><strong className="breakable">This account ({shortAddress(account.account)})</strong></div>
         <div><span>Network fee</span><strong>{review.maxFee ? `at most ~${review.maxFee} ETH` : "Unavailable right now"}</strong></div>
       </section>
 
@@ -266,7 +267,6 @@ function optionLabel(asset: SendableAsset): string {
     : `${asset.nft.collection} #${asset.nft.tokenId}`;
 }
 
-function short(address: string): string { return `${address.slice(0, 6)}…${address.slice(-4)}`; }
 function hostOf(url: string): string { return url.replace(/^https?:\/\//, "").split("/")[0] ?? url; }
 
 function operationLabel(state: OperationState): string {

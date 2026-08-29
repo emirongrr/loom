@@ -143,16 +143,29 @@ test("accepted capabilities are visible only in the matching local guardian wall
   assert.deepEqual(guardianVaultRecordsForAccount(records, account(OWNER)), [otherRecord]);
   assert.throws(
     () => assertGuardianCapabilityMatchesAccount(capability, account(OWNER)),
-    /invitation belongs to a different guardian wallet/u
+    /issued to a different wallet/u
   );
 });
 
-test("recovery review is available only to the open wallet's live accepted capabilities", () => {
+test("recovery review is available to the open wallet's accepted capabilities", () => {
   const matchingRecord = { capability: invite(), acceptedAt: 1_900_000_000_000, status: "unverified" as const };
-  const staleRecord = { ...matchingRecord, status: "stale" as const };
+  const removedRecord = { ...matchingRecord, status: "removed" as const };
 
-  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([matchingRecord], account(), 1_900_000_000), [matchingRecord]);
-  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([matchingRecord], account(OWNER), 1_900_000_000), []);
-  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([staleRecord], account(), 1_900_000_000), []);
-  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([matchingRecord], account(), 2_000_000_000), []);
+  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([matchingRecord], account()), [matchingRecord]);
+  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([matchingRecord], account(OWNER)), []);
+  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([removedRecord], account()), []);
+});
+
+// The invitation's expiry was the deadline for accepting the link. Filtering on
+// it here took the account out of the guardian's workspace entirely, so they
+// never saw a recovery and were never told they had been dropped -- while the
+// chain would still have accepted their approval.
+test("an invitation past its transport deadline still lets its guardian act", () => {
+  const lapsed = {
+    capability: { ...invite(), expiresAt: 1_800_000_000 },
+    acceptedAt: 1_700_000_000_000,
+    status: "unverified" as const
+  };
+
+  assert.deepEqual(reviewableGuardianCapabilitiesForAccount([lapsed], account()), [lapsed]);
 });
