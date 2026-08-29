@@ -154,6 +154,26 @@ export interface LoomTransportAdapter {
   }): Promise<UserOperationReceipt>;
 }
 
+export interface PrivateFirstTransportOptions {
+  /** Private relay or bundler used only for submission. */
+  readonly privateTransport: LoomTransportAdapter;
+  /** Public bundler used for estimation, pricing, receipts, and optional fallback. */
+  readonly publicTransport: LoomTransportAdapter;
+  /** Disabled by default. Ambiguous delivery failures must never fall back. */
+  readonly fallback?: "never" | "explicit-rejection";
+  /** The application must positively identify a response that proves non-acceptance. */
+  readonly isExplicitRejection?: (error: unknown) => boolean;
+}
+
+export interface PaymasterAuthorization {
+  readonly paymaster: Hex;
+  readonly paymasterVerificationGasLimit: bigint | string | number;
+  readonly paymasterPostOpGasLimit: bigint | string | number;
+  readonly paymasterData: Hex;
+  /** Optional adjusted calldata-cost estimate after authorization data is added. */
+  readonly preVerificationGas?: bigint | string | number;
+}
+
 export interface LoomStateReadTransport {
   ethCall(input: {
     to: Hex;
@@ -338,6 +358,8 @@ export interface PreparedUserOperation {
   readonly maxFeePerGas: bigint;
   readonly maxPriorityFeePerGas: bigint;
   readonly paymaster?: Hex;
+  readonly paymasterVerificationGasLimit?: bigint;
+  readonly paymasterPostOpGasLimit?: bigint;
   readonly paymasterData?: Hex;
   readonly signature: Hex;
 }
@@ -520,6 +542,8 @@ export interface UserOperationOverrides {
   maxFeePerGas?: bigint | string | number;
   maxPriorityFeePerGas?: bigint | string | number;
   paymaster?: Hex;
+  paymasterVerificationGasLimit?: bigint | string | number;
+  paymasterPostOpGasLimit?: bigint | string | number;
   paymasterData?: Hex;
   signature?: Hex;
 }
@@ -648,5 +672,3 @@ export interface PrivateVaultWithdrawalPreparation {
   };
   readonly review: ClearSigningReview;
 }
-
-
