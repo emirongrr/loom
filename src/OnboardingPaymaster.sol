@@ -40,10 +40,8 @@ contract OnboardingPaymaster is BasePaymaster {
         uint256 costLimit
     ) public view returns (bytes32) {
         if (userOp.paymasterAndData.length < 52) revert InvalidSponsorship();
-        return keccak256(
+        bytes32 userOpCommitment = keccak256(
             abi.encode(
-                block.chainid,
-                address(this),
                 userOp.sender,
                 userOp.nonce,
                 keccak256(userOp.initCode),
@@ -51,12 +49,11 @@ contract OnboardingPaymaster is BasePaymaster {
                 userOp.accountGasLimits,
                 userOp.preVerificationGas,
                 userOp.gasFees,
-                keccak256(userOp.paymasterAndData[:52]),
-                validUntil,
-                validAfter,
-                costLimit,
-                policyHash
+                keccak256(userOp.paymasterAndData[:52])
             )
+        );
+        return keccak256(
+            abi.encode(block.chainid, address(this), userOpCommitment, validUntil, validAfter, costLimit, policyHash)
         );
     }
 
