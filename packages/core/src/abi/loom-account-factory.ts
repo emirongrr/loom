@@ -19,6 +19,25 @@ export const LoomAccountFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "accountForHandle",
+    "inputs": [
+      {
+        "name": "handle",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "accountImplementation",
     "inputs": [],
     "outputs": [
@@ -35,7 +54,7 @@ export const LoomAccountFactoryAbi = [
     "name": "createAccount",
     "inputs": [
       {
-        "name": "salt",
+        "name": "accountHandle",
         "type": "bytes32",
         "internalType": "bytes32"
       },
@@ -104,7 +123,7 @@ export const LoomAccountFactoryAbi = [
     "name": "getAddress",
     "inputs": [
       {
-        "name": "salt",
+        "name": "accountHandle",
         "type": "bytes32",
         "internalType": "bytes32"
       },
@@ -151,6 +170,25 @@ export const LoomAccountFactoryAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "handleForAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
