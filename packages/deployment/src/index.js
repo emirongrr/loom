@@ -19,6 +19,8 @@ const { keccak256 } = jsSha3;
 
 /** Versioned manifest schema; bump on breaking manifest shape changes. */
 export const MANIFEST_SCHEMA_VERSION = 1;
+/** Browser-wallet trust profile schema. Version 2 requires the wallet identity registry. */
+export const WALLET_PROFILE_SCHEMA_VERSION = 2;
 
 export const DEFAULT_CONTRACTS = Object.freeze({
   accountFactory: "LoomAccountFactory",
@@ -28,6 +30,45 @@ export const DEFAULT_CONTRACTS = Object.freeze({
 });
 
 export const NATIVE_P256_PRECOMPILE = "0x0000000000000000000000000000000000000100";
+
+/** Normalize the application operator's opt-in onboarding policy. */
+export function buildWalletOnboardingPolicy(options = { activation: "counterfactual" }) {
+  assertObject(options, "onboarding");
+  if (options.activation === "counterfactual") {
+    if (options.sponsorship !== undefined) throw new Error("counterfactual onboarding cannot carry sponsorship policy");
+    return Object.freeze({ activation: "counterfactual" });
+  }
+  if (options.activation !== "sponsored") throw new Error("onboarding activation must be counterfactual or sponsored");
+  const sponsorship = assertObject(options.sponsorship, "onboarding.sponsorship");
+  if (typeof sponsorship.policyId !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(sponsorship.policyId)) {
+    throw new Error("sponsorship policyId is invalid");
+  }
+  const decimal = (value, label) => {
+    if (typeof value !== "string" || !/^[1-9][0-9]{0,77}$/u.test(value)) throw new Error(`${label} is invalid`);
+    return value;
+  };
+  const bounded = (value, maximum, label) => {
+    if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) throw new Error(`${label} is invalid`);
+    return value;
+  };
+  if (sponsorship.privateSubmission !== true) throw new Error("sponsored onboarding requires privateSubmission=true");
+  if (sponsorship.publicFallback !== "disabled" && sponsorship.publicFallback !== "explicit-rejection") {
+    throw new Error("sponsorship publicFallback is invalid");
+  }
+  return Object.freeze({
+    activation: "sponsored",
+    sponsorship: Object.freeze({
+      policyId: sponsorship.policyId,
+      policyHash: `0x${keccak256(Buffer.from(sponsorship.policyId, "utf8"))}`,
+      maxCostWei: decimal(sponsorship.maxCostWei, "sponsorship maxCostWei"),
+      maxFactoryDataBytes: bounded(sponsorship.maxFactoryDataBytes, 65_536, "sponsorship maxFactoryDataBytes"),
+      maxActivationsPerPrincipal: bounded(sponsorship.maxActivationsPerPrincipal, 1_000, "sponsorship maxActivationsPerPrincipal"),
+      windowSeconds: bounded(sponsorship.windowSeconds, 31_536_000, "sponsorship windowSeconds"),
+      privateSubmission: true,
+      publicFallback: sponsorship.publicFallback
+    })
+  });
+}
 
 /** Build a live-chain-verified profile for a standalone recovery provisioner. */
 export async function buildP256RecoveryValidatorProvisioner(options) {
@@ -168,6 +209,7 @@ export async function buildWalletDeploymentManifest(options) {
  */
 export const WALLET_PROFILE_CONTRACTS = Object.freeze({
   factory: "LoomAccountFactory",
+  appRegistry: "AppAccountRegistry",
   implementation: "LoomAccount",
   validator: "P256Validator",
   policyHook: "PolicyHook",
@@ -273,7 +315,8 @@ export async function buildWalletProfileManifest(options) {
   }
 
   const created = parsed.createdContracts;
-  const profile = { chainId: parsed.chainId, entryPoint, proxyCreationCode };
+  const profile = { schemaVersion: WALLET_PROFILE_SCHEMA_VERSION, chainId: parsed.chainId, entryPoint, proxyCreationCode };
+  if (options.onboarding !== undefined) profile.onboarding = buildWalletOnboardingPolicy(options.onboarding);
   const runtimeCodeHashes = { entryPoint: await codehash(rpc, entryPoint, "EntryPoint") };
 
   for (const [field, contractName] of Object.entries(WALLET_PROFILE_CONTRACTS)) {
@@ -284,6 +327,33 @@ export async function buildWalletProfileManifest(options) {
     }
     profile[field] = address;
     runtimeCodeHashes[field] = await codehash(rpc, address, contractName);
+  }
+
+  const onboardingPaymaster = created.OnboardingPaymaster;
+  if (options.onboarding?.activation === "sponsored" && !onboardingPaymaster) {
+    throw new Error("sponsored onboarding requires a deployed OnboardingPaymaster");
+  }
+  if (onboardingPaymaster) {
+    profile.onboardingPaymaster = onboardingPaymaster;
+    runtimeCodeHashes.onboardingPaymaster = await codehash(rpc, onboardingPaymaster, "OnboardingPaymaster");
+  }
+
+  // A code hash proves what each contract is, but not that the addresses belong
+  // to the same deployment. Pin the immutable graph as well. In particular,
+  // wallet discovery executes registry code through the factory, so accepting
+  // an unbound or unpinned registry would turn a locator into an unreviewed
+  // dependency even though it still grants no account authority.
+  const bindings = await Promise.all([
+    readAddressView(rpc, profile.factory, "entryPoint()", "factory EntryPoint"),
+    readAddressView(rpc, profile.factory, "accountImplementation()", "factory implementation"),
+    readAddressView(rpc, profile.factory, "registry()", "factory registry"),
+    readAddressView(rpc, profile.appRegistry, "factory()", "registry factory")
+  ]);
+  const expectedBindings = [entryPoint, profile.implementation, profile.appRegistry, profile.factory];
+  for (let index = 0; index < bindings.length; index += 1) {
+    if (bindings[index].toLowerCase() !== expectedBindings[index].toLowerCase()) {
+      throw new Error("deployed factory, implementation, EntryPoint, and registry are not one immutable deployment");
+    }
   }
 
   const guardianVerifiers = {};

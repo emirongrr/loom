@@ -16,10 +16,11 @@ evidence pull request after public testnet rehearsal.
 The manifest must include:
 
 - network name, chain ID, EntryPoint v0.9 address, and EntryPoint runtime code
-  hash;
+  hash, public explorer link, and common reference block;
 - network family (`ethereum`, `op-stack`, or `arbitrum`) and explicit finality
   assumptions;
-- EntryPoint `senderCreator` address and runtime code hash;
+- EntryPoint `senderCreator` address, runtime code hash, and public explorer
+  link observed at the same reference block;
 - P-256 verifier mode, selected verifier address, and support evidence. Native
   mode needs reviewed precompile behavior verification. Fallback mode needs the
   verifier address, deployed code hash, source, and audit review reference;
@@ -29,8 +30,12 @@ The manifest must include:
   validation, all with zero exit status;
 - reproducibility file hashes for at least `foundry.toml` and
   `package-lock.json`;
-- every deployed Loom contract address, deterministic salt, constructor
-  arguments, artifact path, init-code hash, and runtime-code hash;
+- every deployed Loom contract address, exact deployment method (`CREATE` with
+  deployer nonce or `CREATE2` with deployer and salt), constructor arguments,
+  artifact path, init-code hash, and runtime-code hash;
+- every compiler immutable runtime word, keyed by the artifact's immutable ID,
+  when `deployedBytecode.immutableReferences` is non-empty; the builder fills
+  these words before hashing and refuses placeholder runtime hashes;
 - account implementation address and runtime-code hash;
 - proxy creation-code hash and runtime-code hash used by the factory;
 - app registry address, constructor factory address, and runtime-code hash;
@@ -52,12 +57,13 @@ secret-bearing query parameters. It intentionally does not fetch explorers or
 RPC endpoints; network evidence must be reviewed separately and should never
 require committing API keys.
 
-The attestation section is not a substitute for audit. It binds the release
-manifest to explicit human or organization-level statements that the deployment
-was performed, independently reproduced, and reviewed against the release
-checklist. Signers must be distinct and must not represent a Loom-operated
-service. The validator checks attestation shape and role separation; reviewers
-must still verify the signatures and signer identities outside the repository.
+The attestation section is not a substitute for audit. The builder computes an
+`evidenceDigest` over the canonical, key-sorted manifest with the digest and
+attestations omitted. Each role signs an EIP-191 message containing that same
+digest, role, chain ID, date, and statement. The validator recovers every signer,
+requires three distinct addresses, and requires the deployer signer to match all
+deployment receipts. Human reviewers must still establish the independent
+reproducer and security-reviewer identities outside the repository.
 
 Keystore sync deployments need one additional artifact: a passing keystore
 proof profile. The deployment manifest proves what was deployed; the keystore
@@ -80,6 +86,12 @@ real receipt, explorer, EntryPoint, `senderCreator`, P-256, and attestation
 inputs:
 
 ```sh
+npm run deployment:attestations:prepare -- \
+  evidence/deployments/<network>.config.local.json \
+  evidence/deployments/<network>.attestations.local.json
+
+# Each role signs its exact `message`; copy the signatures back into the local
+# config only after all roles confirm the common evidenceDigest.
 npm run deployment:manifest:build -- \
   evidence/deployments/<network>.config.local.json \
   evidence/deployments/<network>.json
@@ -157,6 +169,7 @@ verification links in the manifest must be public, credential-free URLs.
 - No explorer URLs with `apikey`, `api_key`, `access_token`, `secret`, or
   `token` query parameters.
 - No mock deployment manifests.
+- No zero-placeholder runtime hash for contracts carrying immutables.
 - No release manifest without distinct deployment, reproduction, and security
   review attestations.
 - No production readiness claim from manifest validation alone.

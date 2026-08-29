@@ -39,3 +39,8 @@ examples/mobile-privacy-wallet/dist-tests/
 
 # example web build output
 examples/passkey-wallet-web/dist/
+examples/passkey-wallet-web/public/*.pending-*
+
+# unsigned deployment inputs and per-reviewer signing payloads
+evidence/deployments/*.config.local.json
+evidence/deployments/*.attestations.local.json

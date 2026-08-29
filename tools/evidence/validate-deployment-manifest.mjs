@@ -3,8 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
+import { getAddress, keccak256, toBytes, verifyMessage } from "viem";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
 import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
+import { materializeImmutableRuntime } from "./materialize-immutable-runtime.mjs";
 
 const { keccak_256 } = sha3;
 
@@ -27,9 +29,10 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   assertBuild(manifest.build, repoRoot);
   assertReproducibility(manifest.reproducibility, repoRoot);
   assertDeployments(manifest.deployments, repoRoot);
-  assertAttestations(manifest.attestations);
   assertChecks(manifest.checks);
   assertCanonicalProjection(manifest, repoRoot);
+  assertEvidenceDigest(manifest);
+  await assertAttestations(manifest.attestations, manifest);
 }
 
 function assertTopLevel(manifest) {
@@ -41,7 +44,8 @@ function assertTopLevel(manifest) {
     "deployments",
     "attestations",
     "checks",
-    "canonical"
+    "canonical",
+    "evidenceDigest"
   ]) {
     if (!(key in manifest)) throw new Error(`missing top-level manifest field: ${key}`);
   }
@@ -173,8 +177,13 @@ function assertNetwork(network) {
   assertAddress(network.entryPoint, "network.entryPoint");
   if (network.entryPointVersion !== "0.9.0") throw new Error("network.entryPointVersion must be 0.9.0");
   assertBytes32(network.entryPointCodeHash, "network.entryPointCodeHash");
+  assertPublicUrl(network.entryPointExplorer, "network.entryPointExplorer");
   assertAddress(network.senderCreator, "network.senderCreator");
   assertBytes32(network.senderCreatorCodeHash, "network.senderCreatorCodeHash");
+  assertPublicUrl(network.senderCreatorExplorer, "network.senderCreatorExplorer");
+  if (!Number.isSafeInteger(network.referenceBlock) || network.referenceBlock <= 0) {
+    throw new Error("network.referenceBlock must be positive");
+  }
   assertFinality(network.finality);
 
   if (!network.p256 || typeof network.p256 !== "object") throw new Error("network.p256 is required");
@@ -220,7 +229,9 @@ function assertBuild(build, repoRoot) {
     throw new Error("build.optimizer must be enabled with 200 runs");
   }
   if (build.evmVersion !== "osaka") throw new Error("build.evmVersion must be osaka");
-  if (!build.gitCommit || typeof build.gitCommit !== "string") throw new Error("build.gitCommit is required");
+  if (!/^[0-9a-f]{40}$/u.test(build.gitCommit ?? "")) {
+    throw new Error("build.gitCommit must be a full lowercase 40-character commit hash");
+  }
   if (!build.sourceArchiveHash) throw new Error("build.sourceArchiveHash is required");
   assertBytes32(build.sourceArchiveHash, "build.sourceArchiveHash");
 }
@@ -231,7 +242,7 @@ function assertDeployments(deployments, repoRoot) {
   }
 
   const names = new Set();
-  const salts = new Set();
+  const deploymentCoordinates = new Set();
   for (const [index, deployment] of deployments.entries()) {
     const label = `deployments[${index}]`;
     if (!deployment.name || typeof deployment.name !== "string") throw new Error(`${label}.name is required`);
@@ -240,9 +251,12 @@ function assertDeployments(deployments, repoRoot) {
     assertAddress(deployment.address, `${label}.address`);
     assertBytes32(deployment.runtimeCodeHash, `${label}.runtimeCodeHash`);
     assertBytes32(deployment.initCodeHash, `${label}.initCodeHash`);
-    assertBytes32(deployment.salt, `${label}.salt`);
-    if (salts.has(deployment.salt)) throw new Error(`duplicate deployment salt: ${deployment.salt}`);
-    salts.add(deployment.salt);
+    assertDeploymentMethod(deployment.deploymentMethod, label);
+    const coordinate = deploymentCoordinate(deployment.deploymentMethod);
+    if (deploymentCoordinates.has(coordinate)) {
+      throw new Error(`duplicate deployment coordinate: ${coordinate}`);
+    }
+    deploymentCoordinates.add(coordinate);
     if (!deployment.artifact || typeof deployment.artifact !== "string") {
       throw new Error(`${label}.artifact is required`);
     }
@@ -263,6 +277,29 @@ function assertDeployments(deployments, repoRoot) {
   }
 }
 
+function assertDeploymentMethod(method, label) {
+  if (!method || typeof method !== "object") throw new Error(`${label}.deploymentMethod is required`);
+  if (method.kind === "create") {
+    assertAddress(method.deployer, `${label}.deploymentMethod.deployer`);
+    if (!Number.isSafeInteger(method.nonce) || method.nonce < 0) {
+      throw new Error(`${label}.deploymentMethod.nonce must be a non-negative integer`);
+    }
+    return;
+  }
+  if (method.kind === "create2") {
+    assertAddress(method.deployer, `${label}.deploymentMethod.deployer`);
+    assertBytes32(method.salt, `${label}.deploymentMethod.salt`);
+    return;
+  }
+  throw new Error(`${label}.deploymentMethod.kind must be create or create2`);
+}
+
+function deploymentCoordinate(method) {
+  return method.kind === "create"
+    ? `create:${method.deployer.toLowerCase()}:${method.nonce}`
+    : `create2:${method.deployer.toLowerCase()}:${method.salt.toLowerCase()}`;
+}
+
 function assertDeploymentReceipt(receipt, label) {
   if (!receipt || typeof receipt !== "object") throw new Error(`${label}.receipt is required`);
   assertTxHash(receipt.transactionHash, `${label}.receipt.transactionHash`);
@@ -276,7 +313,7 @@ function assertDeploymentReceipt(receipt, label) {
   }
 }
 
-function assertAttestations(attestations) {
+async function assertAttestations(attestations, manifest) {
   if (!Array.isArray(attestations) || attestations.length < 3) {
     throw new Error("attestations must include deployer, independent reproducer, and security reviewer");
   }
@@ -290,11 +327,14 @@ function assertAttestations(attestations) {
     }
     if (roles.has(attestation.role)) throw new Error(`duplicate attestation role: ${attestation.role}`);
     roles.add(attestation.role);
-    if (!attestation.signer || typeof attestation.signer !== "string") throw new Error(`${label}.signer is required`);
-    if (attestation.signer.toLowerCase().includes("loom")) throw new Error(`${label}.signer must not be Loom service`);
-    if (signers.has(attestation.signer.toLowerCase())) throw new Error("attestation signers must be distinct");
-    signers.add(attestation.signer.toLowerCase());
+    assertAddress(attestation.signer, `${label}.signer`);
+    const signer = getAddress(attestation.signer);
+    if (signers.has(signer)) throw new Error("attestation signers must be distinct");
+    signers.add(signer);
     assertBytes32(attestation.manifestHash, `${label}.manifestHash`);
+    if (attestation.manifestHash.toLowerCase() !== manifest.evidenceDigest.toLowerCase()) {
+      throw new Error(`${label}.manifestHash must equal evidenceDigest`);
+    }
     if (!/^0x[0-9a-fA-F]{130}$/.test(attestation.signature ?? "")) {
       throw new Error(`${label}.signature must be a 65-byte signature`);
     }
@@ -302,10 +342,64 @@ function assertAttestations(attestations) {
     if (typeof attestation.statement !== "string" || attestation.statement.length < 20) {
       throw new Error(`${label}.statement is required`);
     }
+    const valid = await verifyMessage({
+      address: signer,
+      message: deploymentAttestationMessage({
+        role: attestation.role,
+        chainId: manifest.network.chainId,
+        manifestHash: manifest.evidenceDigest,
+        signedAt: attestation.signedAt,
+        statement: attestation.statement
+      }),
+      signature: attestation.signature
+    });
+    if (!valid) throw new Error(`${label}.signature does not recover to signer`);
   }
   for (const role of ["deployer", "independent-reproducer", "security-reviewer"]) {
     if (!roles.has(role)) throw new Error(`missing deployment attestation role: ${role}`);
   }
+  const deployer = getAddress(attestations.find(item => item.role === "deployer").signer);
+  for (const [index, deployment] of manifest.deployments.entries()) {
+    if (getAddress(deployment.receipt.deployer) !== deployer) {
+      throw new Error(`deployments[${index}].receipt.deployer must match deployer attestation signer`);
+    }
+  }
+}
+
+export function deploymentEvidenceDigest(manifest) {
+  const unsigned = Object.fromEntries(
+    Object.entries(manifest).filter(([key]) => key !== "attestations" && key !== "evidenceDigest")
+  );
+  return keccak256(toBytes(canonicalize(unsigned)));
+}
+
+function assertEvidenceDigest(manifest) {
+  assertBytes32(manifest.evidenceDigest, "evidenceDigest");
+  const expected = deploymentEvidenceDigest(manifest);
+  if (manifest.evidenceDigest.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error("evidenceDigest does not match deployment evidence");
+  }
+}
+
+export function deploymentAttestationMessage({ role, chainId, manifestHash, signedAt, statement }) {
+  return [
+    "Loom deployment evidence attestation v1",
+    `role: ${role}`,
+    `chainId: ${chainId}`,
+    `manifestHash: ${manifestHash}`,
+    `signedAt: ${signedAt}`,
+    `statement: ${statement}`
+  ].join("\n");
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map(key =>
+      `${JSON.stringify(key)}:${canonicalize(value[key])}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function assertArtifactHashes(deployment, repoRoot, label) {
@@ -313,7 +407,7 @@ function assertArtifactHashes(deployment, repoRoot, label) {
   if (!existsSync(path)) throw new Error(`${label}.artifact does not exist: ${deployment.artifact}`);
   const artifact = JSON.parse(readFileSync(path, "utf8"));
   const initCode = artifact.bytecode?.object;
-  const runtimeCode = artifact.deployedBytecode?.object;
+  const runtimeCode = materializeImmutableRuntime(artifact, deployment.immutableValues, label);
   if (!isHex(initCode) || !isHex(runtimeCode)) throw new Error(`${label}.artifact missing bytecode`);
   const actualInit = hashHex(initCode);
   const actualRuntime = hashHex(runtimeCode);

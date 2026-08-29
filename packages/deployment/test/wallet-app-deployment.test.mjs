@@ -9,6 +9,7 @@ import {
   buildCanonicalDeploymentManifest,
   buildP256RecoveryValidatorProvisioner,
   buildWalletDeploymentManifest,
+  buildWalletOnboardingPolicy,
   buildWalletProfileManifest,
   connectWalletAppDeployment,
   envForWalletDeployment,
@@ -20,10 +21,48 @@ import {
 const { keccak256 } = jsSha3;
 const ENTRYPOINT = address("entrypoint");
 const FACTORY = address("factory");
+const APP_REGISTRY = address("app-registry");
 const P256 = address("p256");
 const RECOVERY_CHILD = address("p256-recovery-child");
 const RECOVERY_FACTORY = address("p256-recovery-factory");
 const ACCOUNT = address("account");
+
+test("builds an explicit private sponsored-onboarding policy", () => {
+  assert.deepEqual(buildWalletOnboardingPolicy({
+    activation: "sponsored",
+    sponsorship: {
+      policyId: "loom-sepolia-onboarding-v1",
+      policyHash: `0x${keccak256(Buffer.from("loom-sepolia-onboarding-v1", "utf8"))}`,
+      maxCostWei: "5000000000000000",
+      maxFactoryDataBytes: 8192,
+      maxActivationsPerPrincipal: 3,
+      windowSeconds: 86400,
+      privateSubmission: true,
+      publicFallback: "disabled"
+    }
+  }), {
+    activation: "sponsored",
+    sponsorship: {
+      policyId: "loom-sepolia-onboarding-v1",
+      policyHash: `0x${keccak256(Buffer.from("loom-sepolia-onboarding-v1", "utf8"))}`,
+      maxCostWei: "5000000000000000",
+      maxFactoryDataBytes: 8192,
+      maxActivationsPerPrincipal: 3,
+      windowSeconds: 86400,
+      privateSubmission: true,
+      publicFallback: "disabled"
+    }
+  });
+  assert.throws(() => buildWalletOnboardingPolicy({ activation: "sponsored", sponsorship: {} }), /policyId/);
+  assert.throws(() => buildWalletOnboardingPolicy({
+    activation: "sponsored",
+    sponsorship: {
+      policyId: "valid", maxCostWei: "1", maxFactoryDataBytes: 1,
+      maxActivationsPerPrincipal: 1, windowSeconds: 1,
+      privateSubmission: false, publicFallback: "disabled"
+    }
+  }), /privateSubmission/);
+});
 
 test("builds a standalone recovery provisioner profile from live code and immutables", async () => {
   const zeroWord = `0x${"0".repeat(64)}`;
@@ -445,6 +484,7 @@ const POLICY_HOOK = address("policy-hook");
 const RECOVERY_MANAGER = address("recovery-manager");
 const INTENT_BOARD = address("recovery-intent-board");
 const ECDSA_GUARDIAN = address("ecdsa-guardian-verifier");
+const ONBOARDING_PAYMASTER = address("onboarding-paymaster");
 const CHILD_RUNTIME_HASH = `0x${keccak256("child-runtime")}`;
 
 function profileBroadcast(over = []) {
@@ -452,6 +492,7 @@ function profileBroadcast(over = []) {
     chain: 11155111,
     transactions: [
       { transactionType: "CREATE", contractName: "LoomAccountFactory", contractAddress: FACTORY },
+      { transactionType: "CREATE", contractName: "AppAccountRegistry", contractAddress: APP_REGISTRY },
       { transactionType: "CREATE", contractName: "LoomAccount", contractAddress: ACCOUNT },
       { transactionType: "CREATE", contractName: "P256Validator", contractAddress: P256 },
       { transactionType: "CREATE", contractName: "PolicyHook", contractAddress: POLICY_HOOK },
@@ -459,6 +500,7 @@ function profileBroadcast(over = []) {
       { transactionType: "CREATE", contractName: "RecoveryIntentBoard", contractAddress: INTENT_BOARD },
       { transactionType: "CREATE", contractName: "ECDSAGuardianVerifier", contractAddress: ECDSA_GUARDIAN },
       { transactionType: "CREATE", contractName: "P256RecoveryValidatorFactory", contractAddress: RECOVERY_FACTORY },
+      { transactionType: "CREATE", contractName: "OnboardingPaymaster", contractAddress: ONBOARDING_PAYMASTER },
       ...over
     ]
   };
@@ -468,6 +510,7 @@ function profileRpc(extraCodes = {}) {
   const codes = new Map([
     [ENTRYPOINT.toLowerCase(), "entrypoint-code"],
     [FACTORY.toLowerCase(), "factory-code"],
+    [APP_REGISTRY.toLowerCase(), "app-registry-code"],
     [ACCOUNT.toLowerCase(), "account-code"],
     [P256.toLowerCase(), "p256-code"],
     [POLICY_HOOK.toLowerCase(), "policy-hook-code"],
@@ -475,10 +518,24 @@ function profileRpc(extraCodes = {}) {
     [INTENT_BOARD.toLowerCase(), "intent-board-code"],
     [ECDSA_GUARDIAN.toLowerCase(), "ecdsa-guardian-code"],
     [RECOVERY_FACTORY.toLowerCase(), "recovery-factory-code"],
+    [ONBOARDING_PAYMASTER.toLowerCase(), "onboarding-paymaster-code"],
     ...Object.entries(extraCodes)
   ]);
   return async (method, params) => {
-    if (method === "eth_call") return `0x${"0".repeat(64)}`;
+    if (method === "eth_call") {
+      const target = String(params[0].to).toLowerCase();
+      const selector = String(params[0].data).toLowerCase();
+      const answer = target === FACTORY.toLowerCase()
+        ? new Map([
+            [`0x${keccak256("entryPoint()").slice(0, 8)}`, ENTRYPOINT],
+            [`0x${keccak256("accountImplementation()").slice(0, 8)}`, ACCOUNT],
+            [`0x${keccak256("registry()").slice(0, 8)}`, APP_REGISTRY]
+          ]).get(selector)
+        : target === APP_REGISTRY.toLowerCase() && selector === `0x${keccak256("factory()").slice(0, 8)}`
+          ? FACTORY
+          : undefined;
+      return answer ? `0x${"0".repeat(24)}${answer.slice(2)}` : `0x${"0".repeat(64)}`;
+    }
     assert.equal(method, "eth_getCode");
     return hexText(codes.get(String(params[0]).toLowerCase()) ?? "");
   };
@@ -496,17 +553,42 @@ const profileOptions = (over = {}) => ({
 test("the wallet profile names every contract the browser wallet reads, with hashes from the chain", async () => {
   const profile = await buildWalletProfileManifest(profileOptions());
 
+  assert.equal(profile.schemaVersion, 2);
   assert.equal(profile.chainId, 11155111);
   assert.equal(profile.factory, FACTORY);
+  assert.equal(profile.appRegistry, APP_REGISTRY);
   assert.equal(profile.implementation, ACCOUNT);
   assert.equal(profile.validator, P256);
   assert.equal(profile.policyHook, POLICY_HOOK);
   assert.equal(profile.recoveryModule, RECOVERY_MANAGER);
   assert.equal(profile.recoveryIntentBoard, INTENT_BOARD);
+  assert.equal(profile.onboardingPaymaster, ONBOARDING_PAYMASTER);
   assert.equal(profile.guardianVerifiers.ecdsa, ECDSA_GUARDIAN);
   assert.equal(profile.runtimeCodeHashes.policyHook, `0x${keccak256(Buffer.from("policy-hook-code"))}`);
+  assert.equal(profile.runtimeCodeHashes.appRegistry, `0x${keccak256(Buffer.from("app-registry-code"))}`);
   assert.equal(profile.runtimeCodeHashes.recoveryIntentBoard, `0x${keccak256(Buffer.from("intent-board-code"))}`);
   assert.equal(profile.recoveryValidatorProvisioner.validatorRuntimeCodeHash, CHILD_RUNTIME_HASH);
+});
+
+test("a sponsored profile requires and pins the onboarding paymaster", async () => {
+  const onboarding = buildWalletOnboardingPolicy({
+    activation: "sponsored",
+    sponsorship: {
+      policyId: "loom-sepolia-onboarding-v1", maxCostWei: "5000000000000000",
+      maxFactoryDataBytes: 8192, maxActivationsPerPrincipal: 3, windowSeconds: 86400,
+      privateSubmission: true, publicFallback: "disabled"
+    }
+  });
+  const profile = await buildWalletProfileManifest(profileOptions({ onboarding }));
+  assert.equal(profile.onboarding.activation, "sponsored");
+  assert.match(profile.onboarding.sponsorship.policyHash, /^0x[0-9a-f]{64}$/);
+  assert.equal(profile.onboardingPaymaster, ONBOARDING_PAYMASTER);
+  assert.equal(profile.runtimeCodeHashes.onboardingPaymaster, codehash("onboarding-paymaster-code"));
+
+  const withoutPaymaster = profileBroadcast().transactions.filter(t => t.contractName !== "OnboardingPaymaster");
+  await assert.rejects(buildWalletProfileManifest(profileOptions({
+    onboarding, broadcast: { chain: 11155111, transactions: withoutPaymaster }
+  })), /requires a deployed OnboardingPaymaster/);
 });
 
 // ADR-0024: the board is optional. A deployment without it is valid, and the
@@ -525,6 +607,22 @@ test("a broadcast missing a contract the wallet must have is refused", async () 
   await assert.rejects(
     buildWalletProfileManifest(profileOptions({ broadcast: withoutValidator })),
     /no deployed P256Validator/u
+  );
+});
+
+test("a registry that is not immutably bound to the deployed factory is refused", async () => {
+  const rpc = profileRpc();
+  const drifted = async (method, params) => {
+    if (
+      method === "eth_call"
+      && String(params[0].to).toLowerCase() === APP_REGISTRY.toLowerCase()
+      && String(params[0].data).toLowerCase() === `0x${keccak256("factory()").slice(0, 8)}`
+    ) return `0x${"0".repeat(24)}${address("wrong-factory").slice(2)}`;
+    return rpc(method, params);
+  };
+  await assert.rejects(
+    buildWalletProfileManifest(profileOptions({ rpc: drifted })),
+    /not one immutable deployment/u
   );
 });
 

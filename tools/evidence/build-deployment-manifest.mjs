@@ -5,8 +5,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
-import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
+import { deploymentEvidenceDigest, validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
+import { materializeImmutableRuntime } from "./materialize-immutable-runtime.mjs";
 
 const { keccak_256 } = sha3;
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -32,9 +33,18 @@ const DEFAULT_COMMANDS = Object.freeze([
 const DEFAULT_REPRODUCIBILITY_FILES = Object.freeze(["foundry.toml", "package-lock.json"]);
 
 export async function buildDeploymentManifest(config, options = {}) {
+  if (!("attestations" in config)) throw new Error("missing deployment manifest config field: attestations");
+  const manifest = await prepareDeploymentManifest(config, options);
+  manifest.attestations = cloneJson(config.attestations);
+  await validateDeploymentManifest(manifest, { root: options.root ?? root });
+  return Object.freeze(manifest);
+}
+
+/** Build the exact unsigned body that all three release roles must attest. */
+export async function prepareDeploymentManifest(config, options = {}) {
   const repoRoot = options.root ?? root;
   assertObject(config, "config");
-  for (const key of ["network", "build", "deployments", "attestations", "checks"]) {
+  for (const key of ["network", "build", "deployments", "checks"]) {
     if (!(key in config)) throw new Error(`missing deployment manifest config field: ${key}`);
   }
 
@@ -58,13 +68,11 @@ export async function buildDeploymentManifest(config, options = {}) {
       files: reproducibilityFiles(config.reproducibility?.files ?? DEFAULT_REPRODUCIBILITY_FILES, repoRoot)
     },
     deployments: config.deployments.map((deployment, index) => deploymentEvidence(deployment, repoRoot, index)),
-    attestations: cloneJson(config.attestations),
     checks: cloneJson(config.checks)
   };
   manifest.canonical = canonicalProjection(config.canonical, manifest, repoRoot);
-
-  await validateDeploymentManifest(manifest, { root: repoRoot });
-  return Object.freeze(manifest);
+  manifest.evidenceDigest = deploymentEvidenceDigest(manifest);
+  return manifest;
 }
 
 /**
@@ -147,7 +155,7 @@ function proxyHashes(artifactPath, repoRoot) {
 function deploymentEvidence(deployment, repoRoot, index) {
   const label = `deployments[${index}]`;
   assertObject(deployment, label);
-  for (const key of ["name", "address", "artifact", "salt", "constructorArgs", "explorer", "receipt"]) {
+  for (const key of ["name", "address", "artifact", "deploymentMethod", "constructorArgs", "explorer", "receipt"]) {
     if (!(key in deployment)) throw new Error(`missing ${label}.${key}`);
   }
   assertRepoRelativePath(deployment.artifact, `${label}.artifact`);
@@ -155,16 +163,17 @@ function deploymentEvidence(deployment, repoRoot, index) {
   if (!existsSync(artifactPath)) throw new Error(`${label}.artifact does not exist: ${deployment.artifact}`);
   const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
   const initCode = artifact.bytecode?.object;
-  const runtimeCode = artifact.deployedBytecode?.object;
+  const runtimeCode = materializeImmutableRuntime(artifact, deployment.immutableValues, label);
   if (!isHex(initCode) || !isHex(runtimeCode)) throw new Error(`${label}.artifact missing bytecode`);
 
   return Object.freeze({
     name: requireString(deployment.name, `${label}.name`),
     address: deployment.address,
     artifact: deployment.artifact,
-    salt: deployment.salt,
+    deploymentMethod: cloneJson(deployment.deploymentMethod),
     initCodeHash: hashHex(initCode),
     runtimeCodeHash: hashHex(runtimeCode),
+    ...(deployment.immutableValues === undefined ? {} : { immutableValues: cloneJson(deployment.immutableValues) }),
     constructorArgs: cloneJson(deployment.constructorArgs),
     explorer: cloneJson(deployment.explorer),
     receipt: cloneJson(deployment.receipt)
