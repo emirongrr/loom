@@ -112,7 +112,7 @@ function runtimeCommitments(deployment: WalletDeployment): readonly [Address, He
   const values: [Address, Hex, string][] = [
     [deployment.entryPoint, deployment.runtimeCodeHashes.entryPoint, "EntryPoint"],
     [deployment.factory, deployment.runtimeCodeHashes.factory, "Account factory"],
-    [deployment.appRegistry, deployment.runtimeCodeHashes.appRegistry, "Wallet identity registry"],
+    [deployment.appRegistry, deployment.runtimeCodeHashes.appRegistry, "Account handle registry"],
     [deployment.implementation, deployment.runtimeCodeHashes.implementation, "Account implementation"],
     [deployment.validator, deployment.runtimeCodeHashes.validator, "Passkey validator"],
     [deployment.policyHook, deployment.runtimeCodeHashes.policyHook, "Policy hook"]

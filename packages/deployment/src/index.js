@@ -19,7 +19,7 @@ const { keccak256 } = jsSha3;
 
 /** Versioned manifest schema; bump on breaking manifest shape changes. */
 export const MANIFEST_SCHEMA_VERSION = 1;
-/** Browser-wallet trust profile schema. Version 2 requires the wallet identity registry. */
+/** Browser-wallet trust profile schema. Version 2 requires the account handle registry. */
 export const WALLET_PROFILE_SCHEMA_VERSION = 2;
 
 export const DEFAULT_CONTRACTS = Object.freeze({

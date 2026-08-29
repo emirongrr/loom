@@ -5,7 +5,7 @@ export type P256VerifierMode = "native-precompile" | "fallback-contract";
 
 /** Versioned manifest schema; bumped on breaking manifest shape changes. */
 export const MANIFEST_SCHEMA_VERSION: number;
-/** Browser-wallet trust profile schema; v2 pins the wallet identity registry. */
+/** Browser-wallet trust profile schema; v2 pins the account handle registry. */
 export const WALLET_PROFILE_SCHEMA_VERSION: 2;
 /** EIP-7951 native P-256 precompile address (same on every supporting chain). */
 export const NATIVE_P256_PRECOMPILE: Hex;

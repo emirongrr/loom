@@ -1,15 +1,15 @@
 # Sepolia Canonical Deployment Evidence Status
 
-Status date: 2026-08-29
+Status date: 2026-08-30
 
 ## Release decision
 
 `evidence/deployments/sepolia.json` is intentionally not present yet. The latest
 local Sepolia broadcast belongs to source commit
-`d9d6b484d37c6644743a623b6138330ee6793dc2`, while the current source revision is
-`cf09f60cdce2009604acad24ca28e30f7cda699b` with uncommitted protocol and wallet
-changes. Publishing the historical broadcast as evidence for the current release
-would make a false clean-build and bytecode-reproduction claim.
+`d9d6b484d37c6644743a623b6138330ee6793dc2`, while the next protocol and wallet
+release is still being assembled as reviewed branches. Publishing the historical
+broadcast as evidence for that release would make a false clean-build and
+bytecode-reproduction claim.
 
 The final file may be emitted only from a frozen, clean release checkout after
 the new deployment, public explorer verification, independent reproduction, and

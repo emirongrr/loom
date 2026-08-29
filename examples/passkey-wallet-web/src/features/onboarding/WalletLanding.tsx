@@ -39,7 +39,6 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
   /** Which saved wallets have a recovery under way, read from each account. */
   const [beingRecovered, setBeingRecovered] = useState<ReadonlyMap<string, WalletRecovery>>(new Map());
   const [removalConfirmation, setRemovalConfirmation] = useState("");
-  const walletKey = accounts.map(account => `${account.chainId}:${account.account.toLowerCase()}`).sort().join("|");
   useEffect(() => {
     if (accounts.length === 0) return;
     let cancelled = false;
@@ -67,8 +66,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
       }
     })();
     return () => { cancelled = true; };
-    // Keyed by which wallets are listed, not by the array holding them.
-  }, [walletKey, config, publicClients, now]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accounts, config, publicClients, now]);
 
   const closeRemoval = () => {
     setRemoving(null);
