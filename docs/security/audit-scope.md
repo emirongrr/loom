@@ -24,7 +24,6 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 - `src/validators/MultiP256Validator.sol`
 - `src/validators/ExactCallSessionValidator.sol`
 - `src/validators/GranularSessionValidator.sol`
-- `src/validators/ImplementationLockValidator.sol`
 - `src/adapters/ERC7579ModuleAdapter.sol`
 - `src/adapters/ERC7579ValidatorShim.sol`
 - `src/adapters/ERC7579HookShim.sol`
@@ -112,10 +111,7 @@ especially EntryPoint validation, nonce handling, and sender creation.
     register accounts, duplicate registration cannot inflate `accountCount`,
     and registry membership grants no execution, recovery, or migration
     authority.
-37. The shared implementation is initialized with a validator that can never
-    authorize ERC-4337, ERC-1271, direct execution, or configuration changes;
-    neither the deployer nor any Loom-operated key controls that address.
-38. Sponsored onboarding can pay only for a nonce-zero, empty-call-data account
+37. Sponsored onboarding can pay only for a nonce-zero, empty-call-data account
     creation through the immutable factory, under an unexpired authorizer
     signature and an immutable per-operation maximum-cost policy.
 
@@ -142,8 +138,6 @@ especially EntryPoint validation, nonce handling, and sender creation.
   selectors.
 - App registry factory-only registration, duplicate handling, and its
   non-authority relationship to account execution.
-- Shared-implementation initialization with no deployer, administrator, burn
-  address, or recoverable signing authority.
 - Onboarding-paymaster authorization domain separation, field completeness,
   validity bounds, gas/cost accounting, replay behavior, and deposit-owner
   powers.
