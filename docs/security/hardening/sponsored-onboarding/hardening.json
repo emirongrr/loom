@@ -1,0 +1,118 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260829_sponsored_onboarding",
+  "sourceEvidence": {
+    "kind": "document_collection",
+    "label": "Sponsored onboarding, paymaster, private submission, and lifecycle evidence inventory",
+    "collectionSha256": "197792530953b1a70ad496e3bad7922870603167c6fc50455c896d1eee2bfef7",
+    "artifactCount": 7,
+    "sourceDrift": "present"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "Replace non-atomic account prefunding with signed ERC-4337 paymaster authorization and fail-closed private submission."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": ["incremental", "medium_term"],
+    "nonNegotiables": [
+      "Sponsor authority never becomes account authority",
+      "Ambiguous private delivery never triggers automatic public fallback",
+      "Activation is nonce-zero and has empty account callData",
+      "Discovery requires a live-validator assertion"
+    ],
+    "assumptions": [
+      "Production operators replace the reference in-memory ledger with a durable atomic store.",
+      "The selected private transaction provider is independently qualified before release."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "atomic-sponsored-onboarding",
+      "title": "Make sponsorship atomic, bounded, and private-first",
+      "summary": "Use short-lived signed paymaster data and a private transaction route instead of prospective-account prefunding.",
+      "diagnosis": "Direct prefunding can strand user-controlled value, while a private browser-to-relay hop does not keep the sponsor transaction out of the public mempool.",
+      "evidence": [
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E001", "path": "examples/passkey-wallet-web/sponsor-server.mjs", "claim": "The old flow separated account prefunding from handleOps." },
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E002", "path": "lib/account-abstraction/contracts/core/EntryPoint.sol", "claim": "EntryPoint v0.9 requires direct EOA handleOps submission." },
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E003", "path": "src/OnboardingPaymaster.sol", "claim": "Paymaster validation bounds factory, operation shape, validity, policy, cost, and authorizer." },
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E005", "path": "packages/sdk/src/index.ts", "claim": "Private-first transport distinguishes explicit rejection from ambiguous delivery." }
+      ],
+      "desiredInvariants": [
+        "No sponsor value is deposited into a prospective user account.",
+        "An authorization cannot be replayed for another sender, factory, gas envelope, policy, or validity interval.",
+        "Budget is reserved before an authorization leaves the sponsor service.",
+        "Public fallback requires positive proof that private submission was not accepted."
+      ],
+      "proposalPath": "proposals/signed-paymaster-private-submission.md",
+      "options": [
+        {
+          "optionId": "direct-prefund",
+          "title": "Direct prospective-account prefund",
+          "kind": "baseline",
+          "summary": "Fund the sender deposit and then submit handleOps.",
+          "diagramPaths": { "before": "diagrams/direct-prefund-before.mmd", "after": "diagrams/direct-prefund-before.mmd" },
+          "evidenceCoverage": [
+            { "evidenceId": "E001", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "Two independent transactions preserve stranded-fund risk." }
+          ],
+          "tradeoffs": [
+            { "dimension": "security", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Partial failure can strand or duplicate sponsor value.", "validationPlan": "Force failure between deposit and handleOps." },
+            { "dimension": "performance", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Requires two transactions.", "validationPlan": "Measure inclusion latency." },
+            { "dimension": "memory", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "No material memory change.", "validationPlan": "Inspect service state." },
+            { "dimension": "reliability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Ambiguous delivery complicates safe retries.", "validationPlan": "Inject RPC timeout after deposit." },
+            { "dimension": "operability", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Orphan deposit reconciliation is required.", "validationPlan": "Run restart rehearsal." },
+            { "dimension": "migration", "direction": "neutral", "confidence": "medium", "basis": "hypothetical", "assessment": "No account migration is required.", "validationPlan": "Compare activation addresses." }
+          ],
+          "residualRisks": ["User-controlled surplus deposits remain."],
+          "implementationReadiness": {
+            "affectedComponents": ["Sponsor server"],
+            "workPackages": ["None; rejected"],
+            "acceptanceCriteria": ["Not selected"],
+            "migrationNotes": ["Remove generic deploy route"],
+            "rollback": "Disable sponsorship."
+          }
+        },
+        {
+          "optionId": "signed-paymaster-private-submission",
+          "title": "Signed paymaster and private submission",
+          "kind": "structural",
+          "summary": "Authorize bounded gas sponsorship before the passkey signs and submit the final operation privately.",
+          "diagramPaths": { "before": "diagrams/direct-prefund-before.mmd", "after": "diagrams/signed-paymaster-after.mmd" },
+          "evidenceCoverage": [
+            { "evidenceId": "E001", "effect": "addresses", "tacticalFixRequired": true, "rationale": "EntryPoint charges the paymaster atomically." },
+            { "evidenceId": "E002", "effect": "addresses", "tacticalFixRequired": false, "rationale": "The bundler remains the direct EOA caller." },
+            { "evidenceId": "E003", "effect": "addresses", "tacticalFixRequired": true, "rationale": "On-chain validation enforces sponsorship scope." },
+            { "evidenceId": "E005", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Fallback is delivery-aware." }
+          ],
+          "tradeoffs": [
+            { "dimension": "security", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Gas authority is bounded and separate from account authority.", "validationPlan": "Run contract and abuse-policy tests." },
+            { "dimension": "performance", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "Adds one authorization round trip but removes the prefund transaction.", "validationPlan": "Measure full onboarding latency." },
+            { "dimension": "memory", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "Client retains no sponsor secret.", "validationPlan": "Inspect browser storage and bundle." },
+            { "dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Atomic charging and explicit fallback make retries decidable.", "validationPlan": "Inject pre- and post-submission failures." },
+            { "dimension": "operability", "direction": "unknown", "confidence": "medium", "basis": "hypothetical", "assessment": "Requires deposit monitoring, durable quotas, and private-provider qualification.", "validationPlan": "Run operator rehearsal and alerts." },
+            { "dimension": "migration", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Sponsorship is profile-selected and does not alter account authority.", "validationPlan": "Switch profile to counterfactual and verify self-funded activation." }
+          ],
+          "residualRisks": [
+            "Issued but unused authorizations reserve budget until operational reclamation.",
+            "A falsely advertised private provider can leak activation metadata.",
+            "Paymaster deposit owner remains an operational funding authority."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": ["Paymaster contract", "Sponsor service", "SDK transport", "Web onboarding", "Deployment profile", "Evidence tooling"],
+            "workPackages": ["Contract", "Authorization", "Private submit", "Abuse controls", "Rehearsal", "Canonical evidence"],
+            "acceptanceCriteria": ["Atomic paymaster charge", "Private-first inclusion", "No ambiguous fallback", "Second-device lifecycle passes"],
+            "migrationNotes": ["No legacy wallets are supported; deploy a fresh profile."],
+            "rollback": "Publish counterfactual onboarding policy and stop issuing sponsor authorizations."
+          }
+        }
+      ],
+      "recommendedOptionId": "signed-paymaster-private-submission",
+      "recommendation": "Use the signed onboarding paymaster and private-first transport; keep counterfactual onboarding as the operator-selectable fallback mode."
+    }
+  ],
+  "openQuestions": [
+    "Which durable store and authenticated principal system will each production integrator use?",
+    "Which private transaction provider will be qualified for the Sepolia release?"
+  ]
+}

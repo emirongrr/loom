@@ -5,9 +5,15 @@ export type P256VerifierMode = "native-precompile" | "fallback-contract";
 
 /** Versioned manifest schema; bumped on breaking manifest shape changes. */
 export const MANIFEST_SCHEMA_VERSION: number;
+/** Browser-wallet trust profile schema; v2 pins the wallet identity registry. */
+export const WALLET_PROFILE_SCHEMA_VERSION: 2;
 /** EIP-7951 native P-256 precompile address (same on every supporting chain). */
 export const NATIVE_P256_PRECOMPILE: Hex;
 export const DEFAULT_CONTRACTS: Readonly<Record<"accountFactory" | "passkeyValidator" | "recoveryValidatorFactory" | "accountImplementation", string>>;
+export const WALLET_PROFILE_CONTRACTS: Readonly<Record<
+  "factory" | "appRegistry" | "implementation" | "validator" | "policyHook" | "recoveryModule" | "recoveryIntentBoard",
+  string
+>>;
 
 export type JsonRpcCall = (method: string, params: unknown[]) => Promise<unknown>;
 
@@ -59,6 +65,74 @@ export interface P256ProbeResult {
   readonly valid: unknown;
   readonly invalid: unknown;
 }
+
+export interface WalletProfileManifest {
+  readonly schemaVersion: 2;
+  readonly chainId: number;
+  readonly entryPoint: Hex;
+  readonly proxyCreationCode: Hex;
+  readonly factory: Hex;
+  readonly appRegistry: Hex;
+  readonly implementation: Hex;
+  readonly validator: Hex;
+  readonly policyHook: Hex;
+  readonly recoveryModule?: Hex;
+  readonly recoveryIntentBoard?: Hex;
+  readonly guardianVerifiers?: Readonly<{ ecdsa?: Hex; p256?: Hex; erc1271?: Hex }>;
+  readonly runtimeCodeHashes: Readonly<Record<string, Hex>>;
+  readonly recoveryValidatorProvisioner?: P256RecoveryValidatorProvisioner;
+  readonly onboardingPaymaster?: Hex;
+  readonly onboarding?: WalletOnboardingPolicy;
+}
+
+export type WalletOnboardingPolicyInput =
+  | Readonly<{ activation: "counterfactual" }>
+  | Readonly<{
+      activation: "sponsored";
+      sponsorship: Readonly<{
+        policyId: string;
+        maxCostWei: string;
+        maxFactoryDataBytes: number;
+        maxActivationsPerPrincipal: number;
+        windowSeconds: number;
+        privateSubmission: true;
+        publicFallback: "disabled" | "explicit-rejection";
+      }>;
+    }>;
+
+export type WalletOnboardingPolicy =
+  | Readonly<{ activation: "counterfactual" }>
+  | Readonly<{
+      activation: "sponsored";
+      sponsorship: Readonly<{
+        policyId: string;
+        policyHash: Hex;
+        maxCostWei: string;
+        maxFactoryDataBytes: number;
+        maxActivationsPerPrincipal: number;
+        windowSeconds: number;
+        privateSubmission: true;
+        publicFallback: "disabled" | "explicit-rejection";
+      }>;
+    }>;
+
+export function buildWalletOnboardingPolicy(options?: WalletOnboardingPolicyInput): WalletOnboardingPolicy;
+
+export function recoveryValidatorRuntimeCodeHash(options: {
+  artifact: unknown;
+  baseArtifacts?: readonly unknown[];
+  values: Readonly<Record<string, Hex>>;
+}): Hex;
+
+export function buildWalletProfileManifest(options: {
+  broadcast: unknown;
+  rpc: JsonRpcCall;
+  entryPoint: Hex;
+  proxyCreationCode: Hex;
+  validatorRuntimeCodeHash: Hex;
+  onboarding?: WalletOnboardingPolicyInput;
+  contracts?: Record<string, string>;
+}): Promise<WalletProfileManifest>;
 
 export interface VerificationCheck {
   readonly label: string;

@@ -1,0 +1,6 @@
+flowchart LR
+  P[Passkey userHandle: walletId] --> R[Registry candidate]
+  P --> V[Fresh assertion]
+  R --> V
+  V -->|live key accepts| W[Wallet opens]
+  V -->|live key rejects| X[Message only]

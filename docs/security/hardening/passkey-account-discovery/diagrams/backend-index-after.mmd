@@ -1,0 +1,6 @@
+flowchart LR
+  P[Passkey rawId] --> S[Hosted credential index]
+  S --> A[Candidate account]
+  P --> V[Fresh assertion]
+  A --> V
+  S -->|outage or walkaway| X[Discovery unavailable]

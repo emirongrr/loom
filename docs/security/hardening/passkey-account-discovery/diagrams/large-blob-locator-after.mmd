@@ -1,0 +1,6 @@
+flowchart LR
+  P[Passkey] -->|authentication after registration| B[Optional largeBlob pointer]
+  B --> A[Candidate account]
+  P --> V[Fresh assertion]
+  A --> V
+  B -->|unsupported, absent or failed| F[Canonical fallback required]

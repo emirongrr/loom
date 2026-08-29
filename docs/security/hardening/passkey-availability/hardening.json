@@ -1,0 +1,118 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_20260828_passkey_availability",
+  "sourceEvidence": {
+    "kind": "document_collection",
+    "label": "Passkey availability, account discovery, and guardian recovery evidence inventory",
+    "collectionSha256": "741dce335dc8a9a53c8a9a33685aacec2e4b5d8530d5eb439fce59aa2328d255",
+    "artifactCount": 5,
+    "sourceDrift": "present"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "Separate passkey availability guidance from account authority while preserving one-click onboarding and live-validator verification."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": ["incremental", "medium_term"],
+    "nonNegotiables": [
+      "One-click native passkey onboarding",
+      "Locator data is never authority",
+      "Guardian recovery remains independent of passkey backup state"
+    ],
+    "assumptions": [
+      "The relying party cannot export WebAuthn private keys or force a provider.",
+      "Provider-specific second-device readiness requires physical rehearsal."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "model-passkey-availability",
+      "title": "Model passkey availability without blocking onboarding",
+      "summary": "Persist verified BE/BS observations and present provider-neutral guidance after wallet creation.",
+      "diagnosis": "The prior BE=0 recovery gate conflated credential availability with wallet authority and had no post-onboarding state model.",
+      "evidence": [
+        { "claimType": "observed", "sourceKind": "document", "evidenceId": "E001", "claim": "WebAuthn defines BE and BS as credential backup eligibility and backup state." },
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E003", "path": "packages/sdk/src/accountDiscovery.ts", "claim": "Discovery resolves a locator and verifies the assertion with the account's live validator key." },
+        { "claimType": "observed", "sourceKind": "source", "evidenceId": "E004", "path": "examples/passkey-wallet-web/src/features/recovery/recoveryPasskey.ts", "claim": "Recovery requires a post-registration assertion before validator preparation." },
+        { "claimType": "inferred", "sourceKind": "source", "evidenceId": "E005", "path": "examples/passkey-wallet-web/src/features/security/SecurityPage.tsx", "claim": "Availability guidance belongs in presentation state and must not change authority." }
+      ],
+      "desiredInvariants": [
+        "Only the live validator-key assertion authorizes a discovered account.",
+        "BE and BS never grant or revoke wallet authority.",
+        "The impossible BS=1 and BE=0 state fails closed.",
+        "Recommendation dismissal cannot suppress security status or checks."
+      ],
+      "proposalPath": "proposals/model-passkey-availability.md",
+      "options": [
+        {
+          "optionId": "mandatory-portable-credential",
+          "title": "Mandatory portable credential",
+          "kind": "baseline",
+          "summary": "Block onboarding or recovery unless backup state satisfies policy.",
+          "diagramPaths": { "before": "diagrams/passkey-availability-before.mmd", "after": "diagrams/passkey-availability-mandatory-after.mmd" },
+          "evidenceCoverage": [
+            { "evidenceId": "E001", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Uses backup flags as a gate but cannot prove second-device readiness." },
+            { "evidenceId": "E004", "effect": "unaffected", "tacticalFixRequired": false, "rationale": "The assertion gate remains necessary." }
+          ],
+          "tradeoffs": [
+            { "dimension": "security", "direction": "unknown", "confidence": "medium", "basis": "source-derived", "assessment": "Accepts fewer credentials but conflates availability policy with authority and rejects roaming keys.", "validationPlan": "Rehearse platform, synced, and roaming credentials and compare rejection rates." },
+            { "dimension": "performance", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "Adds only a local flag branch.", "validationPlan": "Compare ceremony timings." },
+            { "dimension": "memory", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "Requires no retained index.", "validationPlan": "Inspect account record size." },
+            { "dimension": "reliability", "direction": "regresses", "confidence": "medium", "basis": "source-derived", "assessment": "Valid authenticator-bound and roaming recovery credentials are refused.", "validationPlan": "Run a device/provider compatibility matrix." },
+            { "dimension": "operability", "direction": "regresses", "confidence": "medium", "basis": "hypothetical", "assessment": "Support must explain provider behavior the RP cannot control.", "validationPlan": "Track provider-specific recovery failures." },
+            { "dimension": "migration", "direction": "regresses", "confidence": "high", "basis": "source-derived", "assessment": "Policy enforcement changes accepted credentials immediately.", "validationPlan": "Audit stored observations before rollout." }
+          ],
+          "residualRisks": ["BS does not prove a successful second-device rehearsal."],
+          "implementationReadiness": {
+            "affectedComponents": ["WebAuthn registration", "recovery preparation"],
+            "workPackages": ["Define and enforce a backup-state policy."],
+            "acceptanceCriteria": ["Every accepted credential satisfies the selected flag policy."],
+            "migrationNotes": ["Existing authenticator-bound credentials require an exception or replacement."],
+            "rollback": "Remove the blocking predicate."
+          }
+        },
+        {
+          "optionId": "risk-adaptive-guidance",
+          "title": "Risk-adaptive post-onboarding guidance",
+          "kind": "structural",
+          "summary": "Keep authority gates, persist verified availability observations, and guide users in Security.",
+          "diagramPaths": { "before": "diagrams/passkey-availability-before.mmd", "after": "diagrams/passkey-availability-risk-adaptive-after.mmd" },
+          "evidenceCoverage": [
+            { "evidenceId": "E001", "effect": "addresses", "tacticalFixRequired": false, "rationale": "Uses BE/BS only for their defined availability semantics." },
+            { "evidenceId": "E003", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Preserves locator resolution followed by live-key verification." },
+            { "evidenceId": "E004", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Preserves the post-registration assertion before publication." },
+            { "evidenceId": "E005", "effect": "addresses", "tacticalFixRequired": false, "rationale": "Creates a dedicated advisory presentation model." }
+          ],
+          "tradeoffs": [
+            { "dimension": "security", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Authority checks remain independent while availability risk becomes visible and refreshable.", "validationPlan": "Test stale-key discovery, invalid flags, and authenticator-bound recovery." },
+            { "dimension": "performance", "direction": "neutral", "confidence": "medium", "basis": "source-derived", "assessment": "No chain hop is added; verified ceremonies add one bounded local write.", "validationPlan": "Measure unlock duration before and after the local write." },
+            { "dimension": "memory", "direction": "neutral", "confidence": "high", "basis": "source-derived", "assessment": "Each account stores four bounded observation fields and one bounded dismissal identifier.", "validationPlan": "Measure serialized storage for 256 accounts." },
+            { "dimension": "reliability", "direction": "improves", "confidence": "medium", "basis": "source-derived", "assessment": "Valid recovery paths are not blocked by provider backup policy.", "validationPlan": "Rehearse synced, platform, roaming, stale-key, and guardian flows." },
+            { "dimension": "operability", "direction": "unknown", "confidence": "medium", "basis": "hypothetical", "assessment": "Provider-neutral copy lowers false promises, but release still needs a physical device matrix.", "validationPlan": "Publish and maintain the rehearsal matrix." },
+            { "dimension": "migration", "direction": "improves", "confidence": "high", "basis": "source-derived", "assessment": "Optional observation fields permit incremental rollout and UI-only rollback.", "validationPlan": "Read records without the optional fields and verify new flows populate them." }
+          ],
+          "residualRisks": [
+            "Provider-reported backup state may not equal successful second-device access.",
+            "RP ID migration can make an otherwise synced credential unavailable.",
+            "Guardian availability remains an independent operational dependency."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": ["Account metadata", "WebAuthn lifecycle", "Recovery sessions", "Security UI", "Account discovery"],
+            "workPackages": ["Persist observations", "Remove BE block", "Add advisory UI", "Carry v3 locator", "Verify tests and rehearsals"],
+            "acceptanceCriteria": ["One-click onboarding", "Four visible availability states", "Account-scoped dismissal", "Live-key discovery gate", "Guardian recovery for BE=0"],
+            "migrationNotes": ["Existing v3 records without observations display unknown until a verified assertion."],
+            "rollback": "Remove advisory UI and optional writes while retaining assertion and live-validator checks."
+          }
+        }
+      ],
+      "recommendedOptionId": "risk-adaptive-guidance",
+      "recommendation": "Use risk-adaptive guidance while guardians remain a first-class recovery path and provider readiness cannot be forced by the RP."
+    }
+  ],
+  "openQuestions": [
+    "Which provider/device matrix is required for release evidence?",
+    "Should dismissal expire after key rotation or time?"
+  ]
+}
