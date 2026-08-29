@@ -1,6 +1,7 @@
 import { PendingRecoveryBanner } from "../wallet/PendingRecoveryBanner";
 import { useCallback, useEffect, useState } from "react";
 import { AccountHeader, type BalanceView } from "../../components/AccountHeader";
+import { describeAccountProtection } from "../security/accountProtection";
 import { SecurityStatus } from "../../components/SecurityStatus";
 import { SendDialog } from "../send/SendDialog";
 import { ReceiveDialog } from "../wallet/ReceiveDialog";
@@ -23,11 +24,12 @@ const EMPTY_ASSETS: AccountAssets = {
   tokens: [], nfts: [], deployed: false, discoveryUnavailable: false, nftDiscoveryUnavailable: false
 };
 
-export function HomePage({ account, onNavigate, onSwitch, onLock }: {
+export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery }: {
   readonly account: AccountHandle;
   readonly onNavigate: (area: NavigationArea) => void;
   readonly onSwitch: () => void;
   readonly onLock: () => void;
+  readonly onStopRecovery: () => void;
 }) {
   const { config } = useNetwork();
   const notifications = useNotifications();
@@ -73,7 +75,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     setRefreshing(true);
     try {
       const [next] = await Promise.all([
-        readAccountAssets(config, account.account),
+        readAccountAssets(config, account.account, publicClients),
         loadWalletDeployment().then(setDeployment).catch(() => setDeployment(null))
       ]);
       setDeployed(next.deployed);
@@ -119,7 +121,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
     {/* First on the screen: a recovery in flight replaces every validator on
         this account, and the owner is the only person who can say whether it
         is theirs. */}
-    <PendingRecoveryBanner account={account} />
+    <PendingRecoveryBanner account={account} onStop={onStopRecovery} />
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
 
     <div className="quick-actions">
@@ -159,7 +161,10 @@ export function HomePage({ account, onNavigate, onSwitch, onLock }: {
       </button>
     </section>}
 
-    {guardianThreshold === 0 && <SecurityStatus guardians={0} threshold={0} frozen={false} pendingRecovery={false} />}
+    {guardianThreshold === 0 && <SecurityStatus
+      protection={describeAccountProtection({ guardianThreshold: 0, recoveryConfigured: false, freezeActive: false, pendingRecovery: false })}
+      onAddGuardians={() => onNavigate("security")}
+    />}
 
     <section className="section-card">
       <div className="section-heading"><div><p className="eyebrow">Assets</p><h2>Tokens</h2></div><button className="icon-button" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh balances"><span className={refreshing ? "spin" : ""}>⟳</span></button></div>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readAccountAssets } from "../src/features/wallet/assets.ts";
+import { createPublicClientRegistry } from "../src/services/rpc/publicClients.ts";
 import { buildTransferCall, normalizeRecipient } from "../src/features/wallet/transfers.ts";
 import type { NftAsset, TokenAsset } from "../src/features/wallet/assets.ts";
 
@@ -17,6 +18,9 @@ const CONFIG = {
   relayUrl: ""
 } as const;
 
+// One registry for the file, as the app keeps one for the session.
+const CLIENTS = createPublicClientRegistry();
+
 // The explorer returns the contract as `address_hash`; reading only `address`
 // silently dropped every balance row and showed an assetless wallet.
 test("token discovery reads the explorer's address_hash contract key", async () => {
@@ -27,7 +31,7 @@ test("token discovery reads the explorer's address_hash contract key", async () 
     }],
     nfts: { items: [] }
   });
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.equal(assets.discoveryUnavailable, false);
   assert.equal(assets.tokens.length, 1);
@@ -49,7 +53,7 @@ test("token discovery skips zero balances, non-ERC-20 rows, and malformed contra
     ],
     nfts: { items: [] }
   });
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.deepEqual(assets.tokens.map(token => token.symbol), ["OK"]);
   assert.equal(assets.tokens[0]?.formatted, "1");
@@ -65,7 +69,7 @@ test("collectible discovery keeps only https or ipfs-gateway artwork", async () 
       ]
     }
   });
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.equal(assets.nfts.length, 2);
   assert.equal(assets.nfts[0]?.standard, "erc721");
@@ -81,7 +85,7 @@ test("a failing explorer degrades to the native balance instead of throwing", as
     if (url.includes("/api/v2/")) return new Response("nope", { status: 502 });
     return rpcResponse(init);
   };
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.equal(assets.discoveryUnavailable, true);
   assert.equal(assets.tokens.length, 0);
@@ -100,7 +104,7 @@ test("a failing collectible lookup does not hide token balances", async () => {
     if (url.includes("/nft")) return new Response("rate limited", { status: 429 });
     return rpcResponse(init);
   };
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.equal(assets.tokens.length, 1, "tokens must survive a collectible failure");
   assert.equal(assets.tokens[0]?.symbol, "PYUSD");
@@ -116,7 +120,7 @@ test("a failing token lookup does not hide collectibles", async () => {
     if (url.includes("/nft")) return Response.json({ items: [{ id: "7", token: { address_hash: COLLECTION, name: "Loom Test", type: "ERC-721" } }] });
     return rpcResponse(init);
   };
-  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT));
+  const assets = await withFetch(fetchMock, () => readAccountAssets(CONFIG, ACCOUNT, CLIENTS));
 
   assert.equal(assets.nfts.length, 1);
   assert.equal(assets.discoveryUnavailable, true);

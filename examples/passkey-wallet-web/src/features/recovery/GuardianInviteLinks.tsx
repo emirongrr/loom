@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
-import { createBrowserGuardianRoster } from "../../storage/guardianRoster";
 import { createActiveGuardianInvitation } from "../security/guardianInvitation";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { loadWalletDeployment } from "../onboarding/accountLifecycle";
@@ -45,7 +44,7 @@ export function GuardianInviteLinks({ account, chainId, requestLink }: {
     let cancelled = false;
     void (async () => {
       try {
-        const stored = await createBrowserGuardianRoster().read(`${chainId}:${account.toLowerCase()}`);
+        const stored = await services.guardianRoster.read(`${chainId}:${account.toLowerCase()}`);
         if (stored.entries.length === 0) {
           if (!cancelled) setState({ kind: "unavailable", reason: "This device does not hold the guardian list for this account, so it cannot issue invitations. The list is private and never published, so it can only come from its own encrypted backup." });
           return;
@@ -74,7 +73,7 @@ export function GuardianInviteLinks({ account, chainId, requestLink }: {
       // invitation binds to the guardian root and configuration version, and
       // one issued against a stale pair would be rejected on arrival.
       const live = await client.inspectAccount();
-      const stored = await createBrowserGuardianRoster().read(`${chainId}:${account.toLowerCase()}`);
+      const stored = await services.guardianRoster.read(`${chainId}:${account.toLowerCase()}`);
       const expiresAt = Math.floor(services.now() / 1_000) + 7 * 86_400;
       const invite = createActiveGuardianInvitation({
         entries: stored.entries,

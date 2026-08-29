@@ -139,9 +139,11 @@ test("when discovery is unavailable the manual paste path is still offered", asy
   await renderAndCheck(guardianAccount());
 
   expect(await screen.findByText(/publishes no on-chain recovery discovery/iu)).toBeTruthy();
-  // Losing discovery must never remove the provider-independent path.
-  expect(screen.getByText(/review a recovery request/iu)).toBeTruthy();
-  expect(screen.getByRole("button", { name: /review recovery request/iu })).toBeTruthy();
+  // Losing discovery must never remove the provider-independent path. It is
+  // folded away rather than removed: announcing costs a transaction, so many
+  // requests are handed over privately and never appear on chain at all.
+  expect(screen.getByText(/it was sent to me directly/iu)).toBeTruthy();
+  expect(screen.getByRole("button", { name: /review pasted request/iu })).toBeTruthy();
 });
 
 test("the request list is reachable by keyboard and labelled for a screen reader", async () => {

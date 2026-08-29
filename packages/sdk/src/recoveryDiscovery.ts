@@ -79,6 +79,21 @@ export interface DiscoveredRecoveryApproval extends DiscoveredBase {
   readonly approval: GuardianApprovalTuple;
 }
 
+/**
+ * One guardian's published signature to *stop* a pending recovery.
+ *
+ * Structurally identical to an approval and kept rigorously apart from one.
+ * They are signatures over different EIP-712 types answering opposite
+ * questions, so a consumer that merged the two arrays would be assembling a
+ * bundle the manager refuses -- after the gas, and after telling someone their
+ * quorum was reached.
+ */
+export interface DiscoveredRecoveryCancellation extends DiscoveredBase {
+  readonly guardianLeaf: Hex;
+  /** The tuple `cancelRecoveryWith...` expects, unverified. */
+  readonly approval: GuardianApprovalTuple;
+}
+
 export interface DiscoveredRecoveryAnnouncement extends DiscoveredBase {
   readonly oldValidatorsHash: Hex;
   readonly newValidator: Address;
@@ -100,8 +115,10 @@ export interface RecoveryDiscoverySnapshot {
   readonly latestBlock: bigint;
   readonly announcements: readonly DiscoveredRecoveryAnnouncement[];
   readonly approvals: readonly DiscoveredRecoveryApproval[];
+  readonly cancellations: readonly DiscoveredRecoveryCancellation[];
   /** Approvals deep enough to act on. Never treat this as a verified threshold. */
   readonly confirmedApprovalCount: number;
+  readonly confirmedCancellationCount: number;
 }
 
 export interface RecoveryDiscoveryReconciliation {
@@ -109,6 +126,7 @@ export interface RecoveryDiscoveryReconciliation {
   readonly rolledBack: boolean;
   /** Guardian leaves that were present before and are not present now. */
   readonly droppedApprovals: readonly Hex[];
+  readonly droppedCancellations: readonly Hex[];
 }
 
 /** Mirrors `RecoveryIntentBoard.MAX_SIGNATURE_BYTES`. */
@@ -119,6 +137,7 @@ const MAX_PROOF_LENGTH = 32;
 /** `topic0` for each board event, derived from the generated (contract) ABI. */
 const ANNOUNCED_TOPIC = eventTopic("RecoveryAnnounced");
 const APPROVAL_TOPIC = eventTopic("RecoveryApprovalPublished");
+const CANCELLATION_TOPIC = eventTopic("RecoveryCancellationPublished");
 
 const DEFAULT_MAX_BLOCK_RANGE = 2_000n;
 const DEFAULT_MAX_WINDOWS = 32;
@@ -199,7 +218,7 @@ export function createRecoveryIntentBoardReader(options: {
         const page = await call(
           () => transport.getLogs({
             address: board,
-            topics: [[ANNOUNCED_TOPIC, APPROVAL_TOPIC], accountTopic],
+            topics: [[ANNOUNCED_TOPIC, APPROVAL_TOPIC, CANCELLATION_TOPIC], accountTopic],
             fromBlock: start,
             toBlock: end
           }),
@@ -218,6 +237,7 @@ export function createRecoveryIntentBoardReader(options: {
       const confirmedBelow = latestBlock >= confirmations ? latestBlock - confirmations : 0n;
       const announcements: DiscoveredRecoveryAnnouncement[] = [];
       const approvals = new Map<string, DiscoveredRecoveryApproval>();
+      const cancellations = new Map<string, DiscoveredRecoveryCancellation>();
 
       for (const log of raw) {
         // A transport may return anything. Re-check the address before decoding,
@@ -280,11 +300,17 @@ export function createRecoveryIntentBoardReader(options: {
         // redundant, and `GuardianVerificationLib` rejects duplicates anyway, so
         // keep the earliest and let the later copy fall away here.
         const key = `${base.recoveryId}:${guardianLeaf}`;
+        if (decoded.eventName === "RecoveryCancellationPublished") {
+          const existingCancellation = cancellations.get(key);
+          if (!existingCancellation || earlier(entry, existingCancellation)) cancellations.set(key, entry);
+          continue;
+        }
         const existing = approvals.get(key);
         if (!existing || earlier(entry, existing)) approvals.set(key, entry);
       }
 
       const ordered = [...approvals.values()].sort((left, right) => (earlier(left, right) ? -1 : 1));
+      const orderedCancellations = [...cancellations.values()].sort((left, right) => (earlier(left, right) ? -1 : 1));
       return Object.freeze({
         chainId,
         account,
@@ -295,7 +321,9 @@ export function createRecoveryIntentBoardReader(options: {
         latestBlock,
         announcements: Object.freeze(announcements.sort((left, right) => (earlier(left, right) ? -1 : 1))),
         approvals: Object.freeze(ordered),
-        confirmedApprovalCount: ordered.filter(entry => entry.confirmed).length
+        cancellations: Object.freeze(orderedCancellations),
+        confirmedApprovalCount: ordered.filter(entry => entry.confirmed).length,
+        confirmedCancellationCount: orderedCancellations.filter(entry => entry.confirmed).length
       });
     }
   };
@@ -324,23 +352,35 @@ export function reconcileRecoveryDiscovery(
     );
   }
 
-  const current = new Map(next.approvals.map(entry => [`${entry.recoveryId}:${entry.guardianLeaf}`, entry]));
-  const dropped: Hex[] = [];
-  for (const entry of previous.approvals) {
-    const survivor = current.get(`${entry.recoveryId}:${entry.guardianLeaf}`);
-    // A different block hash for the same approval means the entry the caller
-    // was shown is gone, even though an equivalent one was re-mined.
-    if (!survivor || survivor.blockHash !== entry.blockHash) dropped.push(entry.guardianLeaf);
-  }
+  // A different block hash for the same entry means the one the caller was
+  // shown is gone, even though an equivalent one was re-mined.
+  const disappeared = (
+    before: readonly { readonly recoveryId: Hex; readonly guardianLeaf: Hex; readonly blockHash: Hex }[],
+    after: readonly { readonly recoveryId: Hex; readonly guardianLeaf: Hex; readonly blockHash: Hex }[]
+  ): Hex[] => {
+    const current = new Map(after.map(entry => [`${entry.recoveryId}:${entry.guardianLeaf}`, entry]));
+    const gone: Hex[] = [];
+    for (const entry of before) {
+      const survivor = current.get(`${entry.recoveryId}:${entry.guardianLeaf}`);
+      if (!survivor || survivor.blockHash !== entry.blockHash) gone.push(entry.guardianLeaf);
+    }
+    return gone;
+  };
+
+  const dropped = disappeared(previous.approvals, next.approvals);
+  // Reported for the same reason approvals are: someone was told a quorum to
+  // stop a recovery had been reached, and it has not.
+  const droppedCancellations = disappeared(previous.cancellations, next.cancellations);
 
   return Object.freeze({
     snapshot: next,
-    rolledBack: dropped.length > 0,
-    droppedApprovals: Object.freeze(dropped)
+    rolledBack: dropped.length > 0 || droppedCancellations.length > 0,
+    droppedApprovals: Object.freeze(dropped),
+    droppedCancellations: Object.freeze(droppedCancellations)
   });
 }
 
-function eventTopic(eventName: "RecoveryAnnounced" | "RecoveryApprovalPublished"): Hex {
+function eventTopic(eventName: "RecoveryAnnounced" | "RecoveryApprovalPublished" | "RecoveryCancellationPublished"): Hex {
   return encodeEventTopics({ abi: RecoveryIntentBoardAbi, eventName })[0] as Hex;
 }
 
@@ -356,7 +396,11 @@ function decode(log: RecoveryLogEntry): { eventName: string; args: Record<string
       data: log.data,
       topics: log.topics as [Hex, ...Hex[]]
     });
-    if (result.eventName !== "RecoveryAnnounced" && result.eventName !== "RecoveryApprovalPublished") return undefined;
+    if (
+      result.eventName !== "RecoveryAnnounced"
+      && result.eventName !== "RecoveryApprovalPublished"
+      && result.eventName !== "RecoveryCancellationPublished"
+    ) return undefined;
     return { eventName: result.eventName, args: result.args as unknown as Record<string, unknown> };
   } catch {
     // A malformed, truncated, or foreign log is discarded, never surfaced.

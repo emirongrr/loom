@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type PropsWithChildren } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 
 export type NotificationStatus = "pending" | "success" | "error" | "info";
 
@@ -27,6 +27,17 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const clearTimer = useCallback((id: string) => {
     const timer = timers.current.get(id);
     if (timer) { clearTimeout(timer); timers.current.delete(id); }
+  }, []);
+
+  // Every scheduled dismissal owns a timer, and each one would otherwise still
+  // be pending when this unmounts -- firing into a provider that no longer
+  // exists. The map is the only thing that knows about them, so it clears them.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending.values()) clearTimeout(timer);
+      pending.clear();
+    };
   }, []);
 
   const dismiss = useCallback((id: string) => {

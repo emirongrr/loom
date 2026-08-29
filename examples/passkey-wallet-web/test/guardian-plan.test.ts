@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { getAddress } from "viem";
 import {
-  assertAddable, buildGuardianDescriptor, clampThreshold, formatCountdown, guardianAuthority,
+  assertAddable, buildGuardianDescriptor, clampThreshold, createRosterEntry, formatCountdown, guardianAuthority,
   planGuardianChange, suggestedThreshold, withFreshSalts, type RosterEntry
 } from "../src/features/security/guardianPlan.ts";
 import { parseRosterRecord } from "../src/storage/guardianRosterRecord.ts";
@@ -210,4 +211,78 @@ test("a valid stored roster round-trips", () => {
   assert.equal(parsed.setVersion, 3);
   assert.equal(parsed.entries.length, 1);
   assert.equal(parsed.entries[0]?.label, "Alice");
+});
+
+// A record written before invitations were tracked has no `invitedAt`. It must
+// read as "not sent" rather than as an invalid record, or upgrading the wallet
+// would empty someone's guardian list.
+test("an older guardian record without an invitation timestamp is still valid", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.invitedAt, undefined);
+});
+
+test("an invitation timestamp survives a round trip", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", invitedAt: 1_900_000_000_000, descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.invitedAt, 1_900_000_000_000);
+});
+
+// Nonsense is dropped rather than rendered as a date, since the only thing it
+// drives is whether the row says an invitation was sent.
+test("an unusable invitation timestamp is dropped, not adopted", () => {
+  for (const invitedAt of [0, -1, Number.NaN, "yesterday"]) {
+    const record = parseRosterRecord({
+      version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+      entries: [{ id: "g1", label: "Ada", invitedAt, descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+    }, "11155111:0xaaa");
+    assert.equal(record.entries[0]?.invitedAt, undefined);
+  }
+});
+
+// A passkey guardian is identified on chain by verifier, key and salt — never
+// by an address — so the address it was added from is display only. Without it,
+// two Loom wallets added as guardians both read "Dedicated passkey" and cannot
+// be told apart.
+test("a guardian remembers the address it was added from", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", guardianAccount: ALICE, descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.guardianAccount, ALICE);
+});
+
+test("an entry recorded before addresses were kept is still valid", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.guardianAccount, undefined);
+});
+
+test("something that is not an address is dropped rather than shown", () => {
+  const record = parseRosterRecord({
+    version: 1, accountId: "11155111:0xaaa", setVersion: 3,
+    entries: [{ id: "g1", label: "Ada", guardianAccount: "not-an-address", descriptor: { kind: "ecdsa", address: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH } }]
+  }, "11155111:0xaaa");
+  assert.equal(record.entries[0]?.guardianAccount, undefined);
+});
+
+test("a guardian added anywhere carries the wallet it was added from", () => {
+  const descriptor = buildGuardianDescriptor({ kind: "ecdsa", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH });
+  const entry = createRosterEntry({ label: " Ada ", descriptor, guardianAccount: ALICE });
+
+  // Required by the constructor, so neither screen that adds a guardian can
+  // leave it out -- which is how one of them came to.
+  assert.equal(entry.guardianAccount, getAddress(ALICE));
+  assert.equal(entry.label, "Ada");
+});
+
+test("a guardian added with no name is labelled by something that identifies it", () => {
+  const descriptor = buildGuardianDescriptor({ kind: "ecdsa", value: ALICE, verifier: VERIFIER, verifierCodeHash: CODE_HASH });
+  assert.equal(createRosterEntry({ label: "  ", descriptor, guardianAccount: ALICE }).label.length > 0, true);
 });

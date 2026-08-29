@@ -21,6 +21,11 @@ import {
   createGuardianRecoveryClient,
   createRecoveryCancellationDigest,
   createRecoveryId,
+  cancelApprovalFromResponse,
+  createCancelRequest,
+  createCancelResponse,
+  parseCancelRequest,
+  parseCancelResponse,
   createRecoveryRequest,
   createRecoveryResponse,
   createRecoverySignature,
@@ -669,4 +674,101 @@ test("the recovery client owns account inspection, freeze verification, and prop
     client.prepareRecovery({ newValidator, initData: selectorlessInitData, newGuardianSet: freshSet }),
     error => error instanceof GuardianRecoveryError && error.code === "UNSUPPORTED_RECOVERED_VALIDATOR_PATH"
   );
+});
+
+
+const cancelBase = {
+  recoveryId: `0x${"a7".repeat(32)}`,
+  chainId: 11155111,
+  account,
+  recoveryManager,
+  guardianRoot: `0x${"31".repeat(32)}`,
+  guardianThreshold: 3,
+  configVersion: "9",
+  nonce: "4",
+  createdAt: 1_900_000_000,
+  expiresAt: 1_900_086_400
+};
+
+test("a cancellation request derives the digest the chain will check, and does not take it on trust", () => {
+  const request = createCancelRequest(cancelBase);
+  assert.equal(request.cancelDigest, createRecoveryCancellationDigest({
+    chainId: cancelBase.chainId,
+    recoveryManager,
+    account,
+    recoveryId: cancelBase.recoveryId,
+    configVersion: "9",
+    nonce: "4"
+  }));
+  const decoded = parseCancelRequest(serializeRecoveryProtocol(request), { now: 1_900_000_001, chainId: 11155111, account });
+  assert.equal(decoded.cancelDigest, request.cancelDigest);
+  assert.match(decoded.humanCode, /^[0-9]{6}$/);
+});
+
+// The only interesting attack on this envelope: show one thing, sign another.
+test("a cancellation request whose digest does not match its own contents is refused", () => {
+  const request = createCancelRequest(cancelBase);
+  const forged = { ...request, cancelDigest: `0x${"ff".repeat(32)}` };
+  const resealed = { ...forged, integrity: createCancelRequest({ ...cancelBase }).integrity };
+  assert.throws(() => parseCancelRequest(resealed, { now: 1_900_000_001 }), /integrity|digest/);
+});
+
+// A guardian asked to stop a recovery and a guardian asked to approve one are
+// being asked opposite questions. Nothing should be able to pass for the other.
+test("a cancellation request is not a recovery request", () => {
+  const request = createCancelRequest(cancelBase);
+  assert.equal(request.format, "loom.recovery-cancel-request");
+  assert.throws(() => parseRecoveryRequest(serializeRecoveryProtocol(request), { now: 1_900_000_001 }), GuardianRecoveryError);
+});
+
+test("a cancellation response is bound to the request it answers", () => {
+  const request = createCancelRequest(cancelBase);
+  const response = createCancelResponse({
+    recoveryId: request.recoveryId,
+    chainId: request.chainId,
+    account: request.account,
+    cancelDigest: request.cancelDigest,
+    guardianLeaf: `0x${"71".repeat(32)}`,
+    verifier: "0x9999999999999999999999999999999999999999",
+    keyCommitment: `0x${"81".repeat(32)}`,
+    salt: `0x${"21".repeat(32)}`,
+    proof: [`0x${"11".repeat(32)}`],
+    signature: `0x${"ab".repeat(64)}`,
+    signedAt: 1_900_000_100,
+    expiresAt: 1_900_086_000
+  });
+  const decoded = parseCancelResponse(serializeRecoveryProtocol(response), request, { now: 1_900_000_200 });
+  assert.equal(decoded.guardianLeaf, response.guardianLeaf);
+  const approval = cancelApprovalFromResponse(decoded);
+  assert.equal(approval.leaf, response.guardianLeaf);
+  assert.equal(approval.signature, response.signature);
+});
+
+// Signing a different digest is answering a different question, whichever
+// recovery the response names.
+test("a cancellation response that signed another digest is refused", () => {
+  const request = createCancelRequest(cancelBase);
+  const response = createCancelResponse({
+    recoveryId: request.recoveryId,
+    chainId: request.chainId,
+    account: request.account,
+    cancelDigest: `0x${"cc".repeat(32)}`,
+    guardianLeaf: `0x${"71".repeat(32)}`,
+    verifier: "0x9999999999999999999999999999999999999999",
+    keyCommitment: `0x${"81".repeat(32)}`,
+    salt: `0x${"21".repeat(32)}`,
+    proof: [],
+    signature: `0x${"ab".repeat(64)}`,
+    signedAt: 1_900_000_100,
+    expiresAt: 1_900_086_000
+  });
+  assert.throws(() => parseCancelResponse(response, request, { now: 1_900_000_200 }), /different digest/);
+});
+
+// Proposing again advances the nonce, which moves both the id and the digest,
+// so yesterday's signature cannot stop today's recovery.
+test("a cancellation signature does not carry to the next recovery", () => {
+  const first = createCancelRequest(cancelBase);
+  const second = createCancelRequest({ ...cancelBase, nonce: "5" });
+  assert.notEqual(first.cancelDigest, second.cancelDigest);
 });

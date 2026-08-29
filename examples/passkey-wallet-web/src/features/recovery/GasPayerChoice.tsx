@@ -3,6 +3,7 @@ import { formatEther } from "viem";
 import { useNetwork } from "../../config/NetworkContext";
 import { useAppServices } from "../../app/AppServices";
 import type { AccountHandle } from "../../types";
+import { shortAddress } from "../../components/address.ts";
 
 /**
  * Which wallet pays for a permissionless step, and whether it can.
@@ -43,7 +44,7 @@ export function GasPayerChoice({ label, candidates, selected, disabled, onSelect
   const describe = (candidate: AccountHandle): string => {
     const balance = balances[candidate.id];
     const funds = balance === undefined ? "balance unknown" : `${trim(formatEther(balance))} ETH`;
-    return `${candidate.label} · ${short(candidate.account)} · ${funds}`;
+    return `${candidate.label} · ${shortAddress(candidate.account)} · ${funds}`;
   };
 
   if (candidates.length === 0) return null;
@@ -68,8 +69,6 @@ export function GasPayerChoice({ label, candidates, selected, disabled, onSelect
     </p>
   </div>;
 }
-
-const short = (value: string): string => `${value.slice(0, 6)}…${value.slice(-4)}`;
 
 /** Enough digits to tell empty from funded, without a wall of zeroes. */
 function trim(value: string): string {

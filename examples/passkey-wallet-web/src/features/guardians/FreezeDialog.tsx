@@ -3,7 +3,6 @@ import type { GuardianInviteV1 } from "@loom/sdk/recovery";
 import { GUARDIAN_ACCOUNT_LABEL } from "../security/guardianInvitation";
 import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
-import { shorten } from "../../components/AccountHeader";
 import { Dialog } from "../../components/Dialog";
 import { useAppServices } from "../../app/AppServices";
 import { safeUserMessage } from "../../domain/errors/appError";
@@ -11,6 +10,7 @@ import { prepareGuardianFreeze, prepareGuardianFreezeChallenge, readFreezeState,
 import { guardianCapabilityMatchesAccount, signFreezeDigestWithPasskey } from "./freezeSigning";
 import type { WalletDeployment } from "../onboarding/accountLifecycle";
 import type { AccountHandle } from "../../types";
+import { shortAddress } from "../../components/address.ts";
 
 type Step =
   | { status: "checking" }
@@ -75,7 +75,7 @@ export function FreezeDialog({ capability, deployment, guardianAccount, onClose 
 
   return <Dialog label="Emergency freeze" busy={step.status === "verifying"} onClose={onClose}>
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="section-heading"><div><p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL} · {shorten(capability.account)}</p><h2>Emergency freeze</h2></div></div>
+      <div className="section-heading"><div><p className="eyebrow">{GUARDIAN_ACCOUNT_LABEL} · {shortAddress(capability.account)}</p><h2>Emergency freeze</h2></div></div>
 
       {step.status === "checking" && <p className="form-note">Re-reading the account's live guardian state…</p>}
 

@@ -43,7 +43,11 @@ export function createGuardianRecoveryResponse(input: {
   readonly signedAt: number;
 }): RecoveryResponseV1 {
   const { request, capability, digest } = input.review;
-  if (input.signedAt >= request.expiresAt || input.signedAt >= capability.expiresAt) throw new Error("The recovery request or guardian capability expired before signing.");
+  // The request's own window still binds. The invitation's does not: it was the
+  // deadline for accepting the link, and the leaf that link delivered does not
+  // lapse. An approval is verified against the account's guardian root, and the
+  // chain knows nothing about when the invitation was sent.
+  if (input.signedAt >= request.expiresAt) throw new Error("The recovery request expired before signing.");
   return createRecoveryResponse({
     requestId: request.requestId,
     chainId: request.chainId,
