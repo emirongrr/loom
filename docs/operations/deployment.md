@@ -6,6 +6,8 @@ Deploy shared validators, the policy hook, and the factory with the scripts in
 
 For the mobile wallet rehearsal path, see
 `docs/operations/sepolia-mobile-deployment.md`.
+For the browser passkey wallet and its stable wallet-identity registry, see
+`docs/operations/passkey-wallet-sepolia-deployment.md`.
 
 Deployment helpers are split into passkey, authorization, and recovery groups
 so each helper remains independently deployable and does not accumulate every
