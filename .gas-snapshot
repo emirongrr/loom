@@ -98,6 +98,8 @@ ImmutableProxyFactoryTest:testProxyConstructorRejectsUnsafeInputs() (gas: 158451
 ImmutableProxyFactoryTest:testProxyDeploymentInitializesAccountStateAndRegistersOnce() (gas: 447612)
 ImmutableProxyFactoryTest:testProxyReceiveAcceptsEth() (gas: 423536)
 ImmutableProxyFactoryTest:testRegistryIsFactoryOnlyAndCannotInflateCount() (gas: 470832)
+ImplementationLockValidatorTest:testInitializedImplementationCannotValidateOrBeReinitialized() (gas: 5225422)
+ImplementationLockValidatorTest:testNeverAcceptsAccountAuthority() (gas: 9009)
 KeystoreSyncTest:testAccountRecoverySetRejectsInvalidValidatorSetsAndGuardianConfig() (gas: 6270423)
 KeystoreSyncTest:testCancellingATransferRequiresTheControllerAndAnOutstandingOffer() (gas: 742001)
 KeystoreSyncTest:testControllerTransferNeedsTheRecipientToProveItCanAct() (gas: 873240)
