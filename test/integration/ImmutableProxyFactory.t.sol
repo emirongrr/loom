@@ -182,9 +182,9 @@ contract ImmutableProxyFactoryTest {
 
         MockTarget zeroIdAccount = new MockTarget();
         try registry.registerAccount(bytes32(0), address(zeroIdAccount)) {
-            revert("zero wallet id accepted");
+            revert("zero account handle accepted");
         } catch {}
-        require(!registry.isAccount(address(zeroIdAccount)), "zero wallet id registered account");
+        require(!registry.isAccount(address(zeroIdAccount)), "zero account handle registered account");
         require(registry.handleForAccount(address(zeroIdAccount)) == bytes32(0), "zero handle left reverse binding");
 
         try registry.registerAccount(accountHandle, address(accountLike)) {
@@ -194,13 +194,13 @@ contract ImmutableProxyFactoryTest {
 
         bytes32 secondAccountHandle = keccak256("second-registry-account");
         try registry.registerAccount(secondAccountHandle, address(accountLike)) {
-            revert("account accepted a second wallet id");
+            revert("account accepted a second account handle");
         } catch {}
         require(
             registry.accountForHandle(secondAccountHandle) == address(0), "failed registration left forward binding"
         );
         require(registry.handleForAccount(address(accountLike)) == accountHandle, "failed registration changed handle");
-        require(registry.accountCount() == 1, "second wallet id inflated count");
+        require(registry.accountCount() == 1, "second account handle inflated count");
 
         AppAccountRegistry factoryRegistry = factory.registry();
         try factoryRegistry.registerAccount(keccak256("foreign-wallet"), address(accountLike)) {

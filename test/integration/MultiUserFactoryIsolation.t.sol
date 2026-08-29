@@ -87,7 +87,7 @@ contract MultiUserFactoryIsolationTest {
 
         require(address(_create(salt, modulesA)) == predictedA, "account A deployed at wrong address");
         try entryPoint.createAccount(factory, salt, bytes32(0), 0, keccak256("config"), modulesB) {
-            revert("one wallet id bound two accounts");
+            revert("one account handle bound two accounts");
         } catch {}
         require(predictedB.code.length == 0, "conflicting wallet account survived the rejected binding");
         require(factory.accountForHandle(salt) == predictedA, "first handle binding changed");
@@ -119,7 +119,7 @@ contract MultiUserFactoryIsolationTest {
         require(address(accountA).balance == 1 ether, "funded address balance missing after owner deploy");
 
         try entryPoint.createAccount(factory, salt, bytes32(0), 0, keccak256("config"), modulesB) {
-            revert("bound wallet id redirected to another account");
+            revert("bound account handle redirected to another account");
         } catch {}
         require(predictedB.code.length == 0, "conflicting account survived rejected binding");
         require(factory.accountForHandle(salt) == fundedA, "funded account handle was redirected");

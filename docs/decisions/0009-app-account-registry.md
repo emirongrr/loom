@@ -71,19 +71,19 @@ Risks:
 
 Required controls:
 
-- The registry must remain per-factory. A wallet identity is random and binds
+- The registry must remain per-factory. An account handle is random and binds
   exactly one account; it must not become an owner-to-accounts index or a global
   registry connecting a user's accounts.
 - Membership must remain factory-only and append-only, with duplicate-count
   protection, and must never gate account control. A registered account must
-  never exist with a zero or missing wallet identity.
+  never exist with a zero or missing account handle.
 - Reproducible deployment manifests must publish the registry codehash
   (decision 0004).
 
 ## Privacy Analysis
 
 The registry reveals that a given address is an account created by a specific
-factory and that a random RP wallet identity resolves to it. The deployment and
+factory and that a random RP account handle resolves to it. The deployment and
 address are already public; the additional identifier creates a durable
 credential-to-account correlation for whoever can observe the authenticator
 metadata. It contains no owner, label, guardian, or personal data.
