@@ -154,6 +154,17 @@ export interface LoomTransportAdapter {
   }): Promise<UserOperationReceipt>;
 }
 
+export interface PrivateFirstTransportOptions {
+  /** Private relay or bundler used only for submission. */
+  readonly privateTransport: LoomTransportAdapter;
+  /** Public bundler used for estimation, pricing, receipts, and optional fallback. */
+  readonly publicTransport: LoomTransportAdapter;
+  /** Disabled by default. Ambiguous delivery failures must never fall back. */
+  readonly fallback?: "never" | "explicit-rejection";
+  /** The application must positively identify a response that proves non-acceptance. */
+  readonly isExplicitRejection?: (error: unknown) => boolean;
+}
+
 export interface LoomStateReadTransport {
   ethCall(input: {
     to: Hex;
@@ -648,5 +659,3 @@ export interface PrivateVaultWithdrawalPreparation {
   };
   readonly review: ClearSigningReview;
 }
-
-
