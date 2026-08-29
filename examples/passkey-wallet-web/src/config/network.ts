@@ -17,7 +17,7 @@ export interface NetworkConfig {
   readonly bundlerUrl: string;
   /** Block explorer used for transaction links. */
   readonly explorerUrl: string;
-  /** Optional sponsor relay for creating/funding accounts (development only). */
+  /** Optional authenticated sponsor authorization and private submission service. */
   readonly relayUrl: string;
 }
 

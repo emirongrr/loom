@@ -43,7 +43,7 @@ afterEach(cleanup);
 
 function guardianAccount(): AccountHandle {
   return {
-    version: 1, kind: "recovered", id: "guardian", label: "Guardian",
+    version: 3, kind: "recovered", id: "guardian", label: "Guardian",
     account: "0xcccccccccccccccccccccccccccccccccccccccc", chainId: 11_155_111,
     credentialId: "0xab", publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
     rpId: "localhost", origin: "http://localhost:5174", validator: `0x${"33".repeat(20)}`

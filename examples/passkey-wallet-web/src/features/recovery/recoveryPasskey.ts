@@ -1,6 +1,7 @@
 import type { Address, Hex } from "@loom/core";
 import { P256ValidatorAbi } from "@loom/core/abi";
 import { encodeFunctionData, keccak256, sha256, stringToHex } from "viem";
+import { decodePasskeyAccountLocator } from "@loom/sdk/account-discovery";
 import type { RegisteredPasskey, WalletDeployment } from "../onboarding/accountLifecycle";
 
 export interface PreparedRecoveryPasskey {
@@ -30,7 +31,15 @@ export async function prepareNewRecoveryPasskey(input: {
   readonly rpId: string;
   readonly origin: string;
   readonly account: Address;
-  readonly register: (label: string, account?: string) => Promise<RegisteredPasskey>;
+  readonly accountHandle: Hex;
+  readonly register: (
+    label: string, accountHandle: Hex, chainId: number, factory: Address, account?: Address
+  ) => Promise<RegisteredPasskey>;
+  readonly assertUsable: (input: {
+    readonly passkey: RegisteredPasskey;
+    readonly rpId: string;
+    readonly origin: string;
+  }) => Promise<unknown>;
   readonly prepare: (input: { initData: Hex }) => Promise<{
     readonly validator: Address;
     readonly initDataHash: Hex;
@@ -43,7 +52,17 @@ export async function prepareNewRecoveryPasskey(input: {
   }
   const label = input.label.trim();
   if (!label || label.length > 80) throw new Error("Give the recovery passkey a name of 1 to 80 characters.");
-  const passkey = await input.register(label, input.account);
+  const passkey = await input.register(
+    label, input.accountHandle, input.deployment.chainId, input.deployment.factory, input.account
+  );
+  await assertRecoveryPasskeyUsable({
+    passkey,
+    deployment: input.deployment,
+    accountHandle: input.accountHandle,
+    rpId: input.rpId,
+    origin: input.origin,
+    assertUsable: input.assertUsable
+  });
   const initData = encodeRecoveryPasskeyInitData({
     passkey,
     rpId: input.rpId,
@@ -52,6 +71,30 @@ export async function prepareNewRecoveryPasskey(input: {
   });
   const prepared = await input.prepare({ initData });
   return Object.freeze({ passkey, rpId: input.rpId, origin: input.origin, initData, ...prepared });
+}
+
+/** Re-run the same possession proof before a persisted recovery draft is used. */
+export async function assertRecoveryPasskeyUsable(input: {
+  readonly passkey: RegisteredPasskey;
+  readonly deployment: WalletDeployment;
+  readonly accountHandle: Hex;
+  readonly rpId: string;
+  readonly origin: string;
+  readonly assertUsable: (input: {
+    readonly passkey: RegisteredPasskey;
+    readonly rpId: string;
+    readonly origin: string;
+  }) => Promise<unknown>;
+}): Promise<void> {
+  const locator = decodePasskeyAccountLocator(input.passkey.userHandle);
+  if (!locator
+    || locator.chainId !== input.deployment.chainId
+    || locator.factory.toLowerCase() !== input.deployment.factory.toLowerCase()
+    || locator.accountHandle.toLowerCase() !== input.accountHandle.toLowerCase()
+    || input.passkey.accountHandle.toLowerCase() !== input.accountHandle.toLowerCase()) {
+    throw new Error("The recovery passkey registration did not preserve the expected v3 account locator.");
+  }
+  await input.assertUsable({ passkey: input.passkey, rpId: input.rpId, origin: input.origin });
 }
 
 export function encodeRecoveryPasskeyInitData(input: {

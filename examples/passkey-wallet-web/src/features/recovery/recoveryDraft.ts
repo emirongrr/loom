@@ -140,14 +140,25 @@ function parsePreparation(value: unknown): RecoveryDraftPreparation {
   const record = value as Record<string, unknown>;
   if (!record.passkey || typeof record.passkey !== "object" || Array.isArray(record.passkey)) throw new Error("recovery draft passkey is invalid");
   const passkey = record.passkey as Record<string, unknown>;
-  if (!hex(passkey.credentialId) || !passkey.publicKey || typeof passkey.publicKey !== "object" || Array.isArray(passkey.publicKey)) throw new Error("recovery draft passkey is invalid");
+  if (!hex(passkey.credentialId) || !bytes32(passkey.accountHandle) || !hex(passkey.userHandle)
+    || typeof passkey.backupEligible !== "boolean" || typeof passkey.backedUp !== "boolean"
+    || !passkey.publicKey || typeof passkey.publicKey !== "object" || Array.isArray(passkey.publicKey)) {
+    throw new Error("recovery draft passkey is invalid");
+  }
   const publicKey = passkey.publicKey as Record<string, unknown>;
   if (!bytes32(publicKey.x) || !bytes32(publicKey.y) || typeof record.rpId !== "string" || typeof record.origin !== "string" || !hex(record.initData) || !address(record.validator) || !bytes32(record.initDataHash) || typeof record.alreadyDeployed !== "boolean") throw new Error("recovery draft preparation is invalid");
   if (keccak256(record.initData as Hex) !== String(record.initDataHash).toLowerCase()) throw new Error("recovery draft init data hash is invalid");
   const deploy = record.deploy;
   if (deploy !== undefined && (!deploy || typeof deploy !== "object" || Array.isArray(deploy) || !address((deploy as Record<string, unknown>).to) || !hex((deploy as Record<string, unknown>).data) || Object.hasOwn(deploy as object, "value") || (deploy as Record<string, unknown>).permissionless !== true)) throw new Error("recovery draft deployment is invalid");
   const preparation = {
-    passkey: Object.freeze({ credentialId: passkey.credentialId as Hex, publicKey: Object.freeze({ x: publicKey.x as Hex, y: publicKey.y as Hex }) }),
+    passkey: Object.freeze({
+      credentialId: passkey.credentialId as Hex,
+      publicKey: Object.freeze({ x: publicKey.x as Hex, y: publicKey.y as Hex }),
+      accountHandle: passkey.accountHandle as Hex,
+      userHandle: passkey.userHandle as Hex,
+      backupEligible: passkey.backupEligible,
+      backedUp: passkey.backedUp
+    }),
     rpId: record.rpId, origin: record.origin, initData: record.initData as Hex, validator: record.validator as Address,
     initDataHash: record.initDataHash as Hex, alreadyDeployed: record.alreadyDeployed
   };

@@ -9,7 +9,7 @@ import type { AccountHandle } from "../../src/types.ts";
 
 function account(id: string, byte: string): AccountHandle {
   return {
-    version: 1,
+    version: 3,
     kind: "recovered",
     id,
     label: id,

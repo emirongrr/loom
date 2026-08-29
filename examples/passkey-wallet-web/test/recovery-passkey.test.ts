@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { keccak256 } from "viem";
+import { encodePasskeyAccountLocator } from "@loom/sdk/account-discovery";
 import {
   encodeRecoveryPasskeyInitData, prepareNewRecoveryPasskey, publishRecoveryValidator
 } from "../src/features/recovery/recoveryPasskey.ts";
@@ -8,7 +9,17 @@ import {
 const POLICY = "0x1111111111111111111111111111111111111111";
 const FACTORY = "0x2222222222222222222222222222222222222222";
 const VALIDATOR = "0x3333333333333333333333333333333333333333";
-const passkey = { credentialId: "0x1234", publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` } } as const;
+const ACCOUNT = "0x4444444444444444444444444444444444444444";
+const ACCOUNT_HANDLE = `0x${"55".repeat(32)}` as const;
+const USER_HANDLE = hex(encodePasskeyAccountLocator({ chainId: 11155111, factory: POLICY, accountHandle: ACCOUNT_HANDLE }));
+const passkey = {
+  credentialId: "0x1234",
+  publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
+  accountHandle: ACCOUNT_HANDLE,
+  userHandle: USER_HANDLE,
+  backupEligible: true,
+  backedUp: true
+} as const;
 
 function deployment(provisioning = true) {
   return {
@@ -31,8 +42,9 @@ function deployment(provisioning = true) {
 test("unsupported deployment fails before creating a passkey", async () => {
   let registrations = 0;
   await assert.rejects(prepareNewRecoveryPasskey({
-    deployment: deployment(false), label: "Recovered wallet", rpId: "localhost", origin: "http://localhost:5174",
+    deployment: deployment(false), label: "Recovered wallet", rpId: "localhost", origin: "http://localhost:5174", account: ACCOUNT, accountHandle: ACCOUNT_HANDLE,
     register: async () => { registrations += 1; return passkey; },
+    assertUsable: async () => { throw new Error("must not run"); },
     prepare: async () => { throw new Error("must not run"); }
   }), /cannot provision/u);
   assert.equal(registrations, 0);
@@ -40,10 +52,26 @@ test("unsupported deployment fails before creating a passkey", async () => {
 
 test("new passkey is bound to RP, origin, policy hook, and live factory preparation", async () => {
   let observedInitData = "";
+  const order: string[] = [];
   const prepared = await prepareNewRecoveryPasskey({
-    deployment: deployment(), label: "  Recovered wallet  ", rpId: "localhost", origin: "http://localhost:5174",
-    register: async label => { assert.equal(label, "Recovered wallet"); return passkey; },
+    deployment: deployment(), label: "  Recovered wallet  ", rpId: "localhost", origin: "http://localhost:5174", account: ACCOUNT, accountHandle: ACCOUNT_HANDLE,
+    register: async (label, accountHandle, chainId, factory, account) => {
+      assert.equal(label, "Recovered wallet");
+      assert.equal(accountHandle, ACCOUNT_HANDLE);
+      assert.equal(factory, POLICY);
+      assert.equal(account, ACCOUNT);
+      assert.equal(chainId, 11155111);
+      order.push("register");
+      return passkey;
+    },
+    assertUsable: async input => {
+      order.push("assert");
+      assert.equal(input.passkey, passkey);
+      assert.equal(input.rpId, "localhost");
+      assert.equal(input.origin, "http://localhost:5174");
+    },
     prepare: async ({ initData }) => {
+      order.push("prepare");
       observedInitData = initData;
       return { validator: VALIDATOR, initDataHash: keccak256(initData), alreadyDeployed: false,
         deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true } };
@@ -52,6 +80,48 @@ test("new passkey is bound to RP, origin, policy hook, and live factory preparat
   assert.equal(observedInitData, encodeRecoveryPasskeyInitData({ passkey, rpId: "localhost", origin: "http://localhost:5174", policyHook: POLICY }));
   assert.equal(prepared.validator, VALIDATOR);
   assert.equal(prepared.initDataHash, keccak256(prepared.initData));
+  assert.deepEqual(order, ["register", "assert", "prepare"]);
+});
+
+test("an authenticator-bound credential remains usable with guardian recovery", async () => {
+  let preparations = 0;
+  const prepared = await prepareNewRecoveryPasskey({
+    deployment: deployment(), label: "Device-only", rpId: "localhost", origin: "http://localhost:5174",
+    account: ACCOUNT, accountHandle: ACCOUNT_HANDLE,
+    register: async () => ({ ...passkey, backupEligible: false, backedUp: false }),
+    assertUsable: async () => undefined,
+    prepare: async ({ initData }) => { preparations += 1; return { validator: VALIDATOR, initDataHash: keccak256(initData), alreadyDeployed: true }; }
+  });
+  assert.equal(preparations, 1);
+  assert.equal(prepared.passkey.backupEligible, false);
+});
+
+test("an unusable newly registered credential is rejected before validator preparation", async () => {
+  let preparations = 0;
+  await assert.rejects(prepareNewRecoveryPasskey({
+    deployment: deployment(), label: "Recovered wallet", rpId: "localhost", origin: "http://localhost:5174",
+    account: ACCOUNT, accountHandle: ACCOUNT_HANDLE,
+    register: async () => passkey,
+    assertUsable: async () => { throw new Error("post-registration assertion failed"); },
+    prepare: async () => { preparations += 1; throw new Error("must not run"); }
+  }), /post-registration assertion failed/u);
+  assert.equal(preparations, 0);
+});
+
+test("a registration carrying another locator is rejected before assertion or preparation", async () => {
+  let assertions = 0;
+  let preparations = 0;
+  await assert.rejects(prepareNewRecoveryPasskey({
+    deployment: deployment(), label: "Recovered wallet", rpId: "localhost", origin: "http://localhost:5174",
+    account: ACCOUNT, accountHandle: ACCOUNT_HANDLE,
+    register: async () => ({ ...passkey, userHandle: hex(encodePasskeyAccountLocator({
+      chainId: 11155111, factory: POLICY, accountHandle: `0x${"77".repeat(32)}`
+    })) }),
+    assertUsable: async () => { assertions += 1; },
+    prepare: async () => { preparations += 1; throw new Error("must not run"); }
+  }), /expected v3 account locator/u);
+  assert.equal(assertions, 0);
+  assert.equal(preparations, 0);
 });
 
 test("permissionless publication rejects the wrong chain and submits only the prepared zero-value call", async () => {
@@ -105,3 +175,7 @@ test("a wallet that claims to switch but does not is still refused", async () =>
     provider, chainId: 11155111, deploy: { to: FACTORY, data: "0x1234", value: 0n, permissionless: true }
   }), /switch/iu);
 });
+
+function hex(value: Uint8Array): `0x${string}` {
+  return `0x${[...value].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}

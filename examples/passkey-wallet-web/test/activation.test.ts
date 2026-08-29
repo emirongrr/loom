@@ -8,15 +8,17 @@ import { planActivation } from "../src/features/wallet/activate.ts";
 
 // The real Sepolia deployment this example ships with.
 const DEPLOYMENT = {
+  schemaVersion: 2,
   chainId: 11155111,
   entryPoint: "0x433709009B8330FDa32311DF1C2AFA402eD8D009",
   factory: "0x2d8610879998c90c0539d4668e5d3a5297a68d6e",
+  appRegistry: "0x6a7d86dcab9e8c48b03900fabc68279376ce28e1",
   implementation: "0x708e5c9c53a0e129ead9b14a73ebd891e2d0ca24",
   validator: "0xd86b5531361f6382342f59700ff1b309919eaf0a",
   policyHook: "0xceda8174e7943765993bd09c6d714a0a3d1dd82a",
   runtimeCodeHashes: {
     entryPoint: `0x${"01".repeat(32)}`, factory: `0x${"02".repeat(32)}`,
-    implementation: `0x${"03".repeat(32)}`, validator: `0x${"04".repeat(32)}`,
+    appRegistry: `0x${"07".repeat(32)}`, implementation: `0x${"03".repeat(32)}`, validator: `0x${"04".repeat(32)}`,
     policyHook: `0x${"05".repeat(32)}`,
     recoveryModule: `0x${"06".repeat(32)}`
   },
@@ -26,7 +28,11 @@ const DEPLOYMENT = {
 
 const PASSKEY = {
   credentialId: "0xaabbccdd",
-  publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` }
+  publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
+  accountHandle: `0x${"a5".repeat(32)}`,
+  userHandle: `0x${"a6".repeat(62)}`,
+  backupEligible: true,
+  backedUp: true
 } as const;
 
 const INITIAL_GUARDIANS = {
@@ -74,7 +80,7 @@ test("the rebuilt creation configuration re-derives the account's own address", 
     factory: DEPLOYMENT.factory,
     implementation: DEPLOYMENT.implementation,
     proxyCreationCode: DEPLOYMENT.proxyCreationCode,
-    salt: account.salt,
+    salt: account.accountHandle,
     config: config!
   } as never);
   assert.equal(derived.toLowerCase(), account.account.toLowerCase());
@@ -105,7 +111,7 @@ test("a handle pointing at a different deployment is refused", () => {
 // Recovered accounts already exist on chain; there is nothing to create.
 test("a recovered account handle is refused", () => {
   const recovered = {
-    version: 1, kind: "recovered", id: "x", label: "r",
+    version: 3, kind: "recovered", id: "x", label: "r",
     account: handle().account, chainId: 11155111,
     credentialId: PASSKEY.credentialId, publicKey: PASSKEY.publicKey,
     rpId: "localhost", origin: "http://localhost:5174", validator: DEPLOYMENT.validator
@@ -129,7 +135,7 @@ test("activation refuses a handle whose address does not match its configuration
 
 test("activation refuses an account that already exists", () => {
   const recovered = {
-    version: 1, kind: "recovered", id: "x", label: "r",
+    version: 3, kind: "recovered", id: "x", label: "r",
     account: handle().account, chainId: 11155111,
     credentialId: PASSKEY.credentialId, publicKey: PASSKEY.publicKey,
     rpId: "localhost", origin: "http://localhost:5174", validator: DEPLOYMENT.validator

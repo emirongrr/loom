@@ -21,8 +21,8 @@ export interface AccountStore {
   linkRecovered(handle: Extract<AccountHandle, { readonly kind: "recovered" }>): Promise<AccountHandle>;
 }
 
-const KEY = "loom.wallet.accounts.v1";
-const REMOVED_KEY = "loom.wallet.accounts.removed.v1";
+const KEY = "loom.wallet.accounts.v3";
+const REMOVED_KEY = "loom.wallet.accounts.removed.v3";
 const MAX_ACCOUNTS = 256;
 
 interface StoredAccounts {
@@ -150,17 +150,18 @@ function sameAccount(left: AccountHandle, right: AccountHandle): boolean {
 export function parseAccountHandle(value: unknown): AccountHandle {
   if (!value || typeof value !== "object") throw new Error("invalid account handle");
   const record = value as Record<string, unknown>;
-  if (record.version !== 1 || (record.kind !== "derived" && record.kind !== "recovered")) throw new Error("unsupported account handle");
+  if (record.version !== 3 || (record.kind !== "derived" && record.kind !== "recovered")) throw new Error("unsupported account handle");
   if (typeof record.id !== "string" || record.id.length === 0 || record.id.length > 100 || typeof record.label !== "string" || record.label.trim().length === 0 || record.label.length > 80) throw new Error("invalid account identity");
   if (!/^0x[0-9a-fA-F]{40}$/.test(String(record.account)) || !Number.isSafeInteger(record.chainId) || Number(record.chainId) < 1) throw new Error("invalid account chain binding");
   if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.credentialId))) throw new Error("invalid public credential id");
   if (!record.publicKey || typeof record.publicKey !== "object" || !bytes32((record.publicKey as Record<string, unknown>).x) || !bytes32((record.publicKey as Record<string, unknown>).y)) throw new Error("invalid passkey public key");
   if (typeof record.rpId !== "string" || record.rpId.length === 0 || record.rpId.length > 253 || typeof record.origin !== "string" || record.origin.length > 2048) throw new Error("invalid passkey origin binding");
+  if (record.passkeyBackup !== undefined) parsePasskeyBackup(record.passkeyBackup);
   let origin: URL;
   try { origin = new URL(record.origin); } catch { throw new Error("invalid passkey origin binding"); }
   if (origin.origin !== record.origin || (origin.protocol !== "https:" && !(origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname)))) throw new Error("invalid passkey origin binding");
   if (record.kind === "derived") {
-    if (!bytes32(record.salt) || !record.creation || typeof record.creation !== "object") throw new Error("invalid account derivation handle");
+    if (!bytes32(record.accountHandle) || !record.creation || typeof record.creation !== "object") throw new Error("invalid account derivation handle");
     const creation = record.creation as Record<string, unknown>;
     if (!bytes32(creation.guardianRoot) || !Number.isInteger(creation.guardianThreshold) || Number(creation.guardianThreshold) < 0 || Number(creation.guardianThreshold) > 32) throw new Error("invalid account guardian binding");
     if (creation.recoveryModule !== undefined && !address(creation.recoveryModule)) throw new Error("invalid recovery module binding");
@@ -168,6 +169,17 @@ export function parseAccountHandle(value: unknown): AccountHandle {
     throw new Error("invalid recovered validator binding");
   }
   return Object.freeze(value) as AccountHandle;
+}
+
+function parsePasskeyBackup(value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid passkey backup observation");
+  const record = value as Record<string, unknown>;
+  if (typeof record.backupEligible !== "boolean" || typeof record.backedUp !== "boolean"
+    || (record.backedUp && !record.backupEligible)
+    || typeof record.observedAt !== "number" || !Number.isFinite(record.observedAt) || record.observedAt <= 0
+    || (record.source !== "registration" && record.source !== "assertion")) {
+    throw new Error("invalid passkey backup observation");
+  }
 }
 
 function address(value: unknown): boolean { return /^0x[0-9a-fA-F]{40}$/.test(String(value)); }

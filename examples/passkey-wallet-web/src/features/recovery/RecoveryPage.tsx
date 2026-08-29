@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { GuardianRecoveryError, createRecoveryRequest, parseRecoveryRequest, type RecoveryRequestV1 } from "@loom/sdk/recovery";
+import { createRpcStateTransport } from "@loom/sdk";
+import { readAccountHandle } from "@loom/sdk/account-discovery";
 import { RecoveryManagerAbi } from "@loom/core/abi";
 import { getAddress, isAddress } from "viem";
 import { useAppServices } from "../../app/AppServices";
 import { useNetwork } from "../../config/NetworkContext";
-import { loadWalletDeployment, registerBrowserPasskey } from "../onboarding/accountLifecycle";
+import { assertRegisteredBrowserPasskey, loadWalletDeployment, registerBrowserPasskey } from "../onboarding/accountLifecycle";
 import { createAccountGuardianClient } from "../security/guardianClient";
 import { createEncryptedLinkTransport } from "../../transports/invitations";
 import { createRecoverySession, createRecoverySessionRepository, type RecoverySession, type RecoverySessionIssue } from "./recoverySession";
-import { prepareNewRecoveryPasskey, publishRecoveryValidator, type Eip1193Provider } from "./recoveryPasskey";
+import { assertRecoveryPasskeyUsable, prepareNewRecoveryPasskey, publishRecoveryValidator, type Eip1193Provider } from "./recoveryPasskey";
 import { planGuardianChange, withFreshSalts } from "../security/guardianPlan";
 import { rosterMatchesRoot } from "../security/guardianStatus";
 import { assertSuccessfulTransactionReceipt } from "./recoveryProposal";
@@ -152,6 +154,12 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         && draft.account.toLowerCase() === account.toLowerCase()
         && draft.configVersion === state.configVersion.toString()
       );
+      const liveAccountHandle = await readAccountHandle({
+        factory: deployment.factory,
+        account: getAddress(account),
+        stateTransport: createRpcStateTransport({ endpoint: config.rpcUrl }),
+        verificationStateTransport: createRpcStateTransport({ endpoint: config.verificationRpcUrl })
+      });
       // Every draft is tried, not just the first that opens. Stopping at the
       // first left a second held draft untried, and its publication was then
       // reported as belonging to some other device.
@@ -176,6 +184,15 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
           continue;
         }
         try {
+          if (!liveAccountHandle) throw new Error("This account has no registered account handle.");
+          await assertRecoveryPasskeyUsable({
+            passkey: local.passkey,
+            deployment,
+            accountHandle: liveAccountHandle,
+            rpId: local.rpId,
+            origin: local.origin,
+            assertUsable: assertRegisteredBrowserPasskey
+          });
           const checked = await client.prepareRecoveryValidator({
             initData: local.initData,
             newGuardianSet: rotationSet(draft.rotation)
@@ -275,13 +292,24 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         entries: withFreshSalts(roster.entries),
         threshold: live.guardianThreshold
       });
+      const accountHandle = await readAccountHandle({
+        factory: inspection.deployment.factory,
+        account: inspection.account,
+        stateTransport: createRpcStateTransport({ endpoint: config.rpcUrl }),
+        verificationStateTransport: createRpcStateTransport({ endpoint: config.verificationRpcUrl })
+      });
+      if (!accountHandle) {
+        throw new Error("This account has no handle in the configured factory and cannot use the recovery credential format.");
+      }
       const prepared = await prepareNewRecoveryPasskey({
         deployment: inspection.deployment,
         label: passkeyLabel,
         account: inspection.account,
+        accountHandle,
         rpId: window.location.hostname,
         origin: window.location.origin,
         register: registerBrowserPasskey,
+        assertUsable: assertRegisteredBrowserPasskey,
         prepare: input => client.prepareRecoveryValidator({ ...input, newGuardianSet: rotationSet(chosen) })
       });
       await draftRepository.write(createRecoveryDraft({
@@ -428,11 +456,15 @@ export function RecoveryPage({ path, accounts, preferredGasPayerId, sourceWallet
         expiresAt: createdAt + 604_800
       });
       const session = createRecoverySession(request, Date.now(), {
+        recoveryPasskeyVerified: true,
         initData: passkeyPreparation.initData,
         credentialId: passkeyPreparation.passkey.credentialId,
         publicKey: passkeyPreparation.passkey.publicKey,
         rpId: passkeyPreparation.rpId,
         origin: passkeyPreparation.origin,
+        accountHandle: passkeyPreparation.passkey.accountHandle,
+        backupEligible: passkeyPreparation.passkey.backupEligible,
+        backedUp: passkeyPreparation.passkey.backedUp,
         freshGuardianEntries,
         oldValidators: prepared.oldValidators
       });

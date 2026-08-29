@@ -140,6 +140,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
       </>}
       {mode === "create" && <form onSubmit={event => { event.preventDefault(); void create(); }}>
         <label className="field"><span>Wallet name</span><input autoFocus value={label} maxLength={80} onChange={event => setLabel(event.target.value)} placeholder="My wallet" /></label>
+        <p className="form-note">One flow opens your browser's secure passkey picker. Depending on your device it may offer Windows Hello, a phone or cloud-synced provider, or a hardware key such as YubiKey. A sponsored deployment asks you to use the new passkey once more to sign its on-chain activation.</p>
         <label className="advanced-toggle">
           <input type="checkbox" checked={advanced} onChange={event => { setAdvanced(event.target.checked); setGuardianError(""); }} />
           <span><strong>Set up guardians now</strong><small>Advanced · bind recovery protection into the wallet from its first deployment.</small></span>
@@ -168,7 +169,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
           </label>}
           {guardianError && <p className="callout warning">{guardianError}</p>}
         </div>}
-        <div className="landing-actions"><button type="button" className="secondary" onClick={() => { onClearMessage(); setMode("welcome"); }}>Back</button><button className="primary" disabled={busy || guardianBusy || !label.trim() || (advanced && (guardians.length === 0 || !ceremonyConfirmed))}>{busy ? "Creating passkey…" : advanced ? "Create protected wallet" : "Create with passkey"}</button></div>
+        <div className="landing-actions"><button type="button" className="secondary" onClick={() => { onClearMessage(); setMode("welcome"); }}>Back</button><button className="primary" disabled={busy || guardianBusy || !label.trim() || (advanced && (guardians.length === 0 || !ceremonyConfirmed))}>{busy ? "Creating wallet…" : advanced ? "Create protected wallet" : "Create with passkey"}</button></div>
       </form>}
       {mode === "recover" && <div>
         {/* Two ways back, and the question that separates them is simply
@@ -181,8 +182,8 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
               fingerprinting a person by their credentials. Repeating is the way
               to bring back several, so the wording invites it. */}
           <p>
-            Use it to find the account it controls. Nothing needs to have been exported first, and you can
-            repeat this for each passkey you hold — your browser asks which one to use.
+            Use it to find the activated on-chain account it still controls. Nothing needs to have been exported
+            first, and you can repeat this for each passkey you hold — your browser asks which one to use.
           </p>
           <button type="button" className="secondary" disabled={busy} onClick={() => void onFindByPasskey()}>
             {accounts.length > 0 ? "Find another with a passkey" : "Find with a passkey"}
@@ -228,7 +229,7 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
         <div><span>Account</span><strong>{shortAddress(removing.account)}</strong></div>
         <div><span>Network</span><strong>Chain {removing.chainId}</strong></div>
       </div>
-      <p className="form-note">To add it again, restore an exported public handle with the matching passkey. Passkeys cannot be rediscovered by this website.</p>
+      <p className="form-note">To add an activated wallet again, use Find with a passkey. A wallet that has never been created on chain is still only known to this browser.</p>
       <div className="removal-confirmation">
         <div className="removal-warning" id="remove-wallet-warning"><span aria-hidden="true">!</span><p><strong>This action removes the wallet from this browser.</strong> Type REMOVE below to confirm.</p></div>
         <label className="field"><span>Type REMOVE to confirm</span><input autoFocus autoComplete="off" spellCheck={false} maxLength={6} value={removalConfirmation} aria-describedby="remove-wallet-warning" placeholder="REMOVE" onChange={event => setRemovalConfirmation(event.target.value)} /></label>

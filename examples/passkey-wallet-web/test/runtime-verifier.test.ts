@@ -10,14 +10,16 @@ const HASH = keccak256(CODE);
 const ENTRY_POINT = "0x1111111111111111111111111111111111111111" as Address;
 const ADDRESS = "0x2222222222222222222222222222222222222222" as Address;
 const deployment = {
+  schemaVersion: 2,
   chainId: 11155111,
   entryPoint: ENTRY_POINT,
   factory: ADDRESS,
+  appRegistry: ADDRESS,
   implementation: ADDRESS,
   validator: ADDRESS,
   policyHook: ADDRESS,
   proxyCreationCode: "0x60",
-  runtimeCodeHashes: { entryPoint: HASH, factory: HASH, implementation: HASH, validator: HASH, policyHook: HASH }
+  runtimeCodeHashes: { entryPoint: HASH, factory: HASH, appRegistry: HASH, implementation: HASH, validator: HASH, policyHook: HASH }
 } as const;
 const config = { rpcUrl: "https://rpc.example", verificationRpcUrl: "https://verification-rpc.example", bundlerUrl: "https://bundler.example", explorerUrl: "https://explorer.example", relayUrl: "" } as const;
 
@@ -76,6 +78,11 @@ test("optional authority addresses and hashes must be committed as pairs", () =>
   assert.throws(() => validateDeployment({ ...deployment, guardianVerifiers: { ecdsa: ADDRESS } }), /ecdsa.*hash/i);
 });
 
+test("wallet trust profiles require the registry-aware schema", () => {
+  assert.throws(() => validateDeployment({ ...deployment, schemaVersion: 1 }), /schema is unsupported/u);
+  assert.throws(() => validateDeployment({ ...deployment, appRegistry: undefined }), /appRegistry is invalid/u);
+});
+
 test("the recovery provisioner runtime is verified", async () => {
   const provisioner = {
     address: "0x3333333333333333333333333333333333333333" as Address,
@@ -99,6 +106,49 @@ test("the recovery provisioner runtime is verified", async () => {
   await runtime.verify(config, { ...deployment, recoveryValidatorProvisioner: provisioner });
   assert.equal(provisionerRead, true);
   assert.equal(fallbackRead, true);
+});
+
+test("a sponsored profile verifies the pinned onboarding paymaster runtime", async () => {
+  const paymaster = "0x5555555555555555555555555555555555555555" as Address;
+  const reads: Address[] = [];
+  const client = {
+    getChainId: async () => deployment.chainId,
+    getCode: async ({ address }: { address: Address }) => {
+      reads.push(address);
+      return CODE;
+    }
+  };
+  const request = (async () => new Response(JSON.stringify({ result: [ENTRY_POINT] }), { status: 200 })) as typeof fetch;
+  const runtime = createRuntimeVerifier({ publicClients: { forEndpoint: () => client as never }, request });
+  const sponsored = validateDeployment({
+    ...deployment,
+    onboardingPaymaster: paymaster,
+    runtimeCodeHashes: { ...deployment.runtimeCodeHashes, onboardingPaymaster: HASH },
+    onboarding: {
+      activation: "sponsored",
+      sponsorship: {
+        policyId: "loom-sepolia-v1",
+        policyHash: `0x${"11".repeat(32)}`,
+        maxCostWei: "10000000000000000",
+        maxFactoryDataBytes: 4096,
+        maxActivationsPerPrincipal: 3,
+        windowSeconds: 86400,
+        privateSubmission: true,
+        publicFallback: "explicit-rejection"
+      }
+    }
+  });
+
+  await runtime.verify(config, sponsored);
+
+  assert.equal(reads.filter(address => address.toLowerCase() === paymaster.toLowerCase()).length, 2);
+  await assert.rejects(
+    verifier().verify(config, {
+      ...sponsored,
+      runtimeCodeHashes: { ...sponsored.runtimeCodeHashes, onboardingPaymaster: keccak256("0xdead") }
+    }),
+    (error: unknown) => error instanceof AppError && error.userMessage.startsWith("Onboarding paymaster")
+  );
 });
 
 test("a zero fallback verifier means no fallback authority or bytecode commitment", async () => {

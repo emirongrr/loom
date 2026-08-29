@@ -24,7 +24,7 @@ test("wallet entry verifies the selected passkey assertion and rejects a differe
     concat(authenticatorData, clientHash)
   ));
   const handle = {
-    version: 1,
+    version: 3,
     kind: "derived",
     id: "wallet",
     label: "Wallet",
@@ -34,7 +34,7 @@ test("wallet entry verifies the selected passkey assertion and rejects a differe
     publicKey: { x: hex(base64UrlBytes(jwk.x!)), y: hex(base64UrlBytes(jwk.y!)) },
     rpId: "localhost",
     origin: "http://localhost:5174",
-    salt: `0x${"22".repeat(32)}`,
+    accountHandle: `0x${"22".repeat(32)}`,
     creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
   } as AccountHandle;
   const assertion = { credentialId: new Uint8Array([0xca, 0xfe]), authenticatorData, clientDataJSON, signature: der(rawSignature) };

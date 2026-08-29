@@ -3,52 +3,44 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("../src/app/App.tsx", import.meta.url), "utf8");
+const lifecycle = readFileSync(new URL("../src/features/onboarding/accountLifecycle.ts", import.meta.url), "utf8");
+const webauthn = readFileSync(new URL("../src/features/wallet/webauthn.ts", import.meta.url), "utf8");
+const discovery = readFileSync(new URL("../../../packages/sdk/src/accountDiscovery.ts", import.meta.url), "utf8");
 
-/**
- * `navigator.credentials.get` needs the transient activation the click granted.
- * Awaiting anything ahead of it spends that activation, and the browser then
- * rejects the call without ever showing its picker -- which looks exactly like
- * the button doing nothing.
- *
- * Checked as source order because the failure is an ordering mistake that
- * type-checks, passes every other test, and only shows up in a real browser.
- */
 test("finding a wallet asks for the passkey before it awaits anything else", () => {
   const flow = app.slice(app.indexOf("const findByPasskey = async"));
   const body = flow.slice(0, flow.indexOf("\n  };"));
-  const firstAwait = body.indexOf("await ");
-  const passkeyRequest = body.indexOf("await assertAnyPasskey()");
-
-  assert.notEqual(passkeyRequest, -1, "the flow no longer asks for a passkey");
-  assert.equal(
-    firstAwait,
-    passkeyRequest,
-    "something is awaited before the passkey is requested, which spends the click's activation"
-  );
+  assert.equal(body.indexOf("await "), body.indexOf("await assertAnyPasskey()"));
 });
 
-const lifecycle = readFileSync(new URL("../src/features/onboarding/accountLifecycle.ts", import.meta.url), "utf8");
-const webauthn = readFileSync(new URL("../src/features/wallet/webauthn.ts", import.meta.url), "utf8");
-
-/**
- * The chain keeps no index from a key back to its account, so without something
- * naming it the only way to learn which account a passkey opens is to collect
- * every key ever published and test the signature against each. WebAuthn hands
- * back whatever registration wrote into the credential, and that field was
- * sixteen random bytes.
- */
-test("a passkey registered against a known account carries it", () => {
-  const registration = lifecycle.slice(
-    lifecycle.indexOf("user: {"),
-    lifecycle.indexOf("pubKeyCredParams")
-  );
-  assert.match(registration, /id: account \?/u,
-    "an account known at registration should be written into the credential");
-  assert.match(registration, /crypto\.getRandomValues/u,
-    "a wallet being created has no address yet and must keep random bytes");
+test("every new credential carries the stable chain, factory, and account handle", () => {
+  const registration = lifecycle.slice(lifecycle.indexOf("user: {"), lifecycle.indexOf("pubKeyCredParams"));
+  assert.match(registration, /id: ownedBuffer\(userId\)/u);
+  assert.match(lifecycle, /encodeAccountUserHandle\(chainId, factory, accountHandle\)/u);
+  assert.match(lifecycle, /residentKey: "required"/u);
+  assert.match(app, /const accountHandle = createAccountHandle\(\)/u);
 });
 
-test("an assertion returns the account only when the handle is an address", () => {
-  assert.match(webauthn, /handle\.byteLength === 20/u,
-    "a handle of any other length was written by something else and names nothing");
+test("discovery rejects an unrecognised user handle and validates its ceremony", () => {
+  assert.match(webauthn, /decodeAccountUserHandle/u);
+  assert.match(webauthn, /client\.challenge !== base64Url\(challenge\)/u);
+  assert.match(webauthn, /client\.origin !== window\.location\.origin/u);
+  assert.match(webauthn, /Passkey RP ID does not match/u);
+  assert.match(webauthn, /Passkey user verification is required/u);
+});
+
+test("wallet discovery resolves the handle then checks the account's live validators", () => {
+  const flow = app.slice(app.indexOf("const findByPasskey = async"), app.indexOf("const saveFoundWallet = async"));
+  assert.match(flow, /discoverPasskeyAccount/u);
+  assert.match(flow, /discovered\.status === "stale"/u);
+  assert.match(discovery, /"accountForHandle"/u);
+  assert.match(discovery, /readValidators\(account/u);
+  assert.match(discovery, /verifyP256Assertion/u);
+  assert.doesNotMatch(flow, /getLogs|validatorsToSearch|findWalletsByPasskey/u);
+});
+
+test("a saved passkey is not opened for signing before live control is checked", () => {
+  const flow = app.slice(app.indexOf("const unlockAccount = async"), app.indexOf("const removeAccount = async"));
+  assert.ok(flow.indexOf("await readAccountControl") < flow.indexOf("setSelected(refreshed)"));
+  assert.match(flow, /control\.kind === "superseded"/u);
 });

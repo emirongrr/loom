@@ -2,8 +2,8 @@ import type { Address, Hex } from "@loom/core";
 import { deriveAccountAddress } from "@loom/core/account";
 import { P256ValidatorAbi } from "@loom/core/abi";
 import { encodeAbiParameters, encodeFunctionData, keccak256, sha256, stringToHex } from "viem";
-import type { AccountHandle } from "../../types";
-import { loadWalletDeployment, type WalletDeployment } from "../../services/deployment/deploymentProfile.ts";
+import type { AccountHandle, PasskeyBackupObservation } from "../../types";
+import type { WalletDeployment } from "../../services/deployment/deploymentProfile.ts";
 export { loadWalletDeployment, type WalletDeployment } from "../../services/deployment/deploymentProfile.ts";
 import {
   base64Url,
@@ -14,47 +14,56 @@ import {
   hexFromBytes as hex,
   ownedBuffer
 } from "../../services/webauthn/encoding.ts";
+import { encodeAccountUserHandle } from "./passkeyUserHandle.ts";
+import { passkeyBackupState, verifyPasskeyAssertion } from "@loom/sdk/account-discovery";
 
 const ZERO_BYTES32 = `0x${"00".repeat(32)}` as Hex;
-const LEGACY_ACCOUNTS_KEY = "loom.passkey-wallet.accounts";
-const LEGACY_WALLET_KEY = "loom.passkey-wallet.handle";
-const LEGACY_DEPLOYMENT_KEY = "loom.passkey-wallet.deployment";
-const LEGACY_GUARDIAN_ROOT = keccak256(stringToHex("passkey-wallet-web.guardians"));
-const LEGACY_CONFIG_HASH = keccak256(stringToHex("passkey-wallet-web.config"));
 
 export interface RegisteredPasskey {
   readonly credentialId: Hex;
   readonly publicKey: { readonly x: Hex; readonly y: Hex };
+  /** Stable RP account handle, also used as this account's CREATE2 salt. */
+  readonly accountHandle: Hex;
+  /** The opaque RP-scoped identity written into the discoverable credential. */
+  readonly userHandle: Hex;
+  /** WebAuthn BE flag: this credential source can be backed up/synced. */
+  readonly backupEligible: boolean;
+  /** WebAuthn BS flag at registration time: a backup currently exists. */
+  readonly backedUp: boolean;
 }
 
 /**
- * @param account The account this passkey will control, when it is already
- * known. Written into the credential's own name, because that is what the
- * browser's passkey picker shows and a name alone leaves several of them
- * indistinguishable at the moment one has to be chosen. A wallet being created
- * has no address yet -- it is derived from the key this call produces -- so
- * that case passes nothing and keeps the label.
+ * The stable account handle is created before the first credential and reused by a
+ * recovery credential. It locates the account through the factory registry but
+ * never grants authority; the live validator key remains authoritative.
  */
-export async function registerBrowserPasskey(label: string, account?: string): Promise<RegisteredPasskey> {
+export async function registerBrowserPasskey(
+  label: string,
+  accountHandle: Hex,
+  chainId: number,
+  factory: Address,
+  account?: Address
+): Promise<RegisteredPasskey> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
   const rpId = window.location.hostname;
+  const userId = encodeAccountUserHandle(chainId, factory, accountHandle);
+  const accountSuffix = account ? `${account.slice(0, 6)}…${account.slice(-4)} · Chain ${chainId}` : "New wallet";
   const credential = await navigator.credentials.create({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rp: { id: rpId, name: "Loom" },
       user: {
-        // The account, when it is already known, so an assertion can name it.
-        // WebAuthn hands this back as `userHandle`, and without it the only way
-        // to learn which account a passkey opens is to collect every key ever
-        // published and check the signature against each -- the chain keeps no
-        // index from a key back to its account. A wallet being created has no
-        // address yet; that case keeps random bytes.
-        id: account ? hexBytes(account as `0x${string}`) : crypto.getRandomValues(new Uint8Array(16)),
-        name: account ? `${label} (${account.slice(0, 6)}…${account.slice(-4)})` : label,
-        displayName: label
+        // The registry resolves this opaque account handle, then the live validator
+        // proves whether the credential still controls the resolved account.
+        id: ownedBuffer(userId),
+        name: account ? `loom:${chainId}:${account.toLowerCase()}` : `loom:${chainId}:${accountHandle.slice(2, 14)}`,
+        displayName: `${label} · ${accountSuffix}`
       },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-      authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
+      // "Find with a passkey" starts with no credential id. That promise is
+      // only true for a discoverable credential, so preferred is too weak.
+      authenticatorSelection: { userVerification: "required", residentKey: "required" },
+      extensions: { credProps: true },
       attestation: "none"
     }
   });
@@ -65,13 +74,112 @@ export async function registerBrowserPasskey(label: string, account?: string): P
   if (!spki) throw new Error("The authenticator did not expose the P-256 public key.");
   const point = new Uint8Array(spki).slice(-65);
   if (point.length !== 65 || point[0] !== 0x04) throw new Error("Expected an uncompressed P-256 public key.");
+  const backup = credentialBackupState(new Uint8Array(credential.response.getAuthenticatorData()));
   return Object.freeze({
     credentialId: hex(new Uint8Array(credential.rawId)),
-    publicKey: Object.freeze({ x: hex(point.slice(1, 33)), y: hex(point.slice(33, 65)) })
+    publicKey: Object.freeze({ x: hex(point.slice(1, 33)), y: hex(point.slice(33, 65)) }),
+    accountHandle,
+    userHandle: hex(userId),
+    ...backup
   });
 }
 
-export async function authenticateBrowserAccount(handle: AccountHandle): Promise<void> {
+/**
+ * Prove that a credential returned by registration is immediately usable and
+ * still carries the exact v3 locator that was written into it. Recovery must
+ * complete this second ceremony before its public key can enter a validator.
+ */
+export async function assertRegisteredBrowserPasskey(input: {
+  readonly passkey: RegisteredPasskey;
+  readonly rpId: string;
+  readonly origin: string;
+}): Promise<PasskeyBackupObservation> {
+  if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: input.rpId,
+      userVerification: "required",
+      timeout: 60_000
+    }
+  });
+  if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
+    throw new Error("Recovery passkey authentication returned an unsupported credential.");
+  }
+  if (!equalBytes(new Uint8Array(credential.rawId), hexBytes(input.passkey.credentialId))) {
+    throw new Error("The asserted credential is not the recovery passkey that was just created.");
+  }
+  if (!credential.response.userHandle) {
+    throw new Error("The recovery passkey assertion did not return its Loom account handle.");
+  }
+  const result = await verifyPasskeyAssertion({
+    rpId: input.rpId,
+    origin: input.origin,
+    challenge: hex(challenge),
+    expectedUserHandle: input.passkey.userHandle,
+    publicKey: input.passkey.publicKey,
+    assertion: {
+      credentialId: hex(new Uint8Array(credential.rawId)),
+      userHandle: hex(new Uint8Array(credential.response.userHandle)),
+      authenticatorData: hex(new Uint8Array(credential.response.authenticatorData)),
+      clientDataJSON: hex(new Uint8Array(credential.response.clientDataJSON)),
+      signature: hex(new Uint8Array(credential.response.signature))
+    }
+  });
+  if (!result.valid) {
+    if (result.reason === "user-handle") throw new Error("The recovery passkey returned a different Loom account handle.");
+    if (result.reason === "ceremony") throw new Error("The recovery passkey did not prove the expected RP, origin, challenge, presence, and user verification.");
+    throw new Error("The recovery passkey assertion does not verify with its newly registered public key.");
+  }
+  return backupObservation(
+    credentialBackupState(new Uint8Array(credential.response.authenticatorData)),
+    "assertion"
+  );
+}
+
+export function backupObservation(
+  state: Pick<RegisteredPasskey, "backupEligible" | "backedUp">,
+  source: PasskeyBackupObservation["source"],
+  observedAt = Date.now()
+): PasskeyBackupObservation {
+  return Object.freeze({ ...state, observedAt, source });
+}
+
+/** Parse the WebAuthn BE/BS flags and reject the forbidden BS=1, BE=0 state. */
+export function credentialBackupState(authenticatorData: Uint8Array): {
+  readonly backupEligible: boolean;
+  readonly backedUp: boolean;
+} {
+  try {
+    return passkeyBackupState(hex(authenticatorData));
+  } catch (cause) {
+    throw new Error(cause instanceof Error ? cause.message : "Passkey authenticator data is invalid.");
+  }
+}
+
+/** Opportunistically improve the authenticator's picker label after CREATE2
+ * has produced the address. WebAuthn L3 makes this metadata mutable, but older
+ * clients may not implement the signal and discovery must never depend on it. */
+export async function updateBrowserPasskeyLabel(input: {
+  readonly userHandle: Hex;
+  readonly label: string;
+  readonly account: Address;
+  readonly chainId: number;
+}): Promise<void> {
+  const credentialApi = PublicKeyCredential as typeof PublicKeyCredential & {
+    signalCurrentUserDetails?: (input: { rpId: string; userId: string; name: string; displayName: string }) => Promise<void>;
+  };
+  if (!credentialApi.signalCurrentUserDetails) return;
+  await credentialApi.signalCurrentUserDetails({
+    rpId: window.location.hostname,
+    userId: base64Url(hexBytes(input.userHandle)),
+    name: `loom:${input.chainId}:${input.account.toLowerCase()}`,
+    displayName: `${input.label} · ${input.account.slice(0, 6)}…${input.account.slice(-4)} · Chain ${input.chainId}`
+  }).catch(() => undefined);
+}
+
+export async function authenticateBrowserAccount(handle: AccountHandle): Promise<PasskeyBackupObservation> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
   if (window.location.origin !== handle.origin || window.location.hostname !== handle.rpId) {
     throw new Error("This wallet belongs to a different passkey origin.");
@@ -89,7 +197,7 @@ export async function authenticateBrowserAccount(handle: AccountHandle): Promise
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
     throw new Error("Passkey authentication returned an unsupported credential.");
   }
-  await verifyBrowserAuthentication(handle, challenge, {
+  return await verifyBrowserAuthentication(handle, challenge, {
     credentialId: new Uint8Array(credential.rawId),
     authenticatorData: new Uint8Array(credential.response.authenticatorData),
     clientDataJSON: new Uint8Array(credential.response.clientDataJSON),
@@ -107,7 +215,7 @@ export async function verifyBrowserAuthentication(
     readonly signature: Uint8Array;
   },
   cryptography: Pick<Crypto, "subtle"> = crypto
-): Promise<void> {
+): Promise<PasskeyBackupObservation> {
   if (!equalBytes(assertion.credentialId, hexBytes(handle.credentialId))) throw new Error("The selected passkey does not belong to this wallet.");
   let client: { type?: unknown; challenge?: unknown; origin?: unknown; crossOrigin?: unknown };
   try { client = JSON.parse(new TextDecoder().decode(assertion.clientDataJSON)); }
@@ -136,6 +244,7 @@ export async function verifyBrowserAuthentication(
     ownedBuffer(concatBytes(assertion.authenticatorData, clientHash))
   );
   if (!verified) throw new Error("Passkey signature verification failed.");
+  return backupObservation(credentialBackupState(assertion.authenticatorData), "assertion");
 }
 
 export function deriveCreatedAccountHandle(input: {
@@ -191,11 +300,9 @@ export interface AccountCreationConfig {
 /**
  * Rebuild the exact configuration this account's address was derived from.
  *
- * The handle stores the inputs rather than the configuration itself, and two
- * generations of handle used different configuration hashes, so each candidate
- * is checked by re-deriving the address. Only a configuration that reproduces
- * the account's own address is returned — deploying anything else would create a
- * different account at a different address, under the user's name.
+ * The handle stores the exact inputs rather than the expanded configuration.
+ * New-generation wallets have one derivation format, so the configuration must
+ * reproduce the account's own address without legacy candidate hashes.
  */
 export function resolveCreationConfig(
   handle: AccountHandle,
@@ -204,55 +311,44 @@ export function resolveCreationConfig(
   if (handle.kind !== "derived") return null;
   const rpIdHash = sha256(stringToHex(handle.rpId));
   const originHash = keccak256(stringToHex(handle.origin));
-  const basicConfigHash = creationConfigHash({
-    passkey: handle,
-    deployment,
-    guardianRoot: ZERO_BYTES32,
-    guardianThreshold: 0
-  });
-  const boundConfigHash = creationConfigHash({
+  const configHash = creationConfigHash({
     passkey: handle,
     deployment,
     guardianRoot: handle.creation.guardianRoot,
     guardianThreshold: handle.creation.guardianThreshold,
     ...(handle.creation.recoveryModule ? { recoveryModule: handle.creation.recoveryModule } : {})
   });
-  const candidates: Hex[] = [...new Set([boundConfigHash, basicConfigHash, LEGACY_CONFIG_HASH])];
-
-  for (const configHash of candidates) {
-    const config: AccountCreationConfig = {
-      entryPoint: deployment.entryPoint,
-      guardianRoot: handle.creation.guardianRoot,
-      guardianThreshold: handle.creation.guardianThreshold,
-      configHash,
-      modules: [
-        { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
-        ...(handle.creation.recoveryModule ? [{ moduleTypeId: 5n, module: handle.creation.recoveryModule, initData: "0x" as Hex }] : []),
-        {
-          moduleTypeId: 1n,
-          module: deployment.validator,
-          initData: encodeFunctionData({
-            abi: P256ValidatorAbi,
-            functionName: "initialize",
-            args: [handle.publicKey.x, handle.publicKey.y, rpIdHash, originHash, deployment.policyHook]
-          })
-        }
-      ]
-    };
-    const derived = deriveAccountAddress({
-      factory: deployment.factory,
-      implementation: deployment.implementation,
-      proxyCreationCode: deployment.proxyCreationCode,
-      salt: handle.salt,
-      config
-    });
-    if (derived.toLowerCase() === handle.account.toLowerCase()) return Object.freeze(config);
-  }
-  return null;
+  const config: AccountCreationConfig = {
+    entryPoint: deployment.entryPoint,
+    guardianRoot: handle.creation.guardianRoot,
+    guardianThreshold: handle.creation.guardianThreshold,
+    configHash,
+    modules: [
+      { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
+      ...(handle.creation.recoveryModule ? [{ moduleTypeId: 5n, module: handle.creation.recoveryModule, initData: "0x" as Hex }] : []),
+      {
+        moduleTypeId: 1n,
+        module: deployment.validator,
+        initData: encodeFunctionData({
+          abi: P256ValidatorAbi,
+          functionName: "initialize",
+          args: [handle.publicKey.x, handle.publicKey.y, rpIdHash, originHash, deployment.policyHook]
+        })
+      }
+    ]
+  };
+  const derived = deriveAccountAddress({
+    factory: deployment.factory,
+    implementation: deployment.implementation,
+    proxyCreationCode: deployment.proxyCreationCode,
+    salt: handle.accountHandle,
+    config
+  });
+  return derived.toLowerCase() === handle.account.toLowerCase() ? Object.freeze(config) : null;
 }
 
 function creationConfigHash(input: {
-  readonly passkey: RegisteredPasskey;
+  readonly passkey: Pick<RegisteredPasskey, "publicKey">;
   readonly deployment: WalletDeployment;
   readonly guardianRoot: Hex;
   readonly guardianThreshold: number;
@@ -281,134 +377,6 @@ function creationConfigHash(input: {
   ));
 }
 
-export async function migrateLegacyAccountHandle(
-  storage: Storage = window.localStorage,
-  binding: { readonly rpId: string; readonly origin: string } = { rpId: window.location.hostname, origin: window.location.origin },
-  loadFallbackDeployment: () => Promise<WalletDeployment> = () => loadWalletDeployment()
-): Promise<AccountHandle | null> {
-  return (await migrateLegacyAccountHandles(storage, binding, loadFallbackDeployment))[0] ?? null;
-}
-
-export async function migrateLegacyAccountHandles(
-  storage: Storage = window.localStorage,
-  binding: { readonly rpId: string; readonly origin: string } = { rpId: window.location.hostname, origin: window.location.origin },
-  loadFallbackDeployment: () => Promise<WalletDeployment> = () => loadWalletDeployment()
-): Promise<readonly AccountHandle[]> {
-  const candidates: Array<{ readonly value: unknown; readonly fallbackLabel: string }> = [];
-  const savedAccounts = storage.getItem(LEGACY_ACCOUNTS_KEY);
-  if (savedAccounts) {
-    try {
-      const value: unknown = JSON.parse(savedAccounts);
-      if (Array.isArray(value)) candidates.push(...value.map((entry, index) => ({ value: entry, fallbackLabel: `Previous wallet ${index + 1}` })));
-    } catch { /* Keep the original collection untouched. */ }
-  }
-  const savedWallet = storage.getItem(LEGACY_WALLET_KEY);
-  if (savedWallet) {
-    try { candidates.push({ value: JSON.parse(savedWallet), fallbackLabel: "Previous wallet" }); }
-    catch { /* A corrupt single record must not hide a healthy list. */ }
-  }
-  if (candidates.length === 0) return Object.freeze([]);
-
-  const savedDeployment = storage.getItem(LEGACY_DEPLOYMENT_KEY);
-  let deployment: WalletDeployment;
-  if (savedDeployment) {
-    let deploymentValue: unknown;
-    try { deploymentValue = JSON.parse(savedDeployment); }
-    catch { throw new Error("Previous wallet deployment is invalid; its original records were left unchanged."); }
-    deployment = validateLegacyDeployment(deploymentValue);
-  } else {
-    deployment = await loadFallbackDeployment();
-  }
-
-  const migrated: AccountHandle[] = [];
-  const seen = new Set<string>();
-  for (const candidate of candidates) {
-    const handle = migrateLegacyRecord(candidate.value, candidate.fallbackLabel, deployment, binding);
-    if (handle && !seen.has(handle.id)) {
-      seen.add(handle.id);
-      migrated.push(handle);
-    }
-  }
-  return Object.freeze(migrated);
-}
-
-function validateLegacyDeployment(value: unknown): WalletDeployment {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
-  const record = value as Record<string, unknown>;
-  if (!Number.isSafeInteger(record.chainId) || Number(record.chainId) <= 0) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
-  for (const field of ["entryPoint", "factory", "implementation", "validator", "policyHook"] as const) if (!address(record[field])) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
-  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
-  if (record.recoveryModule !== undefined && !address(record.recoveryModule)) throw new Error("Previous wallet deployment is invalid; its original records were left unchanged.");
-  const placeholder = `0x${"00".repeat(32)}` as Hex;
-  return Object.freeze({
-    chainId: Number(record.chainId),
-    entryPoint: record.entryPoint as Address,
-    factory: record.factory as Address,
-    implementation: record.implementation as Address,
-    validator: record.validator as Address,
-    policyHook: record.policyHook as Address,
-    proxyCreationCode: record.proxyCreationCode as Hex,
-    runtimeCodeHashes: { entryPoint: placeholder, factory: placeholder, implementation: placeholder, validator: placeholder, policyHook: placeholder },
-    ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address })
-  });
-}
-
-function bytes32(value: unknown): boolean { return /^0x[0-9a-fA-F]{64}$/.test(String(value)); }
-function address(value: unknown): boolean { return /^0x[0-9a-fA-F]{40}$/.test(String(value)); }
-
-function migrateLegacyRecord(
-  value: unknown,
-  fallbackLabel: string,
-  deployment: WalletDeployment,
-  binding: { readonly rpId: string; readonly origin: string }
-): AccountHandle | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const wallet = value as Record<string, unknown>;
-  if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(wallet.credentialId)) || !wallet.publicKey || typeof wallet.publicKey !== "object") return null;
-  const publicKey = wallet.publicKey as Record<string, unknown>;
-  if (!bytes32(publicKey.x) || !bytes32(publicKey.y)) return null;
-  const passkey = { credentialId: wallet.credentialId as Hex, publicKey: { x: publicKey.x as Hex, y: publicKey.y as Hex } };
-  const label = typeof wallet.label === "string" && wallet.label.trim() && wallet.label.length <= 80
-    ? wallet.label.trim()
-    : fallbackLabel;
-
-  if (wallet.recovered === true) {
-    if (!address(wallet.account) || !address(wallet.validator)) return null;
-    const account = wallet.account as Address;
-    return Object.freeze({
-      version: 1,
-      kind: "recovered",
-      id: `${deployment.chainId}:${account.toLowerCase()}`,
-      label,
-      account,
-      chainId: deployment.chainId,
-      credentialId: passkey.credentialId,
-      publicKey: passkey.publicKey,
-      rpId: binding.rpId,
-      origin: binding.origin,
-      validator: wallet.validator as Address
-    });
-  }
-
-  const rootWasMissing = wallet.guardianRoot === undefined;
-  const guardianRoot = rootWasMissing ? LEGACY_GUARDIAN_ROOT : wallet.guardianRoot;
-  const guardianThreshold = rootWasMissing ? 1 : wallet.guardianThreshold;
-  if (!bytes32(guardianRoot) || !Number.isInteger(guardianThreshold) || Number(guardianThreshold) < 0 || Number(guardianThreshold) > 32) return null;
-  const recoveryModule = wallet.recoveryModule;
-  if (recoveryModule !== undefined && recoveryModule !== null && !address(recoveryModule)) return null;
-  return deriveAccountHandle({
-    label,
-    deployment,
-    passkey,
-    rpId: binding.rpId,
-    origin: binding.origin,
-    guardianRoot: guardianRoot as Hex,
-    guardianThreshold: Number(guardianThreshold),
-    ...(recoveryModule == null ? {} : { recoveryModule: recoveryModule as Address }),
-    configHash: LEGACY_CONFIG_HASH
-  });
-}
-
 function deriveAccountHandle(input: {
   readonly label: string;
   readonly deployment: WalletDeployment;
@@ -423,15 +391,12 @@ function deriveAccountHandle(input: {
   const { deployment, passkey } = input;
   const rpIdHash = sha256(stringToHex(input.rpId));
   const originHash = keccak256(stringToHex(input.origin));
-  const salt = keccak256(encodeAbiParameters(
-    [{ type: "bytes32" }, { type: "bytes32" }],
-    [passkey.publicKey.x, passkey.publicKey.y]
-  ));
+  const accountHandle = passkey.accountHandle;
   const account = deriveAccountAddress({
     factory: deployment.factory,
     implementation: deployment.implementation,
     proxyCreationCode: deployment.proxyCreationCode,
-    salt,
+    salt: accountHandle,
     config: {
       entryPoint: deployment.entryPoint,
       guardianRoot: input.guardianRoot,
@@ -453,7 +418,7 @@ function deriveAccountHandle(input: {
     }
   });
   return Object.freeze({
-    version: 1,
+    version: 3,
     kind: "derived",
     id: `${deployment.chainId}:${account.toLowerCase()}`,
     label: input.label,
@@ -463,7 +428,8 @@ function deriveAccountHandle(input: {
     publicKey: passkey.publicKey,
     rpId: input.rpId,
     origin: input.origin,
-    salt,
+    passkeyBackup: backupObservation(passkey, "registration"),
+    accountHandle,
     creation: Object.freeze({
       guardianRoot: input.guardianRoot,
       guardianThreshold: input.guardianThreshold,

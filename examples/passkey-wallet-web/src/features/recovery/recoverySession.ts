@@ -5,11 +5,15 @@ import { parseRosterRecord } from "../../storage/guardianRosterRecord.ts";
 import type { RosterEntry } from "../security/guardianPlan.ts";
 
 export interface RecoveryLocalMaterial {
+  readonly recoveryPasskeyVerified: true;
   readonly initData: `0x${string}`;
   readonly credentialId: `0x${string}`;
   readonly publicKey: { readonly x: `0x${string}`; readonly y: `0x${string}` };
   readonly rpId: string;
   readonly origin: string;
+  readonly accountHandle?: `0x${string}`;
+  readonly backupEligible?: boolean;
+  readonly backedUp?: boolean;
   readonly freshGuardianEntries: readonly RosterEntry[];
   readonly oldValidators?: readonly `0x${string}`[];
 }
@@ -199,9 +203,10 @@ export function parseRecoverySession(value: unknown): RecoverySession {
 function parseLocalMaterial(value: unknown, account: string): RecoveryLocalMaterial {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("recovery local material is invalid");
   const record = value as Record<string, unknown>;
-  const allowed = ["initData", "credentialId", "publicKey", "rpId", "origin", "freshGuardianEntries", "oldValidators"];
-  const required = allowed.filter(key => key !== "oldValidators");
+  const allowed = ["recoveryPasskeyVerified", "initData", "credentialId", "publicKey", "rpId", "origin", "accountHandle", "backupEligible", "backedUp", "freshGuardianEntries", "oldValidators"];
+  const required = ["recoveryPasskeyVerified", "initData", "credentialId", "publicKey", "rpId", "origin", "freshGuardianEntries"];
   if (Object.keys(record).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(record, key))) throw new Error("recovery local material format is invalid");
+  if (record.recoveryPasskeyVerified !== true) throw new Error("recovery passkey possession was not verified");
   if (typeof record.initData !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(record.initData)) throw new Error("recovery init data is invalid");
   if (typeof record.credentialId !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(record.credentialId)) throw new Error("recovery credential is invalid");
   if (!record.publicKey || typeof record.publicKey !== "object" || Array.isArray(record.publicKey)) throw new Error("recovery public key is invalid");
@@ -209,14 +214,22 @@ function parseLocalMaterial(value: unknown, account: string): RecoveryLocalMater
   if (!bytes32(publicKey.x) || !bytes32(publicKey.y)) throw new Error("recovery public key is invalid");
   if (typeof record.rpId !== "string" || record.rpId.length < 1 || record.rpId.length > 253) throw new Error("recovery RP ID is invalid");
   if (typeof record.origin !== "string" || record.origin.length < 1 || record.origin.length > 2048) throw new Error("recovery origin is invalid");
+  if (record.accountHandle !== undefined && !bytes32(record.accountHandle)) throw new Error("recovery account handle is invalid");
+  if ((record.backupEligible !== undefined || record.backedUp !== undefined)
+    && (typeof record.backupEligible !== "boolean" || typeof record.backedUp !== "boolean" || (record.backedUp && !record.backupEligible))) {
+    throw new Error("recovery passkey backup state is invalid");
+  }
   const roster = parseRosterRecord({ version: 1, accountId: account, setVersion: 1, entries: record.freshGuardianEntries }, account);
   if (record.oldValidators !== undefined && (!Array.isArray(record.oldValidators) || record.oldValidators.length < 1 || record.oldValidators.length > 16 || record.oldValidators.some(item => typeof item !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(item)))) throw new Error("recovery old validators are invalid");
   return Object.freeze({
+    recoveryPasskeyVerified: true,
     initData: record.initData.toLowerCase() as `0x${string}`,
     credentialId: record.credentialId.toLowerCase() as `0x${string}`,
     publicKey: Object.freeze({ x: String(publicKey.x).toLowerCase() as `0x${string}`, y: String(publicKey.y).toLowerCase() as `0x${string}` }),
     rpId: record.rpId,
     origin: record.origin,
+    ...(record.accountHandle === undefined ? {} : { accountHandle: String(record.accountHandle).toLowerCase() as `0x${string}` }),
+    ...(record.backupEligible === undefined ? {} : { backupEligible: record.backupEligible as boolean, backedUp: record.backedUp as boolean }),
     freshGuardianEntries: roster.entries,
     ...(record.oldValidators === undefined ? {} : { oldValidators: Object.freeze((record.oldValidators as string[]).map(item => item as `0x${string}`)) })
   });
