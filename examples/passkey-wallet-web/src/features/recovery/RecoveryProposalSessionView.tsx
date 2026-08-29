@@ -101,7 +101,7 @@ export function RecoveryProposalSessionView({ session, repository, accounts, onC
   const saveRecoveredWallet = async () => {
     if (!session.local) throw new Error("Recovered passkey metadata is unavailable on this device.");
     const handle: AccountHandle = Object.freeze({
-      version: 1,
+      version: 3,
       kind: "recovered",
       id: `${session.request.chainId}:${session.request.account.toLowerCase()}`,
       label: "Recovered wallet",
@@ -111,6 +111,13 @@ export function RecoveryProposalSessionView({ session, repository, accounts, onC
       publicKey: session.local.publicKey,
       rpId: session.local.rpId,
       origin: session.local.origin,
+      ...(session.local.accountHandle ? { accountHandle: session.local.accountHandle } : {}),
+      ...(session.local.backupEligible === undefined ? {} : { passkeyBackup: {
+        backupEligible: session.local.backupEligible,
+        backedUp: session.local.backedUp ?? false,
+        observedAt: Date.now(),
+        source: "registration" as const
+      } }),
       validator: session.request.newValidator
     });
     await guardianRoster.write(handle.id, { entries: session.local.freshGuardianEntries, version: Date.now(), pending: null });

@@ -5,13 +5,20 @@ import { describeAccountControl, readAccountControl } from "../src/features/wall
 const ACCOUNT = "0x8A2f1487c2B30c371c0Cd2862d3B5FD05981aFc1" as const;
 const OLD = "0xfce4aae992886239100cb45f59d348aaf4ac5eb4" as const;
 const NEW = "0x8A2eB4eC44C00A479cAefFFf988D2D511705c583" as const;
+const X = `0x${"11".repeat(32)}` as const;
+const Y = `0x${"22".repeat(32)}` as const;
+const RP = `0x${"33".repeat(32)}` as const;
+const ORIGIN = `0x${"44".repeat(32)}` as const;
 
 const chain = (installed: readonly string[]) => async (input: { module: string }) =>
   installed.some(address => address.toLowerCase() === input.module.toLowerCase());
+const key = async () => [X, Y, RP, ORIGIN] as const;
+const expected = { x: X, y: Y, rpIdHash: RP, originHash: ORIGIN };
 
 test("a validator still installed means this device can sign", async () => {
   const control = await readAccountControl({
-    account: ACCOUNT, validator: OLD, deployed: true, isModuleInstalled: chain([OLD])
+    account: ACCOUNT, validator: OLD, publicKey: expected, deployed: true,
+    isModuleInstalled: chain([OLD]), readPublicKey: key
   });
   assert.equal(control.kind, "in-control");
   assert.equal(describeAccountControl(control), null);
@@ -22,7 +29,8 @@ test("a validator still installed means this device can sign", async () => {
 // The bundler calls this AA24, which names neither the recovery nor the key.
 test("a replaced validator is reported as a recovered account, not as a signing error", async () => {
   const control = await readAccountControl({
-    account: ACCOUNT, validator: OLD, deployed: true, isModuleInstalled: chain([NEW])
+    account: ACCOUNT, validator: OLD, publicKey: expected, deployed: true,
+    isModuleInstalled: chain([NEW]), readPublicKey: key
   });
   assert.equal(control.kind, "superseded");
   const described = describeAccountControl(control);
@@ -37,17 +45,30 @@ test("a replaced validator is reported as a recovered account, not as a signing 
 // first operation, so it is not superseded -- it has simply not started.
 test("an account with no code yet is not reported as recovered", async () => {
   const control = await readAccountControl({
-    account: ACCOUNT, validator: OLD, deployed: false,
-    isModuleInstalled: async () => { throw new Error("must not be asked"); }
+    account: ACCOUNT, validator: OLD, publicKey: expected, deployed: false,
+    isModuleInstalled: async () => { throw new Error("must not be asked"); },
+    readPublicKey: async () => { throw new Error("must not be asked"); }
   });
   assert.equal(control.kind, "in-control");
 });
 
 test("an account that cannot be read is reported as unknown, never as in control", async () => {
   const control = await readAccountControl({
-    account: ACCOUNT, validator: OLD, deployed: true,
-    isModuleInstalled: async () => { throw new Error("rpc unreachable"); }
+    account: ACCOUNT, validator: OLD, publicKey: expected, deployed: true,
+    isModuleInstalled: async () => { throw new Error("rpc unreachable"); }, readPublicKey: key
   });
   assert.equal(control.kind, "unreadable");
   assert.match(describeAccountControl(control)!.detail, /unknown until the account can be read/u);
+});
+
+test("a rotated key on the same validator supersedes the saved passkey", async () => {
+  const control = await readAccountControl({
+    account: ACCOUNT,
+    validator: OLD,
+    publicKey: expected,
+    deployed: true,
+    isModuleInstalled: chain([OLD]),
+    readPublicKey: async () => [`0x${"99".repeat(32)}`, Y, RP, ORIGIN]
+  });
+  assert.equal(control.kind, "superseded");
 });

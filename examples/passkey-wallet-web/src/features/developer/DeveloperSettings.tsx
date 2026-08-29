@@ -85,7 +85,7 @@ export function DeveloperSettings({ account, onRenamed }: {
       {field("verificationRpcUrl", "Independent verification RPC", "Corroborates deployment bytecode and confirmed EntryPoint events. Keep it operated separately from the primary RPC.", DEFAULT_NETWORK.verificationRpcUrl)}
       {field("bundlerUrl", "Bundler endpoint", "Submits account operations. Defaults to Pimlico's public keyless bundler.", DEFAULT_NETWORK.bundlerUrl)}
       {field("explorerUrl", "Block explorer", "Builds transaction links.", DEFAULT_NETWORK.explorerUrl)}
-      {field("relayUrl", "Optional sponsor relay", "Development-only endpoint for funding and deploying new accounts. Leave empty to disable.", "http://localhost:8787")}
+      {field("relayUrl", "Optional sponsor service", "Authenticated paymaster authorization and private activation endpoint. Leave empty for self-funded onboarding.", "http://localhost:8787")}
       <div className="guardian-actions">
         <button className="primary" onClick={save} disabled={!dirty}>Save endpoints</button>
         <button className="secondary" onClick={restore}>Restore public defaults</button>

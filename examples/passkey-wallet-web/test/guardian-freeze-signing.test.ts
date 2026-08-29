@@ -23,7 +23,7 @@ const DIGEST = `0x${"cd".repeat(32)}` as const;
 
 function account(address = ACCOUNT): AccountHandle {
   return {
-    version: 1,
+    version: 3,
     kind: "recovered",
     id: `11155111:${address.toLowerCase()}`,
     label: "Guardian wallet",

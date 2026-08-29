@@ -10,22 +10,28 @@ import { GuardianWorkspace } from "../guardians/GuardianWorkspace";
 import { GuardianManager } from "./GuardianManager";
 import type { AccountHandle } from "../../types";
 import { safeUserMessage } from "../../domain/errors/appError";
+import { authenticateBrowserAccount } from "../onboarding/accountLifecycle";
+import { classifyPasskeyAvailability, dismissPasskeyGuidance, passkeyGuidanceDismissed } from "./passkeyAvailability";
 
 type SafetyView =
   | { status: "loading" }
   | { status: "loaded"; state: AccountSafetyState }
   | { status: "error"; message: string };
 
-export function SecurityPage({ account, onGuardian, onRecovery }: {
+export function SecurityPage({ account, onGuardian, onRecovery, onAccountUpdate }: {
   readonly account: AccountHandle;
   readonly onGuardian: () => void;
   readonly onRecovery: () => void;
+  readonly onAccountUpdate: (account: AccountHandle) => Promise<void>;
 }) {
   const { config } = useNetwork();
   const localThreshold = account.kind === "derived" ? account.creation.guardianThreshold : 0;
   const [safety, setSafety] = useState<SafetyView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [checkingPasskey, setCheckingPasskey] = useState(false);
+  const [passkeyMessage, setPasskeyMessage] = useState("");
+  const [guidanceDismissed, setGuidanceDismissed] = useState(() => passkeyGuidanceDismissed(account.id));
 
   useEffect(() => {
     let active = true;
@@ -48,8 +54,58 @@ export function SecurityPage({ account, onGuardian, onRecovery }: {
 
   const chain = safety.status === "loaded" ? safety.state : null;
   const threshold = chain ? chain.config.guardianThreshold : localThreshold;
+  const passkeyAvailability = classifyPasskeyAvailability(account.passkeyBackup);
+
+  const checkPasskey = async () => {
+    setCheckingPasskey(true); setPasskeyMessage("");
+    try {
+      const passkeyBackup = await authenticateBrowserAccount(account);
+      await onAccountUpdate({ ...account, passkeyBackup });
+      setPasskeyMessage("Passkey status was refreshed from a verified assertion.");
+    } catch (error) {
+      setPasskeyMessage(safeUserMessage(error, "Passkey status could not be checked.", "passkey"));
+    } finally { setCheckingPasskey(false); }
+  };
 
   return <div className="page-stack"><header className="page-title"><p className="eyebrow">Authority and recovery</p><h1>Security</h1><p>Live module and recovery state for {account.label}, read independently from your configured RPC.</p></header>
+    <section className={`section-card passkey-posture passkey-${passkeyAvailability}`}>
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Passkey availability</p>
+          <h2>{passkeyAvailability === "backed-up" ? "Backup reported"
+            : passkeyAvailability === "sync-pending" ? "Sync-capable, backup not yet reported"
+            : passkeyAvailability === "authenticator-bound" ? "Bound to this authenticator"
+            : "Backup status not checked"}</h2>
+        </div>
+        <span className="passkey-state-badge">{passkeyAvailability === "backed-up" ? "Ready"
+          : passkeyAvailability === "sync-pending" ? "Review"
+          : passkeyAvailability === "authenticator-bound" ? "Attention"
+          : "Unknown"}</span>
+      </div>
+      <p>{passkeyAvailability === "backed-up"
+        ? "The authenticator reported that this credential is backed up. Test Find with passkey on a second device before relying on it."
+        : passkeyAvailability === "sync-pending"
+          ? "This credential can be backed up, but the authenticator has not reported an active backup yet. Provider sync may still be pending."
+          : passkeyAvailability === "authenticator-bound"
+            ? "The provider does not report cloud backup for this credential. It may live on this device or on a roaming authenticator such as a YubiKey."
+            : "Use the passkey once to read its current WebAuthn backup flags. This changes no wallet authority."}</p>
+      <div className="landing-actions">
+        <button className="secondary" disabled={checkingPasskey} onClick={() => void checkPasskey()}>{checkingPasskey ? "Checking…" : "Check with passkey"}</button>
+        {threshold === 0 && <button className="primary" onClick={onGuardian}>Add guardians</button>}
+      </div>
+      {passkeyMessage && <p className="form-note" role="status">{passkeyMessage}</p>}
+      {!guidanceDismissed && passkeyAvailability !== "backed-up" && <div className="passkey-options">
+        <h3>Choose the protection that fits you</h3>
+        <div className="permission-grid">
+          <div><span>Cloud-synced passkey</span><strong>Google Password Manager, Apple Passwords, or another syncing provider</strong><small>Create/use the credential through your provider's native passkey picker and keep provider sync enabled.</small></div>
+          <div><span>Platform passkey</span><strong>Windows Hello or the device credential store</strong><small>Convenient on this device. Whether it syncs depends on the platform and provider; Loom reads the reported result.</small></div>
+          <div><span>Hardware authenticator</span><strong>YubiKey or another roaming security key</strong><small>Carry the authenticator to another device. It can be portable without being cloud-backed.</small></div>
+          <div><span>Guardian recovery</span><strong>Independent recovery path</strong><small>Guardians can rotate authority to a newly verified passkey if this authenticator is lost.</small></div>
+        </div>
+        <p className="form-note">Loom cannot export a WebAuthn private key or force a specific provider. The browser and operating system own that choice.</p>
+        <button className="text-button" onClick={() => { dismissPasskeyGuidance(account.id); setGuidanceDismissed(true); }}>Don't show these recommendations again</button>
+      </div>}
+    </section>
     {(() => {
       const protection = describeAccountProtection({
         guardianThreshold: threshold,

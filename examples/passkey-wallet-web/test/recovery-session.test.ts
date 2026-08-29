@@ -107,6 +107,7 @@ test("session quorum and completion evidence come from the request and verified 
 test("device-local recovery material stays with the encrypted session but outside the portable request", () => {
   const protocol = request();
   const session = createRecoverySession(protocol, NOW, {
+    recoveryPasskeyVerified: true,
     initData: "0x1234",
     credentialId: "0xabcd",
     publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"12".repeat(32)}` },
@@ -129,4 +130,7 @@ test("device-local recovery material stays with the encrypted session but outsid
   assert.deepEqual(session.local?.oldValidators, ["0x8888888888888888888888888888888888888888"]);
   assert.equal(Object.hasOwn(session.request, "local"), false);
   assert.throws(() => createRecoverySession(protocol, NOW, { ...session.local!, initData: "not-hex" as never }), /init data/u);
+  assert.throws(() => createRecoverySession(protocol, NOW, {
+    ...session.local!, recoveryPasskeyVerified: undefined as never
+  }), /possession was not verified/u);
 });

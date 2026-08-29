@@ -35,7 +35,7 @@ const DEPLOY_DATA = encodeFunctionData({
 
 function account(address: `0x${string}`, chainId = CHAIN_ID): AccountHandle {
   return {
-    version: 1, kind: "recovered", id: `${chainId}:${address}`, label: "Gas wallet", account: address,
+    version: 3, kind: "recovered", id: `${chainId}:${address}`, label: "Gas wallet", account: address,
     chainId, credentialId: "0x1234", publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
     rpId: "localhost", origin: "http://localhost:5174", validator: `0x${"44".repeat(20)}`
   };

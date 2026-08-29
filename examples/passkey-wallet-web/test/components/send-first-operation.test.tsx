@@ -37,11 +37,11 @@ const assets: AccountAssets = {
 
 function account(): AccountHandle {
   return {
-    version: 1, kind: "derived", id: "wallet", label: "Wallet",
+    version: 3, kind: "derived", id: "wallet", label: "Wallet",
     account: "0xcccccccccccccccccccccccccccccccccccccccc", chainId: 11_155_111,
     credentialId: "0xab", publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
     rpId: "localhost", origin: "http://localhost:5174",
-    salt: `0x${"5a".repeat(32)}`,
+    accountHandle: `0x${"5a".repeat(32)}`,
     creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
   } as unknown as AccountHandle;
 }

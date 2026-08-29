@@ -10,7 +10,7 @@ import { AppServicesProvider, type AppServices } from "../../src/app/AppServices
 afterEach(cleanup);
 
 const account = {
-  version: 1,
+  version: 3,
   kind: "derived",
   id: "wallet-1",
   label: "Primary wallet",
@@ -20,7 +20,7 @@ const account = {
   publicKey: { x: `0x${"11".repeat(32)}`, y: `0x${"22".repeat(32)}` },
   rpId: "localhost",
   origin: "http://localhost:5174",
-  salt: `0x${"33".repeat(32)}`,
+  accountHandle: `0x${"33".repeat(32)}`,
   creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
 } as AccountHandle;
 

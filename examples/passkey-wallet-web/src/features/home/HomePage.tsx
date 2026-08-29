@@ -9,7 +9,8 @@ import { useNetwork } from "../../config/NetworkContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
 import { readAccountAssets, type AccountAssets, type NftAsset, type TokenAsset } from "../wallet/assets";
 import { describeAccountControl, readAccountControl, type AccountControl } from "../wallet/accountControl";
-import { LoomAccountAbi } from "@loom/core/abi";
+import { LoomAccountAbi, P256ValidatorAbi } from "@loom/core/abi";
+import { keccak256, sha256, stringToHex } from "viem";
 import { activateAccount } from "../wallet/activate";
 import { transactionUrl } from "../../config/network";
 import { loadWalletDeployment, type WalletDeployment } from "../onboarding/accountLifecycle";
@@ -38,7 +39,9 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
   const { runtime, pendingOperations, publicClients } = useAppServices();
   const [assets, setAssets] = useState<AccountAssets>(EMPTY_ASSETS);
   /** Whether this device's key still signs for the account, read from the account. */
-  const [control, setControl] = useState<AccountControl>({ kind: "in-control" });
+  // Signing stays unavailable until the live validator and exact key binding
+  // have both been checked. A public balance can still load independently.
+  const [control, setControl] = useState<AccountControl>({ kind: "unreadable" });
   const [balance, setBalance] = useState<BalanceView>({ status: "loading" });
   const [deployment, setDeployment] = useState<WalletDeployment | null>(null);
   const [deployed, setDeployed] = useState(false);
@@ -57,11 +60,17 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
     setActivating(true);
     const toast = notifications.notify({ status: "pending", title: "Creating account", detail: "Confirm with your passkey" });
     try {
-      const result = await activateAccount({ config, account, deployment, runtime, pendingOperations, publicClients });
+      const sponsored = deployment.onboarding?.activation === "sponsored" && Boolean(config.relayUrl);
+      const result = await activateAccount({
+        config, account, deployment, runtime, pendingOperations, publicClients,
+        ...(sponsored ? { submission: "sponsored-private" as const } : {})
+      });
       notifications.update(toast, {
         status: "success",
         title: "Account created",
-        detail: "It paid for its own creation and can now transact.",
+        detail: sponsored
+          ? "The deployment sponsor paid for private activation; the account can now be found from a synced passkey."
+          : "It paid for its own creation and can now transact.",
         ...(result.transactionHash ? { href: transactionUrl(config, result.transactionHash), linkLabel: "View on explorer" } : {})
       });
       await load(true);
@@ -95,11 +104,22 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
         setControl(await readAccountControl({
           account: account.account,
           validator,
+          publicKey: {
+            ...account.publicKey,
+            rpIdHash: sha256(stringToHex(account.rpId)),
+            originHash: keccak256(stringToHex(account.origin))
+          },
           deployed: next.deployed,
           isModuleInstalled: async check => await client.readContract({
             address: check.account, abi: LoomAccountAbi, functionName: "isModuleInstalled",
             args: [check.moduleTypeId, check.module, "0x"]
-          }) as boolean
+          }) as boolean,
+          readPublicKey: async check => await client.readContract({
+            address: check.validator,
+            abi: P256ValidatorAbi,
+            functionName: "publicKeys",
+            args: [check.account]
+          }) as readonly [`0x${string}`, `0x${string}`, `0x${string}`, `0x${string}`]
         }));
       }
     } catch {
@@ -136,7 +156,10 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
     notifications.notify({ status: "info", title: "Balances refreshed", detail: `Read from ${hostOf(config.rpcUrl)}` });
   };
 
-  const openSend = (preselect?: SendableAsset) => setSend({ open: true, ...(preselect ? { preselect } : {}) });
+  const openSend = (preselect?: SendableAsset) => {
+    if (control.kind !== "in-control") return;
+    setSend({ open: true, ...(preselect ? { preselect } : {}) });
+  };
 
   return <div className="page-stack">
     {/* First on the screen: a recovery in flight replaces every validator on
@@ -145,10 +168,8 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
     <PendingRecoveryBanner account={account} onStop={onStopRecovery} />
     <AccountHeader account={account.account} network={`Chain ${account.chainId}`} balance={balance} onSwitch={onSwitch} onLock={onLock} />
 
-    {/* Said here rather than at signing time. Unlocking is local and reading a
-        balance is permissionless, so a recovered account opens and looks normal
-        until a send fails as "AA24 signature error" -- a message that names
-        neither the recovery nor the key. */}
+    {/* Reading a balance remains permissionless, but signer actions stay gated
+        on the live validator and exact key binding. */}
     {describeAccountControl(control) && <section className={control.kind === "superseded" ? "callout warning" : "callout"}>
       <strong>{describeAccountControl(control)!.title}</strong>
       <p>{describeAccountControl(control)!.detail}</p>
@@ -156,7 +177,7 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
 
     <div className="quick-actions">
       <button onClick={() => setReceiveOpen(true)}><span aria-hidden="true">↓</span><span>Receive</span></button>
-      <button onClick={() => openSend()}><span aria-hidden="true">↗</span><span>Send</span></button>
+      <button disabled={control.kind !== "in-control"} onClick={() => openSend()}><span aria-hidden="true">↗</span><span>Send</span></button>
       <button onClick={() => void refresh()} disabled={refreshing}><span aria-hidden="true" className={refreshing ? "spin" : ""}>⟳</span><span>{refreshing ? "Refreshing" : "Refresh"}</span></button>
       <button onClick={() => onNavigate("activity")}><span aria-hidden="true">⋯</span><span>Activity</span></button>
     </div>
@@ -180,7 +201,8 @@ export function HomePage({ account, onNavigate, onSwitch, onLock, onStopRecovery
         <p>
           The address is reserved for your passkey, but the account exists on chain only once its first operation
           creates it — funding alone does not. Sending carries that creation along with it, so there is no separate
-          step to take first. Creating it on its own is available here if you would rather not wait for a send.
+          step to take first. Until then, Find with a passkey cannot restore it on another device because its wallet
+          identity is not registered on chain. Creating it on its own is available here if you would rather not wait.
         </p>
         {assets.native.balance === 0n && <p className="form-note">
           This address holds no ETH. Send it a small amount first: the account funds its own creation.
