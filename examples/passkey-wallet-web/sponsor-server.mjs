@@ -117,7 +117,9 @@ function revertDetail(error) {
     try {
       const decoded = decodeErrorResult({ abi: EntryPointAbi, data });
       return `${decoded.errorName}(${decoded.args.join(", ")})`;
-    } catch {}
+    } catch {
+      // Undecodable revert data falls through to the provider's safe message.
+    }
   }
   return error.shortMessage ?? error.message;
 }
