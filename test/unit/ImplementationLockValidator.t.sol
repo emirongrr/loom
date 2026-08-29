@@ -19,9 +19,7 @@ contract ImplementationLockValidatorTest is Test {
         assertFalse(validator.isModuleType(ModuleType.HOOK));
         assertFalse(validator.isValidSignature(address(this), bytes32(uint256(1)), hex"1234"));
         assertEq(
-            validator.validateUserOp(
-                address(this), bytes32(uint256(1)), 0, hex"1234", hex"abcdef", address(0xBEEF)
-            ),
+            validator.validateUserOp(address(this), bytes32(uint256(1)), 0, hex"1234", hex"abcdef", address(0xBEEF)),
             ValidationDataLib.SIG_VALIDATION_FAILED
         );
     }

@@ -196,7 +196,9 @@ contract ImmutableProxyFactoryTest {
         try registry.registerAccount(secondAccountHandle, address(accountLike)) {
             revert("account accepted a second wallet id");
         } catch {}
-        require(registry.accountForHandle(secondAccountHandle) == address(0), "failed registration left forward binding");
+        require(
+            registry.accountForHandle(secondAccountHandle) == address(0), "failed registration left forward binding"
+        );
         require(registry.handleForAccount(address(accountLike)) == accountHandle, "failed registration changed handle");
         require(registry.accountCount() == 1, "second wallet id inflated count");
 

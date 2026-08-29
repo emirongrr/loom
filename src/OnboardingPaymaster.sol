@@ -26,10 +26,7 @@ contract OnboardingPaymaster is BasePaymaster {
         bytes32 policyHash_,
         uint256 maximumCost_
     ) BasePaymaster(entryPoint_, msg.sender) {
-        if (
-            factory_.code.length == 0 || authorizer_ == address(0) || policyHash_ == bytes32(0)
-                || maximumCost_ == 0
-        ) revert InvalidSponsorship();
+        if (factory_.code.length == 0 || authorizer_ == address(0) || policyHash_ == bytes32(0) || maximumCost_ == 0) revert InvalidSponsorship();
         factory = factory_;
         authorizer = authorizer_;
         policyHash = policyHash_;
@@ -79,8 +76,8 @@ contract OnboardingPaymaster is BasePaymaster {
         if (suppliedPolicyHash != policyHash || costLimit > maximumCost || maxCost > costLimit) {
             revert InvalidSponsorship();
         }
-        bool signatureFailed = ECDSA.recover(authorizationHash(userOp, validUntil, validAfter, costLimit), signature)
-            != authorizer;
+        bool signatureFailed =
+            ECDSA.recover(authorizationHash(userOp, validUntil, validAfter, costLimit), signature) != authorizer;
         return ("", _packValidationData(signatureFailed, validUntil, validAfter));
     }
 }

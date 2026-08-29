@@ -40,7 +40,11 @@ contract OnboardingPaymasterTest {
         hook = new PolicyHook();
         LoomAccount.ModuleInit[] memory implementationModules = _modules(vm.addr(OWNER_KEY));
         LoomAccount implementation = new LoomAccount(
-            address(entryPoint), keccak256("implementation-guardians"), 1, keccak256("implementation-config"), implementationModules
+            address(entryPoint),
+            keccak256("implementation-guardians"),
+            1,
+            keccak256("implementation-config"),
+            implementationModules
         );
         factory = new LoomAccountFactory(IEntryPoint(address(entryPoint)), address(implementation));
         paymaster = new OnboardingPaymaster(
@@ -72,20 +76,26 @@ contract OnboardingPaymasterTest {
         require(account.code.length == 0, "invalid authorization deployed account");
     }
 
-    function _authorizedActivation(bytes32 accountHandle) private returns (address account, PackedUserOperation memory op) {
+    function _authorizedActivation(bytes32 accountHandle)
+        private
+        returns (address account, PackedUserOperation memory op)
+    {
         address owner = vm.addr(OWNER_KEY);
         LoomAccount.ModuleInit[] memory modules = _modules(owner);
         bytes32 configHash = keccak256(abi.encode("config", accountHandle));
         account = factory.getAddress(accountHandle, bytes32(0), 0, configHash, modules);
-        bytes memory factoryCall = abi.encodeCall(
-            LoomAccountFactory.createAccount, (accountHandle, bytes32(0), 0, configHash, modules)
-        );
+        bytes memory factoryCall =
+            abi.encodeCall(LoomAccountFactory.createAccount, (accountHandle, bytes32(0), 0, configHash, modules));
         op = PackedUserOperation({
-            sender: account, nonce: 0, initCode: abi.encodePacked(address(factory), factoryCall), callData: "",
+            sender: account,
+            nonce: 0,
+            initCode: abi.encodePacked(address(factory), factoryCall),
+            callData: "",
             accountGasLimits: bytes32((uint256(10_000_000) << 128) | uint256(2_000_000)),
             preVerificationGas: 100_000,
             gasFees: bytes32((uint256(1 gwei) << 128) | uint256(1 gwei)),
-            paymasterAndData: "", signature: ""
+            paymasterAndData: "",
+            signature: ""
         });
         op.paymasterAndData = _paymasterAndData(op, "");
         bytes32 authorization = paymaster.authorizationHash(op, uint48(block.timestamp + 5 minutes), 0, MAXIMUM_COST);
@@ -101,8 +111,12 @@ contract OnboardingPaymasterTest {
         returns (bytes memory)
     {
         return abi.encodePacked(
-            address(paymaster), bytes16(uint128(150_000)), bytes16(uint128(1)),
-            abi.encode(uint48(block.timestamp + 5 minutes), uint48(0), MAXIMUM_COST, POLICY_HASH, authorizationSignature)
+            address(paymaster),
+            bytes16(uint128(150_000)),
+            bytes16(uint128(1)),
+            abi.encode(
+                uint48(block.timestamp + 5 minutes), uint48(0), MAXIMUM_COST, POLICY_HASH, authorizationSignature
+            )
         );
     }
 

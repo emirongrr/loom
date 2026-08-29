@@ -34,7 +34,8 @@ contract LoomAccountFactory {
         address predicted = getAddress(accountHandle, guardianRoot, guardianThreshold, configHash, modules);
         if (predicted.code.length != 0) return LoomAccount(payable(predicted));
         bytes memory initData = _initData(guardianRoot, guardianThreshold, configHash, modules);
-        account = LoomAccount(payable(address(new LoomAccountProxy{salt: accountHandle}(accountImplementation, initData))));
+        account =
+            LoomAccount(payable(address(new LoomAccountProxy{salt: accountHandle}(accountImplementation, initData))));
         registry.registerAccount(accountHandle, address(account));
         emit LoomAccountCreated(address(account));
     }
@@ -61,10 +62,11 @@ contract LoomAccountFactory {
         bytes memory initData = _initData(guardianRoot, guardianThreshold, configHash, modules);
         bytes memory initCode =
             abi.encodePacked(type(LoomAccountProxy).creationCode, abi.encode(accountImplementation, initData));
-        return
-            address(
-                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), accountHandle, keccak256(initCode)))))
-            );
+        return address(
+            uint160(
+                uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), accountHandle, keccak256(initCode))))
+            )
+        );
     }
 
     /// @dev Single source for the account initializer calldata so createAccount and
