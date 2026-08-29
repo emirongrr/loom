@@ -5,7 +5,7 @@ import {BasePaymaster} from "account-abstraction/core/BasePaymaster.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {_packValidationData} from "account-abstraction/core/Helpers.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {ECDSA} from "./libraries/ECDSA.sol";
 
 /// @notice Bounded, signed ERC-4337 sponsorship for first-time Loom activation.
 /// @dev Sponsorship authority can pay gas but has no account authority. The
