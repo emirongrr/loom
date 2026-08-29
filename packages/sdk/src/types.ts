@@ -171,6 +171,15 @@ export interface PrivateFirstTransportOptions {
   readonly isExplicitRejection?: (error: unknown) => boolean;
 }
 
+export interface PaymasterAuthorization {
+  readonly paymaster: Hex;
+  readonly paymasterVerificationGasLimit: bigint | string | number;
+  readonly paymasterPostOpGasLimit: bigint | string | number;
+  readonly paymasterData: Hex;
+  /** Optional adjusted calldata-cost estimate after authorization data is added. */
+  readonly preVerificationGas?: bigint | string | number;
+}
+
 export interface LoomStateReadTransport {
   ethCall(input: {
     to: Hex;
@@ -355,6 +364,8 @@ export interface PreparedUserOperation {
   readonly maxFeePerGas: bigint;
   readonly maxPriorityFeePerGas: bigint;
   readonly paymaster?: Hex;
+  readonly paymasterVerificationGasLimit?: bigint;
+  readonly paymasterPostOpGasLimit?: bigint;
   readonly paymasterData?: Hex;
   readonly signature: Hex;
 }
@@ -537,6 +548,8 @@ export interface UserOperationOverrides {
   maxFeePerGas?: bigint | string | number;
   maxPriorityFeePerGas?: bigint | string | number;
   paymaster?: Hex;
+  paymasterVerificationGasLimit?: bigint | string | number;
+  paymasterPostOpGasLimit?: bigint | string | number;
   paymasterData?: Hex;
   signature?: Hex;
 }

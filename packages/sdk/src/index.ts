@@ -21,6 +21,7 @@ import type {
   PrivateVaultWithdrawalPreparation,
   PrivateVaultWithdrawalPreparationInput,
   PrivateFirstTransportOptions,
+  PaymasterAuthorization,
   RpcStateTransportOptions,
   UnverifiedState,
   UserOperationEnvelope,
@@ -1272,6 +1273,8 @@ function prepareUserOperationEnvelopeImpl(input) {
     maxFeePerGas: normalizeBigInt(input.maxFeePerGas ?? 0n, "maxFeePerGas"),
     maxPriorityFeePerGas: normalizeBigInt(input.maxPriorityFeePerGas ?? 0n, "maxPriorityFeePerGas"),
     paymaster: input.paymaster === undefined ? undefined : normalizeAddress(input.paymaster, "paymaster"),
+    paymasterVerificationGasLimit: input.paymasterVerificationGasLimit === undefined ? undefined : normalizeBigInt(input.paymasterVerificationGasLimit, "paymasterVerificationGasLimit"),
+    paymasterPostOpGasLimit: input.paymasterPostOpGasLimit === undefined ? undefined : normalizeBigInt(input.paymasterPostOpGasLimit, "paymasterPostOpGasLimit"),
     paymasterData: input.paymasterData === undefined ? undefined : normalizeHex(input.paymasterData, "paymasterData"),
     signature: normalizeHex(input.signature ?? "0x", "signature")
   });
@@ -1394,6 +1397,8 @@ function normalizePreparedUserOperation(userOperation) {
     maxFeePerGas: normalizeBigInt(userOperation.maxFeePerGas, "maxFeePerGas"),
     maxPriorityFeePerGas: normalizeBigInt(userOperation.maxPriorityFeePerGas, "maxPriorityFeePerGas"),
     paymaster: userOperation.paymaster === undefined ? undefined : normalizeAddress(userOperation.paymaster, "paymaster"),
+    paymasterVerificationGasLimit: userOperation.paymasterVerificationGasLimit === undefined ? undefined : normalizeBigInt(userOperation.paymasterVerificationGasLimit, "paymasterVerificationGasLimit"),
+    paymasterPostOpGasLimit: userOperation.paymasterPostOpGasLimit === undefined ? undefined : normalizeBigInt(userOperation.paymasterPostOpGasLimit, "paymasterPostOpGasLimit"),
     paymasterData: userOperation.paymasterData === undefined ? undefined : normalizeHex(userOperation.paymasterData, "paymasterData"),
     signature: normalizeHex(userOperation.signature, "signature")
   });
@@ -1415,6 +1420,8 @@ function serializeUserOperation(userOperation) {
   if (normalized.factory !== undefined) output.factory = normalized.factory;
   if (normalized.factoryData !== undefined) output.factoryData = normalized.factoryData;
   if (normalized.paymaster !== undefined) output.paymaster = normalized.paymaster;
+  if (normalized.paymasterVerificationGasLimit !== undefined) output.paymasterVerificationGasLimit = toRpcQuantity(normalized.paymasterVerificationGasLimit);
+  if (normalized.paymasterPostOpGasLimit !== undefined) output.paymasterPostOpGasLimit = toRpcQuantity(normalized.paymasterPostOpGasLimit);
   if (normalized.paymasterData !== undefined) output.paymasterData = normalized.paymasterData;
   return output;
 }
@@ -2091,6 +2098,36 @@ export function createPrivateFirstTransport(options: PrivateFirstTransportOption
     ...((privateTransport.getUserOperationReceipt || publicTransport.getUserOperationReceipt) ? { getUserOperationReceipt: getReceipt } : {}),
     ...((privateTransport.waitForUserOperationReceipt || publicTransport.waitForUserOperationReceipt) ? { waitForUserOperationReceipt: waitReceipt } : {})
   });
+}
+
+/** Attach a paymaster authorization before the account signer hashes the final UserOperation. */
+export function applyPaymasterAuthorization(
+  envelope: UserOperationEnvelope,
+  authorization: PaymasterAuthorization
+): UserOperationEnvelope {
+  const normalized = normalizeUserOperationEnvelope(envelope);
+  if (!authorization || typeof authorization !== "object") throw new InvalidSdkRequestError("paymaster authorization is required");
+  const paymaster = normalizeAddress(authorization.paymaster, "paymaster");
+  const paymasterData = normalizeHex(authorization.paymasterData, "paymasterData");
+  if (paymasterData === "0x") throw new InvalidSdkRequestError("paymaster authorization data is empty");
+  const paymasterVerificationGasLimit = normalizeBigInt(authorization.paymasterVerificationGasLimit, "paymasterVerificationGasLimit");
+  const paymasterPostOpGasLimit = normalizeBigInt(authorization.paymasterPostOpGasLimit, "paymasterPostOpGasLimit");
+  if (paymasterVerificationGasLimit <= 0n || paymasterPostOpGasLimit <= 0n) {
+    throw new InvalidSdkRequestError("paymaster gas limits must be positive");
+  }
+  return Object.freeze({
+    ...normalized,
+    userOperation: Object.freeze({
+      ...normalized.userOperation,
+      ...(authorization.preVerificationGas === undefined ? {} : {
+        preVerificationGas: normalizeBigInt(authorization.preVerificationGas, "preVerificationGas")
+      }),
+      paymaster,
+      paymasterVerificationGasLimit,
+      paymasterPostOpGasLimit,
+      paymasterData
+    })
+  }) as UserOperationEnvelope;
 }
 
 export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
