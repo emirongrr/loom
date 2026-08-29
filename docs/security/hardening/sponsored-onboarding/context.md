@@ -1,6 +1,6 @@
 # Local Context: Sponsored Onboarding And Private Activation
 
-Source root: `C:\Users\emir_\Masaüstü\loom`
+Source root: repository root.
 
 Evidence inventory:
 

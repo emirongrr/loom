@@ -1,6 +1,6 @@
 # Local Context: Passkey Availability And Recovery UX
 
-Source root: `C:\Users\emir_\Masaüstü\loom`
+Source root: repository root.
 
 This analysis records the product decision made in the working session on 2026-08-28: onboarding remains a one-click native WebAuthn ceremony; backup guidance moves to Security; authenticator-bound credentials remain valid because guardian recovery is an independent recovery path; a synced discoverable credential uses its v3 locator to find the same account on another device.
 

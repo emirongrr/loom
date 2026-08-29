@@ -1,5 +1,5 @@
 {
-  "documentType": "codex-security.hardening-analysis",
+  "documentType": "security.hardening-analysis",
   "schemaVersion": "1.0",
   "analysisId": "hardening_passkey_account_discovery_20260827",
   "sourceEvidence": {

@@ -1,83 +1,89 @@
-# Recovery Passkey’den Hesabı Sıfır Yerel Veriyle Bulma
+# Finding an Account from a Recovery Passkey with No Local State
 
-**Karar tarihi:** 27 Ağustos 2026
+**Decision date:** August 27, 2026
 
-**Hedef:** Recovery sırasında oluşturulan passkey, daha sonra temiz ve alakasız
-bir cihazda seçildiğinde hiçbir Loom yerel kaydı, backend hesabı, eski passkey,
-adres girişi veya geçmiş log taraması olmadan bugün kontrol ettiği hesabı bulsun.
+**Goal:** A passkey created during recovery must locate the account it currently
+controls when selected on a clean, unrelated device. The process must not depend
+on local Loom records, a hosted account index, an old passkey, manual address
+entry, or historical log scans.
 
-## Kısa cevap
+## Decision
 
-Bu hedef gerçekleştirilebilir. Doğru yapı:
+This goal is achievable with the following model:
 
-> Hesaba ait rastgele ve sabit `accountLocator`, recovery passkey’in
-> discoverable WebAuthn `userHandle` alanına yazılır; temiz cihazda credential
-> seçildiğinde bu locator geri alınır, zincirden tek hesap bulunur ve aynı fresh
-> assertion yalnızca hesabın canlı validator key’iyle doğrulanırsa cüzdan açılır.
+> Store a random, stable `accountLocator` for the account in the discoverable
+> WebAuthn credential's `userHandle`. On a clean device, recover that locator
+> from the selected credential, resolve exactly one account on chain, and open
+> the wallet only when the same fresh assertion verifies against a live
+> validator key installed on that account.
 
-Passkey’in yeni cihazda erişilebilir olması gerekir. Bu, password-manager sync,
-FIDO credential exchange, cross-device authentication veya fiziksel security
-key ile sağlanır. Private key yeni cihazda hiçbir yolla mevcut değilse herhangi
-bir locator tasarımı onu yeniden üretemez. Loom tarafında ise hiçbir eski cihaz
-verisi veya merkezi hesap indeksi gerekmeyecektir.
+The passkey must still be available on the new device. Availability can come
+from password-manager synchronization, FIDO credential exchange, cross-device
+authentication, or a physical security key. No locator design can recreate a
+private key that is unavailable on the new device. Loom does not require old
+device state or a centralized account index.
 
-## Neden çalışır?
+## Why This Works
 
-WebAuthn discoverable credential, oluşturulurken verilen `userHandle` değerini
-credential kaynağının parçası olarak saklar ve `allowCredentials` boşken yapılan
-authentication’da geri vermek zorundadır. Standardın kendisi bu alanın temel
-amacını kullanıcı hesabını tanımlamak olarak açıklar ve aynı hesaba kayıtlı
-credential’larda aynı olmasını önerir. [W3C WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/#user-handle)
+A discoverable WebAuthn credential stores the `userHandle` supplied at
+registration as part of its credential source. It returns that value during an
+authentication ceremony with an empty `allowCredentials` list. The standard
+defines the field as the relying party's account identifier and recommends
+using the same value for credentials registered to the same account.
+[W3C WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/#user-handle)
 
-FIDO Credential Exchange Format da taşınan passkey’in `credentialId`, `rpId`,
-`userHandle` ve key alanlarını içerir; `userHandle` registration sırasında
-verilen değerle aynı olmak zorundadır ve kullanıcı tarafından değiştirilemez.
+The FIDO Credential Exchange Format also carries the passkey's `credentialId`,
+`rpId`, `userHandle`, and key material. The exchanged `userHandle` must equal
+the registration value and cannot be edited by the user.
 [FIDO CXF 1.0](https://fidoalliance.org/specs/cx/cxf-v1.0-ps-20250814.html#passkey-dictionary)
 
-Dolayısıyla locator sadece tarayıcı localStorage’ında durmaz:
+The locator therefore travels with the credential rather than existing only in
+browser storage:
 
 ```text
-Recovery sırasında
-account A ──► accountLocator H ──► yeni passkey credential kaynağı
+During recovery
+account A ──► accountLocator H ──► new passkey credential source
 
-Daha sonra temiz cihazda
-senkronize passkey ──► userHandle içinden H ──► registry ──► account A
-                                                   │
-fresh assertion ───────────────────────────────────┘
-                         │
-                         ▼
-              canlı validator doğrulaması
+Later, on a clean device
+synchronized passkey ──► H from userHandle ──► registry ──► account A
+                                                            │
+fresh assertion ────────────────────────────────────────────┘
+                              │
+                              ▼
+                   live validator verification
 ```
 
-## Credential içine yazılacak format
+## Credential Envelope
 
-Yeni nesil için 62 byte:
+The new generation uses a 62-byte envelope:
 
 ```text
 0x4c | version=3 | uint64 chainId | address factory | bytes32 accountLocator
 ```
 
-- `accountLocator`: CSPRNG ile üretilmiş rastgele, sıfır olmayan 32 byte.
-- `chainId`: Yanlış zincirde aramayı engeller.
-- `factory`: Aynı zincirde eski/yeni immutable deployment’ları ayırır.
-- RP ID zaten authenticator tarafından credential’a bağlanır.
-- Origin ve RP hash’i ayrıca canlı P-256 validator kaydında doğrulanır.
+- `accountLocator` is a random, non-zero 32-byte value generated by a CSPRNG.
+- `chainId` prevents discovery on the wrong chain.
+- `factory` separates immutable deployment generations on the same chain.
+- The authenticator already binds the credential to the RP ID.
+- The live P-256 validator separately verifies the origin and RP ID hash.
 
-Toplam 62 byte, WebAuthn’ın 64-byte `userHandle` sınırı içindedir. Account adresi
-ve kişisel veri yazılmaz; locator registry’den bağımsızken anlamsızdır.
+The 62-byte value fits within WebAuthn's 64-byte `userHandle` limit. It contains
+no account address or personal data. The locator has no meaning without its
+deployment-specific registry.
 
-## Recovery key bu locator’ı nasıl alır?
+## Reusing the Locator During Recovery
 
-Recovery töreni zaten exact `account` adresini hedeflemek zorundadır. Guardian
-proposal, nonce, mevcut validator seti ve yeni validator bu hesap olmadan
-tanımlanamaz. Yeni passkey oluşturulmadan hemen önce:
+A recovery ceremony must already target an exact account. Guardian approvals,
+the recovery nonce, the current validator set, and the replacement validator
+cannot be defined without that account. Immediately before creating the new
+passkey, the client reads:
 
 ```solidity
 bytes32 locator = registry.handleForAccount(account);
 ```
 
-iki bağımsız RPC’den okunup karşılaştırılır. Yeni recovery credential şu aynı
-bytes ile oluşturulur:
+The client reads this value from two independent RPC endpoints and requires
+agreement. It then creates the recovery credential with the same bytes:
 
 ```typescript
 navigator.credentials.create({
@@ -91,172 +97,187 @@ navigator.credentials.create({
 });
 ```
 
-Yeni credential’ın `credentialId` ve P-256 key’i farklıdır; account locator aynı
-kalır. Guardian’ların onayladığı recovery initializer yeni public key, RP,
-origin ve policy hook bağını içerir. Recovery execute edildiğinde validator seti
-değişir fakat registry binding değişmez.
+The new credential has a different `credentialId` and P-256 key, while the
+account locator remains stable. Guardian approval binds the new public key, RP,
+origin, policy hook, and exact recovery initializer. Recovery execution changes
+the validator set but does not change the registry binding.
 
-## Temiz cihaz discovery
+## Clean-Device Discovery
 
-1. Ağ çağrısından önce boş allow-list ile passkey picker açılır.
-2. Kullanıcı recovery passkey’ini seçer ve UV yapar.
-3. Challenge, origin, cross-origin, RP ID hash, UP ve UV doğrulanır.
-4. `userHandle v3` decode edilir; chain ve factory pinned manifestle eşleşir.
-5. İki RPC’den `accountForHandle(locator)` okunur ve sonuçlar eşleştirilir.
-6. Bulunan hesabın en fazla 16 canlı validator’ı okunur.
-7. Fresh assertion her canlı P-256 key’e karşı denenir.
-8. Yalnız bir canlı key doğrularsa signer wallet açılır.
+1. Open the passkey picker with an empty allow-list before any network request.
+2. Require the user to select the recovery passkey and perform user verification.
+3. Verify challenge, origin, cross-origin state, RP ID hash, UP, and UV.
+4. Decode `userHandle v3` and match its chain and factory to a pinned manifest.
+5. Read `accountForHandle(locator)` from two RPC endpoints and require agreement.
+6. Read at most 16 live validators from the resolved account.
+7. Test the fresh assertion against every live P-256 key.
+8. Open a signer wallet only when exactly one live key verifies.
 
 ```text
-Locator sonucu        Assertion sonucu          Durum
-────────────────────────────────────────────────────────
-geçersiz/yabancı      —                         INVALID
-address(0)            —                         NOT_ACTIVATED
-account               canlı key doğruluyor      ACTIVE
-account               hiçbir canlı key yok      STALE
-credential yok        picker sunamıyor           UNAVAILABLE
+Locator result         Assertion result          State
+──────────────────────────────────────────────────────────
+invalid or foreign     —                         INVALID
+address(0)             —                         NOT_ACTIVATED
+account                live key verifies         ACTIVE
+account                no live key verifies      STALE
+credential absent      picker cannot offer it    UNAVAILABLE
 ```
 
-Locator yetki değildir. `userHandle` manipüle edilerek farklı hesaba yönlendirme
-yapılırsa o hesabın canlı public key’i assertion’ı doğrulamayacağı için akış
-kapanır. Aynı güvenlik mantığı WebAuthn’ın unsigned credential-ID lookup modelinde
-de kullanılır: lookup doğru public key’i bulmalı, ardından signature mutlaka
-doğrulanmalıdır. [W3C assertion verification](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion)
+The locator is never authority. If a manipulated `userHandle` points to another
+account, the assertion will not verify against that account's live public key
+and the flow fails closed. WebAuthn credential-ID lookup uses the same security
+model: lookup selects a public key, and signature verification establishes
+authority.
+[W3C assertion verification](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion)
 
-## Bambaşka cihaz garantisinin gerçek sınırı
+## Cross-Device Availability Limit
 
-WebAuthn cloud sync’i zorunlu kılmaz. BE ve BS bayrakları credential’ın backup
-özelliğini bildirir:
+WebAuthn does not require cloud synchronization. The BE and BS flags describe
+credential backup properties:
 
-- `BE=0`: Tek cihaz credential’ıdır ve hiçbir zaman backup edilemez.
-- `BE=1`: Multi-device credential’dır; backup/sync için uygundur.
-- `BS=1`: Şu anda backup edilmiş olarak raporlanmaktadır.
+- `BE=0`: The credential is device-bound and can never be backed up.
+- `BE=1`: The credential is backup eligible and may support multiple devices.
+- `BS=1`: The credential currently reports a backed-up state.
 
-BE credential ömrü boyunca değişmez; BS değişebilir. Recovery product’ı
-registration authenticator data’dan bu bitleri okumalı ve “cihaz kaybından sonra
-başka cihazda açılır” yolu için `BE=0` credential’ı reddetmelidir.
+BE remains constant for the credential lifetime; BS may change. The wallet must
+parse these signed flags from registration authenticator data and present them
+as availability information. They do not grant or remove account authority.
 [W3C Credential Backup State](https://www.w3.org/TR/webauthn-3/#sctn-credential-backup)
 
-Google Password Manager passkey’leri desteklenen ortamlar arasında şifreli
-olarak senkronize ettiğini; Apple ise iCloud Keychain passkey’lerinin Apple
-cihazları arasında kullanılabildiğini belgeliyor. Bunlar provider özellikleridir,
-Loom authority’si değildir. [Google passkey ortamları](https://developers.google.com/identity/passkeys/supported-environments), [Apple Passkeys](https://developer.apple.com/passkeys/)
+Google Password Manager documents encrypted passkey synchronization across
+supported environments, and Apple documents passkey availability through
+iCloud Keychain. These are provider capabilities, not Loom authority.
+[Google passkey environments](https://developers.google.com/identity/passkeys/supported-environments),
+[Apple Passkeys](https://developer.apple.com/passkeys/)
 
-En güçlü release testi BE/BS bayrağı değil gerçek clean-device prova olacaktır:
-device A’da recovery key oluştur, Loom local state’i tamamen boş device B’de
-aynı provider üzerinden passkey’i seç ve hesabı getir.
+The strongest release evidence is a real clean-device rehearsal rather than a
+BE/BS flag alone: create a recovery passkey on device A, begin with no Loom state
+on device B, select the passkey through the same provider, and recover the
+account.
 
-## Neden diğer seçenekler seçilmedi?
+## Rejected Alternatives
 
-### `credentialIdHash → account`
+### `credentialIdHash => account`
 
-Credential ID her recovery key’de yenilenir. Bu nedenle her recovery yeni
-registry binding’i gerektirir. Üstelik credential ID assertion tarafından
-imzalanmaz. Public recovery sürecinde görülen hash’i başka account’un önce claim
-etmesi theft yaratmaz ama kalıcı discovery DoS yaratabilir. Candidate listesi
-ise attacker-sized scan problemine döner.
+Every recovery creates a new credential ID, so this model requires a new
+registry binding for every recovery. The credential ID is not signed by the
+assertion. After a public recovery reveals the hash, another account could claim
+the same hash first. That does not grant theft authority, but it can create a
+durable discovery denial of service. Candidate lists reintroduce an
+attacker-sized scan.
 
-### `keyCommitment → account`
+### `keyCommitment => account`
 
-Temiz cihaz assertion’ı public key’i geri vermez. Public key yalnız registration
-sırasında elde edilir. Hesabı önceden bilmeden key commitment hesaplanamaz.
+A clean-device assertion does not return the public key. The public key is
+available only during registration. Without knowing a candidate account and its
+recorded key, the client cannot compute the commitment. Recovery also changes
+the key by design.
 
-### Account adresini doğrudan passkey’e yazmak
+### Store the Account Address Directly in the Passkey
 
-Recovery key için teknik olarak mümkün olsa da doğrudan zincir adresini
-credential provider’a verir ve WebAuthn’ın random opaque handle yönlendirmesine
-göre daha korele edilebilirdir. İlk credential için de tek model oluşturmaz:
-mevcut CREATE2 adresi key’i içeren init-code hash’ine bağlıdır ve key credential
-oluşturulduktan sonra ortaya çıkar. ERC-4337 de counterfactual adresin başlangıç
-signature/credential’ına bağlı olmasını güvenlik açısından önerir.
-[ERC-4337](https://eips.ethereum.org/EIPS/eip-4337), [EIP-1014](https://eips.ethereum.org/EIPS/eip-1014)
+This is technically possible for a recovery credential because recovery already
+knows the address. However, it exposes a directly correlatable on-chain address
+to the credential provider instead of using a random opaque handle. It also does
+not provide one lifecycle for the initial credential: the current CREATE2
+address depends on init-code containing the key returned only after credential
+creation. ERC-4337 also recommends binding a counterfactual address to its
+initial signature or credential.
+[ERC-4337](https://eips.ethereum.org/EIPS/eip-4337),
+[EIP-1014](https://eips.ethereum.org/EIPS/eip-1014)
 
-### `largeBlob`, PRF veya Loom backend
+### `largeBlob`, PRF, or a Hosted Index
 
-`largeBlob` optional’dır ve registration sırasında yazılamaz. PRF veriyi
-şifreleyebilir ama ciphertext’in nerede olduğunu çözmez. Hosted index kolaydır
-ama Loom servisinin ayakta kalmasını recovery bağımlılığına dönüştürür.
+`largeBlob` is optional and cannot be written during registration. PRF can
+protect data but cannot tell a clean client where to retrieve the ciphertext.
+A hosted index is conventional but makes Loom service availability part of the
+recovery path.
 
-## Uygulama planı
+## Implementation Plan
 
-### Aşama 1 — Protokol ve codec
+### Phase 1 — Protocol and Codec
 
-- `walletId` adını yeni nesilde `accountLocator` olarak değiştir.
-- `userHandle v3` 62-byte codec’ini uygula.
-- Exact length/version, zero locator, chain/factory mismatch ve fuzz testleri ekle.
-- Legacy decoder veya ABI alias bırakma.
+- Use `accountLocator` or `accountHandle` consistently in the new generation.
+- Implement the exact 62-byte v3 `userHandle` codec.
+- Test exact length, version, zero locator, chain mismatch, factory mismatch,
+  and fuzzed malformed inputs.
+- Retain no legacy decoder or ABI alias.
 
-### Aşama 2 — Contract yüzeyi
+### Phase 2 — Contract Surface
 
-- Registry fonksiyonlarını `accountForHandle` ve `handleForAccount` yap.
-- Factory-only, one-to-one ve non-zero invariantlarını koru.
-- Factory create ile binding aynı transaction’da kalsın.
-- Locator CREATE2 salt olarak kalabilir.
-- `accountForKey` veya credential-ID registry ekleme.
+- Expose `accountForHandle` and `handleForAccount` on the registry.
+- Preserve factory-only, one-to-one, and non-zero invariants.
+- Keep account creation and registry binding in one transaction.
+- Continue using the locator as the CREATE2 salt.
+- Do not add `accountForKey` or a credential-ID registry.
 
-### Aşama 3 — Recovery credential oluşturma
+### Phase 3 — Recovery Credential Creation
 
-- Recovery target account doğrulandıktan sonra handle’ı iki RPC’den oku.
-- Yeni credential’a aynı v3 handle’ı yaz.
-- Registration authenticator data’dan BE/BS çıkar.
-- Cross-device recovery için BE=0 credential’ı reddet.
-- Yeni public key/RP/origin binding’ini permissionless recovery validator’a yaz.
-- Guardian request’in `initDataHash` doğrulamasını koru.
+- Verify the recovery target account, then dual-read its handle.
+- Write the same v3 handle into the new credential.
+- Parse BE/BS from registration authenticator data.
+- Record availability status without treating it as authority.
+- Provision the exact public key, RP, and origin binding into the permissionless
+  recovery validator.
+- Preserve guardian verification of `initDataHash`.
+- Require a post-registration assertion before publishing the recovery request.
 
-### Aşama 4 — Clean-device discovery state machine
+### Phase 4 — Clean-Device Discovery State Machine
 
-- Picker her ağ çağrısından önce çalışsın.
-- Decode → deployment verify → dual-RPC lookup → bounded validators → fresh
-  signature sırasını tek domain servisine taşı.
-- Sonuçları `INVALID`, `NOT_ACTIVATED`, `ACTIVE`, `STALE`, `UNAVAILABLE` olarak
-  typed union yap.
-- `ACTIVE` olmadan account store veya signer oluşturma.
+- Open the picker before any awaited network operation.
+- Centralize decode, deployment verification, dual-RPC lookup, bounded validator
+  reads, and fresh signature verification in one domain service.
+- Represent `INVALID`, `NOT_ACTIVATED`, `ACTIVE`, `STALE`, and `UNAVAILABLE` as
+  a typed union.
+- Never create an account-store record or signer before reaching `ACTIVE`.
 
-### Aşama 5 — Saved Wallets
+### Phase 5 — Saved Wallets
 
-- Saved data yalnız cache olsun.
-- Her açılışta canlı validator/key kontrolü yap.
-- `STALE` credential wallet ekranına ve Send’e girmesin.
-- Watch-only kullanım ayrı, açık bir “adres izle” özelliği olsun.
+- Treat saved data only as a cache.
+- Recheck the live validator and key whenever a wallet opens.
+- Never let a `STALE` credential reach the wallet screen or Send flow.
+- Provide watch-only access only through a separate, explicit address-watch
+  feature.
 
-### Aşama 6 — Doğrulama
+### Phase 6 — Verification
 
-- Unit: v3 codec ve BE/BS parser.
-- Contract: registry tekillik/atomiklik ve factory isolation.
-- Adversarial: locator kopyalama, yanlış account, yanlış validator, RPC
-  disagreement, malformed response.
-- Recovery E2E: eski validator kaldır, yeni validator aktive et; yeni passkey
-  `ACTIVE`, eski passkey `STALE`.
-- Virtual authenticator export/import: browser storage tamamen boşken discovery.
-- Fiziksel matris: Google Password Manager, iCloud Keychain ve desteklenen bir
-  üçüncü taraf provider; sync ve provider-change vakaları ayrı kaydedilsin.
+- Unit tests: v3 codec and BE/BS parser.
+- Contract tests: registry uniqueness, atomicity, and factory isolation.
+- Adversarial tests: copied locator, wrong account, wrong validator, RPC
+  disagreement, and malformed responses.
+- Recovery E2E: remove the old validator, activate the new validator, classify
+  the new passkey as `ACTIVE`, and classify the old passkey as `STALE`.
+- Virtual authenticator export/import with empty browser storage.
+- Physical matrix covering Google Password Manager, iCloud Keychain, and one
+  supported third-party provider, with synchronization and provider-change
+  cases recorded separately.
 
-### Aşama 7 — Yeni deployment
+### Phase 7 — New Deployment
 
-- Yeni factory/registry/ABI ve manifest üret.
-- Runtime/init-code hash’lerini ve constructor parametrelerini kanıtla.
-- Sepolia’da gerçek iki cihazlı rehearsal receipt’lerini release evidence’a ekle.
-- Eski deployment’ı aynı manifestte karıştırma.
+- Produce a new factory, registry, ABI set, and manifest.
+- Prove runtime hash, init-code hash, and constructor parameters.
+- Add real two-device Sepolia rehearsal receipts to release evidence.
+- Do not mix the previous deployment generation into the same manifest.
 
-## Tamamlanma kriteri
+## Acceptance Criteria
 
-Loom localStorage’ı, IndexedDB’si ve saved wallet kayıtları boş olan cihaz B’de:
+On device B, with empty Loom local storage, IndexedDB, and saved-wallet state:
 
-1. “Passkey ile cüzdan bul” seçilir.
-2. Recovery sırasında cihaz A’da oluşturulmuş ve provider tarafından erişilebilir
-   olan passkey seçilir.
-3. Kullanıcı adres, dosya veya recovery code girmez.
-4. Loom backend veya historical log scan kullanılmaz.
-5. Tek account bulunur.
-6. Fresh assertion canlı recovery validator key’iyle doğrulanır.
-7. Cüzdan signer olarak açılır ve geçerli UserOperation gönderebilir.
-8. Eski passkey aynı account’u bulsa bile `STALE` olur ve cüzdanı açamaz.
+1. The user selects “Find wallet with a passkey.”
+2. The user selects a passkey created during recovery on device A and made
+   available by its provider.
+3. The user enters no address, file, or recovery code.
+4. The client uses neither a Loom backend nor historical log scans.
+5. Exactly one account resolves.
+6. A fresh assertion verifies against the live recovery validator key.
+7. The wallet opens in signer mode and can submit a valid UserOperation.
+8. The old passkey may locate the account but is classified as `STALE` and
+   cannot open the wallet.
 
-## Mevcut kodun durumu
+## Implementation Status at Decision Time
 
-Çalışma ağacındaki kod hedefin büyük bölümünü şimdiden taşıyor: recovery akışı
-account’tan mevcut ID’yi okuyor, aynı ID ile yeni passkey oluşturuyor ve discovery
-canlı validator assertion’ını kontrol ediyor. İlgili dört test dosyası bu araştırma
-sırasında 18/18 geçti. Eksik kalan kritik parçalar factory-domain v3 formatı,
-BE/BS portability gate, gerçek temiz-cihaz sync/import E2E ve terminoloji/durum
-makinesi temizliğidir.
+The working implementation already covered most of the target: recovery reused
+the account's existing identifier, created the new passkey with that identifier,
+and required a live-validator assertion during discovery. The four targeted
+test files passed 18 of 18 cases. The remaining gaps were the factory-domain v3
+format, explicit availability handling, a real clean-device synchronization or
+import rehearsal, and final terminology and state-machine cleanup.
