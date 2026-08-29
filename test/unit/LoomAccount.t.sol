@@ -419,6 +419,8 @@ contract LoomAccountFactoryTest {
             entryPoint.createAccount(factory, salt, keccak256("guardians"), 1, keccak256("config"), modules);
         require(address(deployed) == predicted, "unexpected create2 address");
         require(factory.registry().isAccount(predicted), "registry did not record account");
+        require(factory.accountForHandle(salt) == predicted, "handle did not resolve account");
+        require(factory.handleForAccount(predicted) == salt, "account did not resolve handle");
         require(factory.registry().accountCount() == 1, "registry count missing");
         require(
             address(entryPoint.createAccount(factory, salt, keccak256("guardians"), 1, keccak256("config"), modules))

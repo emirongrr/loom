@@ -63,16 +63,20 @@ contract MultiUserFactoryIsolationTest {
         LoomAccount.ModuleInit[] memory modulesA = _modules(vm.addr(OWNER_A_KEY), P256_X_A, P256_Y_A, "owner-a");
         LoomAccount.ModuleInit[] memory modulesB = _modules(vm.addr(OWNER_B_KEY), P256_X_B, P256_Y_B, "owner-b");
 
-        address accountA = address(_create(keccak256("salt-a"), modulesA));
-        address accountB = address(_create(keccak256("salt-b"), modulesB));
+        bytes32 saltA = keccak256("salt-a");
+        bytes32 saltB = keccak256("salt-b");
+        address accountA = address(_create(saltA, modulesA));
+        address accountB = address(_create(saltB, modulesB));
 
         require(accountA != accountB, "different users shared account address");
         require(ecdsa.owners(accountA) == vm.addr(OWNER_A_KEY), "account A owner missing");
         require(ecdsa.owners(accountB) == vm.addr(OWNER_B_KEY), "account B owner missing");
         require(factory.registry().accountCount() == 2, "registry missed both users");
+        require(factory.accountForHandle(saltA) == accountA, "account A handle crossed accounts");
+        require(factory.accountForHandle(saltB) == accountB, "account B handle crossed accounts");
     }
 
-    function testSameSaltDifferentOwnerInitDataProducesDifferentAccounts() public {
+    function testAccountHandleCannotBindTwoDifferentAccounts() public {
         bytes32 salt = keccak256("same-salt-different-owner");
         LoomAccount.ModuleInit[] memory modulesA = _modules(vm.addr(OWNER_A_KEY), P256_X_A, P256_Y_A, "owner-a");
         LoomAccount.ModuleInit[] memory modulesB = _modules(vm.addr(OWNER_B_KEY), P256_X_B, P256_Y_B, "owner-b");
@@ -82,7 +86,11 @@ contract MultiUserFactoryIsolationTest {
         require(predictedA != predictedB, "owner-specific initData did not affect address");
 
         require(address(_create(salt, modulesA)) == predictedA, "account A deployed at wrong address");
-        require(address(_create(salt, modulesB)) == predictedB, "account B deployed at wrong address");
+        try entryPoint.createAccount(factory, salt, bytes32(0), 0, keccak256("config"), modulesB) {
+            revert("one wallet id bound two accounts");
+        } catch {}
+        require(predictedB.code.length == 0, "conflicting wallet account survived the rejected binding");
+        require(factory.accountForHandle(salt) == predictedA, "first handle binding changed");
     }
 
     function testSameSaltAndModulesArePredictableAndIdempotent() public {
@@ -98,7 +106,7 @@ contract MultiUserFactoryIsolationTest {
         require(factory.registry().accountCount() == 1, "duplicate create inflated registry");
     }
 
-    function testFundedCounterfactualAddressCannotBeClaimedByDifferentOwner() public {
+    function testBoundAccountHandleCannotRedirectAFundedCounterfactualAddress() public {
         bytes32 salt = keccak256("funded-counterfactual");
         LoomAccount.ModuleInit[] memory modulesA = _modules(vm.addr(OWNER_A_KEY), P256_X_A, P256_Y_A, "owner-a");
         LoomAccount.ModuleInit[] memory modulesB = _modules(vm.addr(OWNER_B_KEY), P256_X_B, P256_Y_B, "owner-b");
@@ -106,16 +114,15 @@ contract MultiUserFactoryIsolationTest {
         address predictedB = factory.getAddress(salt, bytes32(0), 0, keccak256("config"), modulesB);
 
         vm.deal(fundedA, 1 ether);
-        LoomAccount accountB = _create(salt, modulesB);
-
-        require(address(accountB) == predictedB, "different owner did not deploy own address");
-        require(address(accountB) != fundedA, "different owner claimed funded address");
-        require(address(accountB).balance == 0, "different owner received counterfactual funds");
-        require(fundedA.balance == 1 ether, "funded address was drained");
-
         LoomAccount accountA = _create(salt, modulesA);
         require(address(accountA) == fundedA, "original owner did not deploy funded address");
         require(address(accountA).balance == 1 ether, "funded address balance missing after owner deploy");
+
+        try entryPoint.createAccount(factory, salt, bytes32(0), 0, keccak256("config"), modulesB) {
+            revert("bound wallet id redirected to another account");
+        } catch {}
+        require(predictedB.code.length == 0, "conflicting account survived rejected binding");
+        require(factory.accountForHandle(salt) == fundedA, "funded account handle was redirected");
     }
 
     function testValidatorAndPolicyStateRemainAccountScoped() public {
