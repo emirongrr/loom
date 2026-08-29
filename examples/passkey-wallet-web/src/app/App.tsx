@@ -231,7 +231,7 @@ export function App() {
    * Bring back a wallet this browser has never heard of, using the passkey.
    *
    * Nothing is stored in this browser and no server is asked. The credential's
-   * random wallet id locates one factory account; a fresh assertion is then
+   * random account handle locates one factory account; a fresh assertion is then
    * verified against that account's live validator key before it is offered.
    */
   /** What both routes end at: the finding, shown before anything is saved. */
