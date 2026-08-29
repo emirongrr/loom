@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
 import {AppAccountRegistry} from "../src/AppAccountRegistry.sol";
+import {OnboardingPaymaster} from "../src/OnboardingPaymaster.sol";
 import {LoomAccount} from "../src/LoomAccount.sol";
 import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
@@ -25,6 +26,16 @@ import {ERC1271GuardianVerifier} from "../src/recovery/ERC1271GuardianVerifier.s
 import {P256VerifierConfig, P256VerifierMode, P256VerifierSelection} from "./P256VerifierConfig.sol";
 
 contract DeploySepolia is Script {
+    uint256 private constant SEPOLIA_CHAIN_ID = 11_155_111;
+    address private constant ENTRYPOINT_V0_9 = 0x433709009B8330FDa32311DF1C2AFA402eD8D009;
+    bytes32 private constant ENTRYPOINT_V0_9_RUNTIME_CODEHASH =
+        0x280d5c7c0de94b512401eb9c4b0ef0436275ff03627aad0ce1f93ab1627187a0;
+    address private constant SENDER_CREATOR_V0_9 = 0x0A630a99Df908A81115A3022927Be82f9299987e;
+
+    error InvalidSepoliaChain(uint256 actualChainId);
+    error InvalidSepoliaEntryPoint(address actualEntryPoint);
+    error InvalidDeploymentBinding();
+
     event P256VerifierSelected(
         uint256 indexed chainId,
         address indexed verifier,
@@ -57,13 +68,21 @@ contract DeploySepolia is Script {
         address recoveryIntentBoard,
         address ecdsaGuardianVerifier,
         address p256GuardianVerifier,
-        address erc1271GuardianVerifier
+        address erc1271GuardianVerifier,
+        address onboardingPaymaster
     );
 
     function run() external returns (LoomAccountFactory factory) {
+        if (block.chainid != SEPOLIA_CHAIN_ID) revert InvalidSepoliaChain(block.chainid);
         uint256 deployerKey = vm.envUint("SEPOLIA_DEPLOYER_PRIVATE_KEY");
+        address deployer = vm.addr(deployerKey);
         address entryPoint = vm.envAddress("SEPOLIA_ENTRYPOINT");
-        if (entryPoint.code.length == 0) revert("SEPOLIA_ENTRYPOINT has no code");
+        if (entryPoint != ENTRYPOINT_V0_9) revert InvalidSepoliaEntryPoint(entryPoint);
+        if (entryPoint.codehash != ENTRYPOINT_V0_9_RUNTIME_CODEHASH) revert InvalidSepoliaEntryPoint(entryPoint);
+        if (
+            address(IEntryPoint(entryPoint).senderCreator()) != SENDER_CREATOR_V0_9
+                || SENDER_CREATOR_V0_9.code.length == 0
+        ) revert InvalidSepoliaEntryPoint(entryPoint);
 
         P256VerifierSelection memory p256Selection = P256VerifierConfig.select(
             block.chainid,
@@ -114,6 +133,23 @@ contract DeploySepolia is Script {
             implementationModules
         );
         factory = new LoomAccountFactory(IEntryPoint(entryPoint), address(implementation));
+        AppAccountRegistry appRegistry = factory.registry();
+        OnboardingPaymaster onboardingPaymaster;
+        if (vm.envOr("SEPOLIA_SPONSORED_ONBOARDING", false)) {
+            address sponsorAuthorizer = vm.envAddress("SEPOLIA_SPONSOR_AUTHORIZER");
+            bytes32 sponsorPolicyHash = vm.envBytes32("SEPOLIA_SPONSOR_POLICY_HASH");
+            uint256 sponsorMaximumCost = vm.envUint("SEPOLIA_SPONSOR_MAX_COST_WEI");
+            uint256 sponsorDeposit = vm.envUint("SEPOLIA_SPONSOR_DEPOSIT_WEI");
+            if (sponsorDeposit == 0) revert InvalidDeploymentBinding();
+            onboardingPaymaster = new OnboardingPaymaster(
+                IEntryPoint(entryPoint), address(factory), sponsorAuthorizer, sponsorPolicyHash, sponsorMaximumCost
+            );
+            onboardingPaymaster.deposit{value: sponsorDeposit}();
+        }
+        if (
+            address(factory.entryPoint()) != entryPoint || factory.accountImplementation() != address(implementation)
+                || appRegistry.factory() != address(factory)
+        ) revert InvalidDeploymentBinding();
 
         emit P256VerifierSelected(
             block.chainid,
@@ -126,7 +162,7 @@ contract DeploySepolia is Script {
         );
 
         emit SepoliaDeployment(
-            msg.sender,
+            deployer,
             entryPoint,
             p256Selection.verifier,
             p256Selection.mode,
@@ -134,7 +170,7 @@ contract DeploySepolia is Script {
             address(implementation),
             address(implementationLockValidator),
             address(factory),
-            address(factory.registry()),
+            address(appRegistry),
             address(policyHook),
             address(vaultHook),
             address(p256Validator),
@@ -147,7 +183,8 @@ contract DeploySepolia is Script {
             address(recoveryIntentBoard),
             address(ecdsaGuardianVerifier),
             address(p256GuardianVerifier),
-            address(erc1271GuardianVerifier)
+            address(erc1271GuardianVerifier),
+            address(onboardingPaymaster)
         );
 
         vm.stopBroadcast();
