@@ -15,6 +15,7 @@ interface VmOnboardingPaymaster {
     function addr(uint256 privateKey) external returns (address);
     function deal(address account, uint256 amount) external;
     function expectRevert() external;
+    function expectRevert(bytes4 selector) external;
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
     function startPrank(address sender, address origin) external;
     function stopPrank() external;
@@ -67,13 +68,78 @@ contract OnboardingPaymasterTest {
         (address account, PackedUserOperation memory op) = _authorizedActivation(keccak256("invalid"));
         uint256 beforeDeposit = entryPoint.balanceOf(address(paymaster));
         bytes memory bad = new bytes(65);
-        op.paymasterAndData = _paymasterAndData(op, bad);
+        op.paymasterAndData = _paymasterAndData(bad, MAXIMUM_COST, POLICY_HASH);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, entryPoint.getUserOpHash(op));
         op.signature = abi.encode(address(validator), abi.encodePacked(r, s, v));
         vm.expectRevert();
         _handle(op);
         require(entryPoint.balanceOf(address(paymaster)) == beforeDeposit, "invalid authorization spent deposit");
         require(account.code.length == 0, "invalid authorization deployed account");
+    }
+
+    function testSponsorshipRejectsAnythingExceptBoundAccountCreation() public {
+        (, PackedUserOperation memory op) = _authorizedActivation(keccak256("bounded-activation"));
+
+        PackedUserOperation memory invalid = op;
+        invalid.nonce = 1;
+        _expectInvalidSponsorship(invalid, 1);
+
+        invalid = op;
+        invalid.callData = hex"01";
+        _expectInvalidSponsorship(invalid, 1);
+
+        invalid = op;
+        invalid.initCode = abi.encodePacked(address(0xBEEF), bytes4(0x12345678));
+        _expectInvalidSponsorship(invalid, 1);
+
+        invalid = op;
+        invalid.initCode = abi.encodePacked(address(factory));
+        _expectInvalidSponsorship(invalid, 1);
+
+        invalid = op;
+        invalid.paymasterAndData = _paymasterAndData("", MAXIMUM_COST + 1, POLICY_HASH);
+        _expectInvalidSponsorship(invalid, 1);
+
+        invalid = op;
+        invalid.paymasterAndData = _paymasterAndData("", MAXIMUM_COST, keccak256("wrong-policy"));
+        _expectInvalidSponsorship(invalid, 1);
+
+        _expectInvalidSponsorship(op, MAXIMUM_COST + 1);
+    }
+
+    function testAuthorizationBindsEveryGasField() public {
+        (, PackedUserOperation memory op) = _authorizedActivation(keccak256("gas-binding"));
+
+        PackedUserOperation memory invalid = op;
+        invalid.accountGasLimits = bytes32(uint256(op.accountGasLimits) + 1);
+        _expectFailedAuthorization(invalid);
+
+        invalid = op;
+        invalid.preVerificationGas += 1;
+        _expectFailedAuthorization(invalid);
+
+        invalid = op;
+        invalid.gasFees = bytes32(uint256(op.gasFees) + 1);
+        _expectFailedAuthorization(invalid);
+
+        invalid = op;
+        invalid.paymasterAndData = abi.encodePacked(op.paymasterAndData);
+        invalid.paymasterAndData[20] = bytes1(uint8(invalid.paymasterAndData[20]) ^ 1);
+        _expectFailedAuthorization(invalid);
+
+        invalid = op;
+        invalid.paymasterAndData = abi.encodePacked(op.paymasterAndData);
+        invalid.paymasterAndData[36] = bytes1(uint8(invalid.paymasterAndData[36]) ^ 1);
+        _expectFailedAuthorization(invalid);
+    }
+
+    function _expectFailedAuthorization(PackedUserOperation memory op) private {
+        vm.startPrank(address(entryPoint), address(entryPoint));
+        (, uint256 validationData) = paymaster.validatePaymasterUserOp(op, bytes32(0), MAXIMUM_COST);
+        vm.stopPrank();
+
+        uint256 aggregatorMask = (uint256(1) << 160) - 1;
+        require(validationData & aggregatorMask == 1, "mutated gas retained sponsorship authorization");
     }
 
     function _authorizedActivation(bytes32 accountHandle)
@@ -97,15 +163,15 @@ contract OnboardingPaymasterTest {
             paymasterAndData: "",
             signature: ""
         });
-        op.paymasterAndData = _paymasterAndData(op, "");
+        op.paymasterAndData = _paymasterAndData("", MAXIMUM_COST, POLICY_HASH);
         bytes32 authorization = paymaster.authorizationHash(op, uint48(block.timestamp + 5 minutes), 0, MAXIMUM_COST);
         (uint8 av, bytes32 ar, bytes32 as_) = vm.sign(AUTHORIZER_KEY, authorization);
-        op.paymasterAndData = _paymasterAndData(op, abi.encodePacked(ar, as_, av));
+        op.paymasterAndData = _paymasterAndData(abi.encodePacked(ar, as_, av), MAXIMUM_COST, POLICY_HASH);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, entryPoint.getUserOpHash(op));
         op.signature = abi.encode(address(validator), abi.encodePacked(r, s, v));
     }
 
-    function _paymasterAndData(PackedUserOperation memory, bytes memory authorizationSignature)
+    function _paymasterAndData(bytes memory authorizationSignature, uint256 costLimit, bytes32 suppliedPolicyHash)
         private
         view
         returns (bytes memory)
@@ -115,9 +181,16 @@ contract OnboardingPaymasterTest {
             bytes16(uint128(150_000)),
             bytes16(uint128(1)),
             abi.encode(
-                uint48(block.timestamp + 5 minutes), uint48(0), MAXIMUM_COST, POLICY_HASH, authorizationSignature
+                uint48(block.timestamp + 5 minutes), uint48(0), costLimit, suppliedPolicyHash, authorizationSignature
             )
         );
+    }
+
+    function _expectInvalidSponsorship(PackedUserOperation memory op, uint256 maxCost) private {
+        vm.startPrank(address(entryPoint), address(entryPoint));
+        vm.expectRevert(OnboardingPaymaster.InvalidSponsorship.selector);
+        paymaster.validatePaymasterUserOp(op, bytes32(0), maxCost);
+        vm.stopPrank();
     }
 
     function _handle(PackedUserOperation memory op) private {
