@@ -23,7 +23,14 @@ export interface WalletDiscoveryResult {
 }
 
 export interface LogReader {
-  getLogs(request: { address: Address; fromBlock: bigint; toBlock: bigint; topics: readonly Hex[] }): Promise<readonly {
+  getLogs(request: {
+    /** Omitted to search every validator, including ones a recovery deployed. */
+    address?: Address;
+    fromBlock: bigint;
+    toBlock: bigint;
+    topics: readonly Hex[];
+  }): Promise<readonly {
+    readonly address: Address;
     readonly data: Hex;
     readonly topics: readonly Hex[];
   }[]>;
@@ -52,9 +59,36 @@ export async function findWalletsByPasskey(input: {
   let scannedWindows = 0;
   try {
     const head = await input.reader.getBlockNumber();
+
+    /**
+     * Searched across every validator when the endpoint allows it.
+     *
+     * A recovery installs a validator of its own, and the recovered account's
+     * key is published there rather than on the one named in the deployment
+     * profile. Searching only the profile's address finds the key the account
+     * had before it was recovered and misses the one that controls it now --
+     * which reads as "that passkey matches no account".
+     *
+     * Some endpoints refuse a query with no address. Those fall back to the
+     * profile's validator, which is better than nothing and is what this did
+     * before; a log from an unrelated contract is discarded by `decode`, and
+     * anything that survives still has to produce the signature.
+     */
+    let anyValidator = true;
     for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
       const from = end > WINDOW ? end - WINDOW + 1n : 0n;
-      const logs = await input.reader.getLogs({ address: input.validator, fromBlock: from, toBlock: end, topics: [topic] });
+      const window = { fromBlock: from, toBlock: end, topics: [topic] };
+      let logs;
+      if (anyValidator) {
+        try {
+          logs = await input.reader.getLogs(window);
+        } catch {
+          anyValidator = false;
+          logs = await input.reader.getLogs({ ...window, address: input.validator });
+        }
+      } else {
+        logs = await input.reader.getLogs({ ...window, address: input.validator });
+      }
       scannedWindows += 1;
       for (const log of logs) {
         const decoded = decode(log);
@@ -93,7 +127,7 @@ export async function findWalletsByPasskey(input: {
   return Object.freeze({ found, candidatesScanned: candidates.length });
 }
 
-function decode(log: { readonly data: Hex; readonly topics: readonly Hex[] }): KeyCandidate | null {
+function decode(log: { readonly address: Address; readonly data: Hex; readonly topics: readonly Hex[] }): KeyCandidate | null {
   try {
     const result = decodeEventLog({ abi: P256ValidatorAbi, data: log.data, topics: log.topics as [Hex, ...Hex[]] });
     if (result.eventName !== "KeySet") return null;
@@ -102,6 +136,8 @@ function decode(log: { readonly data: Hex; readonly topics: readonly Hex[] }): K
     };
     return Object.freeze({
       account: args.account,
+      // The contract that emitted it, which is the one holding this key.
+      validator: log.address,
       x: toHex(BigInt(args.x), { size: 32 }),
       y: toHex(BigInt(args.y), { size: 32 }),
       rpIdHash: args.rpIdHash,

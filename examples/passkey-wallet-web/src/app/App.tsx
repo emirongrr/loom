@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type PropsWithChildren } from "react";
 import type { NavigationArea } from "../types";
 import { primaryNavigation } from "./navigation";
+import { Dialog } from "../components/Dialog";
 import { HomePage } from "../features/home/HomePage";
 import { ActivityPage } from "../features/activity/ActivityPage";
 import { AppsPage } from "../features/apps/AppsPage";
-import { SecurityPage } from "../features/security/SecurityPage";
-import { GuardianWorkspace } from "../features/guardians/GuardianWorkspace";
 import { DeveloperSettings } from "../features/developer/DeveloperSettings";
 import { WalletLanding, WalletLock } from "../features/onboarding/WalletLanding";
 import type { WalletCreationRequest } from "../features/onboarding/WalletLanding";
@@ -15,12 +14,35 @@ import { readVerifierCodeHash } from "../features/security/guardianClient";
 import { useNetwork } from "../config/NetworkContext";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
-import { RecoveryPage } from "../features/recovery/RecoveryPage";
 import { findWalletsByPasskey } from "../features/onboarding/findWalletsByPasskey";
 import { assertAnyPasskey } from "../features/wallet/webauthn";
-import { StopRecoveryPage } from "../features/recovery/StopRecoveryPage";
 import { useAppNavigation } from "./useAppNavigation";
 import { safeUserMessage } from "../domain/errors/appError";
+
+/**
+ * Recovery, stopping a recovery, the security screen and the guardian workspace
+ * are each reached by their own route and by no other path. Loaded with the
+ * rest, they made someone opening the wallet to read a balance download the
+ * whole of both flows first.
+ */
+const SecurityPage = lazy(() => import("../features/security/SecurityPage").then(module => ({ default: module.SecurityPage })));
+const GuardianWorkspace = lazy(() => import("../features/guardians/GuardianWorkspace").then(module => ({ default: module.GuardianWorkspace })));
+const RecoveryPage = lazy(() => import("../features/recovery/RecoveryPage").then(module => ({ default: module.RecoveryPage })));
+const StopRecoveryPage = lazy(() => import("../features/recovery/StopRecoveryPage").then(module => ({ default: module.StopRecoveryPage })));
+
+/**
+ * What a route shows while its chunk arrives. Deliberately plain: a spinner
+ * that appears for a few hundred milliseconds and then vanishes reads as
+ * something going wrong more often than it reads as progress.
+ */
+function RouteChunk({ children }: PropsWithChildren) {
+  return <Suspense fallback={<main className="wallet-landing"><section className="landing-panel"><p>Opening…</p></section></main>}>{children}</Suspense>;
+}
+
+/** The endpoint's host, for saying which one failed without printing a key. */
+function hostOf(endpoint: string): string {
+  try { return new URL(endpoint).host; } catch { return endpoint; }
+}
 
 export function App() {
   const services = useAppServices();
@@ -32,6 +54,16 @@ export function App() {
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  /** A passkey's account, shown for confirmation before it is saved. */
+  const [foundByPasskey, setFoundByPasskey] = useState<{
+    readonly account: `0x${string}`;
+    readonly validator: `0x${string}`;
+    readonly publicKey: { readonly x: `0x${string}`; readonly y: `0x${string}` };
+    readonly credentialId: `0x${string}`;
+    readonly chainId: number;
+    readonly deployed: boolean;
+    readonly alreadySaved: string | null;
+  } | null>(null);
   useEffect(() => {
     void (async () => {
       try {
@@ -134,9 +166,13 @@ export function App() {
     setBusy(true);
     setMessage("");
     try {
-      const deployment = await loadWalletDeployment();
+      // Asked first, before anything is awaited. `navigator.credentials.get`
+      // needs the transient activation the click granted, and awaiting a fetch
+      // ahead of it spends that activation -- the browser then rejects the call
+      // without ever showing its picker, which looks like nothing happening.
       const assertion = await assertAnyPasskey();
       if (!assertion) { setMessage("No passkey was offered, so there is nothing to look up."); return; }
+      const deployment = await loadWalletDeployment();
       const client = services.publicClients.forEndpoint(config.rpcUrl);
       const result = await findWalletsByPasskey({
         validator: deployment.validator,
@@ -146,7 +182,7 @@ export function App() {
         reader: {
           getBlockNumber: () => client.getBlockNumber(),
           getLogs: request => client.getLogs({
-            address: request.address,
+            ...(request.address ? { address: request.address } : {}),
             fromBlock: request.fromBlock,
             toBlock: request.toBlock,
             ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
@@ -159,38 +195,95 @@ export function App() {
         return;
       }
       const existing = accounts.find(candidate => candidate.account.toLowerCase() === result.found!.account.toLowerCase());
-      if (existing) { setMessage(`${existing.label} is already saved here.`); return; }
+      const code = await client.getCode({ address: result.found.account }).catch(() => undefined);
+      // Shown before anything is written down. Which account a passkey opens is
+      // the one thing the reader cannot check for themselves, and saving first
+      // makes the answer something they have to undo rather than accept.
+      setFoundByPasskey({
+        account: result.found.account,
+        validator: result.found.validator,
+        publicKey: { x: result.found.x, y: result.found.y },
+        credentialId: assertion.credentialId,
+        chainId: deployment.chainId,
+        deployed: Boolean(code && code !== "0x"),
+        alreadySaved: existing?.label ?? null
+      });
+      return;
+    } catch (issue) {
+      // A network-level failure arrives as a bare "Failed to fetch", which names
+      // neither the endpoint that failed nor anything to do about it. The
+      // endpoint is configurable, so saying which one it was is the difference
+      // between a dead end and a setting to change.
+      const reason = issue instanceof Error ? issue.message : "";
+      setMessage(/failed to fetch|network|load failed/iu.test(reason)
+        ? `${hostOf(config.rpcUrl)} could not be reached, so the chain could not be searched. Check the RPC endpoint in Developer settings.`
+        : reason || "The passkey could not be used.");
+    } finally { setBusy(false); }
+  };
+
+  const saveFoundWallet = async () => {
+    if (!foundByPasskey) return;
+    setBusy(true);
+    try {
       await services.accounts.save({
         version: 1,
         kind: "recovered",
-        id: `passkey:${result.found.account.toLowerCase()}`,
+        id: `passkey:${foundByPasskey.account.toLowerCase()}`,
         label: "Recovered wallet",
-        account: result.found.account,
-        chainId: deployment.chainId,
-        credentialId: assertion.credentialId,
-        publicKey: { x: result.found.x, y: result.found.y },
+        account: foundByPasskey.account,
+        chainId: foundByPasskey.chainId,
+        credentialId: foundByPasskey.credentialId,
+        publicKey: foundByPasskey.publicKey,
         rpId: window.location.hostname,
         origin: window.location.origin,
-        validator: deployment.validator
+        // The validator that published this key, not the profile's. A recovered
+        // account is controlled by the validator its recovery installed, and
+        // signing against the profile's would fail as AA24.
+        validator: foundByPasskey.validator
       });
       await refreshAccounts();
-      setMessage("Wallet found and saved. Open it to continue.");
+      setFoundByPasskey(null);
+      setMessage("Wallet saved. Open it, or search again with another passkey.");
     } catch (issue) {
-      setMessage(issue instanceof Error ? issue.message : "The passkey could not be used.");
+      setMessage(issue instanceof Error ? issue.message : "The wallet could not be saved.");
     } finally { setBusy(false); }
   };
 
   if (!accountsLoaded) return <main className="wallet-landing"><section className="landing-panel"><p>Loading saved wallets…</p></section></main>;
   if (recoveryPath === STOP_RECOVERY_PATH && selected) {
-    return <><StopRecoveryPage handle={selected} onClose={closeRecovery} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+    return <><RouteChunk><StopRecoveryPage handle={selected} onClose={closeRecovery} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   }
   // Reached only with an account open, since stopping a recovery is something
   // an owner does about their own account. Visiting the path without one falls
   // through to the lock screen rather than to the page for recovering someone
   // else's account, which answers a different question entirely.
-  if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RouteChunk><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
-  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
+  if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} />
+    {foundByPasskey && <Dialog label="Wallet found" busy={busy} onClose={() => setFoundByPasskey(null)}>
+      <p className="eyebrow">This passkey opens</p>
+      <h2 className="breakable">{foundByPasskey.account}</h2>
+      <div className="permission-grid">
+        <div><span>Chain</span><strong>{foundByPasskey.chainId}</strong></div>
+        <div><span>On chain</span><strong>{foundByPasskey.deployed ? "Created" : "Not created yet"}</strong></div>
+      </div>
+      {/* The address is what the reader cannot work out for themselves, so it
+          is stated before anything is written down rather than after. */}
+      {foundByPasskey.alreadySaved
+        ? <>
+          <p className="callout">Already saved here as <strong>{foundByPasskey.alreadySaved}</strong>. Nothing needs adding.</p>
+          <div className="landing-actions">
+            <button className="primary" onClick={() => setFoundByPasskey(null)}>Close</button>
+          </div>
+        </>
+        : <>
+          <p className="form-note">Saving it puts the wallet in your list on this device. Nothing is published and no one is told.</p>
+          <div className="landing-actions">
+            <button className="secondary" disabled={busy} onClick={() => setFoundByPasskey(null)}>Cancel</button>
+            <button className="primary" disabled={busy} onClick={() => void saveFoundWallet()}>Save this wallet</button>
+          </div>
+        </>}
+    </Dialog>}<button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   return <div className="app-shell">
     <aside className="sidebar">
       <button className="brand" onClick={() => setArea("home")} aria-label="Loom wallet home"><span className="brand-mark">L</span><span>Loom</span></button>
@@ -203,7 +296,7 @@ export function App() {
       <div className="sidebar-session-actions"><button onClick={switchAccount}>Switch account</button><button onClick={lockAccount}>Lock account</button></div>
     </aside>
     <header className="mobile-header"><button className="brand" onClick={() => setArea("home")}><span className="brand-mark">L</span><span>Loom</span></button><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></header>
-    <main id="main-content">{renderArea(
+    <main id="main-content"><RouteChunk>{renderArea(
       area,
       setArea,
       selected,
@@ -213,7 +306,7 @@ export function App() {
       guardianInboundLink,
       () => openRecovery(STOP_RECOVERY_PATH, selected.id),
       () => { void refreshAccounts(); }
-    )}</main>
+    )}</RouteChunk></main>
     <button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button>
     <nav className="bottom-nav" aria-label="Mobile navigation">{primaryNavigation.map(item => <NavButton key={item.id} item={item} current={area} onClick={setArea} />)}</nav>
   </div>;

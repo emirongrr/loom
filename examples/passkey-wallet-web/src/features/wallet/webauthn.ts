@@ -111,7 +111,15 @@ export async function assertAnyPasskey(): Promise<{
       userVerification: "required",
       timeout: 60_000
     }
-  }).catch(() => null);
+  }).catch((cause: unknown) => {
+    // NotAllowedError is what a browser reports when the person dismissed the
+    // picker, when it timed out, and when nothing was offered -- all of which
+    // are "no passkey given", not a fault. Anything else is a real failure and
+    // was being reported as the same bland nothing, which is how a picker that
+    // never appeared looked identical to one that was cancelled.
+    if (cause instanceof DOMException && cause.name === "NotAllowedError") return null;
+    throw cause instanceof Error ? cause : new Error("The passkey could not be used.");
+  });
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
     return null;
   }

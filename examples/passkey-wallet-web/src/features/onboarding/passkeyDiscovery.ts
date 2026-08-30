@@ -20,6 +20,15 @@ import type { Address, Hex } from "@loom/core";
  */
 export interface KeyCandidate {
   readonly account: Address;
+  /**
+   * The validator that published this key.
+   *
+   * Not always the one in the deployment profile: a recovery installs a new
+   * validator, and the recovered account's key lives on that one. Saving the
+   * profile's address instead produces a wallet that opens, shows a balance,
+   * and then fails to sign.
+   */
+  readonly validator: Address;
   readonly x: Hex;
   readonly y: Hex;
   readonly rpIdHash: Hex;

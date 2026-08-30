@@ -27,14 +27,26 @@ export interface RegisteredPasskey {
   readonly publicKey: { readonly x: Hex; readonly y: Hex };
 }
 
-export async function registerBrowserPasskey(label: string): Promise<RegisteredPasskey> {
+/**
+ * @param account The account this passkey will control, when it is already
+ * known. Written into the credential's own name, because that is what the
+ * browser's passkey picker shows and a name alone leaves several of them
+ * indistinguishable at the moment one has to be chosen. A wallet being created
+ * has no address yet -- it is derived from the key this call produces -- so
+ * that case passes nothing and keeps the label.
+ */
+export async function registerBrowserPasskey(label: string, account?: string): Promise<RegisteredPasskey> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
   const rpId = window.location.hostname;
   const credential = await navigator.credentials.create({
     publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rp: { id: rpId, name: "Loom" },
-      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: label, displayName: label },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: account ? `${label} (${account.slice(0, 6)}…${account.slice(-4)})` : label,
+        displayName: label
+      },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }],
       authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
       attestation: "none"
