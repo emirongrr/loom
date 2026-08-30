@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPrivateFirstTransport, InvalidSdkRequestError } from "../dist/index.js";
+import { applyPaymasterAuthorization, createPrivateFirstTransport, InvalidSdkRequestError } from "../dist/index.js";
 
 const HASH = `0x${"11".repeat(32)}`;
 const envelope = { chainId: 1, account: `0x${"22".repeat(20)}`, intent: { kind: "deploy-account" }, userOperation: {} };
@@ -88,4 +88,37 @@ test("explicit fallback cannot be enabled without a classifier", () => {
     publicTransport: { async sendUserOperation() { return { userOpHash: HASH }; } },
     fallback: "explicit-rejection"
   }), InvalidSdkRequestError);
+});
+
+test("paymaster authorization is attached before the final account signature", () => {
+  const prepared = {
+    kind: "userOperation.prepare", chainId: 1, account: `0x${"22".repeat(20)}`,
+    intent: { kind: "deploy-account" }, intentHash: `0x${"44".repeat(32)}`, review: {},
+    userOperation: {
+      sender: `0x${"22".repeat(20)}`, nonce: 0n, callData: "0x",
+      callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n,
+      maxFeePerGas: 4n, maxPriorityFeePerGas: 1n, signature: "0x"
+    }
+  };
+  const authorized = applyPaymasterAuthorization(prepared, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 6n,
+    paymasterPostOpGasLimit: 7n, paymasterData: "0xabcd", preVerificationGas: 8n
+  });
+  assert.equal(authorized.userOperation.paymaster, `0x${"55".repeat(20)}`);
+  assert.equal(authorized.userOperation.preVerificationGas, 8n);
+  assert.equal(authorized.userOperation.paymasterVerificationGasLimit, 6n);
+  assert.throws(() => applyPaymasterAuthorization(prepared, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 0n,
+    paymasterPostOpGasLimit: 1n, paymasterData: "0xabcd"
+  }), InvalidSdkRequestError);
+  assert.throws(() => applyPaymasterAuthorization({
+    ...prepared, userOperation: { ...prepared.userOperation, signature: "0x1234" }
+  }, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 6n,
+    paymasterPostOpGasLimit: 7n, paymasterData: "0xabcd"
+  }), /before account signing/);
+  assert.throws(() => applyPaymasterAuthorization(prepared, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 6n,
+    paymasterPostOpGasLimit: 7n, paymasterData: "0xabcd", preVerificationGas: 0n
+  }), /preVerificationGas must be positive/);
 });
