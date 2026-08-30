@@ -45,7 +45,12 @@ const deployment = {
 /** Never resolves, holding the dialog in its first state so it can be read. */
 const services = {
   accounts: {}, guardianVault: {}, guardianRoster: {}, invitationLinks: {},
-  publicClients: { forEndpoint: () => ({ readContract: () => new Promise(() => undefined) }) },
+  publicClients: {
+    forEndpoint: () => ({
+      readContract: () => new Promise(() => undefined),
+      request: () => new Promise(() => undefined)
+    })
+  },
   runtime: {}, pendingOperations: {}, now: () => 1_900_000_000_000
 } as unknown as AppServices;
 
