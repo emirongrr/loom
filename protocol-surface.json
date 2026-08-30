@@ -545,13 +545,18 @@
     },
     "src/LoomAccountFactory.sol:LoomAccountFactory": {
       "functions": {
+        "accountForHandle(bytes32)": "0x9cdc18b3",
         "accountImplementation()": "0x11464fbe",
         "createAccount(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x7b65e75f",
         "entryPoint()": "0xb0d691fe",
         "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "0x2cf1fe9b",
+        "handleForAccount(address)": "0x9faa6004",
         "registry()": "0x7b103999"
       },
       "functionOutputs": {
+        "accountForHandle(bytes32)": [
+          "address"
+        ],
         "accountImplementation()": [
           "address"
         ],
@@ -564,15 +569,20 @@
         "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": [
           "address"
         ],
+        "handleForAccount(address)": [
+          "bytes32"
+        ],
         "registry()": [
           "address"
         ]
       },
       "functionMutability": {
+        "accountForHandle(bytes32)": "view",
         "accountImplementation()": "view",
         "createAccount(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "nonpayable",
         "entryPoint()": "view",
         "getAddress(bytes32,bytes32,uint8,bytes32,(uint256,address,bytes)[])": "view",
+        "handleForAccount(address)": "view",
         "registry()": "view"
       },
       "events": {
@@ -612,32 +622,50 @@
     "src/AppAccountRegistry.sol:AppAccountRegistry": {
       "functions": {
         "accountCount()": "0xe4af29fc",
+        "accountForHandle(bytes32)": "0x9cdc18b3",
         "factory()": "0xc45a0155",
+        "handleForAccount(address)": "0x9faa6004",
         "isAccount(address)": "0x25ca4c9c",
-        "registerAccount(address)": "0x97c414df"
+        "registerAccount(bytes32,address)": "0x77f4c79d"
       },
       "functionOutputs": {
         "accountCount()": [
           "uint256"
         ],
+        "accountForHandle(bytes32)": [
+          "address"
+        ],
         "factory()": [
           "address"
+        ],
+        "handleForAccount(address)": [
+          "bytes32"
         ],
         "isAccount(address)": [
           "bool"
         ],
-        "registerAccount(address)": []
+        "registerAccount(bytes32,address)": []
       },
       "functionMutability": {
         "accountCount()": "view",
+        "accountForHandle(bytes32)": "view",
         "factory()": "view",
+        "handleForAccount(address)": "view",
         "isAccount(address)": "view",
-        "registerAccount(address)": "nonpayable"
+        "registerAccount(bytes32,address)": "nonpayable"
       },
       "events": {
+        "AccountHandleRegistered(bytes32,address)": "0x9ca71c51a9a3130335abbcca073683ebd5883e61c428bc0d8f4aca6f76f4a718",
         "AccountRegistered(address)": "0xcd822dc9688e20acea68724a2fbcfe4f3e526d20ecaa37b18fe3047ab377d6a5"
       },
       "eventLayouts": {
+        "AccountHandleRegistered(bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
         "AccountRegistered(address)": {
           "anonymous": false,
           "indexed": [
@@ -647,7 +675,9 @@
       },
       "errors": {
         "AccountAlreadyRegistered()": "0xcff2d5ad",
+        "AccountHandleAlreadyRegistered()": "0xb5ea2bca",
         "InvalidAccount()": "0x6d187b28",
+        "InvalidAccountHandle()": "0x058065f4",
         "OnlyFactory()": "0x0c6d42ae"
       }
     },

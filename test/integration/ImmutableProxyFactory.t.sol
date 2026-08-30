@@ -173,17 +173,37 @@ contract ImmutableProxyFactoryTest {
     function testRegistryIsFactoryOnlyAndCannotInflateCount() public {
         AppAccountRegistry registry = new AppAccountRegistry(address(this));
         MockTarget accountLike = new MockTarget();
-        registry.registerAccount(address(accountLike));
+        bytes32 accountHandle = keccak256("registry-account");
+        registry.registerAccount(accountHandle, address(accountLike));
         require(registry.isAccount(address(accountLike)), "account not registered");
+        require(registry.accountForHandle(accountHandle) == address(accountLike), "account handle not registered");
+        require(registry.handleForAccount(address(accountLike)) == accountHandle, "reverse account handle missing");
         require(registry.accountCount() == 1, "count missing");
 
-        try registry.registerAccount(address(accountLike)) {
+        MockTarget zeroIdAccount = new MockTarget();
+        try registry.registerAccount(bytes32(0), address(zeroIdAccount)) {
+            revert("zero account handle accepted");
+        } catch {}
+        require(!registry.isAccount(address(zeroIdAccount)), "zero account handle registered account");
+        require(registry.handleForAccount(address(zeroIdAccount)) == bytes32(0), "zero handle left reverse binding");
+
+        try registry.registerAccount(accountHandle, address(accountLike)) {
             revert("duplicate registration accepted");
         } catch {}
         require(registry.accountCount() == 1, "duplicate inflated count");
 
+        bytes32 secondAccountHandle = keccak256("second-registry-account");
+        try registry.registerAccount(secondAccountHandle, address(accountLike)) {
+            revert("account accepted a second account handle");
+        } catch {}
+        require(
+            registry.accountForHandle(secondAccountHandle) == address(0), "failed registration left forward binding"
+        );
+        require(registry.handleForAccount(address(accountLike)) == accountHandle, "failed registration changed handle");
+        require(registry.accountCount() == 1, "second account handle inflated count");
+
         AppAccountRegistry factoryRegistry = factory.registry();
-        try factoryRegistry.registerAccount(address(accountLike)) {
+        try factoryRegistry.registerAccount(keccak256("foreign-wallet"), address(accountLike)) {
             revert("non-factory registered account");
         } catch {}
     }

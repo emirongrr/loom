@@ -34,9 +34,12 @@ privacy invariants, and settles the question rather than leaving it implicit.
 
 ## Decision
 
-Keep `AppAccountRegistry` as-is. It is a per-factory, factory-only,
-append-only membership set with a running count and an `AccountRegistered`
-event, and it grants no account authority.
+Keep `AppAccountRegistry` as the per-factory, factory-only, append-only
+membership set. New-generation factories also bind one random RP-scoped
+`accountHandle` to each account and expose both lookup directions. This is discovery
+metadata and grants no account authority; the account's live validators remain
+authoritative. There is no membership-only registration path: every registered
+account carries exactly one non-zero `accountHandle` from the atomic factory call.
 
 The registry is deliberately **not** enumerable on-chain: it exposes a count
 and an O(1) membership predicate, but the list of accounts is obtained from
@@ -68,24 +71,22 @@ Risks:
 
 Required controls:
 
-- The registry must remain per-factory. No global registry, and no mapping from
-  a user or owner to their set of accounts, may be added: the architecture
-  invariant forbids a global registry connecting a user's accounts, and this
-  registry stays compliant only because it records single-account membership
-  with no cross-account linkage.
+- The registry must remain per-factory. An account handle is random and binds
+  exactly one account; it must not become an owner-to-accounts index or a global
+  registry connecting a user's accounts.
 - Membership must remain factory-only and append-only, with duplicate-count
-  protection, and must never gate account control.
+  protection, and must never gate account control. A registered account must
+  never exist with a zero or missing account handle.
 - Reproducible deployment manifests must publish the registry codehash
   (decision 0004).
 
 ## Privacy Analysis
 
-The registry reveals only that a given address is an account created by a
-specific institution's factory. That fact is already public: the account
-address is deterministically derivable via CREATE2 from public factory inputs,
-and its deployment is already an on-chain transaction that emits
-`LoomAccountCreated`. The registry therefore discloses nothing beyond existing
-on-chain data.
+The registry reveals that a given address is an account created by a specific
+factory and that a random RP account handle resolves to it. The deployment and
+address are already public; the additional identifier creates a durable
+credential-to-account correlation for whoever can observe the authenticator
+metadata. It contains no owner, label, guardian, or personal data.
 
 Critically, it does not link a user's multiple accounts to each other, does not
 reference guardians or the guardian root, and does not touch validator or
