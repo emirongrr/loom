@@ -20,6 +20,7 @@ import type {
   PasskeyChallenge,
   PrivateVaultWithdrawalPreparation,
   PrivateVaultWithdrawalPreparationInput,
+  PrivateFirstTransportOptions,
   RpcStateTransportOptions,
   UnverifiedState,
   UserOperationEnvelope,
@@ -2015,6 +2016,81 @@ export function createBundlerTransport(options: BundlerTransportOptions): LoomTr
   readonly entryPoint: Hex;
 } {
   return createBundlerTransportImpl(options) as any;
+}
+
+/**
+ * Submit through a private route while keeping ordinary bundler reads
+ * replaceable. Public fallback is deliberately opt-in and only occurs when the
+ * caller can prove the private service rejected the operation before accepting
+ * it. Network errors and timeouts are delivery-ambiguous and therefore fail
+ * closed.
+ */
+export function createPrivateFirstTransport(options: PrivateFirstTransportOptions): LoomTransportAdapter {
+  const privateTransport = options?.privateTransport;
+  const publicTransport = options?.publicTransport;
+  if (!privateTransport || typeof privateTransport.sendUserOperation !== "function") {
+    throw new InvalidSdkRequestError("private submission transport is required");
+  }
+  if (!publicTransport || typeof publicTransport.sendUserOperation !== "function") {
+    throw new InvalidSdkRequestError("public bundler transport is required");
+  }
+  const fallback = options.fallback ?? "never";
+  if (fallback !== "never" && fallback !== "explicit-rejection") {
+    throw new InvalidSdkRequestError("private submission fallback policy is invalid");
+  }
+  if (fallback === "explicit-rejection" && typeof options.isExplicitRejection !== "function") {
+    throw new InvalidSdkRequestError("explicit fallback requires a rejection classifier");
+  }
+  const privateReceipts = new Map<string, import("./types.js").UserOperationReceipt>();
+  const submissionRoutes = new Map<string, "private" | "public">();
+  const estimateUserOperationGas = privateTransport.estimateUserOperationGas
+    ? (envelope: UserOperationEnvelope) => privateTransport.estimateUserOperationGas!(envelope)
+    : options.allowPublicEstimation && publicTransport.estimateUserOperationGas
+      ? (envelope: UserOperationEnvelope) => publicTransport.estimateUserOperationGas!(envelope)
+      : undefined;
+  const getReceipt = async (input: { userOpHash: Hex }) => {
+    const key = input.userOpHash.toLowerCase();
+    const cached = privateReceipts.get(key);
+    if (cached) return cached;
+    const route = submissionRoutes.get(key);
+    if (route === "private") return privateTransport.getUserOperationReceipt?.(input) ?? null;
+    if (route === "public") return publicTransport.getUserOperationReceipt?.(input) ?? null;
+    return await privateTransport.getUserOperationReceipt?.(input)
+      ?? await publicTransport.getUserOperationReceipt?.(input)
+      ?? null;
+  };
+  const waitReceipt = async (input: { userOpHash: Hex; timeoutMs?: number; pollIntervalMs?: number }) => {
+    const key = input.userOpHash.toLowerCase();
+    const cached = privateReceipts.get(key);
+    if (cached) return cached;
+    const route = submissionRoutes.get(key);
+    if (route === "private" && privateTransport.waitForUserOperationReceipt) return privateTransport.waitForUserOperationReceipt(input);
+    if (route === "public" && publicTransport.waitForUserOperationReceipt) return publicTransport.waitForUserOperationReceipt(input);
+    if (publicTransport.waitForUserOperationReceipt) return publicTransport.waitForUserOperationReceipt(input);
+    if (privateTransport.waitForUserOperationReceipt) return privateTransport.waitForUserOperationReceipt(input);
+    throw new InvalidSdkRequestError("neither private nor public transport can wait for a UserOperation receipt");
+  };
+  return Object.freeze({
+    async sendUserOperation(envelope) {
+      try {
+        const result = await privateTransport.sendUserOperation(envelope);
+        submissionRoutes.set(result.userOpHash.toLowerCase(), "private");
+        if (result.receipt) privateReceipts.set(result.userOpHash.toLowerCase(), result.receipt as import("./types.js").UserOperationReceipt);
+        return result;
+      } catch (error) {
+        if (fallback === "explicit-rejection" && options.isExplicitRejection?.(error)) {
+          const result = await publicTransport.sendUserOperation(envelope);
+          submissionRoutes.set(result.userOpHash.toLowerCase(), "public");
+          return result;
+        }
+        throw error;
+      }
+    },
+    ...(estimateUserOperationGas ? { estimateUserOperationGas } : {}),
+    ...(publicTransport.getUserOperationGasPrice ? { getUserOperationGasPrice: tier => publicTransport.getUserOperationGasPrice!(tier) } : {}),
+    ...((privateTransport.getUserOperationReceipt || publicTransport.getUserOperationReceipt) ? { getUserOperationReceipt: getReceipt } : {}),
+    ...((privateTransport.waitForUserOperationReceipt || publicTransport.waitForUserOperationReceipt) ? { waitForUserOperationReceipt: waitReceipt } : {})
+  });
 }
 
 export function createRpcStateTransport(options: RpcStateTransportOptions): LoomStateReadTransport & {
