@@ -97,7 +97,7 @@ test("paymaster authorization is attached before the final account signature", (
     userOperation: {
       sender: `0x${"22".repeat(20)}`, nonce: 0n, callData: "0x",
       callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n,
-      maxFeePerGas: 4n, maxPriorityFeePerGas: 1n, signature: "0x1234"
+      maxFeePerGas: 4n, maxPriorityFeePerGas: 1n, signature: "0x"
     }
   };
   const authorized = applyPaymasterAuthorization(prepared, {
@@ -111,4 +111,14 @@ test("paymaster authorization is attached before the final account signature", (
     paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 0n,
     paymasterPostOpGasLimit: 1n, paymasterData: "0xabcd"
   }), InvalidSdkRequestError);
+  assert.throws(() => applyPaymasterAuthorization({
+    ...prepared, userOperation: { ...prepared.userOperation, signature: "0x1234" }
+  }, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 6n,
+    paymasterPostOpGasLimit: 7n, paymasterData: "0xabcd"
+  }), /before account signing/);
+  assert.throws(() => applyPaymasterAuthorization(prepared, {
+    paymaster: `0x${"55".repeat(20)}`, paymasterVerificationGasLimit: 6n,
+    paymasterPostOpGasLimit: 7n, paymasterData: "0xabcd", preVerificationGas: 0n
+  }), /preVerificationGas must be positive/);
 });

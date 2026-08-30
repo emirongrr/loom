@@ -2106,6 +2106,9 @@ export function applyPaymasterAuthorization(
   authorization: PaymasterAuthorization
 ): UserOperationEnvelope {
   const normalized = normalizeUserOperationEnvelope(envelope);
+  if (normalized.userOperation.signature !== "0x") {
+    throw new InvalidSdkRequestError("paymaster authorization must be applied before account signing");
+  }
   if (!authorization || typeof authorization !== "object") throw new InvalidSdkRequestError("paymaster authorization is required");
   const paymaster = normalizeAddress(authorization.paymaster, "paymaster");
   const paymasterData = normalizeHex(authorization.paymasterData, "paymasterData");
@@ -2115,13 +2118,17 @@ export function applyPaymasterAuthorization(
   if (paymasterVerificationGasLimit <= 0n || paymasterPostOpGasLimit <= 0n) {
     throw new InvalidSdkRequestError("paymaster gas limits must be positive");
   }
+  const preVerificationGas = authorization.preVerificationGas === undefined
+    ? undefined
+    : normalizeBigInt(authorization.preVerificationGas, "preVerificationGas");
+  if (preVerificationGas !== undefined && preVerificationGas <= 0n) {
+    throw new InvalidSdkRequestError("preVerificationGas must be positive");
+  }
   return Object.freeze({
     ...normalized,
     userOperation: Object.freeze({
       ...normalized.userOperation,
-      ...(authorization.preVerificationGas === undefined ? {} : {
-        preVerificationGas: normalizeBigInt(authorization.preVerificationGas, "preVerificationGas")
-      }),
+      ...(preVerificationGas === undefined ? {} : { preVerificationGas }),
       paymaster,
       paymasterVerificationGasLimit,
       paymasterPostOpGasLimit,
