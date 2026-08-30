@@ -16,6 +16,7 @@ import {
 import type { LoomStateReadTransport } from "./types.js";
 
 export type Address = `0x${string}`;
+type SnapshotBlockTag = number | bigint | Hex;
 
 const MAGIC = 0x4c;
 const VERSION = 3;
@@ -145,6 +146,7 @@ export async function readAccountHandle(input: {
   readonly account: Address;
   readonly stateTransport: LoomStateReadTransport;
   readonly verificationStateTransport?: LoomStateReadTransport;
+  readonly blockTag?: SnapshotBlockTag;
 }): Promise<Hex | null> {
   const result = await consensusRead(
     input.stateTransport,
@@ -152,7 +154,8 @@ export async function readAccountHandle(input: {
     address(input.factory, "factory"),
     LoomAccountFactoryAbi,
     "handleForAccount",
-    [address(input.account, "account")]
+    [address(input.account, "account")],
+    input.blockTag
   );
   const handle = bytes32(result, "account handle");
   return handle === ZERO_BYTES32 ? null : handle;
@@ -164,6 +167,7 @@ export async function lookupAccountForHandle(input: {
   readonly accountHandle: Hex;
   readonly stateTransport: LoomStateReadTransport;
   readonly verificationStateTransport?: LoomStateReadTransport;
+  readonly blockTag?: SnapshotBlockTag;
 }): Promise<Address | null> {
   const result = await consensusRead(
     input.stateTransport,
@@ -171,7 +175,8 @@ export async function lookupAccountForHandle(input: {
     address(input.factory, "factory"),
     LoomAccountFactoryAbi,
     "accountForHandle",
-    [bytes32(input.accountHandle, "account handle")]
+    [bytes32(input.accountHandle, "account handle")],
+    input.blockTag
   );
   const account = address(result, "account");
   return account === ZERO_ADDRESS ? null : account;
@@ -188,6 +193,8 @@ export async function discoverPasskeyAccount(input: {
   readonly rpId: string;
   readonly origin: string;
   readonly challenge: Hex;
+  /** Explicit block number shared by every discovery read. Moving tags such as `latest` are rejected. */
+  readonly blockTag: SnapshotBlockTag;
   readonly assertion: RawPasskeyAccountAssertion;
   readonly stateTransport: LoomStateReadTransport;
   readonly verificationStateTransport?: LoomStateReadTransport;
@@ -200,6 +207,7 @@ export async function discoverPasskeyAccount(input: {
   if (locator.chainId !== chainId || locator.factory.toLowerCase() !== factory.toLowerCase()) {
     return Object.freeze({ status: "invalid", reason: "deployment" });
   }
+  const blockTag = snapshotBlockTag(input.blockTag);
 
   const cryptography = input.crypto ?? globalThis.crypto;
   if (!cryptography?.subtle) throw new AccountDiscoveryError("UNAVAILABLE", "WebCrypto is unavailable");
@@ -216,13 +224,14 @@ export async function discoverPasskeyAccount(input: {
     factory,
     accountHandle: locator.accountHandle,
     stateTransport: input.stateTransport,
+    blockTag,
     ...(input.verificationStateTransport === undefined
       ? {}
       : { verificationStateTransport: input.verificationStateTransport })
   });
   if (!account) return Object.freeze({ status: "not-activated", locator });
 
-  const validators = await readValidators(account, input.stateTransport, input.verificationStateTransport);
+  const validators = await readValidators(account, input.stateTransport, input.verificationStateTransport, blockTag);
   const expectedRpIdHash = sha256(stringToHex(input.rpId));
   const expectedOriginHash = keccak256(stringToHex(normalizedOrigin(input.origin)));
   const unreadableValidators: Address[] = [];
@@ -235,7 +244,8 @@ export async function discoverPasskeyAccount(input: {
         validator,
         P256ValidatorAbi,
         "publicKeys",
-        [account]
+        [account],
+        blockTag
       ));
     } catch (cause) {
       if (cause instanceof AccountDiscoveryError && cause.code === "RPC_DISAGREEMENT") throw cause;
@@ -328,9 +338,10 @@ export async function verifyPasskeyAssertion(input: {
 async function readValidators(
   account: Address,
   state: LoomStateReadTransport,
-  verification?: LoomStateReadTransport
+  verification: LoomStateReadTransport | undefined,
+  blockTag: SnapshotBlockTag
 ): Promise<readonly Address[]> {
-  const countValue = await consensusRead(state, verification, account, LoomAccountAbi, "validatorCount");
+  const countValue = await consensusRead(state, verification, account, LoomAccountAbi, "validatorCount", [], blockTag);
   const count = uint(countValue, "validator count");
   if (count < 1n || count > BigInt(MAX_VALIDATORS)) {
     throw new AccountDiscoveryError("INVALID_ACCOUNT_STATE", "validator count exceeds the protocol bound", {
@@ -340,7 +351,7 @@ async function readValidators(
   const validators: Address[] = [];
   for (let index = 0n; index < count; index += 1n) {
     validators.push(address(
-      await consensusRead(state, verification, account, LoomAccountAbi, "validatorAt", [index]),
+      await consensusRead(state, verification, account, LoomAccountAbi, "validatorAt", [index], blockTag),
       "validator"
     ));
   }
@@ -408,12 +419,17 @@ async function consensusRead(
   to: Address,
   abi: readonly unknown[],
   functionName: string,
-  args: readonly unknown[] = []
+  args: readonly unknown[] = [],
+  blockTag?: SnapshotBlockTag
 ): Promise<unknown> {
   const read = async (transport: LoomStateReadTransport): Promise<unknown> => {
     try {
       const data = encodeFunctionData({ abi: abi as any, functionName: functionName as any, args: args as any });
-      const result = await transport.ethCall({ to, data });
+      const result = await transport.ethCall({
+        to,
+        data,
+        ...(blockTag === undefined ? {} : { blockTag })
+      });
       return decodeFunctionResult({ abi: abi as any, functionName: functionName as any, data: result });
     } catch (cause) {
       throw new AccountDiscoveryError("UNAVAILABLE", `failed to read ${functionName}`, { to, functionName }, { cause });
@@ -445,6 +461,15 @@ function canonical(value: unknown): string {
 function positiveSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 1) throw new TypeError(`${label} must be a positive safe integer`);
   return Number(value);
+}
+
+function snapshotBlockTag(value: unknown): SnapshotBlockTag {
+  if (typeof value === "bigint" && value >= 0n) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/u.test(value)) {
+    return value.toLowerCase() as Hex;
+  }
+  throw new TypeError("blockTag must be an explicit non-negative block number");
 }
 
 function nonEmpty(value: unknown, label: string): string {

@@ -29,6 +29,7 @@ const zeroAddress = `0x${"00".repeat(20)}`;
 const rpId = "wallet.example";
 const origin = "https://wallet.example";
 const challenge = `0x${"55".repeat(32)}`;
+const snapshotBlock = 123456n;
 
 test("v3 account locator round-trips chain, factory, and handle", () => {
   const encoded = encodePasskeyAccountLocator({ chainId, factory, accountHandle: handle });
@@ -71,9 +72,13 @@ test("registry lookup supports both directions and fails closed on RPC disagreem
 
 test("discovery grants active only when the assertion verifies against a live validator", async () => {
   const fixture = await assertionFixture();
-  const state = transport({ resolvedAccount: account, publicKey: fixture.publicKey });
+  const state = transport({
+    resolvedAccount: account,
+    publicKey: fixture.publicKey,
+    expectedBlockTag: snapshotBlock
+  });
   const active = await discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge,
+    chainId, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: state
   });
@@ -83,32 +88,38 @@ test("discovery grants active only when the assertion verifies against a live va
 
   const staleFixture = await assertionFixture();
   const stale = await discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge,
+    chainId, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: staleFixture.assertion,
     stateTransport: state
   });
   assert.equal(stale.status, "stale");
   assert.equal(stale.account, account);
+
+  await assert.rejects(discoverPasskeyAccount({
+    chainId, factory, rpId, origin, challenge, blockTag: "latest",
+    assertion: fixture.assertion,
+    stateTransport: state
+  }), /explicit non-negative block number/u);
 });
 
 test("wrong deployments, invalid ceremonies, and unactivated handles are distinct", async () => {
   const fixture = await assertionFixture();
   const wrongDeployment = await discoverPasskeyAccount({
-    chainId: 1, factory, rpId, origin, challenge,
+    chainId: 1, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: transport({ resolvedAccount: account, publicKey: fixture.publicKey })
   });
   assert.deepEqual(wrongDeployment, { status: "invalid", reason: "deployment" });
 
   const invalidAssertion = await discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge: `0x${"99".repeat(32)}`,
+    chainId, factory, rpId, origin, challenge: `0x${"99".repeat(32)}`, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: transport({ resolvedAccount: account, publicKey: fixture.publicKey })
   });
   assert.deepEqual(invalidAssertion, { status: "invalid", reason: "assertion" });
 
   const unactivated = await discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge,
+    chainId, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: transport({ resolvedAccount: zeroAddress, publicKey: fixture.publicKey })
   });
@@ -159,20 +170,21 @@ test("post-registration verification binds user handle, ceremony, and new P-256 
 test("an unreadable validator or impossible validator count never becomes stale", async () => {
   const fixture = await assertionFixture();
   await assert.rejects(discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge,
+    chainId, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: transport({ resolvedAccount: account })
   }), issue => issue instanceof AccountDiscoveryError && issue.code === "UNAVAILABLE");
   await assert.rejects(discoverPasskeyAccount({
-    chainId, factory, rpId, origin, challenge,
+    chainId, factory, rpId, origin, challenge, blockTag: snapshotBlock,
     assertion: fixture.assertion,
     stateTransport: transport({ resolvedAccount: account, publicKey: fixture.publicKey, validatorCount: 0n })
   }), issue => issue instanceof AccountDiscoveryError && issue.code === "INVALID_ACCOUNT_STATE");
 });
 
-function transport({ resolvedAccount, publicKey, validatorCount = 1n }) {
+function transport({ resolvedAccount, publicKey, validatorCount = 1n, expectedBlockTag }) {
   return {
-    async ethCall({ to, data }) {
+    async ethCall({ to, data, blockTag }) {
+      if (expectedBlockTag !== undefined) assert.equal(blockTag, expectedBlockTag);
       if (to.toLowerCase() === factory) {
         const call = decodeFunctionData({ abi: LoomAccountFactoryAbi, data });
         if (call.functionName === "accountForHandle") {

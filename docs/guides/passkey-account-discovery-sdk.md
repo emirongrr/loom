@@ -50,6 +50,7 @@ const result = await discoverPasskeyAccount({
   rpId: location.hostname,
   origin: location.origin,
   challenge,
+  blockTag: confirmedBlockNumber,
   assertion: {
     credentialId,
     userHandle,
@@ -66,10 +67,19 @@ The SDK validates the handle's chain and immutable factory, WebAuthn type,
 challenge, origin, cross-origin flag, RP ID hash, UP and UV flags. It then:
 
 1. resolves `accountForHandle(H)`;
-2. requires both RPCs to return identical state;
-3. reads at most 16 currently installed validators;
-4. reads each P-256 key and its RP/origin bindings; and
-5. verifies the fresh assertion against a live key.
+2. reads every value at the same explicit block number;
+3. when a verification transport is supplied, requires both RPCs to return
+   identical state;
+4. reads at most 16 validators installed in that snapshot;
+5. reads each P-256 key and its RP/origin bindings; and
+6. verifies the fresh assertion against a live key.
+
+The primary state transport is an explicit trust dependency. Applications may
+use one trusted RPC, or add an independently operated verification transport
+for disagreement detection. The SDK does not infer endpoint independence. A
+moving tag such as `latest`, `safe`, or `finalized` is not accepted for account
+discovery: resolve the desired confirmed block number first so validator
+rotation cannot produce a mixed-state result.
 
 The result is a discriminated union:
 
