@@ -24,8 +24,7 @@ export interface WalletDiscoveryResult {
 
 export interface LogReader {
   getLogs(request: {
-    /** Omitted to search every validator, including ones a recovery deployed. */
-    address?: Address;
+    address: readonly Address[];
     fromBlock: bigint;
     toBlock: bigint;
     topics: readonly Hex[];
@@ -42,11 +41,20 @@ const WINDOW = 40_000n;
 const MAX_WINDOWS = 40;
 
 export async function findWalletsByPasskey(input: {
-  readonly validator: Address;
+  /**
+   * Every validator worth asking: the deployment's own, and each one a recovery
+   * deployed. A recovered account's key is published by the validator its
+   * recovery installed, so a search limited to the profile's address finds the
+   * key the account had before it was recovered and misses the one controlling
+   * it now.
+   */
+  readonly validators: readonly Address[];
   readonly assertion: PasskeyAssertion;
   readonly rpId: string;
   readonly origin: string;
   readonly reader: LogReader;
+  /** Named in the failure, so a search that found nothing says who it asked. */
+  readonly endpointName?: string;
   readonly subtle?: SubtleCrypto;
 }): Promise<WalletDiscoveryResult> {
   // The account committed to a hash of its relying party and origin, so the
@@ -60,41 +68,47 @@ export async function findWalletsByPasskey(input: {
   try {
     const head = await input.reader.getBlockNumber();
 
-    /**
-     * Searched across every validator when the endpoint allows it.
-     *
-     * A recovery installs a validator of its own, and the recovered account's
-     * key is published there rather than on the one named in the deployment
-     * profile. Searching only the profile's address finds the key the account
-     * had before it was recovered and misses the one that controls it now --
-     * which reads as "that passkey matches no account".
-     *
-     * Some endpoints refuse a query with no address. Those fall back to the
-     * profile's validator, which is better than nothing and is what this did
-     * before; a log from an unrelated contract is discarded by `decode`, and
-     * anything that survives still has to produce the signature.
-     */
-    let anyValidator = true;
-    for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
-      const from = end > WINDOW ? end - WINDOW + 1n : 0n;
-      const window = { fromBlock: from, toBlock: end, topics: [topic] };
-      let logs;
-      if (anyValidator) {
-        try {
-          logs = await input.reader.getLogs(window);
-        } catch {
-          anyValidator = false;
-          logs = await input.reader.getLogs({ ...window, address: input.validator });
-        }
-      } else {
-        logs = await input.reader.getLogs({ ...window, address: input.validator });
-      }
-      scannedWindows += 1;
+    // One query when the endpoint will answer one. Measured against Sepolia:
+    // the factory's announcements and the whole key history came back in two
+    // requests and under half a second, where a windowed walk of the same
+    // ground made forty and tripped the endpoint's rate limit.
+    const collect = (logs: readonly { readonly address: Address; readonly data: Hex; readonly topics: readonly Hex[] }[]) => {
       for (const log of logs) {
         const decoded = decode(log);
         if (decoded) candidates.push(decoded);
       }
-      if (from === 0n) break;
+    };
+
+    let answered = false;
+    try {
+      collect(await input.reader.getLogs({
+        address: input.validators, fromBlock: 0n, toBlock: head, topics: [topic]
+      }));
+      scannedWindows = 1;
+      // Nothing at all, from a query covering the whole chain against validators
+      // this deployment created accounts through, is more likely an endpoint
+      // that truncated silently than a chain where no account was ever made.
+      // Some answer a range they will not serve with an empty list rather than
+      // an error, and believing that reports "no history" for a wallet that is
+      // plainly there. Walking windows costs a little and settles it.
+      answered = candidates.length > 0;
+    } catch {
+      answered = false;
+    }
+
+    if (!answered) {
+      // Endpoints that cap how wide a range may be are walked in windows. The
+      // cap is the reason for the walk, so nothing here treats it as a failure.
+      candidates.length = 0;
+      scannedWindows = 0;
+      for (let end = head; end > 0n && scannedWindows < MAX_WINDOWS; end -= WINDOW) {
+        const from = end > WINDOW ? end - WINDOW + 1n : 0n;
+        collect(await input.reader.getLogs({
+          address: input.validators, fromBlock: from, toBlock: end, topics: [topic]
+        }));
+        scannedWindows += 1;
+        if (from === 0n) break;
+      }
     }
   } catch (cause) {
     return Object.freeze({
@@ -113,7 +127,7 @@ export async function findWalletsByPasskey(input: {
     return Object.freeze({
       found: null,
       candidatesScanned: 0,
-      unavailable: "This endpoint returned no account history, so there is nothing to search. Try another RPC endpoint in Developer settings."
+      unavailable: `No account history came back from ${input.endpointName ?? "this endpoint"}, searched across ${input.validators.length} validator(s) over ${scannedWindows} range(s). Either nothing was ever created here, or the endpoint is not serving its logs. Try another RPC endpoint in Developer settings.`
     });
   }
 

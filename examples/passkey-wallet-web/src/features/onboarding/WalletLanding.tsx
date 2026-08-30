@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AccountHandle } from "../../types";
 import { Dialog } from "../../components/Dialog";
 import { useNetwork } from "../../config/NetworkContext";
-import { loadWalletDeployment } from "./accountLifecycle";
 import { readVerifierCodeHash } from "../security/guardianClient";
 import {
   assertAddable, buildGuardianDescriptor, clampThreshold, createRosterEntry, describeGuardian, suggestedThreshold,
@@ -11,6 +10,9 @@ import {
 import { AddGuardianForm } from "../security/AddGuardianForm";
 import { createLoomGuardianChainReader, detectGuardianAddress, resolveLoomP256Guardian } from "../security/loomGuardian";
 import { useAppServices } from "../../app/AppServices";
+import { describeWalletRecovery, readWalletsBeingRecovered, type WalletRecovery } from "../wallet/walletsBeingRecovered";
+import { createAccountGuardianClient } from "../security/guardianClient";
+import { loadWalletDeployment } from "./accountLifecycle";
 import { shortAddress } from "../../components/address.ts";
 
 export interface WalletCreationRequest {
@@ -30,11 +32,44 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
   readonly onClearMessage: () => void;
 }) {
   const { config } = useNetwork();
-  const { publicClients } = useAppServices();
+  const { publicClients, now } = useAppServices();
   const [mode, setMode] = useState<"welcome" | "create" | "recover">("welcome");
   const [label, setLabel] = useState("");
   const [removing, setRemoving] = useState<AccountHandle | null>(null);
+  /** Which saved wallets have a recovery under way, read from each account. */
+  const [beingRecovered, setBeingRecovered] = useState<ReadonlyMap<string, WalletRecovery>>(new Map());
   const [removalConfirmation, setRemovalConfirmation] = useState("");
+  const walletKey = accounts.map(account => `${account.chainId}:${account.account.toLowerCase()}`).sort().join("|");
+  useEffect(() => {
+    if (accounts.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const deployment = await loadWalletDeployment();
+        if (!deployment.recoveryModule) return;
+        const flags = await readWalletsBeingRecovered({
+          accounts,
+          chainId: deployment.chainId,
+          nowSeconds: Math.floor(now() / 1000),
+          readPending: async account => {
+            const client = createAccountGuardianClient({
+              config, chainId: deployment.chainId, account,
+              recoveryManager: deployment.recoveryModule!, publicClients
+            });
+            const record = await client.readPendingRecovery();
+            return { pending: record.pending, readyAt: record.readyAt, expiresAt: record.expiresAt };
+          }
+        });
+        if (!cancelled) setBeingRecovered(flags);
+      } catch {
+        // Not knowing is left as not knowing: the rows say nothing rather than
+        // saying nothing is wrong.
+      }
+    })();
+    return () => { cancelled = true; };
+    // Keyed by which wallets are listed, not by the array holding them.
+  }, [walletKey, config, publicClients, now]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const closeRemoval = () => {
     setRemoving(null);
     setRemovalConfirmation("");
@@ -160,15 +195,29 @@ export function WalletLanding({ accounts, busy, message, onCreate, onOpen, onRem
     </section>
     <section className="saved-wallets" aria-labelledby="saved-wallets-title">
       <div className="section-heading"><div><p className="eyebrow">Persistent local registry</p><h2 id="saved-wallets-title">Saved wallets</h2></div><span className="pill">{accounts.length}</span></div>
-      {accounts.length === 0 ? <div className="empty-state compact"><h3>No wallets saved yet</h3><p>Created and restored handles remain listed here until you remove them.</p></div> : <div className="wallet-list">{accounts.map(account => <div key={account.id} className="wallet-list-item">
+      {accounts.length === 0 ? <div className="empty-state compact"><h3>No wallets saved yet</h3><p>Created and restored handles remain listed here until you remove them.</p></div> : <div className="wallet-list">{accounts.map(account => {
+        const recovery = describeWalletRecovery(beingRecovered.get(account.id));
+        return <div key={account.id} className="wallet-list-item">
         <button className="wallet-list-open" disabled={busy} onClick={() => void onOpen(account)}>
-          <span className="identicon" aria-hidden="true" /><span><strong>{account.label}</strong><small>{shortAddress(account.account)} · Chain {account.chainId}</small></span><span className="pill included">Open</span>
+          <span className="identicon" aria-hidden="true" /><span><strong>{account.label}</strong><small>{shortAddress(account.account)} · Chain {account.chainId}</small></span>
+          {/* Both badges in one cell. The row is a three-column grid, and a
+              fourth child drops to a line of its own -- which is how the same
+              mistake looked on the recovery list. */}
+          <span className="wallet-list-badges">
+            {/* Said on the wallet rather than only inside it. The delay exists
+                so an owner has time to object, and they cannot object to
+                something their own list never mentions. */}
+            {recovery && <span className={recovery.urgent ? "pill failed" : "pill"}>{recovery.label}</span>}
+            <span className="pill included">Open</span>
+          </span>
         </button>
         <button className="wallet-list-remove" disabled={busy} aria-label={`Remove ${account.label}`} onClick={() => { setRemovalConfirmation(""); setRemoving(account); }}>
           <svg className="wallet-list-remove-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M9 3h6m-9 4h12m-1 0-.6 12a2 2 0 0 1-2 2H9.6a2 2 0 0 1-2-2L7 7m3 4v6m4-6v6" /></svg>
           <span>Remove</span>
         </button>
-      </div>)}</div>}
+        {recovery && <p className={recovery.urgent ? "callout warning" : "form-note"}>{recovery.detail}</p>}
+      </div>;
+      })}</div>}
     </section>
     {removing && <Dialog label="Remove saved wallet" busy={busy} onClose={closeRemoval}>
       <div className="sheet-handle" aria-hidden="true" />

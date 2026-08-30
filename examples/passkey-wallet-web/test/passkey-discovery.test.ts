@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { webcrypto } from "node:crypto";
-import { encodeAbiParameters, encodeEventTopics } from "viem";
+import { encodeAbiParameters, encodeEventTopics, keccak256, sha256, stringToHex } from "viem";
 import { P256ValidatorAbi } from "@loom/core/abi";
 import {
   candidateSigned, derToRawSignature, findAccountForAssertion, webauthnSignedMessage
@@ -136,20 +136,28 @@ const VALIDATOR = "0x00000000000000000000000000000000000000aa" as const;
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
 const GUARDIAN = "0x2222222222222222222222222222222222222222" as const;
 
-type KeySetLog = { data: `0x${string}`; topics: readonly `0x${string}`[] };
+type KeySetLog = { address: `0x${string}`; data: `0x${string}`; topics: readonly `0x${string}`[] };
 
 function keySet(account: `0x${string}`, x: `0x${string}`, y: `0x${string}`): KeySetLog {
   return {
+    address: VALIDATOR,
     topics: [
       encodeEventTopics({ abi: P256ValidatorAbi, eventName: "KeySet" })[0] as `0x${string}`,
       `0x${"0".repeat(24)}${account.slice(2)}` as `0x${string}`
     ],
     data: encodeAbiParameters(
       [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }],
-      [x, y, `0x${"11".repeat(32)}`, `0x${"22".repeat(32)}`]
+      [x, y, RP_ID_HASH, ORIGIN_HASH]
     )
   };
 }
+
+const RP_ID = "wallet.example";
+const WALLET_ORIGIN = "https://wallet.example";
+/** The account committed to these, and the search narrows by them before it
+    checks a signature, so a fixture with anything else is never a candidate. */
+const RP_ID_HASH = sha256(stringToHex(RP_ID));
+const ORIGIN_HASH = keccak256(stringToHex(WALLET_ORIGIN));
 
 const KEY_A = { x: `0x${"aa".repeat(32)}` as const, y: `0x${"ab".repeat(32)}` as const };
 const KEY_B = { x: `0x${"ba".repeat(32)}` as const, y: `0x${"bb".repeat(32)}` as const };
@@ -157,16 +165,100 @@ const KEY_B = { x: `0x${"ba".repeat(32)}` as const, y: `0x${"bb".repeat(32)}` as
 test("finding a wallet by passkey does not call an empty history a missing wallet", async () => {
   const key = await authenticator();
   const result = await findWalletsByPasskey({
-    validator: VALIDATOR,
+    validators: [VALIDATOR],
     rpId: "wallet.example",
     origin: "https://wallet.example",
     assertion: {
       credentialId: "0x00", authenticatorData: key.authenticatorData,
       clientDataJSON: key.clientDataJSON, signature: key.der
     },
+    validators: [VALIDATOR],
     reader: forgetfulReader([], 0n),
     subtle
   });
   assert.equal(result.found, null);
-  assert.match(result.unavailable ?? "", /no account history/u);
+  assert.match(result.unavailable ?? "", /No account history/u);
+});
+
+// A windowed walk of the whole chain was slow enough to look broken and tripped
+// the endpoint's rate limit. One query is asked for first; windows are the
+// fallback for endpoints that cap how wide a range may be.
+test("the whole history is asked for in one query when the endpoint allows it", async () => {
+  const key = await authenticator();
+  let calls = 0;
+  const reader = {
+    getBlockNumber: async () => HEAD,
+    getLogs: async () => { calls += 1; return [keySet(OWNER, key.x, key.y)]; }
+  };
+
+  const result = await findWalletsByPasskey({
+    validators: [VALIDATOR],
+    rpId: "wallet.example",
+    origin: "https://wallet.example",
+    assertion: {
+      credentialId: "0x00", authenticatorData: key.authenticatorData,
+      clientDataJSON: key.clientDataJSON, signature: key.der
+    },
+    reader,
+    subtle
+  });
+
+  assert.equal(calls, 1, "a single range query should cover the whole history");
+  assert.equal(result.found?.account, OWNER);
+});
+
+test("an endpoint that caps its ranges is walked in windows instead", async () => {
+  const key = await authenticator();
+  let calls = 0;
+  const reader = {
+    getBlockNumber: async () => HEAD,
+    getLogs: async (request: { fromBlock: bigint; toBlock: bigint }) => {
+      calls += 1;
+      if (request.toBlock - request.fromBlock > 50_000n) throw new Error("exceed maximum block range");
+      return request.fromBlock === 0n ? [keySet(OWNER, key.x, key.y)] : [];
+    }
+  };
+
+  const result = await findWalletsByPasskey({
+    validators: [VALIDATOR],
+    rpId: "wallet.example",
+    origin: "https://wallet.example",
+    assertion: {
+      credentialId: "0x00", authenticatorData: key.authenticatorData,
+      clientDataJSON: key.clientDataJSON, signature: key.der
+    },
+    reader,
+    subtle
+  });
+
+  assert.equal(calls > 1, true, "a capped endpoint should be walked rather than given up on");
+  assert.equal(result.found?.account, OWNER);
+});
+
+// The key a recovery published lives on the validator that recovery installed,
+// so a search limited to the profile's address finds the key the account had
+// before it was recovered and misses the one controlling it now.
+test("a key published by a recovery's own validator is found, and names that validator", async () => {
+  const key = await authenticator();
+  const RECOVERY_VALIDATOR = "0x00000000000000000000000000000000000000cc" as const;
+  const reader = {
+    getBlockNumber: async () => HEAD,
+    getLogs: async () => [{ ...keySet(OWNER, key.x, key.y), address: RECOVERY_VALIDATOR }]
+  };
+
+  const result = await findWalletsByPasskey({
+    validators: [VALIDATOR, RECOVERY_VALIDATOR],
+    rpId: "wallet.example",
+    origin: "https://wallet.example",
+    assertion: {
+      credentialId: "0x00", authenticatorData: key.authenticatorData,
+      clientDataJSON: key.clientDataJSON, signature: key.der
+    },
+    reader,
+    subtle
+  });
+
+  // Saving the profile's validator instead produces a wallet that opens, shows
+  // a balance, and then cannot sign.
+  assert.equal(result.found?.validator, RECOVERY_VALIDATOR);
 });
