@@ -5,21 +5,55 @@ import { createPrivateFirstTransport, InvalidSdkRequestError } from "../dist/ind
 const HASH = `0x${"11".repeat(32)}`;
 const envelope = { chainId: 1, account: `0x${"22".repeat(20)}`, intent: { kind: "deploy-account" }, userOperation: {} };
 
-test("private submission is used while public infrastructure supplies estimates and receipts", async () => {
+test("private submission and estimation avoid exposing the operation to public infrastructure", async () => {
   const calls = [];
   const receipt = { userOpHash: HASH, success: true, receipt: { transactionHash: `0x${"33".repeat(32)}` } };
   const transport = createPrivateFirstTransport({
-    privateTransport: { async sendUserOperation() { calls.push("private"); return { userOpHash: HASH, receipt }; } },
+    privateTransport: {
+      async sendUserOperation() { calls.push("private"); return { userOpHash: HASH, receipt }; },
+      async estimateUserOperationGas() {
+        calls.push("private-estimate");
+        return { callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n };
+      }
+    },
     publicTransport: {
       async sendUserOperation() { calls.push("public-send"); return { userOpHash: HASH }; },
-      async estimateUserOperationGas() { calls.push("estimate"); return { callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n }; },
+      async estimateUserOperationGas() { calls.push("public-estimate"); throw new Error("public estimation should not run"); },
       async waitForUserOperationReceipt() { calls.push("public-receipt"); throw new Error("private receipt should win"); }
     }
   });
   await transport.estimateUserOperationGas(envelope);
   const sent = await transport.sendUserOperation(envelope);
   assert.equal(await transport.waitForUserOperationReceipt({ userOpHash: sent.userOpHash }), receipt);
-  assert.deepEqual(calls, ["estimate", "private"]);
+  assert.deepEqual(calls, ["private-estimate", "private"]);
+});
+
+test("public estimation is unavailable by default when private estimation is unavailable", () => {
+  const transport = createPrivateFirstTransport({
+    privateTransport: { async sendUserOperation() { return { userOpHash: HASH }; } },
+    publicTransport: {
+      async sendUserOperation() { return { userOpHash: HASH }; },
+      async estimateUserOperationGas() { return { callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n }; }
+    }
+  });
+  assert.equal(transport.estimateUserOperationGas, undefined);
+});
+
+test("public estimation requires an explicit metadata-disclosure opt-in", async () => {
+  let publicEstimates = 0;
+  const transport = createPrivateFirstTransport({
+    privateTransport: { async sendUserOperation() { return { userOpHash: HASH }; } },
+    publicTransport: {
+      async sendUserOperation() { return { userOpHash: HASH }; },
+      async estimateUserOperationGas() {
+        publicEstimates += 1;
+        return { callGasLimit: 1n, verificationGasLimit: 2n, preVerificationGas: 3n };
+      }
+    },
+    allowPublicEstimation: true
+  });
+  await transport.estimateUserOperationGas(envelope);
+  assert.equal(publicEstimates, 1);
 });
 
 test("ambiguous private failures never fall back", async () => {

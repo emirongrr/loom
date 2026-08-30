@@ -2043,6 +2043,11 @@ export function createPrivateFirstTransport(options: PrivateFirstTransportOption
   }
   const privateReceipts = new Map<string, import("./types.js").UserOperationReceipt>();
   const submissionRoutes = new Map<string, "private" | "public">();
+  const estimateUserOperationGas = privateTransport.estimateUserOperationGas
+    ? (envelope: UserOperationEnvelope) => privateTransport.estimateUserOperationGas!(envelope)
+    : options.allowPublicEstimation && publicTransport.estimateUserOperationGas
+      ? (envelope: UserOperationEnvelope) => publicTransport.estimateUserOperationGas!(envelope)
+      : undefined;
   const getReceipt = async (input: { userOpHash: Hex }) => {
     const key = input.userOpHash.toLowerCase();
     const cached = privateReceipts.get(key);
@@ -2054,7 +2059,7 @@ export function createPrivateFirstTransport(options: PrivateFirstTransportOption
       ?? await publicTransport.getUserOperationReceipt?.(input)
       ?? null;
   };
-  const waitReceipt = async (input: { userOpHash: Hex; timeoutMs?: number; pollingIntervalMs?: number }) => {
+  const waitReceipt = async (input: { userOpHash: Hex; timeoutMs?: number; pollIntervalMs?: number }) => {
     const key = input.userOpHash.toLowerCase();
     const cached = privateReceipts.get(key);
     if (cached) return cached;
@@ -2081,7 +2086,7 @@ export function createPrivateFirstTransport(options: PrivateFirstTransportOption
         throw error;
       }
     },
-    ...(publicTransport.estimateUserOperationGas ? { estimateUserOperationGas: envelope => publicTransport.estimateUserOperationGas!(envelope) } : {}),
+    ...(estimateUserOperationGas ? { estimateUserOperationGas } : {}),
     ...(publicTransport.getUserOperationGasPrice ? { getUserOperationGasPrice: tier => publicTransport.getUserOperationGasPrice!(tier) } : {}),
     ...((privateTransport.getUserOperationReceipt || publicTransport.getUserOperationReceipt) ? { getUserOperationReceipt: getReceipt } : {}),
     ...((privateTransport.waitForUserOperationReceipt || publicTransport.waitForUserOperationReceipt) ? { waitForUserOperationReceipt: waitReceipt } : {})

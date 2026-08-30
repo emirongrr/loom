@@ -157,8 +157,14 @@ export interface LoomTransportAdapter {
 export interface PrivateFirstTransportOptions {
   /** Private relay or bundler used only for submission. */
   readonly privateTransport: LoomTransportAdapter;
-  /** Public bundler used for estimation, pricing, receipts, and optional fallback. */
+  /** Public bundler used for pricing, receipts, and optional fallback. */
   readonly publicTransport: LoomTransportAdapter;
+  /**
+   * Permit full UserOperation estimation through the public bundler when the
+   * private transport cannot estimate. Disabled by default because estimation
+   * reveals the same activation metadata that private submission protects.
+   */
+  readonly allowPublicEstimation?: boolean;
   /** Disabled by default. Ambiguous delivery failures must never fall back. */
   readonly fallback?: "never" | "explicit-rejection";
   /** The application must positively identify a response that proves non-acceptance. */
