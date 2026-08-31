@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import sha3 from "js-sha3";
 import { manifestHash } from "@loom/core";
-import { validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
+import { encodeDeployData, getContractAddress } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  deploymentAttestationMessage,
+  deploymentEvidenceDigest,
+  validateDeploymentManifest
+} from "./validate-deployment-manifest.mjs";
 
 const { keccak_256 } = sha3;
 
@@ -19,14 +25,14 @@ solc_version = "${FIXTURE_SOLC_VERSION}"
 
 test("deployment manifest accepts verified artifact hashes and release checks", async () => {
   const root = await fixtureRoot();
-  const manifest = manifestFor(root);
+  const manifest = await manifestFor(root);
 
   await validateDeploymentManifest(manifest, { root });
 });
 
 test("deployment manifest rejects bytecode hash mismatches", async () => {
   const root = await fixtureRoot();
-  const manifest = manifestFor(root);
+  const manifest = await manifestFor(root);
   manifest.deployments[0].runtimeCodeHash = bytes32("bad-runtime");
 
   await assert.rejects(
@@ -37,15 +43,15 @@ test("deployment manifest rejects bytecode hash mismatches", async () => {
 
 test("deployment manifest rejects missing chain and build verification", async () => {
   const root = await fixtureRoot();
-  const manifest = manifestFor(root);
+  const manifest = await manifestFor(root);
   manifest.network.entryPointVersion = "0.8.0";
   await assert.rejects(() => validateDeploymentManifest(manifest, { root }), /entryPointVersion must be 0.9.0/);
 
-  const badBuild = manifestFor(root);
+  const badBuild = await manifestFor(root);
   badBuild.build.viaIR = false;
   await assert.rejects(() => validateDeploymentManifest(badBuild, { root }), /build.viaIR must be true/);
 
-  const badCheck = manifestFor(root);
+  const badCheck = await manifestFor(root);
   badCheck.checks.localBytecodeReproduction = false;
   await assert.rejects(
     () => validateDeploymentManifest(badCheck, { root }),
@@ -55,15 +61,15 @@ test("deployment manifest rejects missing chain and build verification", async (
 
 test("deployment manifest rejects missing finality and sender creator evidence", async () => {
   const root = await fixtureRoot();
-  const missingFamily = manifestFor(root);
+  const missingFamily = await manifestFor(root);
   delete missingFamily.network.family;
   await assert.rejects(() => validateDeploymentManifest(missingFamily, { root }), /network.family/);
 
-  const badFinality = manifestFor(root);
+  const badFinality = await manifestFor(root);
   badFinality.network.finality = { kind: "op-stack-l1-finalized", minConfirmations: 1, l1ChainId: 10 };
   await assert.rejects(() => validateDeploymentManifest(badFinality, { root }), /l1ChainId must be Ethereum mainnet/);
 
-  const missingSenderCreator = manifestFor(root);
+  const missingSenderCreator = await manifestFor(root);
   delete missingSenderCreator.network.senderCreatorCodeHash;
   await assert.rejects(
     () => validateDeploymentManifest(missingSenderCreator, { root }),
@@ -71,31 +77,38 @@ test("deployment manifest rejects missing finality and sender creator evidence",
   );
 });
 
-test("deployment manifest rejects unsafe P-256 and duplicate salts", async () => {
+test("deployment manifest rejects unsafe P-256 and duplicate deployment coordinates", async () => {
   const root = await fixtureRoot();
-  const badP256 = manifestFor(root);
+  const badP256 = await manifestFor(root);
   badP256.network.p256 = { kind: "unknown", address: address("p256") };
   await assert.rejects(() => validateDeploymentManifest(badP256, { root }), /p256.kind/);
 
-  const unverifiedP256 = manifestFor(root);
+  const unverifiedP256 = await manifestFor(root);
   unverifiedP256.network.p256.behaviorVerified = false;
   await assert.rejects(() => validateDeploymentManifest(unverifiedP256, { root }), /behaviorVerified must be true/);
 
-  const duplicate = manifestFor(root);
+  const duplicate = await manifestFor(root);
   duplicate.deployments.push({ ...duplicate.deployments[0], name: "Other" });
-  await assert.rejects(() => validateDeploymentManifest(duplicate, { root }), /duplicate deployment salt/);
+  await assert.rejects(() => validateDeploymentManifest(duplicate, { root }), /duplicate deployment coordinate/);
+
+  const wrongAddress = await manifestFor(root);
+  wrongAddress.deployments[0].deploymentMethod.nonce += 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(wrongAddress, { root }),
+    /address does not match deploymentMethod and initCodeHash/
+  );
 });
 
 test("deployment manifest rejects missing deterministic and size checks", async () => {
   const root = await fixtureRoot();
-  const missingDeterminism = manifestFor(root);
+  const missingDeterminism = await manifestFor(root);
   missingDeterminism.checks.deterministicAddressReproduction = false;
   await assert.rejects(
     () => validateDeploymentManifest(missingDeterminism, { root }),
     /missing passing deployment check: deterministicAddressReproduction/
   );
 
-  const missingFactorySize = manifestFor(root);
+  const missingFactorySize = await manifestFor(root);
   delete missingFactorySize.checks.factoryRuntimeWithinEip170;
   await assert.rejects(
     () => validateDeploymentManifest(missingFactorySize, { root }),
@@ -105,7 +118,7 @@ test("deployment manifest rejects missing deterministic and size checks", async 
 
 test("deployment manifest rejects artifact paths outside the repository", async () => {
   const root = await fixtureRoot();
-  const manifest = manifestFor(root);
+  const manifest = await manifestFor(root);
   manifest.deployments[0].artifact = "../out/Example.sol/Example.json";
 
   await assert.rejects(() => validateDeploymentManifest(manifest, { root }), /artifact must stay inside repository/);
@@ -113,7 +126,7 @@ test("deployment manifest rejects artifact paths outside the repository", async 
 
 test("deployment manifest rejects missing or mismatched reproducibility evidence", async () => {
   const root = await fixtureRoot();
-  const missingCommand = manifestFor(root);
+  const missingCommand = await manifestFor(root);
   missingCommand.reproducibility.commands = missingCommand.reproducibility.commands.filter(
     item => item.name !== "manifest-check"
   );
@@ -122,14 +135,14 @@ test("deployment manifest rejects missing or mismatched reproducibility evidence
     /missing reproducibility command: manifest-check/
   );
 
-  const badExit = manifestFor(root);
+  const badExit = await manifestFor(root);
   badExit.reproducibility.commands[0].exitCode = 1;
   await assert.rejects(
     () => validateDeploymentManifest(badExit, { root }),
     /reproducibility\.commands\[0\]\.exitCode must be 0/
   );
 
-  const badFileHash = manifestFor(root);
+  const badFileHash = await manifestFor(root);
   badFileHash.reproducibility.files[0].hash = bytes32("wrong-file-hash");
   await assert.rejects(
     () => validateDeploymentManifest(badFileHash, { root }),
@@ -139,21 +152,49 @@ test("deployment manifest rejects missing or mismatched reproducibility evidence
 
 test("deployment manifest rejects failed receipts and secret-bearing explorer URLs", async () => {
   const root = await fixtureRoot();
-  const failedReceipt = manifestFor(root);
+  const failedReceipt = await manifestFor(root);
   failedReceipt.deployments[0].receipt.status = "0x0";
   await assert.rejects(
     () => validateDeploymentManifest(failedReceipt, { root }),
     /deployments\[0\]\.receipt\.status must be 0x1/
   );
 
-  const missingReceipt = manifestFor(root);
+  const missingReceipt = await manifestFor(root);
   delete missingReceipt.deployments[0].receipt.transactionHash;
   await assert.rejects(
     () => validateDeploymentManifest(missingReceipt, { root }),
     /deployments\[0\]\.receipt\.transactionHash/
   );
 
-  const secretUrl = manifestFor(root);
+  const missingBlockHash = await manifestFor(root);
+  delete missingBlockHash.deployments[0].receipt.blockHash;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingBlockHash, { root }),
+    /receipt\.blockHash/
+  );
+
+  const missingGas = await manifestFor(root);
+  delete missingGas.deployments[0].receipt.gasUsed;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingGas, { root }),
+    /receipt\.gasUsed must be positive/
+  );
+
+  const wrongContract = await manifestFor(root);
+  wrongContract.deployments[0].receipt.contractAddress = address("another-contract");
+  await assert.rejects(
+    () => validateDeploymentManifest(wrongContract, { root }),
+    /receipt\.contractAddress must match deployment address/
+  );
+
+  const newerThanReference = await manifestFor(root);
+  newerThanReference.deployments[0].receipt.blockNumber = newerThanReference.network.referenceBlock + 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(newerThanReference, { root }),
+    /must not be newer than network\.referenceBlock/
+  );
+
+  const secretUrl = await manifestFor(root);
   secretUrl.deployments[0].explorer.url = "https://example.invalid/address?apikey=secret";
   await assert.rejects(
     () => validateDeploymentManifest(secretUrl, { root }),
@@ -163,31 +204,55 @@ test("deployment manifest rejects failed receipts and secret-bearing explorer UR
 
 test("deployment manifest requires signed release attestations", async () => {
   const root = await fixtureRoot();
-  const missing = manifestFor(root);
+  const missing = await manifestFor(root);
   delete missing.attestations;
   await assert.rejects(() => validateDeploymentManifest(missing, { root }), /missing top-level manifest field: attestations/);
 
-  const duplicateRole = manifestFor(root);
+  const duplicateRole = await manifestFor(root);
   duplicateRole.attestations[1].role = "deployer";
   await assert.rejects(() => validateDeploymentManifest(duplicateRole, { root }), /duplicate attestation role/);
 
-  const sharedSigner = manifestFor(root);
+  const sharedSigner = await manifestFor(root);
   sharedSigner.attestations[1].signer = sharedSigner.attestations[0].signer;
   await assert.rejects(() => validateDeploymentManifest(sharedSigner, { root }), /signers must be distinct/);
 
-  const badSignature = manifestFor(root);
+  const badSignature = await manifestFor(root);
   badSignature.attestations[2].signature = "0x1234";
   await assert.rejects(() => validateDeploymentManifest(badSignature, { root }), /signature must be a 65-byte signature/);
+
+  const forgedSignature = await manifestFor(root);
+  forgedSignature.attestations[2].signature = forgedSignature.attestations[1].signature;
+  await assert.rejects(
+    () => validateDeploymentManifest(forgedSignature, { root }),
+    /signature does not recover to signer/
+  );
+
+  const unrelatedDigest = await manifestFor(root);
+  unrelatedDigest.attestations[1].manifestHash = bytes32("unrelated-evidence");
+  await assert.rejects(
+    () => validateDeploymentManifest(unrelatedDigest, { root }),
+    /manifestHash must equal evidenceDigest/
+  );
+});
+
+test("deployment evidence digest detects receipt tampering after signatures", async () => {
+  const root = await fixtureRoot();
+  const manifest = await manifestFor(root);
+  manifest.deployments[0].receipt.gasUsed += 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(manifest, { root }),
+    /evidenceDigest does not match deployment evidence/
+  );
 });
 
 test("deployment manifest requires a hash-bound canonical projection", async () => {
   const root = await fixtureRoot();
 
-  const missing = manifestFor(root);
+  const missing = await manifestFor(root);
   delete missing.canonical;
   await assert.rejects(() => validateDeploymentManifest(missing, { root }), /missing top-level manifest field: canonical/);
 
-  const badHash = manifestFor(root);
+  const badHash = await manifestFor(root);
   badHash.canonical.manifestHash = bytes32("tampered");
   await assert.rejects(
     () => validateDeploymentManifest(badHash, { root }),
@@ -198,7 +263,7 @@ test("deployment manifest requires a hash-bound canonical projection", async () 
 test("deployment manifest rejects a canonical projection that drifts from the evidence", async () => {
   const root = await fixtureRoot();
 
-  const driftedFactory = manifestFor(root);
+  const driftedFactory = await manifestFor(root);
   driftedFactory.canonical.manifest.factory = {
     address: address("someone-else"),
     runtimeCodeHash: driftedFactory.canonical.manifest.factory.runtimeCodeHash
@@ -209,7 +274,7 @@ test("deployment manifest rejects a canonical projection that drifts from the ev
     /canonical factory disagrees with deployment evidence/
   );
 
-  const driftedProxy = manifestFor(root);
+  const driftedProxy = await manifestFor(root);
   driftedProxy.canonical.manifest.account = {
     ...driftedProxy.canonical.manifest.account,
     proxy: { creationCodeHash: bytes32("not-the-artifact"), runtimeCodeHash: hashHex("0x6001") }
@@ -226,6 +291,7 @@ async function fixtureRoot() {
   const artifactDir = join(root, "out", "Example.sol");
   await mkdir(artifactDir, { recursive: true });
   const artifact = {
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
     bytecode: { object: "0x60016002" },
     deployedBytecode: { object: "0x6001" }
   };
@@ -235,7 +301,7 @@ async function fixtureRoot() {
   return root;
 }
 
-function manifestFor(root) {
+async function manifestFor(root) {
   const artifact = "out/Example.sol/Example.json";
   const base = {
     version: 1,
@@ -246,8 +312,11 @@ function manifestFor(root) {
       entryPoint: address("entry-point"),
       entryPointVersion: "0.9.0",
       entryPointCodeHash: bytes32("entry-point-code"),
+      entryPointExplorer: "https://explorer.example/address/entry-point",
       senderCreator: address("sender-creator"),
       senderCreatorCodeHash: bytes32("sender-creator-code"),
+      senderCreatorExplorer: "https://explorer.example/address/sender-creator",
+      referenceBlock: 123,
       finality: {
         kind: "ethereum-finalized",
         minConfirmations: 2
@@ -259,7 +328,7 @@ function manifestFor(root) {
       }
     },
     build: {
-      gitCommit: "0123456789abcdef",
+      gitCommit: "0123456789abcdef0123456789abcdef01234567",
       sourceArchiveHash: bytes32("source"),
       solcVersion: FIXTURE_SOLC_VERSION,
       foundryVersion: "1.7.1",
@@ -286,10 +355,10 @@ function manifestFor(root) {
     deployments: [
       {
         name: "Example",
-        address: address("example"),
+        address: fixtureDeploymentAddress(),
         artifact,
-        salt: bytes32("salt"),
-        initCodeHash: hashHex("0x60016002"),
+        deploymentMethod: { kind: "create", deployer: SIGNERS[0].address, nonce: 7 },
+        initCodeHash: hashHex(fixtureInitCode()),
         runtimeCodeHash: hashHex("0x6001"),
         constructorArgs: [address("entry-point")],
         explorer: {
@@ -298,17 +367,14 @@ function manifestFor(root) {
         },
         receipt: {
           transactionHash: bytes32("deploy-tx"),
-          deployer: address("deployer"),
+          blockHash: bytes32("deploy-block"),
+          deployer: SIGNERS[0].address,
+          contractAddress: fixtureDeploymentAddress(),
           blockNumber: 123,
           status: "0x1",
           gasUsed: 500000
         }
       }
-    ],
-    attestations: [
-      attestation("deployer", "0xDeployerKey"),
-      attestation("independent-reproducer", "0xReproducerKey"),
-      attestation("security-reviewer", "0xReviewerKey")
     ],
     checks: {
       cleanCheckoutBuild: true,
@@ -324,6 +390,12 @@ function manifestFor(root) {
     }
   };
   base.canonical = canonicalFor(base);
+  base.evidenceDigest = deploymentEvidenceDigest(base);
+  base.attestations = await Promise.all([
+    attestation(base, "deployer", SIGNERS[0]),
+    attestation(base, "independent-reproducer", SIGNERS[1]),
+    attestation(base, "security-reviewer", SIGNERS[2])
+  ]);
   return base;
 }
 
@@ -354,16 +426,30 @@ function canonicalFor(base) {
   };
 }
 
-function attestation(role, signer) {
+async function attestation(manifest, role, account) {
+  const statement = `${role} verified the deployment manifest and release evidence.`;
+  const signedAt = "2026-06-21";
   return {
     role,
-    signer,
-    manifestHash: bytes32(`manifest-${role}`),
-    signature: `0x${"aa".repeat(65)}`,
-    signedAt: "2026-06-21",
-    statement: `${role} verified the deployment manifest and release evidence.`
+    signer: account.address,
+    manifestHash: manifest.evidenceDigest,
+    signature: await account.signMessage({ message: deploymentAttestationMessage({
+      role,
+      chainId: manifest.network.chainId,
+      manifestHash: manifest.evidenceDigest,
+      signedAt,
+      statement
+    }) }),
+    signedAt,
+    statement
   };
 }
+
+const SIGNERS = [
+  privateKeyToAccount(`0x${"11".repeat(32)}`),
+  privateKeyToAccount(`0x${"22".repeat(32)}`),
+  privateKeyToAccount(`0x${"33".repeat(32)}`)
+];
 
 function hashHex(value) {
   return `0x${keccak_256(Buffer.from(value.slice(2), "hex"))}`;
@@ -379,4 +465,16 @@ function address(seed) {
 
 function bytes32(seed) {
   return `0x${keccak_256(seed)}`;
+}
+
+function fixtureInitCode() {
+  return encodeDeployData({
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
+    bytecode: "0x60016002",
+    args: [address("entry-point")]
+  });
+}
+
+function fixtureDeploymentAddress() {
+  return getContractAddress({ from: SIGNERS[0].address, nonce: 7n });
 }
