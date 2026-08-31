@@ -30,7 +30,7 @@ function deployment(fallback: "disabled" | "explicit-rejection" = "disabled") {
   } as never;
 }
 
-function envelope(): UserOperationEnvelope {
+function envelope(stage: "unsigned" | "signed" = "signed"): UserOperationEnvelope {
   return {
     kind: "userOperation.prepare", chainId: 11155111, account: ACCOUNT,
     intent: {} as never, intentHash: `0x${"77".repeat(32)}`, review: {} as never,
@@ -38,9 +38,10 @@ function envelope(): UserOperationEnvelope {
       sender: ACCOUNT, nonce: 0n, factory: FACTORY, factoryData: FACTORY_DATA,
       callData: "0x", callGasLimit: 10n, verificationGasLimit: 20n,
       preVerificationGas: 30n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n,
-      paymaster: PAYMASTER, paymasterVerificationGasLimit: 40n, paymasterPostOpGasLimit: 1n,
-      paymasterData: "0x1234",
-      signature: "0x1234"
+      ...(stage === "signed" ? {
+        paymaster: PAYMASTER, paymasterVerificationGasLimit: 40n, paymasterPostOpGasLimit: 1n,
+        paymasterData: "0x1234", signature: "0x1234"
+      } : { signature: "0x" })
     }
   } as never;
 }
@@ -49,7 +50,7 @@ const plan = { factory: FACTORY, factoryData: FACTORY_DATA, salt: `0x${"44".repe
 
 test("authorization inserts the pinned paymaster before the passkey signs", async () => {
   const sponsored = await authorizeSponsoredActivation({
-    endpoint: "https://relay.example", deployment: deployment(), envelope: envelope(),
+    endpoint: "https://relay.example", deployment: deployment(), envelope: envelope("unsigned"),
     fetch: (async (_url, init) => {
       assert.equal(init?.credentials, "include");
       return new Response(JSON.stringify({
