@@ -1,6 +1,20 @@
 import { decodeFunctionData, keccak256, stringToHex } from "viem";
 import { getUserOpHash, LoomAccountFactoryAbi, packUserOperation } from "@loom/core";
 
+export class SponsorRequestRejection extends Error {}
+export class SponsorDeliveryUnknown extends Error {}
+
+export function classifyActivationFailure(error) {
+  const explicitlyRejected = error instanceof SponsorRequestRejection;
+  const knownUnknown = error instanceof SponsorDeliveryUnknown;
+  return Object.freeze({
+    status: explicitlyRejected ? 422 : 502,
+    delivery: explicitlyRejected ? "not-accepted" : "unknown",
+    publicFallbackAllowed: explicitlyRejected,
+    reason: explicitlyRejected || knownUnknown ? error.message : "sponsor delivery state is unknown"
+  });
+}
+
 export function parseAuthorizationRequest(body, policy) {
   return parseRequest(body, policy, false);
 }
@@ -98,9 +112,23 @@ export function createSponsorUsageLedger(policy, now = () => Date.now()) {
 }
 
 export function sponsorPolicyFromEnv(env, defaults) {
-  const external = !["127.0.0.1", "localhost", "::1"].includes(defaults.host);
+  const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+  const external = !loopbackHosts.has(defaults.host);
   if (external) {
     throw new Error("the reference sponsor is loopback-only; use an authenticated gateway with a durable shared ledger for external service");
+  }
+  let browserOrigin;
+  try {
+    browserOrigin = new URL(defaults.allowedOrigin);
+  } catch {
+    throw new Error("SPONSOR_ALLOWED_ORIGIN must be an absolute browser origin");
+  }
+  if (
+    !["http:", "https:"].includes(browserOrigin.protocol)
+      || !loopbackHosts.has(browserOrigin.hostname)
+      || browserOrigin.origin !== defaults.allowedOrigin
+  ) {
+    throw new Error("the reference sponsor accepts only an exact loopback browser origin");
   }
   const policyId = env.SPONSOR_POLICY_ID ?? "loom-sepolia-onboarding-v1";
   const policyHash = bytes32(env.SPONSOR_POLICY_HASH, "SPONSOR_POLICY_HASH");

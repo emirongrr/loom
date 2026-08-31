@@ -5,9 +5,12 @@ import { getUserOpHash, LoomAccountFactoryAbi, packUserOperation } from "@loom/c
 import { encodeFunctionData, keccak256, stringToHex } from "viem";
 import {
   authenticateSponsorRequest,
+  classifyActivationFailure,
   createSponsorUsageLedger,
   parseActivationRequest,
   parseAuthorizationRequest,
+  SponsorDeliveryUnknown,
+  SponsorRequestRejection,
   sponsorPolicyFromEnv
 } from "../sponsor-policy.mjs";
 
@@ -124,8 +127,23 @@ test("the in-memory reference relay cannot bind externally", () => {
   assert.throws(() => sponsorPolicyFromEnv(baseEnv, {
     host: "0.0.0.0", chainId: 11155111, entryPoint: ENTRYPOINT, allowedOrigin: "https://wallet.example"
   }), /loopback-only/);
+  assert.throws(() => sponsorPolicyFromEnv(baseEnv, {
+    host: "127.0.0.1", chainId: 11155111, entryPoint: ENTRYPOINT, allowedOrigin: "https://wallet.example"
+  }), /loopback browser origin/);
   const local = sponsorPolicyFromEnv(baseEnv, {
     host: "127.0.0.1", chainId: 11155111, entryPoint: ENTRYPOINT, allowedOrigin: "http://localhost:5174"
   });
   assert.equal(authenticateSponsorRequest({}, local), "loopback-development");
+});
+
+test("only explicit pre-delivery rejection permits public fallback", () => {
+  assert.deepEqual(classifyActivationFailure(new SponsorRequestRejection("policy rejected")), {
+    status: 422, delivery: "not-accepted", publicFallbackAllowed: true, reason: "policy rejected"
+  });
+  assert.deepEqual(classifyActivationFailure(new SponsorDeliveryUnknown("receipt unavailable")), {
+    status: 502, delivery: "unknown", publicFallbackAllowed: false, reason: "receipt unavailable"
+  });
+  assert.deepEqual(classifyActivationFailure(new Error("RPC URL https://secret.example/key")), {
+    status: 502, delivery: "unknown", publicFallbackAllowed: false, reason: "sponsor delivery state is unknown"
+  });
 });

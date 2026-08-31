@@ -25,9 +25,12 @@ import { sepolia } from "viem/chains";
 import { EntryPointAbi, packUserOperation } from "@loom/core";
 import {
   authenticateSponsorRequest,
+  classifyActivationFailure,
   createSponsorUsageLedger,
   parseAuthorizationRequest,
   parseActivationRequest,
+  SponsorDeliveryUnknown,
+  SponsorRequestRejection,
   sponsorPolicyFromEnv
 } from "./sponsor-policy.mjs";
 
@@ -118,18 +121,25 @@ function revertDetail(error) {
       const decoded = decodeErrorResult({ abi: EntryPointAbi, data });
       return `${decoded.errorName}(${decoded.args.join(", ")})`;
     } catch {
-      // Undecodable revert data falls through to the provider's safe message.
+      // Undecodable provider details are intentionally not returned to callers.
     }
   }
-  return error.shortMessage ?? error.message;
+  return "provider request failed";
 }
 
-class ExplicitSponsorRejection extends Error {}
-class DeliveryUnknown extends Error {}
+function rejectInvalidRequest(task) {
+  try {
+    return task();
+  } catch (error) {
+    throw new SponsorRequestRejection(error instanceof Error ? error.message : "sponsor request rejected");
+  }
+}
 
 async function submitPrivately(packed) {
   const existing = await publicClient.getCode({ address: packed.sender });
-  if (existing && existing !== "0x") throw new ExplicitSponsorRejection("account is already deployed; reconcile its live chain state");
+  if (existing && existing !== "0x") {
+    throw new SponsorRequestRejection("account is already deployed; reconcile its live chain state");
+  }
 
   // The paymaster's EntryPoint deposit is charged in the same operation. There
   // is no sender prefund transaction to strand or repeat.
@@ -139,7 +149,7 @@ async function submitPrivately(packed) {
       args: [[packed], sponsor.address], account: sponsor
     });
   } catch (error) {
-    throw new ExplicitSponsorRejection(`operation would revert, not sponsoring: ${revertDetail(error)}`);
+    throw new SponsorRequestRejection(`operation would revert, not sponsoring: ${revertDetail(error)}`);
   }
 
   let opTx;
@@ -148,17 +158,20 @@ async function submitPrivately(packed) {
       address: entryPoint, abi: EntryPointAbi, functionName: "handleOps", args: [[packed], sponsor.address]
     });
   } catch (error) {
-    throw new DeliveryUnknown(`private submission result is unknown: ${revertDetail(error)}`);
+    throw new SponsorDeliveryUnknown(`private submission result is unknown: ${revertDetail(error)}`);
   }
   let receipt;
   try { receipt = await publicClient.waitForTransactionReceipt({ hash: opTx }); }
-  catch (error) { throw new DeliveryUnknown(`private transaction ${opTx} was submitted but receipt lookup failed`); }
+  catch { throw new SponsorDeliveryUnknown(`private transaction ${opTx} was submitted but receipt lookup failed`); }
+  if (receipt.status !== "success") {
+    throw new SponsorDeliveryUnknown(`private transaction ${opTx} reverted`);
+  }
 
   let code;
   try { code = await publicClient.getCode({ address: packed.sender }); }
-  catch { throw new DeliveryUnknown(`private transaction ${opTx} landed but account code verification failed`); }
+  catch { throw new SponsorDeliveryUnknown(`private transaction ${opTx} landed but account code verification failed`); }
   const size = code && code !== "0x" ? (code.length - 2) / 2 : 0;
-  if (size === 0) throw new DeliveryUnknown(`handleOps landed (${opTx}) but the account has no code`);
+  if (size === 0) throw new SponsorDeliveryUnknown(`handleOps landed (${opTx}) but the account has no code`);
 
   return {
     account: packed.sender, opTx, codeSize: size,
@@ -194,13 +207,15 @@ const server = createServer((req, res) => {
       serialize(async () => {
         let reservation;
         try {
-          const principal = authenticateSponsorRequest(req.headers, sponsorPolicy);
-          const parsed = parseAuthorizationRequest(JSON.parse(body), sponsorPolicy);
+          const { principal, parsed } = rejectInvalidRequest(() => ({
+            principal: authenticateSponsorRequest(req.headers, sponsorPolicy),
+            parsed: parseAuthorizationRequest(JSON.parse(body), sponsorPolicy)
+          }));
           // Reserve the full on-chain policy cap before issuing a reusable
           // authorization. A caller can submit it without returning here.
-          const held = sponsorUsage.reserve({
+          const held = rejectInvalidRequest(() => sponsorUsage.reserve({
             principal, userOpHash: parsed.userOpHash, maximumCost: sponsorPolicy.maxCostWei
-          });
+          }));
           if (held.duplicate) {
             return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(held.result));
           }
@@ -243,8 +258,10 @@ const server = createServer((req, res) => {
           res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
         } catch (error) {
           if (reservation) sponsorUsage.release(reservation);
-          res.writeHead(422, { "content-type": "application/json" }).end(JSON.stringify({
-            authorized: false, reason: error instanceof Error ? error.message : "authorization rejected"
+          const rejected = error instanceof SponsorRequestRejection;
+          res.writeHead(rejected ? 422 : 503, { "content-type": "application/json" }).end(JSON.stringify({
+            authorized: false,
+            reason: rejected ? error.message : "authorization service unavailable"
           }));
         }
       });
@@ -264,11 +281,14 @@ const server = createServer((req, res) => {
     return void req.on("end", () => {
       serialize(async () => {
         try {
-          authenticateSponsorRequest(req.headers, sponsorPolicy);
-          const parsed = parseActivationRequest(JSON.parse(body), sponsorPolicy);
-          if (req.headers["idempotency-key"]?.toLowerCase() !== parsed.userOpHash.toLowerCase()) {
-            throw new Error("idempotency key must equal the UserOperation hash");
-          }
+          const parsed = rejectInvalidRequest(() => {
+            authenticateSponsorRequest(req.headers, sponsorPolicy);
+            const candidate = parseActivationRequest(JSON.parse(body), sponsorPolicy);
+            if (req.headers["idempotency-key"]?.toLowerCase() !== candidate.userOpHash.toLowerCase()) {
+              throw new Error("idempotency key must equal the UserOperation hash");
+            }
+            return candidate;
+          });
           const deployed = await submitPrivately(parsed.packed);
           const result = Object.freeze({
             accepted: true,
@@ -279,17 +299,16 @@ const server = createServer((req, res) => {
           });
           res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "sponsor rejected the activation";
           // At this outer boundary we cannot prove that an RPC failure after
           // submission means non-acceptance. Only policy/auth/idempotency errors
           // are explicit pre-delivery rejections; all other failures are
           // delivery-ambiguous and must not trigger automatic public fallback.
-          const policyRejected = !(error instanceof DeliveryUnknown);
-          res.writeHead(policyRejected ? 422 : 502, { "content-type": "application/json" }).end(JSON.stringify({
+          const failure = classifyActivationFailure(error);
+          res.writeHead(failure.status, { "content-type": "application/json" }).end(JSON.stringify({
             accepted: false,
-            delivery: policyRejected ? "not-accepted" : "unknown",
-            publicFallbackAllowed: policyRejected,
-            reason
+            delivery: failure.delivery,
+            publicFallbackAllowed: failure.publicFallbackAllowed,
+            reason: failure.reason
           }));
         }
       });
