@@ -11,6 +11,7 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 - `src/LoomAccountFactory.sol`
 - `src/LoomAccountProxy.sol`
 - `src/AppAccountRegistry.sol`
+- `src/OnboardingPaymaster.sol`
 - `src/hooks/PolicyHook.sol`
 - `src/hooks/VaultHook.sol`
 - `src/keystore/EthereumL1KeystoreVerifier.sol`
@@ -110,6 +111,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
     register accounts, duplicate registration cannot inflate `accountCount`,
     and registry membership grants no execution, recovery, or migration
     authority.
+37. Sponsored onboarding can pay only for a nonce-zero, empty-call-data account
+    creation through the immutable factory, under an unexpired authorizer
+    signature and an immutable per-operation maximum-cost policy.
 
 ## Reviewer focus areas
 
@@ -134,6 +138,9 @@ especially EntryPoint validation, nonce handling, and sender creation.
   selectors.
 - App registry factory-only registration, duplicate handling, and its
   non-authority relationship to account execution.
+- Onboarding-paymaster authorization domain separation, field completeness,
+  validity bounds, gas/cost accounting, replay behavior, and deposit-owner
+  powers.
 - Direct-execution domain separation, nonce/config invalidation, explicit
   validator capability, and hook behavior when the caller is an arbitrary
   transaction publisher rather than the EntryPoint.
