@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { materializeImmutableRuntime } from "./materialize-immutable-runtime.mjs";
+import { materializeImmutableRuntime, materializeInitCode } from "./materialize-immutable-runtime.mjs";
+
+test("ABI-encodes constructor arguments into exact deployment init code", () => {
+  const initCode = materializeInitCode({
+    abi: [{ type: "constructor", inputs: [{ name: "owner", type: "address" }], stateMutability: "nonpayable" }],
+    bytecode: { object: "0x6001" }
+  }, [`0x${"11".repeat(20)}`], "deployment");
+  assert.equal(initCode, `0x6001${"00".repeat(12)}${"11".repeat(20)}`);
+});
+
+test("rejects constructor arguments that do not match the artifact ABI", () => {
+  assert.throws(
+    () => materializeInitCode({ abi: [], bytecode: { object: "0x6001" } }, [1], "deployment"),
+    /do not encode against the artifact ABI/u
+  );
+});
 
 const artifact = {
   deployedBytecode: {

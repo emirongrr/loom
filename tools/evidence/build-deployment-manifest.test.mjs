@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import sha3 from "js-sha3";
+import { encodeDeployData, getContractAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { buildDeploymentManifest, prepareDeploymentManifest } from "./build-deployment-manifest.mjs";
 import { deploymentAttestationMessage } from "./validate-deployment-manifest.mjs";
@@ -41,7 +42,7 @@ test("deployment manifest builder computes artifact and reproducibility hashes",
 
   assert.equal(manifest.version, 1);
   assert.equal(manifest.build.gitCommit, "0123456789abcdef0123456789abcdef01234567");
-  assert.equal(manifest.deployments[0].initCodeHash, hashHex("0x60016002"));
+  assert.equal(manifest.deployments[0].initCodeHash, hashHex(fixtureInitCode()));
   assert.equal(manifest.deployments[0].runtimeCodeHash, hashHex("0x6001"));
   assert.deepEqual(manifest.reproducibility.files, [
     { path: "foundry.toml", hash: hashText(FIXTURE_FOUNDRY_TOML) },
@@ -80,6 +81,7 @@ async function fixtureRoot() {
   const artifactDir = join(root, "out", "Example.sol");
   await mkdir(artifactDir, { recursive: true });
   await writeFile(join(artifactDir, "Example.json"), JSON.stringify({
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
     bytecode: { object: "0x60016002" },
     deployedBytecode: { object: "0x6001" }
   }));
@@ -132,7 +134,7 @@ function configFor() {
     deployments: [
       {
         name: "Example",
-        address: address("example"),
+        address: fixtureDeploymentAddress(),
         artifact: "out/Example.sol/Example.json",
         deploymentMethod: { kind: "create", deployer: SIGNERS[0].address, nonce: 7 },
         constructorArgs: [address("entry-point")],
@@ -142,7 +144,9 @@ function configFor() {
         },
         receipt: {
           transactionHash: bytes32("deploy-tx"),
+          blockHash: bytes32("deploy-block"),
           deployer: SIGNERS[0].address,
+          contractAddress: fixtureDeploymentAddress(),
           blockNumber: 123,
           status: "0x1",
           gasUsed: 500000
@@ -221,4 +225,16 @@ function address(seed) {
 
 function bytes32(seed) {
   return `0x${keccak_256(seed)}`;
+}
+
+function fixtureInitCode() {
+  return encodeDeployData({
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
+    bytecode: "0x60016002",
+    args: [address("entry-point")]
+  });
+}
+
+function fixtureDeploymentAddress() {
+  return getContractAddress({ from: SIGNERS[0].address, nonce: 7n });
 }

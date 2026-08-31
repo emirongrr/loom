@@ -82,6 +82,11 @@ export interface WalletProfileManifest {
   readonly runtimeCodeHashes: Readonly<Record<string, Hex>>;
   readonly recoveryValidatorProvisioner?: P256RecoveryValidatorProvisioner;
   readonly onboardingPaymaster?: Hex;
+  readonly onboardingPaymasterConfig?: Readonly<{
+    authorizer: Hex;
+    policyHash: Hex;
+    maximumCostWei: string;
+  }>;
   readonly onboarding?: WalletOnboardingPolicy;
 }
 
@@ -91,6 +96,7 @@ export type WalletOnboardingPolicyInput =
       activation: "sponsored";
       sponsorship: Readonly<{
         policyId: string;
+        authorizer: Hex;
         maxCostWei: string;
         maxFactoryDataBytes: number;
         maxActivationsPerPrincipal: number;
@@ -107,6 +113,7 @@ export type WalletOnboardingPolicy =
       sponsorship: Readonly<{
         policyId: string;
         policyHash: Hex;
+        authorizer: Hex;
         maxCostWei: string;
         maxFactoryDataBytes: number;
         maxActivationsPerPrincipal: number;

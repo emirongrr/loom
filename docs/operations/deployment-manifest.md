@@ -40,7 +40,7 @@ The manifest must include:
 - proxy creation-code hash and runtime-code hash used by the factory;
 - app registry address, constructor factory address, and runtime-code hash;
 - deployment receipt evidence for every contract, including transaction hash,
-  deployer, block number, success status, and gas used when available;
+  block hash, deployer, block number, success status, and gas used;
 - explorer source-verification URL for every deployment;
 - signed release attestations from three distinct roles: deployer,
   independent reproducer, and security reviewer;
@@ -50,9 +50,11 @@ The manifest must include:
   explorer verification, no admin or upgrade key, and no Loom service
   dependency.
 
-The validator recomputes init-code and runtime-code hashes from Foundry
-artifacts, recomputes configured reproducibility file hashes, and rejects
-mismatches. It also rejects explorer URLs containing credentials or common
+The validator ABI-encodes constructor arguments into creation bytecode before
+recomputing init-code hashes, materializes immutable runtime words, derives
+CREATE and CREATE2 addresses, binds CREATE receipts to their contract address,
+and binds CREATE2 receipts to their deployer contract. It recomputes configured
+reproducibility file hashes and rejects mismatches. It also rejects explorer URLs containing credentials or common
 secret-bearing query parameters. It intentionally does not fetch explorers or
 RPC endpoints; network evidence must be reviewed separately and should never
 require committing API keys.

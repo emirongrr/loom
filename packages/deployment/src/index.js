@@ -60,6 +60,7 @@ export function buildWalletOnboardingPolicy(options = { activation: "counterfact
     sponsorship: Object.freeze({
       policyId: sponsorship.policyId,
       policyHash: `0x${keccak256(Buffer.from(sponsorship.policyId, "utf8"))}`,
+      authorizer: requireAddress(sponsorship.authorizer, "sponsorship authorizer"),
       maxCostWei: decimal(sponsorship.maxCostWei, "sponsorship maxCostWei"),
       maxFactoryDataBytes: bounded(sponsorship.maxFactoryDataBytes, 65_536, "sponsorship maxFactoryDataBytes"),
       maxActivationsPerPrincipal: bounded(sponsorship.maxActivationsPerPrincipal, 1_000, "sponsorship maxActivationsPerPrincipal"),
@@ -336,6 +337,31 @@ export async function buildWalletProfileManifest(options) {
   if (onboardingPaymaster) {
     profile.onboardingPaymaster = onboardingPaymaster;
     runtimeCodeHashes.onboardingPaymaster = await codehash(rpc, onboardingPaymaster, "OnboardingPaymaster");
+    const [paymasterEntryPoint, paymasterFactory, paymasterAuthorizer, paymasterPolicyHash, paymasterMaximumCost] =
+      await Promise.all([
+        readAddressView(rpc, onboardingPaymaster, "entryPoint()", "paymaster EntryPoint"),
+        readAddressView(rpc, onboardingPaymaster, "factory()", "paymaster factory"),
+        readAddressView(rpc, onboardingPaymaster, "authorizer()", "paymaster authorizer"),
+        readBytes32View(rpc, onboardingPaymaster, "policyHash()", "paymaster policy hash"),
+        readUintView(rpc, onboardingPaymaster, "maximumCost()", "paymaster maximum cost")
+      ]);
+    if (paymasterEntryPoint.toLowerCase() !== entryPoint.toLowerCase()
+        || paymasterFactory.toLowerCase() !== profile.factory.toLowerCase()) {
+      throw new Error("deployed onboarding paymaster is not bound to the profile EntryPoint and factory");
+    }
+    profile.onboardingPaymasterConfig = Object.freeze({
+      authorizer: paymasterAuthorizer,
+      policyHash: paymasterPolicyHash,
+      maximumCostWei: paymasterMaximumCost.toString()
+    });
+    if (profile.onboarding?.activation === "sponsored") {
+      const expected = profile.onboarding.sponsorship;
+      if (paymasterAuthorizer.toLowerCase() !== expected.authorizer.toLowerCase()
+          || paymasterPolicyHash.toLowerCase() !== expected.policyHash.toLowerCase()
+          || paymasterMaximumCost !== BigInt(expected.maxCostWei)) {
+        throw new Error("deployed onboarding paymaster does not match the sponsored onboarding policy");
+      }
+    }
   }
 
   // A code hash proves what each contract is, but not that the addresses belong
@@ -727,12 +753,25 @@ function assertObject(value, label) {
 }
 
 async function readAddressView(rpc, contract, signature, label) {
+  const result = await readWordView(rpc, contract, signature, label);
+  return requireAddress(`0x${result.slice(-40)}`, label);
+}
+
+async function readBytes32View(rpc, contract, signature, label) {
+  return requireBytes32(await readWordView(rpc, contract, signature, label), label);
+}
+
+async function readUintView(rpc, contract, signature, label) {
+  return BigInt(await readWordView(rpc, contract, signature, label));
+}
+
+async function readWordView(rpc, contract, signature, label) {
   const selector = `0x${keccak256(signature).slice(0, 8)}`;
   const result = await rpc("eth_call", [{ to: contract, data: selector }, "latest"]);
-  if (typeof result !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
+  if (typeof result !== "string" || !/^0x[0-9a-fA-F]{64}$/u.test(result)) {
     throw new Error(`${label} returned malformed data`);
   }
-  return requireAddress(`0x${result.slice(-40)}`, label);
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import sha3 from "js-sha3";
 import { manifestHash } from "@loom/core";
+import { encodeDeployData, getContractAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   deploymentAttestationMessage,
@@ -89,6 +90,13 @@ test("deployment manifest rejects unsafe P-256 and duplicate deployment coordina
   const duplicate = await manifestFor(root);
   duplicate.deployments.push({ ...duplicate.deployments[0], name: "Other" });
   await assert.rejects(() => validateDeploymentManifest(duplicate, { root }), /duplicate deployment coordinate/);
+
+  const wrongAddress = await manifestFor(root);
+  wrongAddress.deployments[0].deploymentMethod.nonce += 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(wrongAddress, { root }),
+    /address does not match deploymentMethod and initCodeHash/
+  );
 });
 
 test("deployment manifest rejects missing deterministic and size checks", async () => {
@@ -158,6 +166,34 @@ test("deployment manifest rejects failed receipts and secret-bearing explorer UR
     /deployments\[0\]\.receipt\.transactionHash/
   );
 
+  const missingBlockHash = await manifestFor(root);
+  delete missingBlockHash.deployments[0].receipt.blockHash;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingBlockHash, { root }),
+    /receipt\.blockHash/
+  );
+
+  const missingGas = await manifestFor(root);
+  delete missingGas.deployments[0].receipt.gasUsed;
+  await assert.rejects(
+    () => validateDeploymentManifest(missingGas, { root }),
+    /receipt\.gasUsed must be positive/
+  );
+
+  const wrongContract = await manifestFor(root);
+  wrongContract.deployments[0].receipt.contractAddress = address("another-contract");
+  await assert.rejects(
+    () => validateDeploymentManifest(wrongContract, { root }),
+    /receipt\.contractAddress must match deployment address/
+  );
+
+  const newerThanReference = await manifestFor(root);
+  newerThanReference.deployments[0].receipt.blockNumber = newerThanReference.network.referenceBlock + 1;
+  await assert.rejects(
+    () => validateDeploymentManifest(newerThanReference, { root }),
+    /must not be newer than network\.referenceBlock/
+  );
+
   const secretUrl = await manifestFor(root);
   secretUrl.deployments[0].explorer.url = "https://example.invalid/address?apikey=secret";
   await assert.rejects(
@@ -202,7 +238,7 @@ test("deployment manifest requires signed release attestations", async () => {
 test("deployment evidence digest detects receipt tampering after signatures", async () => {
   const root = await fixtureRoot();
   const manifest = await manifestFor(root);
-  manifest.deployments[0].receipt.blockNumber += 1;
+  manifest.deployments[0].receipt.gasUsed += 1;
   await assert.rejects(
     () => validateDeploymentManifest(manifest, { root }),
     /evidenceDigest does not match deployment evidence/
@@ -255,6 +291,7 @@ async function fixtureRoot() {
   const artifactDir = join(root, "out", "Example.sol");
   await mkdir(artifactDir, { recursive: true });
   const artifact = {
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
     bytecode: { object: "0x60016002" },
     deployedBytecode: { object: "0x6001" }
   };
@@ -318,10 +355,10 @@ async function manifestFor(root) {
     deployments: [
       {
         name: "Example",
-        address: address("example"),
+        address: fixtureDeploymentAddress(),
         artifact,
         deploymentMethod: { kind: "create", deployer: SIGNERS[0].address, nonce: 7 },
-        initCodeHash: hashHex("0x60016002"),
+        initCodeHash: hashHex(fixtureInitCode()),
         runtimeCodeHash: hashHex("0x6001"),
         constructorArgs: [address("entry-point")],
         explorer: {
@@ -330,7 +367,9 @@ async function manifestFor(root) {
         },
         receipt: {
           transactionHash: bytes32("deploy-tx"),
+          blockHash: bytes32("deploy-block"),
           deployer: SIGNERS[0].address,
+          contractAddress: fixtureDeploymentAddress(),
           blockNumber: 123,
           status: "0x1",
           gasUsed: 500000
@@ -426,4 +465,16 @@ function address(seed) {
 
 function bytes32(seed) {
   return `0x${keccak_256(seed)}`;
+}
+
+function fixtureInitCode() {
+  return encodeDeployData({
+    abi: [{ type: "constructor", inputs: [{ name: "entryPoint", type: "address" }], stateMutability: "nonpayable" }],
+    bytecode: "0x60016002",
+    args: [address("entry-point")]
+  });
+}
+
+function fixtureDeploymentAddress() {
+  return getContractAddress({ from: SIGNERS[0].address, nonce: 7n });
 }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { getContractAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { prepareDeploymentAttestations } from "./prepare-deployment-attestations.mjs";
 
@@ -53,6 +54,7 @@ function config(deployer) {
     privateKeyToAccount(`0x${"22".repeat(32)}`).address,
     privateKeyToAccount(`0x${"33".repeat(32)}`).address
   ];
+  const deploymentAddress = getContractAddress({ from: deployer, nonce: 7n });
   return {
     network: {
       name: "sepolia", family: "ethereum", chainId: 11155111,
@@ -69,10 +71,13 @@ function config(deployer) {
       files: ["foundry.toml", "package-lock.json"]
     },
     deployments: [{
-      name: "Example", address: address("4"), artifact: "out/Example.sol/Example.json",
+      name: "Example", address: deploymentAddress, artifact: "out/Example.sol/Example.json",
       deploymentMethod: { kind: "create", deployer, nonce: 7 }, constructorArgs: [],
       explorer: { verified: true, url: "https://example.invalid/address" },
-      receipt: { transactionHash: hash("5"), deployer, blockNumber: 123, status: "0x1", gasUsed: 500000 }
+      receipt: {
+        transactionHash: hash("5"), blockHash: hash("6"), deployer,
+        contractAddress: deploymentAddress, blockNumber: 123, status: "0x1", gasUsed: 500000
+      }
     }],
     attestations: roles.map((role, index) => ({
       role, signer: signers[index], signedAt: "2026-08-27",

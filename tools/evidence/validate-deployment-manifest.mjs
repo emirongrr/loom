@@ -3,10 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sha3 from "js-sha3";
-import { getAddress, keccak256, toBytes, verifyMessage } from "viem";
+import { getAddress, getContractAddress, keccak256, toBytes, verifyMessage } from "viem";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
 import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
-import { materializeImmutableRuntime } from "./materialize-immutable-runtime.mjs";
+import { materializeImmutableRuntime, materializeInitCode } from "./materialize-immutable-runtime.mjs";
 
 const { keccak_256 } = sha3;
 
@@ -28,7 +28,7 @@ export async function validateDeploymentManifest(manifest, options = {}) {
   assertNetwork(manifest.network);
   assertBuild(manifest.build, repoRoot);
   assertReproducibility(manifest.reproducibility, repoRoot);
-  assertDeployments(manifest.deployments, repoRoot);
+  assertDeployments(manifest.deployments, repoRoot, manifest.network.referenceBlock);
   assertChecks(manifest.checks);
   assertCanonicalProjection(manifest, repoRoot);
   assertEvidenceDigest(manifest);
@@ -236,7 +236,7 @@ function assertBuild(build, repoRoot) {
   assertBytes32(build.sourceArchiveHash, "build.sourceArchiveHash");
 }
 
-function assertDeployments(deployments, repoRoot) {
+function assertDeployments(deployments, repoRoot, referenceBlock) {
   if (!Array.isArray(deployments) || deployments.length === 0) {
     throw new Error("deployments must be a non-empty array");
   }
@@ -274,6 +274,33 @@ function assertDeployments(deployments, repoRoot) {
     }
     assertPublicUrl(deployment.explorer.url, `${label}.explorer.url`);
     assertDeploymentReceipt(deployment.receipt, label);
+    if (deployment.receipt.blockNumber > referenceBlock) {
+      throw new Error(`${label}.receipt.blockNumber must not be newer than network.referenceBlock`);
+    }
+    const expectedAddress = deployment.deploymentMethod.kind === "create"
+      ? getContractAddress({
+          from: deployment.deploymentMethod.deployer,
+          nonce: BigInt(deployment.deploymentMethod.nonce)
+        })
+      : getContractAddress({
+          opcode: "CREATE2",
+          from: deployment.deploymentMethod.deployer,
+          salt: deployment.deploymentMethod.salt,
+          bytecodeHash: deployment.initCodeHash
+        });
+    if (expectedAddress.toLowerCase() !== deployment.address.toLowerCase()) {
+      throw new Error(`${label}.address does not match deploymentMethod and initCodeHash`);
+    }
+    if (deployment.deploymentMethod.kind === "create") {
+      if (deployment.deploymentMethod.deployer.toLowerCase() !== deployment.receipt.deployer.toLowerCase()) {
+        throw new Error(`${label}.deploymentMethod.deployer must match receipt.deployer for CREATE`);
+      }
+      if (deployment.receipt.contractAddress?.toLowerCase() !== deployment.address.toLowerCase()) {
+        throw new Error(`${label}.receipt.contractAddress must match deployment address for CREATE`);
+      }
+    } else if (deployment.receipt.to?.toLowerCase() !== deployment.deploymentMethod.deployer.toLowerCase()) {
+      throw new Error(`${label}.receipt.to must match the CREATE2 deployer`);
+    }
   }
 }
 
@@ -304,11 +331,12 @@ function assertDeploymentReceipt(receipt, label) {
   if (!receipt || typeof receipt !== "object") throw new Error(`${label}.receipt is required`);
   assertTxHash(receipt.transactionHash, `${label}.receipt.transactionHash`);
   assertAddress(receipt.deployer, `${label}.receipt.deployer`);
+  assertBytes32(receipt.blockHash, `${label}.receipt.blockHash`);
   if (!Number.isSafeInteger(receipt.blockNumber) || receipt.blockNumber <= 0) {
     throw new Error(`${label}.receipt.blockNumber must be positive`);
   }
   if (receipt.status !== "0x1") throw new Error(`${label}.receipt.status must be 0x1`);
-  if (receipt.gasUsed !== undefined && (!Number.isSafeInteger(receipt.gasUsed) || receipt.gasUsed <= 0)) {
+  if (!Number.isSafeInteger(receipt.gasUsed) || receipt.gasUsed <= 0) {
     throw new Error(`${label}.receipt.gasUsed must be positive`);
   }
 }
@@ -406,7 +434,7 @@ function assertArtifactHashes(deployment, repoRoot, label) {
   const path = join(repoRoot, deployment.artifact);
   if (!existsSync(path)) throw new Error(`${label}.artifact does not exist: ${deployment.artifact}`);
   const artifact = JSON.parse(readFileSync(path, "utf8"));
-  const initCode = artifact.bytecode?.object;
+  const initCode = materializeInitCode(artifact, deployment.constructorArgs, label);
   const runtimeCode = materializeImmutableRuntime(artifact, deployment.immutableValues, label);
   if (!isHex(initCode) || !isHex(runtimeCode)) throw new Error(`${label}.artifact missing bytecode`);
   const actualInit = hashHex(initCode);

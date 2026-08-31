@@ -7,7 +7,7 @@ import sha3 from "js-sha3";
 import { manifestHash, parseDeploymentManifest } from "@loom/core";
 import { deploymentEvidenceDigest, validateDeploymentManifest } from "./validate-deployment-manifest.mjs";
 import { pinnedSolidityVersion } from "../quality/solidity-pin.mjs";
-import { materializeImmutableRuntime } from "./materialize-immutable-runtime.mjs";
+import { materializeImmutableRuntime, materializeInitCode } from "./materialize-immutable-runtime.mjs";
 
 const { keccak_256 } = sha3;
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -162,7 +162,7 @@ function deploymentEvidence(deployment, repoRoot, index) {
   const artifactPath = join(repoRoot, deployment.artifact);
   if (!existsSync(artifactPath)) throw new Error(`${label}.artifact does not exist: ${deployment.artifact}`);
   const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
-  const initCode = artifact.bytecode?.object;
+  const initCode = materializeInitCode(artifact, deployment.constructorArgs, label);
   const runtimeCode = materializeImmutableRuntime(artifact, deployment.immutableValues, label);
   if (!isHex(initCode) || !isHex(runtimeCode)) throw new Error(`${label}.artifact missing bytecode`);
 

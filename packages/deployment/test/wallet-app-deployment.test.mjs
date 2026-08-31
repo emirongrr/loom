@@ -23,6 +23,7 @@ const ENTRYPOINT = address("entrypoint");
 const FACTORY = address("factory");
 const APP_REGISTRY = address("app-registry");
 const P256 = address("p256");
+const SPONSOR_AUTHORIZER = address("sponsor-authorizer");
 const RECOVERY_CHILD = address("p256-recovery-child");
 const RECOVERY_FACTORY = address("p256-recovery-factory");
 const ACCOUNT = address("account");
@@ -33,6 +34,7 @@ test("builds an explicit private sponsored-onboarding policy", () => {
     sponsorship: {
       policyId: "loom-sepolia-onboarding-v1",
       policyHash: `0x${keccak256(Buffer.from("loom-sepolia-onboarding-v1", "utf8"))}`,
+      authorizer: SPONSOR_AUTHORIZER,
       maxCostWei: "5000000000000000",
       maxFactoryDataBytes: 8192,
       maxActivationsPerPrincipal: 3,
@@ -45,6 +47,7 @@ test("builds an explicit private sponsored-onboarding policy", () => {
     sponsorship: {
       policyId: "loom-sepolia-onboarding-v1",
       policyHash: `0x${keccak256(Buffer.from("loom-sepolia-onboarding-v1", "utf8"))}`,
+      authorizer: SPONSOR_AUTHORIZER,
       maxCostWei: "5000000000000000",
       maxFactoryDataBytes: 8192,
       maxActivationsPerPrincipal: 3,
@@ -58,6 +61,7 @@ test("builds an explicit private sponsored-onboarding policy", () => {
     activation: "sponsored",
     sponsorship: {
       policyId: "valid", maxCostWei: "1", maxFactoryDataBytes: 1,
+      authorizer: SPONSOR_AUTHORIZER,
       maxActivationsPerPrincipal: 1, windowSeconds: 1,
       privateSubmission: false, publicFallback: "disabled"
     }
@@ -525,6 +529,16 @@ function profileRpc(extraCodes = {}) {
     if (method === "eth_call") {
       const target = String(params[0].to).toLowerCase();
       const selector = String(params[0].data).toLowerCase();
+      const word = target === ONBOARDING_PAYMASTER.toLowerCase()
+        ? new Map([
+            [`0x${keccak256("entryPoint()").slice(0, 8)}`, addressWord(ENTRYPOINT)],
+            [`0x${keccak256("factory()").slice(0, 8)}`, addressWord(FACTORY)],
+            [`0x${keccak256("authorizer()").slice(0, 8)}`, addressWord(SPONSOR_AUTHORIZER)],
+            [`0x${keccak256("policyHash()").slice(0, 8)}`, `0x${keccak256(Buffer.from("loom-sepolia-onboarding-v1", "utf8"))}`],
+            [`0x${keccak256("maximumCost()").slice(0, 8)}`, uintWord(5000000000000000n)]
+          ]).get(selector)
+        : undefined;
+      if (word) return word;
       const answer = target === FACTORY.toLowerCase()
         ? new Map([
             [`0x${keccak256("entryPoint()").slice(0, 8)}`, ENTRYPOINT],
@@ -540,6 +554,9 @@ function profileRpc(extraCodes = {}) {
     return hexText(codes.get(String(params[0]).toLowerCase()) ?? "");
   };
 }
+
+function addressWord(value) { return `0x${"0".repeat(24)}${value.slice(2)}`; }
+function uintWord(value) { return `0x${value.toString(16).padStart(64, "0")}`; }
 
 const profileOptions = (over = {}) => ({
   broadcast: profileBroadcast(),
@@ -575,6 +592,7 @@ test("a sponsored profile requires and pins the onboarding paymaster", async () 
     activation: "sponsored",
     sponsorship: {
       policyId: "loom-sepolia-onboarding-v1", maxCostWei: "5000000000000000",
+      authorizer: SPONSOR_AUTHORIZER,
       maxFactoryDataBytes: 8192, maxActivationsPerPrincipal: 3, windowSeconds: 86400,
       privateSubmission: true, publicFallback: "disabled"
     }
@@ -583,12 +601,26 @@ test("a sponsored profile requires and pins the onboarding paymaster", async () 
   assert.equal(profile.onboarding.activation, "sponsored");
   assert.match(profile.onboarding.sponsorship.policyHash, /^0x[0-9a-f]{64}$/);
   assert.equal(profile.onboardingPaymaster, ONBOARDING_PAYMASTER);
+  assert.deepEqual(profile.onboardingPaymasterConfig, {
+    authorizer: SPONSOR_AUTHORIZER,
+    policyHash: onboarding.sponsorship.policyHash,
+    maximumCostWei: onboarding.sponsorship.maxCostWei
+  });
   assert.equal(profile.runtimeCodeHashes.onboardingPaymaster, codehash("onboarding-paymaster-code"));
 
   const withoutPaymaster = profileBroadcast().transactions.filter(t => t.contractName !== "OnboardingPaymaster");
   await assert.rejects(buildWalletProfileManifest(profileOptions({
     onboarding, broadcast: { chain: 11155111, transactions: withoutPaymaster }
   })), /requires a deployed OnboardingPaymaster/);
+
+  const wrongPolicyRpc = profileRpc();
+  await assert.rejects(buildWalletProfileManifest(profileOptions({
+    onboarding: {
+      ...onboarding,
+      sponsorship: { ...onboarding.sponsorship, maxCostWei: "4999999999999999" }
+    },
+    rpc: wrongPolicyRpc
+  })), /does not match the sponsored onboarding policy/);
 });
 
 // ADR-0024: the board is optional. A deployment without it is valid, and the

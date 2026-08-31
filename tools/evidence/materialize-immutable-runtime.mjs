@@ -1,3 +1,18 @@
+import { encodeDeployData } from "viem";
+
+export function materializeInitCode(artifact, constructorArgs, label = "artifact") {
+  const object = artifact?.bytecode?.object;
+  if (typeof object !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/u.test(object)) {
+    throw new Error(`${label} missing creation bytecode`);
+  }
+  if (!Array.isArray(constructorArgs)) throw new Error(`${label}.constructorArgs must be an array`);
+  try {
+    return encodeDeployData({ abi: artifact.abi ?? [], bytecode: object, args: constructorArgs });
+  } catch (error) {
+    throw new Error(`${label}.constructorArgs do not encode against the artifact ABI: ${error.message}`);
+  }
+}
+
 export function materializeImmutableRuntime(artifact, immutableValues, label = "artifact") {
   const object = artifact?.deployedBytecode?.object;
   if (typeof object !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/u.test(object)) {
