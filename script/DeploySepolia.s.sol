@@ -14,6 +14,7 @@ import {P256RecoveryValidatorFactory} from "../src/validators/P256RecoveryValida
 import {MultiP256Validator} from "../src/validators/MultiP256Validator.sol";
 import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
+import {ImplementationLockValidator} from "../src/validators/ImplementationLockValidator.sol";
 import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {VaultHook} from "../src/hooks/VaultHook.sol";
 import {RecoveryIntentBoard} from "../src/recovery/RecoveryIntentBoard.sol";
@@ -41,6 +42,7 @@ contract DeploySepolia is Script {
         P256VerifierMode p256VerifierMode,
         bytes32 p256VerifierCodehash,
         address accountImplementation,
+        address implementationLockValidator,
         address accountFactory,
         address appRegistry,
         address policyHook,
@@ -95,13 +97,14 @@ contract DeploySepolia is Script {
         );
         ERC1271GuardianVerifier erc1271GuardianVerifier = new ERC1271GuardianVerifier();
 
-        LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](2);
-        implementationModules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(policyHook), "");
-        implementationModules[1] = LoomAccount.ModuleInit(
-            ModuleType.VALIDATOR,
-            address(ecdsaValidator),
-            abi.encodeCall(ECDSAValidator.initialize, (msg.sender, address(policyHook)))
-        );
+        // Initialize the shared implementation so nobody can seize its initializer,
+        // while granting neither the deployer nor any application-operated key authority at
+        // the implementation address itself. Proxy accounts install their own live
+        // validators and hooks in isolated proxy storage.
+        ImplementationLockValidator implementationLockValidator = new ImplementationLockValidator();
+        LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](1);
+        implementationModules[0] =
+            LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(implementationLockValidator), "");
 
         LoomAccount implementation = new LoomAccount(
             entryPoint,
@@ -129,6 +132,7 @@ contract DeploySepolia is Script {
             p256Selection.mode,
             p256Selection.codehash,
             address(implementation),
+            address(implementationLockValidator),
             address(factory),
             address(factory.registry()),
             address(policyHook),
