@@ -6,7 +6,7 @@ Onboarding remains one native WebAuthn action. Availability metadata is advisory
 
 ## Source Revision And Drift Check
 
-Planning base: `cf09f60cdce2009604acad24ca28e30f7cda699b`. Evidence inventory digest: `741dce335dc8a9a53c8a9a33685aacec2e4b5d8530d5eb439fce59aa2328d255`. Source drift was present because this work extends the active v3 discovery branch.
+Planning snapshot: `cf09f60cdce2009604acad24ca28e30f7cda699b`. Evidence inventory digest: `741dce335dc8a9a53c8a9a33685aacec2e4b5d8530d5eb439fce59aa2328d255`. Source drift was present when the plan was written. The implemented source paths were revalidated on target-base commit `5e18a2b8e46471c618a747899ced819bd1b1c78a` after the v3 lifecycle merged; release evidence remains a separate clean-revision gate.
 
 ## Affected Components
 

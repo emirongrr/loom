@@ -2,7 +2,7 @@
 
 ## Evidence Basis
 
-I inspected the WebAuthn ceremony, v3 discovery, account store, guardian recovery, and Security UI. The source evidence is inventoried in [context.md](context.md). The central distinction is that WebAuthn backup flags describe credential availability, while the live validator key describes authority.
+This review covers the WebAuthn ceremony, v3 discovery, account store, guardian recovery, and Security UI. The source evidence is inventoried in [context.md](context.md). The central distinction is that WebAuthn backup flags describe credential availability, while the live validator key describes authority.
 
 ## Constraints
 
@@ -16,7 +16,7 @@ Onboarding must remain a one-click native passkey ceremony. Loom must not claim 
 
 ## Recommendation Summary
 
-I recommend the risk-adaptive design under the current product constraint. It keeps creation fast, treats guardian recovery as an independent protection, records only verified BE/BS observations, and makes provider choices visible without pretending the RP controls the native passkey store.
+The risk-adaptive design is recommended under the current product constraint. It keeps creation fast, treats guardian recovery as an independent protection, records only verified BE/BS observations, and makes provider choices visible without implying that the RP controls the native passkey store.
 
 ## Next Decisions
 

@@ -2,7 +2,7 @@
 
 Source root: repository root.
 
-This analysis records the product decision made in the working session on 2026-08-28: onboarding remains a one-click native WebAuthn ceremony; backup guidance moves to Security; authenticator-bound credentials remain valid because guardian recovery is an independent recovery path; a synced discoverable credential uses its v3 locator to find the same account on another device.
+This analysis records the product decision as of 2026-08-28: onboarding remains a one-click native WebAuthn ceremony; backup guidance moves to Security; authenticator-bound credentials remain valid because guardian recovery is an independent recovery path; a synced discoverable credential uses its v3 locator to find the same account on another device.
 
 Evidence inventory:
 
@@ -12,4 +12,4 @@ Evidence inventory:
 - `E004` — Guardian recovery preparation: `examples/passkey-wallet-web/src/features/recovery/recoveryPasskey.ts`.
 - `E005` — Saved account metadata and Security presentation: `examples/passkey-wallet-web/src/types.ts`, `examples/passkey-wallet-web/src/storage/accountStore.ts`, and `examples/passkey-wallet-web/src/features/security/SecurityPage.tsx`.
 
-The source tree was already dirty from the account-handle and recovery work described in the conversation. The analysis therefore records source drift as present and does not claim a clean revision.
+The evidence inventory was initially collected while implementation source drift was present, as recorded in `hardening.json`. Every source path listed above is present in target-base commit `5e18a2b8e46471c618a747899ced819bd1b1c78a`; final release evidence must still be generated from the clean release revision.

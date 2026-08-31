@@ -6,7 +6,7 @@ Keep one-click native WebAuthn onboarding and move availability guidance to Secu
 
 ## Executive Recommendation
 
-Option 1, **mandatory portable credential**, blocks credentials whose registration reports `BE=0`. Option 2, **risk-adaptive post-onboarding guidance**, records verified BE/BS observations, explains several protection choices, and preserves guardian recovery. I recommend Option 2 because it matches Loom's recovery model and does not misclassify roaming hardware keys.
+Option 1, **mandatory portable credential**, blocks credentials whose registration reports `BE=0`. Option 2, **risk-adaptive post-onboarding guidance**, records verified BE/BS observations, explains several protection choices, and preserves guardian recovery. Option 2 is recommended because it matches Loom's recovery model and does not misclassify roaming hardware keys.
 
 ## Evidence
 
@@ -114,7 +114,7 @@ Rollback can remove the Security card and optional metadata while retaining the 
 
 ## Recommendation
 
-I recommend Option 2 while guardians are a first-class Loom recovery mechanism. Option 1 becomes preferable only if product policy later requires a verified, provider-certified multi-device credential and Loom can measure that readiness more strongly than BE/BS.
+Option 2 is recommended while guardians are a first-class Loom recovery mechanism. Option 1 becomes preferable only if product policy later requires a verified, provider-certified multi-device credential and Loom can measure that readiness more strongly than BE/BS.
 
 ## Evidence Coverage And Residual Risk
 
