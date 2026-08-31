@@ -31,6 +31,8 @@ contract DeploySepolia is Script {
     bytes32 private constant ENTRYPOINT_V0_9_RUNTIME_CODEHASH =
         0x280d5c7c0de94b512401eb9c4b0ef0436275ff03627aad0ce1f93ab1627187a0;
     address private constant SENDER_CREATOR_V0_9 = 0x0A630a99Df908A81115A3022927Be82f9299987e;
+    bytes32 private constant SENDER_CREATOR_V0_9_RUNTIME_CODEHASH =
+        0xa7d4dd260bca9c96da49f7c0682fdda7f0074694d935815a336d3e60ee3ec6ad;
 
     error InvalidSepoliaChain(uint256 actualChainId);
     error InvalidSepoliaEntryPoint(address actualEntryPoint);
@@ -44,6 +46,14 @@ contract DeploySepolia is Script {
         bool nativePrecompileSupported,
         bool fallbackVerifierWasDeployed,
         bool fallbackVerifierWasProvided
+    );
+
+    event SponsoredOnboardingConfigured(
+        address indexed paymaster,
+        address indexed authorizer,
+        bytes32 indexed policyHash,
+        uint256 maximumCost,
+        uint256 initialDeposit
     );
 
     event SepoliaDeployment(
@@ -81,7 +91,7 @@ contract DeploySepolia is Script {
         if (entryPoint.codehash != ENTRYPOINT_V0_9_RUNTIME_CODEHASH) revert InvalidSepoliaEntryPoint(entryPoint);
         if (
             address(IEntryPoint(entryPoint).senderCreator()) != SENDER_CREATOR_V0_9
-                || SENDER_CREATOR_V0_9.code.length == 0
+                || SENDER_CREATOR_V0_9.codehash != SENDER_CREATOR_V0_9_RUNTIME_CODEHASH
         ) revert InvalidSepoliaEntryPoint(entryPoint);
 
         P256VerifierSelection memory p256Selection = P256VerifierConfig.select(
@@ -145,6 +155,20 @@ contract DeploySepolia is Script {
                 IEntryPoint(entryPoint), address(factory), sponsorAuthorizer, sponsorPolicyHash, sponsorMaximumCost
             );
             onboardingPaymaster.deposit{value: sponsorDeposit}();
+            // EntryPoint allows anyone to pre-fund any address. Require our
+            // minimum deposit without letting a third-party donation block the release.
+            if (
+                address(onboardingPaymaster.entryPoint()) != entryPoint
+                    || onboardingPaymaster.factory() != address(factory)
+                    || onboardingPaymaster.authorizer() != sponsorAuthorizer
+                    || onboardingPaymaster.policyHash() != sponsorPolicyHash
+                    || onboardingPaymaster.maximumCost() != sponsorMaximumCost
+                    || onboardingPaymaster.owner() != deployer
+                    || IEntryPoint(entryPoint).balanceOf(address(onboardingPaymaster)) < sponsorDeposit
+            ) revert InvalidDeploymentBinding();
+            emit SponsoredOnboardingConfigured(
+                address(onboardingPaymaster), sponsorAuthorizer, sponsorPolicyHash, sponsorMaximumCost, sponsorDeposit
+            );
         }
         if (
             address(factory.entryPoint()) != entryPoint || factory.accountImplementation() != address(implementation)
