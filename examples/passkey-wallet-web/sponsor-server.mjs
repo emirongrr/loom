@@ -13,16 +13,26 @@
 //
 // Usage:
 //   SEPOLIA_SPONSOR_PRIVATE_KEY=0x… node examples/passkey-wallet-web/sponsor-server.mjs \
-//     --rpc-url <url> [--port 8787] [--deposit 0.02]
+//     --rpc-url <url> [--port 8787]
 
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createPublicClient, createWalletClient, decodeErrorResult, formatEther, http, parseEther } from "viem";
+import { createPublicClient, createWalletClient, decodeErrorResult, encodeAbiParameters, formatEther, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
-import { EntryPointAbi } from "@loom/core";
+import { EntryPointAbi, packUserOperation } from "@loom/core";
+import {
+  authenticateSponsorRequest,
+  classifyActivationFailure,
+  createSponsorUsageLedger,
+  parseAuthorizationRequest,
+  parseActivationRequest,
+  SponsorDeliveryUnknown,
+  SponsorRequestRejection,
+  sponsorPolicyFromEnv
+} from "./sponsor-policy.mjs";
 
 // Runnable on its own, so it reads .env itself rather than relying on dev.mjs.
 const envFile = join(dirname(fileURLToPath(import.meta.url)), ".env");
@@ -35,15 +45,20 @@ const flag = name => {
 };
 
 const rpcUrl = flag("rpc-url") ?? process.env.SEPOLIA_RPC_URL;
+const privateRpcUrl = process.env.SPONSOR_PRIVATE_RPC_URL;
 const port = Number(flag("port") ?? process.env.SPONSOR_PORT ?? 8787);
-const deposit = parseEther(flag("deposit") ?? process.env.SPONSOR_DEPOSIT_ETH ?? "0.02");
 const entryPoint = flag("entry-point") ?? "0x433709009B8330FDa32311DF1C2AFA402eD8D009";
 const key = process.env.SEPOLIA_SPONSOR_PRIVATE_KEY;
+const authorizerKey = process.env.SPONSOR_AUTHORIZER_PRIVATE_KEY;
 // Must match the origin the wallet page is served from (dev.mjs defaults to 5174).
 const allowedOrigin = process.env.SPONSOR_ALLOWED_ORIGIN ?? "http://localhost:5174";
+const host = process.env.SPONSOR_HOST ?? "127.0.0.1";
 
 if (!rpcUrl) throw new Error("--rpc-url or SEPOLIA_RPC_URL is required");
+if (!privateRpcUrl) throw new Error("SPONSOR_PRIVATE_RPC_URL is required for private activation submission");
+if (privateRpcUrl === rpcUrl) throw new Error("SPONSOR_PRIVATE_RPC_URL must be distinct from the public read RPC");
 if (!key) throw new Error("SEPOLIA_SPONSOR_PRIVATE_KEY is required (never pass the key in argv)");
+if (!authorizerKey || !/^0x[0-9a-fA-F]{64}$/.test(authorizerKey)) throw new Error("SPONSOR_AUTHORIZER_PRIVATE_KEY is required and must be 32-byte hex");
 // The template ships with `0x`, so an unfilled .env must fail here and say so
 // rather than deeper in a key parser.
 if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
@@ -55,7 +70,44 @@ if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
 
 const publicClient = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
 const sponsor = privateKeyToAccount(key);
-const wallet = createWalletClient({ account: sponsor, chain: sepolia, transport: http(rpcUrl) });
+const authorizer = privateKeyToAccount(authorizerKey);
+const wallet = createWalletClient({ account: sponsor, chain: sepolia, transport: http(privateRpcUrl) });
+const sponsorPolicy = sponsorPolicyFromEnv(process.env, {
+  host,
+  chainId: sepolia.id,
+  entryPoint,
+  allowedOrigin
+});
+const sponsorUsage = createSponsorUsageLedger(sponsorPolicy);
+const packedUserOperationComponents = [
+  { name: "sender", type: "address" }, { name: "nonce", type: "uint256" },
+  { name: "initCode", type: "bytes" }, { name: "callData", type: "bytes" },
+  { name: "accountGasLimits", type: "bytes32" }, { name: "preVerificationGas", type: "uint256" },
+  { name: "gasFees", type: "bytes32" }, { name: "paymasterAndData", type: "bytes" },
+  { name: "signature", type: "bytes" }
+];
+const onboardingPaymasterAbi = [{
+  type: "function", name: "authorizationHash", stateMutability: "view",
+  inputs: [{ name: "userOp", type: "tuple", components: packedUserOperationComponents },
+  { name: "validUntil", type: "uint48" }, { name: "validAfter", type: "uint48" },
+  { name: "costLimit", type: "uint256" }], outputs: [{ type: "bytes32" }]
+}, ...["entryPoint", "authorizer", "factory", "policyHash", "maximumCost"].map(name => ({
+  type: "function", name, stateMutability: "view", inputs: [],
+  outputs: [{ type: name === "policyHash" ? "bytes32" : name === "maximumCost" ? "uint256" : "address" }]
+}))];
+
+const [liveEntryPoint, liveAuthorizer, liveFactory, livePolicyHash, liveMaximumCost] = await Promise.all(
+  ["entryPoint", "authorizer", "factory", "policyHash", "maximumCost"].map(functionName => publicClient.readContract({
+    address: sponsorPolicy.paymaster, abi: onboardingPaymasterAbi, functionName
+  }))
+);
+if (String(liveEntryPoint).toLowerCase() !== entryPoint.toLowerCase()
+  || String(liveAuthorizer).toLowerCase() !== authorizer.address.toLowerCase()
+  || String(liveFactory).toLowerCase() !== sponsorPolicy.factory.toLowerCase()
+  || String(livePolicyHash).toLowerCase() !== sponsorPolicy.policyHash.toLowerCase()
+  || BigInt(liveMaximumCost) !== sponsorPolicy.maxCostWei) {
+  throw new Error("live onboarding paymaster does not match the configured sponsor policy");
+}
 
 // Serialized: one account creation at a time, so concurrent requests cannot
 // reuse a nonce and knock each other out.
@@ -68,75 +120,62 @@ function revertDetail(error) {
     try {
       const decoded = decodeErrorResult({ abi: EntryPointAbi, data });
       return `${decoded.errorName}(${decoded.args.join(", ")})`;
-    } catch {}
+    } catch {
+      // Undecodable provider details are intentionally not returned to callers.
+    }
   }
-  return error.shortMessage ?? error.message;
+  return "provider request failed";
 }
 
-// accountGasLimits packs verificationGasLimit || callGasLimit; gasFees packs
-// maxPriorityFeePerGas || maxFeePerGas — 16 bytes each.
-const highHalf = word => BigInt(`0x${word.slice(2, 34)}`);
-const lowHalf = word => BigInt(`0x${word.slice(34, 66)}`);
-const maxCost = op =>
-  (BigInt(op.preVerificationGas) + highHalf(op.accountGasLimits) + lowHalf(op.accountGasLimits)) * lowHalf(op.gasFees);
+function rejectInvalidRequest(task) {
+  try {
+    return task();
+  } catch (error) {
+    throw new SponsorRequestRejection(error instanceof Error ? error.message : "sponsor request rejected");
+  }
+}
 
-async function deploy(packed, { selfFunded = false } = {}) {
+async function submitPrivately(packed) {
   const existing = await publicClient.getCode({ address: packed.sender });
-  if (existing && existing !== "0x") return { alreadyDeployed: true, account: packed.sender };
+  if (existing && existing !== "0x") {
+    throw new SponsorRequestRejection("account is already deployed; reconcile its live chain state");
+  }
 
-  // Refuse before spending: a signature this service cannot validate is a
-  // signature it must not pay for.
+  // The paymaster's EntryPoint deposit is charged in the same operation. There
+  // is no sender prefund transaction to strand or repeat.
   try {
     await publicClient.simulateContract({
       address: entryPoint, abi: EntryPointAbi, functionName: "handleOps",
-      args: [[packed], sponsor.address], account: sponsor,
-      stateOverride: [{ address: packed.sender, balance: deposit * 10n }]
+      args: [[packed], sponsor.address], account: sponsor
     });
   } catch (error) {
-    throw new Error(`operation would revert, not sponsoring: ${revertDetail(error)}`);
+    throw new SponsorRequestRejection(`operation would revert, not sponsoring: ${revertDetail(error)}`);
   }
 
-  // Two different balances can be short here, and confusing them wastes time:
-  // the account pays the operation, the submitter fronts transaction gas and is
-  // reimbursed. Name whichever one is missing.
-  const required = maxCost(packed);
-  const submitterBalance = await publicClient.getBalance({ address: sponsor.address });
-  if (submitterBalance < required) {
-    throw new Error(
-      `submitter ${sponsor.address} holds ${formatEther(submitterBalance)} ETH, not enough to front ` +
-      `${formatEther(required)} ETH of transaction gas (it is reimbursed afterwards)`
-    );
-  }
-
-  let depositTx = null;
-  if (selfFunded) {
-    // The account pays its own way; this service only fronts transaction gas
-    // and is reimbursed as beneficiary. Check before sending anything.
-    const balance = await publicClient.getBalance({ address: packed.sender });
-    if (balance < required) {
-      throw new Error(
-        `account holds ${formatEther(balance)} ETH but the operation can cost up to ${formatEther(required)} ETH`
-      );
-    }
-  } else {
-    depositTx = await wallet.writeContract({
-      address: entryPoint, abi: EntryPointAbi, functionName: "depositTo", args: [packed.sender], value: deposit
+  let opTx;
+  try {
+    opTx = await wallet.writeContract({
+      address: entryPoint, abi: EntryPointAbi, functionName: "handleOps", args: [[packed], sponsor.address]
     });
-    await publicClient.waitForTransactionReceipt({ hash: depositTx });
+  } catch (error) {
+    throw new SponsorDeliveryUnknown(`private submission result is unknown: ${revertDetail(error)}`);
+  }
+  let receipt;
+  try { receipt = await publicClient.waitForTransactionReceipt({ hash: opTx }); }
+  catch { throw new SponsorDeliveryUnknown(`private transaction ${opTx} was submitted but receipt lookup failed`); }
+  if (receipt.status !== "success") {
+    throw new SponsorDeliveryUnknown(`private transaction ${opTx} reverted`);
   }
 
-  const opTx = await wallet.writeContract({
-    address: entryPoint, abi: EntryPointAbi, functionName: "handleOps", args: [[packed], sponsor.address]
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: opTx });
-
-  const code = await publicClient.getCode({ address: packed.sender });
+  let code;
+  try { code = await publicClient.getCode({ address: packed.sender }); }
+  catch { throw new SponsorDeliveryUnknown(`private transaction ${opTx} landed but account code verification failed`); }
   const size = code && code !== "0x" ? (code.length - 2) / 2 : 0;
-  if (size === 0) throw new Error(`handleOps landed (${opTx}) but the account has no code`);
+  if (size === 0) throw new SponsorDeliveryUnknown(`handleOps landed (${opTx}) but the account has no code`);
 
   return {
-    account: packed.sender, depositTx, opTx, codeSize: size,
-    gasUsed: receipt.gasUsed.toString(), fundedBy: selfFunded ? "account" : "sponsor"
+    account: packed.sender, opTx, codeSize: size,
+    gasUsed: receipt.gasUsed.toString(), fundedBy: "sponsor"
   };
 }
 
@@ -156,93 +195,84 @@ const server = createServer((req, res) => {
     return res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "origin not allowed" }));
   }
   if (origin === allowedOrigin) res.setHeader("access-control-allow-origin", allowedOrigin);
+  if (origin === allowedOrigin) res.setHeader("access-control-allow-credentials", "true");
   res.setHeader("vary", "Origin");
-  res.setHeader("access-control-allow-headers", "content-type");
+  res.setHeader("access-control-allow-headers", "authorization, content-type, idempotency-key");
   if (req.method === "OPTIONS") return res.writeHead(204).end();
 
-  // Read-only account status, so a returning user's page can say whether their
-  // account is on chain without shipping its own RPC endpoint to the browser.
-  if (req.method === "GET" && req.url.startsWith("/account")) {
-    const address = new URL(req.url, "http://localhost").searchParams.get("address");
-    if (!address) {
-      return res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: "address required" }));
-    }
-    return void (async () => {
-      try {
-        const code = await publicClient.getCode({ address });
-        const size = code && code !== "0x" ? (code.length - 2) / 2 : 0;
-        const balance = await publicClient.getBalance({ address });
-        // The nonce and fees an operation needs, read from the chain so the page
-        // does not have to guess them or carry an RPC endpoint of its own.
-        const nonce = size > 0
-          ? await publicClient.readContract({
-              address: entryPoint,
-              abi: [{ type: "function", name: "getNonce", stateMutability: "view",
-                      inputs: [{ type: "address" }, { type: "uint192" }], outputs: [{ type: "uint256" }] }],
-              functionName: "getNonce", args: [address, 0n]
-            })
-          : 0n;
-        const block = await publicClient.getBlock();
-        const tip = await publicClient.estimateMaxPriorityFeePerGas().catch(() => 1_000_000n);
-        const deposit = await publicClient.readContract({
-          address: entryPoint,
-          abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }],
-          functionName: "balanceOf", args: [address]
-        });
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
-          address, deployed: size > 0, codeSize: size, balance: formatEther(balance),
-          deposit: formatEther(deposit), chainId: sepolia.id, nonce: nonce.toString(),
-          // Doubling the base fee leaves room for it to rise before inclusion.
-          maxFeePerGas: ((block.baseFeePerGas ?? 1_000_000_000n) * 2n + tip).toString(),
-          maxPriorityFeePerGas: tip.toString()
-        }));
-      } catch (error) {
-        res.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ error: error.message }));
-      }
-    })();
-  }
-
-  // Complete a change the account already scheduled.
-  //
-  // This is a plain transaction rather than a user operation: executeScheduled
-  // takes the account's execution lock, so routing it through the account's own
-  // execute would revert with Reentrancy. It carries no authority of its own —
-  // the account verifies the operation was scheduled and is due — so relaying it
-  // cannot cause anything the owner did not already schedule and wait out.
-  if (req.method === "POST" && req.url.startsWith("/execute-scheduled")) {
+  if (req.method === "POST" && req.url === "/v1/authorize") {
     let body = "";
-    req.on("data", chunk => {
-      body += chunk;
-      if (body.length > 20_000) req.destroy();
-    });
+    req.on("data", chunk => { body += chunk; if (body.length > 100_000) req.destroy(); });
     return void req.on("end", () => {
       serialize(async () => {
+        let reservation;
         try {
-          const { to, data } = JSON.parse(body);
-          if (!/^0x[0-9a-fA-F]{40}$/.test(to ?? "")) throw new Error("account address required");
-          if (!/^0x([0-9a-fA-F]{2})*$/.test(data ?? "")) throw new Error("calldata required");
-          console.log(`==> execute-scheduled for ${to}`);
-          // Refuse before spending: the account rejects an operation that is not
-          // scheduled or not yet due, and that is not worth a transaction fee.
-          await publicClient.call({ account: sponsor.address, to, data });
-          const hash = await wallet.sendTransaction({ to, data });
-          const receipt = await publicClient.waitForTransactionReceipt({ hash });
-          const result = { tx: hash, status: receipt.status, gasUsed: receipt.gasUsed.toString() };
-          console.log(`    ${JSON.stringify(result)}`);
+          const { principal, parsed } = rejectInvalidRequest(() => ({
+            principal: authenticateSponsorRequest(req.headers, sponsorPolicy),
+            parsed: parseAuthorizationRequest(JSON.parse(body), sponsorPolicy)
+          }));
+          // Reserve the full on-chain policy cap before issuing a reusable
+          // authorization. A caller can submit it without returning here.
+          const held = rejectInvalidRequest(() => sponsorUsage.reserve({
+            principal, userOpHash: parsed.userOpHash, maximumCost: sponsorPolicy.maxCostWei
+          }));
+          if (held.duplicate) {
+            return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(held.result));
+          }
+          reservation = held.reservation;
+          const validAfter = 0n;
+          const validUntil = BigInt(Math.floor(Date.now() / 1000) + 300);
+          const costLimit = sponsorPolicy.maxCostWei;
+          const placeholderData = encodeAbiParameters(
+            [{ type: "uint48" }, { type: "uint48" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes" }],
+            [validUntil, validAfter, costLimit, sponsorPolicy.policyHash, "0x"]
+          );
+          const sponsored = {
+            ...parsed.op,
+            preVerificationGas: parsed.op.preVerificationGas + sponsorPolicy.preVerificationGasBuffer,
+            paymaster: sponsorPolicy.paymaster,
+            paymasterVerificationGasLimit: sponsorPolicy.paymasterVerificationGasLimit,
+            paymasterPostOpGasLimit: sponsorPolicy.paymasterPostOpGasLimit,
+            paymasterData: placeholderData
+          };
+          const packed = packUserOperation(sponsored);
+          const authorizationHash = await publicClient.readContract({
+            address: sponsorPolicy.paymaster, abi: onboardingPaymasterAbi,
+            functionName: "authorizationHash", args: [packed, validUntil, validAfter, costLimit]
+          });
+          const signature = await authorizer.sign({ hash: authorizationHash });
+          const paymasterData = encodeAbiParameters(
+            [{ type: "uint48" }, { type: "uint48" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes" }],
+            [validUntil, validAfter, costLimit, sponsorPolicy.policyHash, signature]
+          );
+          const result = Object.freeze({
+            authorized: true,
+            paymaster: sponsorPolicy.paymaster,
+            paymasterVerificationGasLimit: rpcQuantity(sponsorPolicy.paymasterVerificationGasLimit),
+            paymasterPostOpGasLimit: rpcQuantity(sponsorPolicy.paymasterPostOpGasLimit),
+            preVerificationGas: rpcQuantity(sponsored.preVerificationGas),
+            paymasterData,
+            validUntil: Number(validUntil)
+          });
+          sponsorUsage.commit(parsed.userOpHash, result);
           res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
         } catch (error) {
-          const detail = revertDetail(error);
-          console.log(`    refused: ${detail}`);
-          res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: detail }));
+          if (reservation) sponsorUsage.release(reservation);
+          const rejected = error instanceof SponsorRequestRejection;
+          res.writeHead(rejected ? 422 : 503, { "content-type": "application/json" }).end(JSON.stringify({
+            authorized: false,
+            reason: rejected ? error.message : "authorization service unavailable"
+          }));
         }
       });
     });
   }
 
-  // Relay an operation for an account that already exists. No deposit and no
-  // creation: the account pays from its own EntryPoint deposit and this only
-  // carries the operation to the chain.
-  if (req.method === "POST" && req.url.startsWith("/submit")) {
+  // Production-shaped, activation-only private submission. Unlike the legacy
+  // development routes below, this boundary requires a deployment policy,
+  // exact idempotency, a bounded principal budget, and an operation that can do
+  // nothing except deploy its own counterfactual Loom account.
+  if (req.method === "POST" && req.url === "/v1/activate") {
     let body = "";
     req.on("data", chunk => {
       body += chunk;
@@ -251,76 +281,62 @@ const server = createServer((req, res) => {
     return void req.on("end", () => {
       serialize(async () => {
         try {
-          const raw = JSON.parse(body);
-          const packed = { ...raw, nonce: BigInt(raw.nonce), preVerificationGas: BigInt(raw.preVerificationGas) };
-          console.log(`==> relay request for ${packed.sender} (nonce ${packed.nonce})`);
-          try {
-            await publicClient.simulateContract({
-              address: entryPoint, abi: EntryPointAbi, functionName: "handleOps",
-              args: [[packed], sponsor.address], account: sponsor
-            });
-          } catch (error) {
-            throw new Error(`operation would revert, not relaying: ${revertDetail(error)}`);
-          }
-          const opTx = await wallet.writeContract({
-            address: entryPoint, abi: EntryPointAbi, functionName: "handleOps", args: [[packed], sponsor.address]
+          const parsed = rejectInvalidRequest(() => {
+            authenticateSponsorRequest(req.headers, sponsorPolicy);
+            const candidate = parseActivationRequest(JSON.parse(body), sponsorPolicy);
+            if (req.headers["idempotency-key"]?.toLowerCase() !== candidate.userOpHash.toLowerCase()) {
+              throw new Error("idempotency key must equal the UserOperation hash");
+            }
+            return candidate;
           });
-          const receipt = await publicClient.waitForTransactionReceipt({ hash: opTx });
-          const result = { account: packed.sender, opTx, status: receipt.status, gasUsed: receipt.gasUsed.toString() };
-          console.log(`    ${JSON.stringify(result)}`);
+          const deployed = await submitPrivately(parsed.packed);
+          const result = Object.freeze({
+            accepted: true,
+            account: parsed.op.sender,
+            userOpHash: parsed.userOpHash,
+            transactionHash: deployed.opTx,
+            fundedBy: deployed.fundedBy
+          });
           res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
         } catch (error) {
-          console.log(`    refused: ${error.message}`);
-          res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: error.message }));
+          // At this outer boundary we cannot prove that an RPC failure after
+          // submission means non-acceptance. Only policy/auth/idempotency errors
+          // are explicit pre-delivery rejections; all other failures are
+          // delivery-ambiguous and must not trigger automatic public fallback.
+          const failure = classifyActivationFailure(error);
+          res.writeHead(failure.status, { "content-type": "application/json" }).end(JSON.stringify({
+            accepted: false,
+            delivery: failure.delivery,
+            publicFallbackAllowed: failure.publicFallbackAllowed,
+            reason: failure.reason
+          }));
         }
       });
     });
   }
 
-  if (req.method !== "POST" || !req.url.startsWith("/deploy")) {
-    return res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "POST /deploy or GET /account?address=…" }));
-  }
-
-  let body = "";
-  req.on("data", chunk => {
-    body += chunk;
-    if (body.length > 100_000) req.destroy();
-  });
-  req.on("end", () => {
-    serialize(async () => {
-      try {
-        const raw = JSON.parse(body);
-        const selfFunded = new URL(req.url, "http://localhost").searchParams.get("mode") === "self-funded";
-        const packed = { ...raw, nonce: BigInt(raw.nonce), preVerificationGas: BigInt(raw.preVerificationGas) };
-        console.log(`==> deploy request for ${packed.sender}${selfFunded ? " (self-funded)" : ""}`);
-        const result = await deploy(packed, { selfFunded });
-        console.log(`    ${JSON.stringify(result)}`);
-        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
-      } catch (error) {
-        console.log(`    refused: ${error.message}`);
-        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: error.message }));
-      }
-    });
-  });
+  // The former generic /deploy route intentionally no longer exists. It
+  // bypassed the activation policy ledger and made the bounded /v1/activate
+  // endpoint cosmetic. Self-funded creation belongs on a normal ERC-4337
+  // bundler; sponsored creation must cross the policy boundary above.
+  return res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({
+    error: "supported routes: POST /v1/authorize and POST /v1/activate"
+  }));
 });
 
-// Loopback only. `listen(port)` binds every interface, which put an
-// unauthenticated relay holding a funded key on whatever network the machine was
-// attached to -- a café, an office LAN, a forwarded container port. The wallet
-// page reaches it over localhost either way, so nothing legitimate needs the
-// wider bind. An operator who genuinely wants remote access sets SPONSOR_HOST
-// and, per the note below, puts authentication in front of it.
-const host = process.env.SPONSOR_HOST ?? "127.0.0.1";
+function rpcQuantity(value) { return `0x${BigInt(value).toString(16)}`; }
 
+// Loopback only. The reference process intentionally cannot be made into a
+// network service by changing one environment variable: its in-memory ledger
+// has no durable per-user identity or cross-instance transaction boundary.
 server.listen(port, host, async () => {
   console.log(`sponsor  ${sponsor.address}`);
   console.log(`balance  ${formatEther(await publicClient.getBalance({ address: sponsor.address }))} ETH`);
-  console.log(`deposit  ${formatEther(deposit)} ETH per account`);
-  console.log(`listening on http://${host}:${port}/deploy`);
+  console.log(`funding  ERC-4337 onboarding paymaster deposit`);
+  console.log(`authorization endpoint http://${host}:${port}/v1/authorize`);
+  console.log(`activation endpoint http://${host}:${port}/v1/activate`);
   console.log(`accepting requests from origin ${allowedOrigin} only`);
-  console.log("\nNOTE: this endpoint is unauthenticated and pays for anyone who calls it.");
-  console.log("A real deployment puts it behind the institution's own user authentication.");
-  if (host !== "127.0.0.1" && host !== "localhost") {
-    console.log(`WARNING: SPONSOR_HOST=${host} exposes a funded key beyond this machine.`);
-  }
+  console.log(`policy    ${sponsorPolicy.policyId}; factory ${sponsorPolicy.factory}`);
+  console.log(`paymaster ${sponsorPolicy.paymaster}; private submission RPC configured`);
+  console.log("authentication loopback-development principal only; external production gateways are separate deployments");
 });
