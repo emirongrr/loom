@@ -1,17 +1,14 @@
-import type { Address } from "@loom/core";
+import type { Address, Hex } from "@loom/core";
 
 /**
  * Whether the key on this device still controls the account.
  *
- * Opening a wallet is a local act: the saved handle is unlocked with a passkey
- * assertion and nothing is asked of the chain. Reading a balance is a plain
- * chain read and works for anyone. So an account whose validators were replaced
- * by a completed recovery still opens here, still shows its balance, and fails
- * only at signing -- as `AA24 signature error`, from the bundler, which names
- * neither the recovery nor the key.
+ * A passkey assertion proves possession of the saved key, not that the account
+ * still accepts it. Reading a balance is permissionless, but entering signer
+ * mode must additionally check the live validator and its exact key binding.
  *
- * The account itself settles it: the validator this device would sign with is
- * either installed on it or it is not.
+ * The account and validator settle it together: the validator must still be
+ * installed and must still hold this credential's complete key binding.
  */
 export type AccountControl =
   /** The validator this device signs with is installed on the account. */
@@ -29,12 +26,16 @@ const VALIDATOR_MODULE_TYPE = 1n;
 export async function readAccountControl(input: {
   readonly account: Address;
   readonly validator: Address;
+  readonly publicKey: { readonly x: Hex; readonly y: Hex; readonly rpIdHash: Hex; readonly originHash: Hex };
   readonly deployed: boolean;
   readonly isModuleInstalled: (input: {
     readonly account: Address;
     readonly moduleTypeId: bigint;
     readonly module: Address;
   }) => Promise<boolean>;
+  readonly readPublicKey: (input: { readonly account: Address; readonly validator: Address }) => Promise<
+    readonly [Hex, Hex, Hex, Hex]
+  >;
 }): Promise<AccountControl> {
   // An account with no code has installed nothing yet; its first operation
   // creates it with the validator this device holds. That is not supersession.
@@ -45,7 +46,14 @@ export async function readAccountControl(input: {
       moduleTypeId: VALIDATOR_MODULE_TYPE,
       module: input.validator
     });
-    return Object.freeze({ kind: installed ? "in-control" as const : "superseded" as const });
+    if (!installed) return Object.freeze({ kind: "superseded" as const });
+    const live = await input.readPublicKey({ account: input.account, validator: input.validator });
+    const expected = input.publicKey;
+    const sameKey = live[0].toLowerCase() === expected.x.toLowerCase()
+      && live[1].toLowerCase() === expected.y.toLowerCase()
+      && live[2].toLowerCase() === expected.rpIdHash.toLowerCase()
+      && live[3].toLowerCase() === expected.originHash.toLowerCase();
+    return Object.freeze({ kind: sameKey ? "in-control" as const : "superseded" as const });
   } catch {
     return Object.freeze({ kind: "unreadable" as const });
   }

@@ -1,5 +1,6 @@
 import type { Hex } from "@loom/core";
-import { bytesFromHex, hexFromBytes } from "../../services/webauthn/encoding.ts";
+import { decodeAccountUserHandle } from "../onboarding/passkeyUserHandle.ts";
+import { base64Url, bytesFromHex, equalBytes, hexFromBytes } from "../../services/webauthn/encoding.ts";
 
 // Typed structurally rather than against one package's challenge type: the SDK's
 // account client and @loom/passkey's raw-hash signer describe the same ceremony
@@ -98,17 +99,22 @@ export async function passkeyDerivedSecret(input: {
  * Returns null when they cancel, which is an answer rather than a failure.
  */
 export async function assertAnyPasskey(): Promise<{
+  readonly challenge: Hex;
   readonly credentialId: Hex;
   readonly authenticatorData: Uint8Array;
   readonly clientDataJSON: Uint8Array;
   readonly signature: Uint8Array;
-  /** What registration wrote into the credential; an account when one was known. */
-  readonly userHandle?: Hex;
+  readonly userHandle: Hex;
+  /** Stable account handle returned by the discoverable credential. */
+  readonly accountHandle: Hex;
+  readonly walletChainId: number;
+  readonly factory: `0x${string}`;
 } | null> {
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkeys.");
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
   const credential = await navigator.credentials.get({
     publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      challenge,
       rpId: window.location.hostname,
       userVerification: "required",
       timeout: 60_000
@@ -125,15 +131,38 @@ export async function assertAnyPasskey(): Promise<{
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
     return null;
   }
-  const handle = credential.response.userHandle;
+  const authenticatorData = new Uint8Array(credential.response.authenticatorData);
+  const clientDataJSON = new Uint8Array(credential.response.clientDataJSON);
+  let client: { type?: unknown; challenge?: unknown; origin?: unknown; crossOrigin?: unknown };
+  try { client = JSON.parse(new TextDecoder().decode(clientDataJSON)); }
+  catch { throw new Error("Passkey client data is invalid."); }
+  if (client.type !== "webauthn.get" || client.challenge !== base64Url(challenge)) {
+    throw new Error("Passkey challenge does not match this lookup.");
+  }
+  if (client.origin !== window.location.origin || client.crossOrigin === true) {
+    throw new Error("Passkey origin does not match this wallet.");
+  }
+  if (authenticatorData.length < 37) throw new Error("Passkey authenticator data is invalid.");
+  const expectedRpIdHash = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(window.location.hostname)
+  ));
+  if (!equalBytes(authenticatorData.slice(0, 32), expectedRpIdHash)) {
+    throw new Error("Passkey RP ID does not match this wallet.");
+  }
+  const flags = authenticatorData[32]!;
+  if ((flags & 0x01) === 0 || (flags & 0x04) === 0) throw new Error("Passkey user verification is required.");
+
+  const named = decodeAccountUserHandle(credential.response.userHandle);
+  if (!named) throw new Error("This passkey does not contain a Loom account handle.");
   return Object.freeze({
+    challenge: hexFromBytes(challenge),
     credentialId: hexFromBytes(new Uint8Array(credential.rawId)),
-    // Twenty bytes is an address this wallet wrote at registration. Anything
-    // else was written by something that is not this wallet, or is the random
-    // filler a created wallet uses, and names nothing.
-    ...(handle && handle.byteLength === 20 ? { userHandle: hexFromBytes(new Uint8Array(handle)) } : {}),
-    authenticatorData: new Uint8Array(credential.response.authenticatorData),
-    clientDataJSON: new Uint8Array(credential.response.clientDataJSON),
+    userHandle: hexFromBytes(new Uint8Array(credential.response.userHandle!)),
+    accountHandle: named.accountHandle,
+    walletChainId: named.chainId,
+    factory: named.factory,
+    authenticatorData,
+    clientDataJSON,
     signature: new Uint8Array(credential.response.signature)
   });
 }

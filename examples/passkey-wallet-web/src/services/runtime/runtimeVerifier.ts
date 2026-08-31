@@ -101,6 +101,7 @@ function deploymentFingerprint(deployment: WalletDeployment): string {
     validator: deployment.validator.toLowerCase(),
     policyHook: deployment.policyHook.toLowerCase(),
     recoveryModule: deployment.recoveryModule?.toLowerCase(),
+    onboardingPaymaster: deployment.onboardingPaymaster?.toLowerCase(),
     guardianVerifiers: deployment.guardianVerifiers,
     runtimeCodeHashes: deployment.runtimeCodeHashes,
     recoveryValidatorProvisioner: deployment.recoveryValidatorProvisioner
@@ -111,11 +112,15 @@ function runtimeCommitments(deployment: WalletDeployment): readonly [Address, He
   const values: [Address, Hex, string][] = [
     [deployment.entryPoint, deployment.runtimeCodeHashes.entryPoint, "EntryPoint"],
     [deployment.factory, deployment.runtimeCodeHashes.factory, "Account factory"],
+    [deployment.appRegistry, deployment.runtimeCodeHashes.appRegistry, "Account handle registry"],
     [deployment.implementation, deployment.runtimeCodeHashes.implementation, "Account implementation"],
     [deployment.validator, deployment.runtimeCodeHashes.validator, "Passkey validator"],
     [deployment.policyHook, deployment.runtimeCodeHashes.policyHook, "Policy hook"]
   ];
   if (deployment.recoveryModule && deployment.runtimeCodeHashes.recoveryModule) values.push([deployment.recoveryModule, deployment.runtimeCodeHashes.recoveryModule, "Recovery module"]);
+  if (deployment.onboardingPaymaster && deployment.runtimeCodeHashes.onboardingPaymaster) {
+    values.push([deployment.onboardingPaymaster, deployment.runtimeCodeHashes.onboardingPaymaster, "Onboarding paymaster"]);
+  }
   const guardians = [
     [deployment.guardianVerifiers?.ecdsa, deployment.runtimeCodeHashes.ecdsaGuardianVerifier, "ECDSA guardian verifier"],
     [deployment.guardianVerifiers?.p256, deployment.runtimeCodeHashes.p256GuardianVerifier, "P-256 guardian verifier"],

@@ -8,20 +8,23 @@ import { AppsPage } from "../features/apps/AppsPage";
 import { DeveloperSettings } from "../features/developer/DeveloperSettings";
 import { WalletLanding, WalletLock } from "../features/onboarding/WalletLanding";
 import type { WalletCreationRequest } from "../features/onboarding/WalletLanding";
-import { authenticateBrowserAccount, deriveCreatedAccountHandle, loadWalletDeployment, migrateLegacyAccountHandles, registerBrowserPasskey } from "../features/onboarding/accountLifecycle";
+import { authenticateBrowserAccount, backupObservation, credentialBackupState, deriveCreatedAccountHandle, loadWalletDeployment, registerBrowserPasskey, updateBrowserPasskeyLabel } from "../features/onboarding/accountLifecycle";
 import { prepareInitialGuardianSetup } from "../features/onboarding/initialGuardianSetup";
 import { readVerifierCodeHash } from "../features/security/guardianClient";
 import { useNetwork } from "../config/NetworkContext";
-import { DEFAULT_NETWORK } from "../config/network";
-import { P256ValidatorAbi } from "@loom/core/abi";
+import { LoomAccountAbi, P256ValidatorAbi } from "@loom/core/abi";
 import type { Hex } from "@loom/core";
-import { candidateSigned, derToRawSignature, webauthnSignedMessage } from "../features/onboarding/passkeyDiscovery";
+import { keccak256, sha256, stringToHex } from "viem";
+import { createRpcStateTransport, discoverPasskeyAccount } from "@loom/sdk";
+import { hexFromBytes } from "../services/webauthn/encoding.ts";
 import { useAppServices } from "./AppServices";
 import type { AccountHandle } from "../types";
-import { findWalletsByPasskey } from "../features/onboarding/findWalletsByPasskey";
 import { assertAnyPasskey } from "../features/wallet/webauthn";
 import { useAppNavigation } from "./useAppNavigation";
 import { safeUserMessage } from "../domain/errors/appError";
+import { readAccountControl } from "../features/wallet/accountControl";
+import { createAccountHandle } from "../features/onboarding/passkeyUserHandle.ts";
+import { activateAccount } from "../features/wallet/activate.ts";
 
 /**
  * Recovery, stopping a recovery, the security screen and the guardian workspace
@@ -48,55 +51,9 @@ function hostOf(endpoint: string): string {
   try { return new URL(endpoint).host; } catch { return endpoint; }
 }
 
-/**
- * Every validator a key could have been published by.
- *
- * The deployment's own, plus each one a recovery deployed -- read from the
- * factory's own announcements, which is one query rather than a scan of the
- * chain for anything that ever emitted a key. A recovered account's key lives
- * on the validator its recovery installed, so leaving those out is what made a
- * recovered wallet unfindable by its own passkey.
- *
- * A factory that cannot be read yields the profile's validator alone: fewer
- * places to look, not a failure.
- */
-async function validatorsToSearch(
-  deployment: Awaited<ReturnType<typeof loadWalletDeployment>>,
-  client: { getLogs: (request: never) => Promise<readonly { readonly data: `0x${string}` }[]> }
-): Promise<readonly `0x${string}`[]> {
-  const factory = deployment.recoveryValidatorProvisioner?.address;
-  if (!factory) return [deployment.validator];
-  try {
-    const logs = await client.getLogs({
-      address: factory,
-      fromBlock: 0n,
-      toBlock: "latest",
-      event: RECOVERY_VALIDATOR_DEPLOYED
-    } as never);
-    const deployed = logs.map(log => `0x${log.data.slice(26, 66)}` as `0x${string}`);
-    return [deployment.validator, ...new Set(deployed)];
-  } catch {
-    return [deployment.validator];
-  }
-}
-
-const RECOVERY_VALIDATOR_DEPLOYED = {
-  type: "event",
-  name: "RecoveryValidatorDeployed",
-  inputs: [
-    { name: "account", type: "address", indexed: true },
-    { name: "recoveryNonce", type: "uint64", indexed: true },
-    { name: "initDataHash", type: "bytes32", indexed: true },
-    { name: "validator", type: "address" },
-    { name: "newGuardianRoot", type: "bytes32" },
-    { name: "newGuardianThreshold", type: "uint8" }
-  ]
-} as const;
-
-
 export function App() {
   const services = useAppServices();
-  const { config, update: updateNetwork } = useNetwork();
+  const { config } = useNetwork();
   const { area, setArea, recoveryPath, recoveryPayerId, guardianInboundLink, theme, setTheme, openRecovery, closeRecovery } = useAppNavigation();
   const [accounts, setAccounts] = useState<readonly AccountHandle[]>([]);
   const [selected, setSelected] = useState<AccountHandle | null>(null);
@@ -105,30 +62,21 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   /** A passkey's account, shown for confirmation before it is saved. */
-  /** Set when a search failed because the endpoint will not serve its logs. */
-  const [endpointCannotSearch, setEndpointCannotSearch] = useState("");
   const [foundByPasskey, setFoundByPasskey] = useState<{
     readonly account: `0x${string}`;
     readonly validator: `0x${string}`;
     readonly publicKey: { readonly x: `0x${string}`; readonly y: `0x${string}` };
     readonly credentialId: `0x${string}`;
     readonly chainId: number;
+    readonly accountHandle: Hex;
+    readonly passkeyBackup: NonNullable<AccountHandle["passkeyBackup"]>;
     readonly deployed: boolean;
     readonly alreadySaved: string | null;
   } | null>(null);
   useEffect(() => {
     void (async () => {
       try {
-        let saved = await services.accounts.inspect();
-        try {
-          const legacyAccounts = await migrateLegacyAccountHandles(window.localStorage, { rpId: location.hostname, origin: location.origin });
-          for (const legacy of [...legacyAccounts].reverse()) {
-            if (!saved.accounts.some(account => account.id === legacy.id) && !(await services.accounts.isRemoved(legacy.id))) {
-              await services.accounts.save(legacy);
-            }
-          }
-          saved = await services.accounts.inspect();
-        } catch { /* Legacy data stays untouched and is never surfaced as a separate onboarding flow. */ }
+        const saved = await services.accounts.inspect();
         setAccounts(saved.accounts);
         // A record this build cannot read is skipped rather than allowed to hide
         // the healthy ones, so say that it happened. Silently showing fewer
@@ -154,7 +102,10 @@ export function App() {
         deployment,
         readVerifierCodeHash: verifier => readVerifierCodeHash(config, verifier, services.publicClients)
       }) : undefined;
-      const passkey = await registerBrowserPasskey(request.label.trim());
+      const accountHandle = createAccountHandle();
+      const passkey = await registerBrowserPasskey(
+        request.label.trim(), accountHandle, deployment.chainId, deployment.factory
+      );
       const handle = deriveCreatedAccountHandle({
         label: request.label,
         deployment,
@@ -162,6 +113,12 @@ export function App() {
         rpId: location.hostname,
         origin: location.origin,
         ...(initial ? { initialGuardians: { root: initial.set.root, threshold: initial.set.threshold } } : {})
+      });
+      await updateBrowserPasskeyLabel({
+        userHandle: passkey.userHandle,
+        label: handle.label,
+        account: handle.account,
+        chainId: handle.chainId
       });
       if (initial) {
         // The encrypted private roster is written before the public handle. If
@@ -175,6 +132,31 @@ export function App() {
       }
       await services.accounts.save(handle);
       await refreshAccounts();
+      if (deployment.onboarding?.activation === "sponsored") {
+        if (!config.relayUrl) {
+          setLocked(handle); setArea("home");
+          setMessage("Wallet saved, but this deployment requires a sponsor relay before it can be restored on another device. Configure the relay and activate it from Home.");
+          return;
+        }
+        try {
+          await activateAccount({
+            config,
+            account: handle,
+            deployment,
+            pendingOperations: services.pendingOperations,
+            runtime: services.runtime,
+            publicClients: services.publicClients,
+            submission: "sponsored-private"
+          });
+          setSelected(handle); setLocked(null); setArea("home");
+          setMessage("Wallet created and privately activated. Its synced passkey can now discover it on another device.");
+          return;
+        } catch (activationError) {
+          setLocked(handle); setArea("home");
+          setMessage(`Wallet and passkey were saved, but sponsored activation did not complete: ${safeUserMessage(activationError, "Try activation again from Home.", "submission")}`);
+          return;
+        }
+      }
       setLocked(handle); setArea("home");
     } catch (error) { setMessage(safeUserMessage(error, "Wallet could not be created.", "preparation")); }
     finally { setBusy(false); }
@@ -182,8 +164,47 @@ export function App() {
   const unlockAccount = async (account: AccountHandle) => {
     setBusy(true); setMessage("");
     try {
-      await authenticateBrowserAccount(account);
-      setSelected(account); setLocked(null); setArea(guardianInboundLink ? "guardian" : "home");
+      const passkeyBackup = await authenticateBrowserAccount(account);
+      const deployment = await loadWalletDeployment();
+      await services.runtime.verify(config, deployment);
+      if (account.chainId !== deployment.chainId) {
+        throw new Error(`This saved wallet belongs to chain ${account.chainId}, but the wallet is connected to chain ${deployment.chainId}.`);
+      }
+      const validator = account.kind === "recovered" ? account.validator : deployment.validator;
+      const client = services.publicClients.forEndpoint(config.rpcUrl);
+      const code = await client.getCode({ address: account.account });
+      const control = await readAccountControl({
+        account: account.account,
+        validator,
+        publicKey: {
+          ...account.publicKey,
+          rpIdHash: sha256(stringToHex(account.rpId)),
+          originHash: keccak256(stringToHex(account.origin))
+        },
+        deployed: Boolean(code && code !== "0x"),
+        isModuleInstalled: async check => await client.readContract({
+          address: check.account,
+          abi: LoomAccountAbi,
+          functionName: "isModuleInstalled",
+          args: [check.moduleTypeId, check.module, "0x"]
+        }) as boolean,
+        readPublicKey: async check => await client.readContract({
+          address: check.validator,
+          abi: P256ValidatorAbi,
+          functionName: "publicKeys",
+          args: [check.account]
+        }) as readonly [Hex, Hex, Hex, Hex]
+      });
+      if (control.kind === "superseded") {
+        throw new Error("This saved passkey no longer controls the account. Find it with the recovery passkey instead.");
+      }
+      if (control.kind === "unreadable") {
+        throw new Error("The account's current key could not be verified, so it was not opened for signing.");
+      }
+      const refreshed = { ...account, passkeyBackup } as AccountHandle;
+      await services.accounts.save(refreshed);
+      await refreshAccounts();
+      setSelected(refreshed); setLocked(null); setArea(guardianInboundLink ? "guardian" : "home");
     } catch (error) { setMessage(safeUserMessage(error, "Passkey authentication failed.", "passkey")); }
     finally { setBusy(false); }
   };
@@ -209,10 +230,9 @@ export function App() {
   /**
    * Bring back a wallet this browser has never heard of, using the passkey.
    *
-   * Nothing is stored in advance and no server is asked. The account published
-   * its public key when it installed its validator; the assertion proves which
-   * key signed; the two together name the account. A private window, a new
-   * browser, or a cleared one can all get back in with the passkey alone.
+   * Nothing is stored in this browser and no server is asked. The credential's
+   * random account handle locates one factory account; a fresh assertion is then
+   * verified against that account's live validator key before it is offered.
    */
   /** What both routes end at: the finding, shown before anything is saved. */
   const offerFoundWallet = async (found: {
@@ -221,6 +241,8 @@ export function App() {
     readonly publicKey: { readonly x: Hex; readonly y: Hex };
     readonly credentialId: Hex;
     readonly chainId: number;
+    readonly accountHandle: Hex;
+    readonly passkeyBackup: NonNullable<AccountHandle["passkeyBackup"]>;
     readonly client: { getCode: (input: { address: `0x${string}` }) => Promise<string | undefined> };
   }) => {
     const existing = accounts.find(candidate => candidate.account.toLowerCase() === found.account.toLowerCase());
@@ -231,6 +253,8 @@ export function App() {
       publicKey: found.publicKey,
       credentialId: found.credentialId,
       chainId: found.chainId,
+      accountHandle: found.accountHandle,
+      passkeyBackup: found.passkeyBackup,
       deployed: Boolean(code && code !== "0x"),
       alreadySaved: existing?.label ?? null
     });
@@ -247,74 +271,47 @@ export function App() {
       const assertion = await assertAnyPasskey();
       if (!assertion) { setMessage("No passkey was offered, so there is nothing to look up."); return; }
       const deployment = await loadWalletDeployment();
+      await services.runtime.verify(config, deployment);
       const client = services.publicClients.forEndpoint(config.rpcUrl);
-      const validators = await validatorsToSearch(deployment, client as never);
 
-      // A recovery passkey was registered against a known account and carries
-      // it. Asking the validators for that one account's key is a handful of
-      // reads; collecting every key ever published and testing the signature
-      // against each is what the chain forces only when nothing names it.
-      const named = assertion.userHandle;
-      if (named) {
-        for (const validator of validators) {
-          const key = await client.readContract({
-            address: validator, abi: P256ValidatorAbi, functionName: "publicKeys", args: [named]
-          }).catch(() => null) as readonly [Hex, Hex, Hex, Hex] | null;
-          if (!key || BigInt(key[0]) === 0n) continue;
-          const message = await webauthnSignedMessage(assertion);
-          const signed = await candidateSigned({
-            candidate: { x: key[0], y: key[1] },
-            message,
-            rawSignature: derToRawSignature(assertion.signature)
-          });
-          if (!signed) continue;
-          await offerFoundWallet({
-            account: named, validator, publicKey: { x: key[0], y: key[1] },
-            credentialId: assertion.credentialId, chainId: deployment.chainId, client
-          });
-          return;
-        }
-      }
-
-      const result = await findWalletsByPasskey({
-        validators,
-        endpointName: hostOf(config.rpcUrl),
-        assertion,
+      const discovered = await discoverPasskeyAccount({
+        chainId: deployment.chainId,
+        factory: deployment.factory,
         rpId: window.location.hostname,
         origin: window.location.origin,
-        reader: {
-          getBlockNumber: () => client.getBlockNumber(),
-          getLogs: request => client.getLogs({
-            address: [...request.address],
-            fromBlock: request.fromBlock,
-            toBlock: request.toBlock,
-            ...(request.topics.length > 0 ? { topics: request.topics as [`0x${string}`] } : {})
-          }) as never
-        }
+        challenge: assertion.challenge,
+        assertion: {
+          credentialId: assertion.credentialId,
+          userHandle: assertion.userHandle,
+          authenticatorData: hexFromBytes(assertion.authenticatorData),
+          clientDataJSON: hexFromBytes(assertion.clientDataJSON),
+          signature: hexFromBytes(assertion.signature)
+        },
+        stateTransport: createRpcStateTransport({ endpoint: config.rpcUrl }),
+        verificationStateTransport: createRpcStateTransport({ endpoint: config.verificationRpcUrl })
       });
-      if (result.unavailable) {
-        // A configured endpoint that will not serve old logs is a setting, not
-        // a dead end. Offered rather than switched: the endpoint is the owner's
-        // choice, and replacing it without asking would undo a decision they
-        // made on purpose.
-        if (config.rpcUrl !== DEFAULT_NETWORK.rpcUrl) setEndpointCannotSearch(result.unavailable);
-        else setMessage(`The chain could not be searched: ${result.unavailable}`);
+      if (discovered.status === "invalid") {
+        setMessage(discovered.reason === "deployment"
+          ? "That passkey belongs to a different chain or Loom deployment. Select its canonical deployment and try again."
+          : "That passkey assertion could not be verified for this wallet.");
         return;
       }
-      if (!result.found) {
-        // Says how many keys were weighed, so "the search found nothing" and
-        // "the search ran and your key is not among them" stop reading alike.
-        // A wallet created but never used on chain has no key published at all:
-        // its validator is installed by its first operation.
-        setMessage(`That passkey is not among the ${result.candidatesScanned} account key(s) published on this chain. A wallet that has never made a transaction has no key published yet — restore that one from an exported handle instead.`);
+      if (discovered.status === "not-activated") {
+        setMessage("That account handle is not registered in this deployment. A new wallet must be activated on chain before it can be restored on another device.");
+        return;
+      }
+      if (discovered.status === "stale") {
+        setMessage("That passkey locates this wallet, but its key is not installed anymore. It may have been replaced by a later recovery.");
         return;
       }
       await offerFoundWallet({
-        account: result.found.account,
-        validator: result.found.validator,
-        publicKey: { x: result.found.x, y: result.found.y },
+        account: discovered.account,
+        validator: discovered.validator,
+        publicKey: { x: discovered.publicKey.x, y: discovered.publicKey.y },
         credentialId: assertion.credentialId,
         chainId: deployment.chainId,
+        accountHandle: assertion.accountHandle,
+        passkeyBackup: backupObservation(credentialBackupState(assertion.authenticatorData), "assertion"),
         client
       });
       return;
@@ -335,7 +332,7 @@ export function App() {
     setBusy(true);
     try {
       await services.accounts.save({
-        version: 1,
+        version: 3,
         kind: "recovered",
         id: `passkey:${foundByPasskey.account.toLowerCase()}`,
         label: "Recovered wallet",
@@ -345,6 +342,8 @@ export function App() {
         publicKey: foundByPasskey.publicKey,
         rpId: window.location.hostname,
         origin: window.location.origin,
+        accountHandle: foundByPasskey.accountHandle,
+        passkeyBackup: foundByPasskey.passkeyBackup,
         // The validator that published this key, not the profile's. A recovered
         // account is controlled by the validator its recovery installed, and
         // signing against the profile's would fail as AA24.
@@ -369,24 +368,6 @@ export function App() {
   if (recoveryPath && recoveryPath !== STOP_RECOVERY_PATH) return <><RouteChunk><RecoveryPage path={recoveryPath} accounts={accounts} {...(recoveryPayerId ? { preferredGasPayerId: recoveryPayerId } : {})} sourceWalletOpen={Boolean(selected && selected.id === recoveryPayerId)} onClose={closeRecovery} onNavigate={path => openRecovery(path)} onRecovered={saveRecoveredAccount} /></RouteChunk><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected && locked) return <><WalletLock account={locked} busy={busy} message={message} onUnlock={() => unlockAccount(locked)} onSwitch={() => { setLocked(null); setMessage(""); }} /><button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button></>;
   if (!selected) return <><WalletLanding accounts={accounts} busy={busy} message={message} onCreate={createAccount} onClearMessage={() => setMessage("")} onOpen={unlockAccount} onRemove={removeAccount} onGuardianRecover={() => openRecovery()} onFindByPasskey={findByPasskey} />
-    {endpointCannotSearch && <Dialog label="This endpoint cannot search" busy={busy} onClose={() => setEndpointCannotSearch("")}>
-      <p className="eyebrow">Recovering a wallet by passkey</p>
-      <h2>This endpoint does not serve old logs</h2>
-      <p className="form-note">{endpointCannotSearch}</p>
-      <div className="permission-grid">
-        <div><span>Now using</span><strong className="breakable">{hostOf(config.rpcUrl)}</strong></div>
-        <div><span>Default</span><strong className="breakable">{hostOf(DEFAULT_NETWORK.rpcUrl)}</strong></div>
-      </div>
-      <p className="form-note">Your endpoint stays whatever you choose. Nothing else about the wallet changes either way.</p>
-      <div className="landing-actions">
-        <button className="secondary" disabled={busy} onClick={() => setEndpointCannotSearch("")}>Keep mine</button>
-        <button className="primary" disabled={busy} onClick={() => {
-          updateNetwork({ rpcUrl: DEFAULT_NETWORK.rpcUrl });
-          setEndpointCannotSearch("");
-          setMessage("Switched to the default endpoint. Try finding the wallet again.");
-        }}>Use the default</button>
-      </div>
-    </Dialog>}
     {foundByPasskey && <Dialog label="Wallet found" busy={busy} onClose={() => setFoundByPasskey(null)}>
       <p className="eyebrow">This passkey opens</p>
       <h2 className="breakable">{foundByPasskey.account}</h2>
@@ -432,7 +413,12 @@ export function App() {
       () => openRecovery("/recover", selected.id),
       guardianInboundLink,
       () => openRecovery(STOP_RECOVERY_PATH, selected.id),
-      () => { void refreshAccounts(); }
+      () => { void refreshAccounts(); },
+      async updated => {
+        await services.accounts.save(updated);
+        setSelected(updated);
+        await refreshAccounts();
+      }
     )}</RouteChunk></main>
     <button className="desktop-theme theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}>{theme === "light" ? "◐" : "☀"}</button>
     <nav className="bottom-nav" aria-label="Mobile navigation">{primaryNavigation.map(item => <NavButton key={item.id} item={item} current={area} onClick={setArea} />)}</nav>
@@ -443,12 +429,12 @@ function NavButton({ item, current, onClick }: { item: { id: NavigationArea; lab
   return <button className={current === item.id ? "nav-item active" : "nav-item"} aria-current={current === item.id ? "page" : undefined} onClick={() => onClick(item.id)}><span aria-hidden="true">{item.icon}</span>{item.label}</button>;
 }
 
-function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string, stopRecovery: () => void, onRenamed: () => void) {
+function renderArea(area: NavigationArea, navigate: (area: NavigationArea) => void, account: AccountHandle, switchAccount: () => void, lockAccount: () => void, openRecovery: () => void, guardianInboundLink: string, stopRecovery: () => void, onRenamed: () => void, onAccountUpdate: (account: AccountHandle) => Promise<void>) {
   switch (area) {
     case "home": return <HomePage account={account} onNavigate={navigate} onSwitch={switchAccount} onLock={lockAccount} onStopRecovery={stopRecovery} />;
     case "activity": return <ActivityPage account={account} />;
     case "apps": return <AppsPage account={account} />;
-    case "security": return <SecurityPage account={account} onGuardian={() => navigate("guardian")} onRecovery={openRecovery} />;
+    case "security": return <SecurityPage account={account} onGuardian={() => navigate("guardian")} onRecovery={openRecovery} onAccountUpdate={onAccountUpdate} />;
     case "guardian": return <GuardianWorkspace account={account} inboundLink={guardianInboundLink} />;
     case "developer": return <DeveloperSettings account={account} onRenamed={onRenamed} />;
   }

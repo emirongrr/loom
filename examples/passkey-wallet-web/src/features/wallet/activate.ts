@@ -13,6 +13,7 @@ import type { RuntimeVerifier } from "../../services/runtime/runtimeVerifier.ts"
 import type { PublicClientRegistry } from "../../services/rpc/publicClients.ts";
 import { acquireAccountOperation } from "../../services/loom/operationGuard.ts";
 import { reconcilePendingOperations } from "../../services/loom/pendingConfirmation.ts";
+import { authorizeSponsoredActivation, createSponsoredActivationTransport } from "./sponsoredActivation.ts";
 
 // A counterfactual account is created by its first operation, which carries the
 // factory call. The account pays for that itself: `validateUserOp` forwards the
@@ -53,8 +54,8 @@ export function planActivation(account: AccountHandle, deployment: WalletDeploym
   }
   return Object.freeze({
     factory: deployment.factory,
-    factoryData: encodeCreateAccountCall(account.salt, config),
-    salt: account.salt,
+    factoryData: encodeCreateAccountCall(account.accountHandle, config),
+    salt: account.accountHandle,
     // Stated honestly for the review text: a new account starts with no guardian
     // root, so losing the passkey before guardians are added loses the account.
     recoveryStatus: config.guardianRoot === ZERO_ROOT ? "unprotected" : "guardian-protected"
@@ -72,6 +73,8 @@ export async function activateAccount(input: {
   pendingOperations: PendingOperationStore;
   runtime: RuntimeVerifier;
   publicClients: PublicClientRegistry;
+  /** Sponsored onboarding is opt-in and must be advertised by the deployment profile. */
+  submission?: "public-self-funded" | "sponsored-private";
 }): Promise<SendResult> {
   const { config, account, deployment } = input;
   const plan = planActivation(account, deployment);
@@ -98,7 +101,16 @@ export async function activateAccount(input: {
     signChallenge: signWithBrowserPasskey
   });
 
-  const transport = createBundlerTransport({ endpoint: config.bundlerUrl, entryPoint: deployment.entryPoint });
+  const publicTransport = createBundlerTransport({ endpoint: config.bundlerUrl, entryPoint: deployment.entryPoint });
+  const transport = input.submission === "sponsored-private"
+    ? createSponsoredActivationTransport({
+      endpoint: config.relayUrl,
+      account: account.account,
+      plan,
+      deployment,
+      publicTransport
+    })
+    : publicTransport;
   const client = createLoomClient({
     chainId: account.chainId,
     account: account.account,
@@ -119,13 +131,17 @@ export async function activateAccount(input: {
     initCode: plan.factoryData,
     recoveryStatus: plan.recoveryStatus
   });
-  const filled = await client.fillUserOperation(prepared, {
+  let filled = await client.fillUserOperation(prepared, {
     // A counterfactual account has never acted, so its EntryPoint nonce is zero.
     nonce: 0n,
     callData: "0x",
     factory: plan.factory,
     factoryData: plan.factoryData
   });
+
+  if (input.submission === "sponsored-private") {
+    filled = await authorizeSponsoredActivation({ endpoint: config.relayUrl, envelope: filled, deployment });
+  }
 
   const signature = await signer.signUserOperation(filled);
   const signed = { ...filled, userOperation: { ...filled.userOperation, signature } };
