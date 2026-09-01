@@ -1,0 +1,6 @@
+flowchart LR
+  U[User] --> N[Native picker]
+  N --> B{BE and BS}
+  B -->|Not backed up| X[Block]
+  B -->|Backed up| A[Assertion]
+  A --> L[Live validator verification]

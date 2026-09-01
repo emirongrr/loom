@@ -1,0 +1,6 @@
+flowchart LR
+  U[User] --> C[Create or recovery ceremony]
+  C --> F{BE flag}
+  F -->|BE=0| X[Reject]
+  F -->|BE=1| A[Assertion gate]
+  A --> V[Validator preparation]
