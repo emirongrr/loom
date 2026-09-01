@@ -11,7 +11,7 @@
   },
   "assessment": {
     "outcome": "opportunity_identified",
-    "summary": "The WebAuthn user handle is already the correct stable account locator; rename it to accountHandle and model UNBOUND, ACTIVE, STALE, and INVALID explicitly."
+    "summary": "The WebAuthn user handle is already the correct stable account locator; rename it to accountHandle and model NOT_ACTIVATED, ACTIVE, STALE, and INVALID explicitly."
   },
   "opportunities": [
     {

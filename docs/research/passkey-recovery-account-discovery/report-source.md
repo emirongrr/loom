@@ -24,7 +24,7 @@ account index, historical log scans, or an old credential.
 
 ## Direct Answer
 
-Use a random, stable, per-account `accountLocator` inside the discoverable
+Use a random, stable, per-account `accountHandle` inside the discoverable
 credential's WebAuthn `userHandle`. During recovery, read the existing locator
 from the account registry and give exactly that value to the newly created
 recovery credential. When the credential is later synced or imported to a clean
@@ -44,11 +44,11 @@ field. The credential therefore carries the locator with its key material.
 | Claim | Evidence | Confidence | Contradiction / limit | Resolution |
 | --- | --- | --- | --- | --- |
 | A discoverable passkey carries and returns its account handle | W3C WebAuthn L3 user-handle and credential-source definitions | High | `userHandle` may be null when a credential allow-list is supplied | Discovery must use empty `allowCredentials` |
-| The handle travels with a backed-up or exchanged passkey | W3C credential-source backup model; FIDO CXF passkey dictionary | High for model/exchange | WebAuthn does not mandate that any particular provider sync | Require/verify a multi-device recovery credential and disclose provider availability |
+| The handle travels with a backed-up or exchanged passkey | W3C credential-source backup model; FIDO CXF passkey dictionary | High for model/exchange | WebAuthn does not mandate that any particular provider sync | Record BE/BS, disclose provider availability, and use a real second-device rehearsal as release evidence |
 | A clean Loom client can verify current authority after lookup | Current `App.tsx`, `P256Validator`, validator cap 16 | High | Locator output is not itself signed authority | Verify the fresh assertion against every current validator; fail closed |
 | Credential ID is a worse canonical recovery locator | W3C unique-per-credential and unsigned-ID rules; recovery changes credentials | High | It can be a standard database lookup in hosted RPs | On chain it needs a new binding per recovery and retains a first-claim DoS race |
 | Direct account address in the handle is not preferable | W3C random/non-PII guidance; current CREATE2 init-code dependency; ERC-4337 initial-signature guidance | Medium-high | Recovery already knows the address | It leaks a directly correlatable address and does not unify the initial credential lifecycle |
-| Current Loom implementation is close but incomplete | Local source and 18 targeted passing tests | High | Current handle v2 omits factory and does not enforce backup eligibility | Add deployment-domain v3 and portability gates, then run real clean-device rehearsal |
+| Implementation at the research snapshot was close but incomplete | Local source and 18 targeted passing tests | High | The snapshot's v2 handle omitted factory and its availability UX was incomplete | Add deployment-domain v3 and explicit availability guidance, then run a real clean-device rehearsal |
 
 ## Architecture Decision
 
@@ -57,11 +57,11 @@ field. The credential therefore carries the locator with its key material.
 Use a 62-byte versioned handle:
 
 ```text
-0x4c | version=3 | uint64 chainId | address factory | bytes32 accountLocator
+0x4c | version=3 | uint64 chainId | address factory | bytes32 accountHandle
   1       1              8               20                  32
 ```
 
-This is within WebAuthn's 64-byte limit. `accountLocator` is random, non-zero,
+This is within WebAuthn's 64-byte limit. `accountHandle` is random, non-zero,
 RP-scoped, and non-PII. Factory inclusion distinguishes immutable deployment
 generations on the same chain. The authenticator already scopes the credential
 to the RP ID; the live validator separately binds RP ID and origin hashes.
@@ -101,10 +101,11 @@ whose current P-256 key verifies the fresh assertion.
 The cross-device promise requires a multi-device credential. WebAuthn exposes
 per-credential BE (backup eligible, permanent) and BS (currently backed up,
 mutable) bits in signed authenticator data. A BE=0 credential can never be
-backed up. Recovery registration must parse and retain these flags, reject BE=0
-for the “works after device loss” recovery route, and require a fresh assertion
-showing a valid BE state before guardian publication. BS should be shown as a
-release/readiness signal; the strongest gate is a real second-device rehearsal.
+backed up. Registration must parse and retain these flags, but they are not
+authority and must not block account creation or guardian recovery. The
+Security surface must describe BE=0 as authenticator-bound, BE=1/BS=0 as
+sync-eligible but not currently reported as backed up, and BE=1/BS=1 as backed
+up. The strongest readiness evidence is a real second-device rehearsal.
 
 Google Password Manager and iCloud Keychain document passkey synchronization,
 but platform/provider availability is not a WebAuthn protocol guarantee. FIDO
@@ -150,16 +151,17 @@ Loom service availability part of the recovery path.
 
 ## Implementation Plan
 
-1. Freeze ADR invariants and rename `walletId` to `accountLocator` or
-   `accountHandle` across the new generation; retain no legacy ABI aliases.
+1. Freeze ADR invariants and use `accountHandle` across the new generation;
+   retain no legacy ABI aliases.
 2. Implement and fuzz the exact v3 62-byte codec with chain and factory domain
    binding. Keep the 32-byte locator as CREATE2 salt and registry key.
 3. Rename registry/factory surfaces to `accountForHandle` and
    `handleForAccount`; preserve factory-only, one-to-one, atomic registration.
 4. During recovery, dual-read the handle from the exact account and create the
    new discoverable credential with the same v3 bytes.
-5. Parse registration authenticator data; record BE/BS and reject BE=0 for the
-   cross-device recovery product. Add a post-creation proof assertion.
+5. Parse registration authenticator data and record BE/BS as availability
+   guidance. Add a post-creation proof assertion before any recovery validator
+   publication or guardian request.
 6. Keep recovery provisioning device-independent: publish the validator with
    its exact P-256/RP/origin binding before proposal, and keep guardian approval
    bound to the initializer hash. Locator registry state does not rotate.
@@ -184,18 +186,19 @@ Loom service availability part of the recovery path.
 - After recovery, the new passkey is `ACTIVE`; a removed old passkey is `STALE`.
 - Wrong chain, factory, origin, RP, challenge, malformed handle, and RPC
   disagreement all fail closed.
-- A BE=0 credential cannot be presented as cross-device recovery-ready.
+- A BE=0 credential is clearly presented as authenticator-bound, without
+  blocking account creation or guardian recovery.
 - Recovery succeeds even if the device that created the recovery proposal and
   its local draft disappear after the validator has been provisioned.
 
 ## Evidence And Verification Performed
 
-The current source already implements a 42-byte chain+wallet-ID handle, reverse
+The research snapshot implemented a 42-byte chain+wallet-ID handle, reverse
 lookup during recovery, empty-allow-list discovery, dual-RPC lookup, bounded
 live-validator verification, and stale-key detection. On 2026-08-27, the four
 targeted Node test files covering handle encoding, recovery passkey preparation,
 discovery order/live verification, and stale account control passed 18/18.
-Missing from the researched requirement are factory-domain encoding, explicit
+Missing from that snapshot were factory-domain encoding, explicit
 portability policy/BE-BS checks, a clean-device sync/import E2E, and final
 terminology/status cleanup.
 

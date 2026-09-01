@@ -10,7 +10,7 @@ Expose one discovery result with four states:
 
 | State | Registry result | Live assertion result | Product behavior |
 | --- | --- | --- | --- |
-| `UNBOUND` | zero account | not attempted | Passkey exists but no Loom account was activated |
+| `NOT_ACTIVATED` | zero account | ceremony valid; no live-key check is possible | Passkey exists but no Loom account was activated |
 | `ACTIVE` | one account | verifies against a live validator | Open signer wallet |
 | `STALE` | one account | no live validator verifies | Do not open; explain that recovery/replacement revoked it |
 | `INVALID` | malformed/wrong chain/RP/origin or inconsistent RPCs | rejected | Fail closed |
@@ -45,7 +45,7 @@ Source: [before diagram](../diagrams/passkey-account-discovery-before.mmd).
 ```mermaid
 flowchart LR
   P[Discoverable passkey] -->|chain + accountHandle| R[Per-factory registry]
-  R -->|zero| U[UNBOUND]
+  R -->|zero| U[NOT_ACTIVATED]
   R -->|candidate account| V[Read live validators]
   P -->|fresh assertion| V
   V -->|valid for live key| A[ACTIVE signer]
@@ -105,10 +105,11 @@ Source: [backend alternative diagram](../diagrams/backend-index-after.mmd).
 - Registry presence never unlocks signer mode.
 - A stale saved wallet or stale passkey never opens the wallet UI, including as
   a read-only wallet; it is shown only as a revoked/stale credential result.
-- `UNBOUND` is claimed only after a valid fresh WebAuthn ceremony and two
+- `NOT_ACTIVATED` is returned only after a valid fresh WebAuthn ceremony and two
   trusted RPC reads agree that the handle has no account.
-- Initial activation remains atomic and privately submitted under the chosen
-  rollout; no activation signer is introduced.
+- Initial activation remains atomic. A deployment may choose sponsored private
+  activation or counterfactual self-funded activation; no activation signer is
+  introduced.
 
 ## Tradeoffs
 
@@ -123,26 +124,24 @@ Source: [backend alternative diagram](../diagrams/backend-index-after.mmd).
 
 ## Validation Plan
 
-- Create a passkey but do not activate: result must be `UNBOUND`.
+- Create a passkey but do not activate: result must be `NOT_ACTIVATED`.
 - Activate and rediscover on a clean device: result must be `ACTIVE`.
 - Recover to a new passkey with the same handle: new passkey is `ACTIVE`; old
   passkey is `STALE` and never opens Saved Wallets or Send.
 - Reject wrong chain, RP ID, origin, challenge, UV/UP flags, and RPC disagreement
   as `INVALID`.
 - Confirm a copied handle or forged registry response cannot reach signer mode.
-- Rehearse private atomic activation and receipt finality separately.
+- Rehearse sponsored private activation, counterfactual self-funded activation,
+  and receipt finality separately.
 
-## Implementation Boundary
+## Implementation Resolution
 
-This review authorizes no code change by itself. After selection, implement the
-semantic rename across contracts, ABI, frontend, tests, ADRs, manifest schema,
-and deployment evidence as a new generation. Do not retain `walletId` aliases
-because legacy wallets are explicitly out of scope.
+The selected generation uses `accountHandle` consistently across contracts,
+ABI, SDK, frontend, tests, ADRs, and deployment schema. The 62-byte v3 envelope
+binds both chain and factory. No `walletId` compatibility alias remains.
 
-## Open Questions
-
-- Should the protocol name be `accountHandle` or `rpAccountHandle`?
-- Is chain binding enough in the handle, or should a deployment-profile version
-  also be encoded while remaining below WebAuthn's 64-byte limit?
-- Should `STALE` be visible as a recovery diagnostic or only as a generic
-  “this passkey no longer controls an account” response for privacy?
+Discovery exposes the SDK states `invalid`, `not-activated`, `active`, and
+`stale`; infrastructure failures such as RPC disagreement or unreadable live
+validators are errors and never downgraded to `stale`. Product copy may explain
+that a stale passkey was replaced, but it must not reveal signer or account
+capabilities before the live assertion succeeds.

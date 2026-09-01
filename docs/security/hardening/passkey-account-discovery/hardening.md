@@ -5,7 +5,7 @@
 Do not replace the current `userHandle` mechanism with credential ID, public-key
 commitment, `largeBlob`, PRF, or a backend index. Rename its protocol meaning
 from `walletId` to `accountHandle` and make discovery return an explicit status:
-`UNBOUND`, `ACTIVE`, `STALE`, or `INVALID`.
+`NOT_ACTIVATED`, `ACTIVE`, `STALE`, or `INVALID`.
 
 The current mechanism is the WebAuthn-native answer to “which account does this
 credential belong to?” The missing product concept is status, not another ID.
