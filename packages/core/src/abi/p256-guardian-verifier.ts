@@ -53,5 +53,10 @@ export const P256GuardianVerifierAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "error",
+    "name": "InvalidFallbackVerifier",
+    "inputs": []
   }
 ] as const;

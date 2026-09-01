@@ -424,9 +424,8 @@ contract RecoveryIntentBoardTest is RecoveryIntentBoardHarness {
 
     // --- Fuzz -----------------------------------------------------------------
 
-    /// `_recoveryId` duplicates `RecoveryManager.recoveryIdFor`, because the
-    /// manager exposes it only over a struct that does not exist before a
-    /// proposal does. Pin that duplication across arbitrary inputs.
+    /// The board and manager reach the same canonical pure identity function
+    /// through different public surfaces. Pin their parity across arbitrary inputs.
     function testFuzzAnnouncedIdentityMatchesTheManager(
         address fuzzValidator,
         bytes32 oldValidatorsHash,

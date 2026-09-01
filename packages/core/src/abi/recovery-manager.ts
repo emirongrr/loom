@@ -118,13 +118,13 @@ export const RecoveryManagerAbi = [
     "name": "cancelRecovery",
     "inputs": [
       {
-        "name": "account",
+        "name": "",
         "type": "address",
         "internalType": "address"
       }
     ],
     "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "pure"
   },
   {
     "type": "function",

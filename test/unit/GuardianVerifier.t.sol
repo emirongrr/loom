@@ -21,6 +21,18 @@ contract GuardianVerificationHarness {
 }
 
 contract GuardianVerifierTest {
+    function deployP256GuardianVerifier(address fallbackVerifier) external returns (P256GuardianVerifier) {
+        return new P256GuardianVerifier(fallbackVerifier);
+    }
+
+    function testP256GuardianVerifierRejectsCodeLessNonZeroFallbackAtDeployment() public {
+        (bool deployed,) = address(this).call(abi.encodeCall(this.deployP256GuardianVerifier, (address(0xDEAD))));
+        require(!deployed, "code-less fallback verifier accepted");
+
+        P256GuardianVerifier withoutFallback = new P256GuardianVerifier(address(0));
+        require(withoutFallback.fallbackVerifier() == address(0), "zero fallback verifier rejected");
+    }
+
     function testSameCommittedAuthorityCannotSatisfyGuardianThresholdTwice() public {
         ERC1271GuardianVerifier verifier = new ERC1271GuardianVerifier();
         GuardianVerificationHarness harness = new GuardianVerificationHarness();

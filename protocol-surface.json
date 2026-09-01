@@ -1103,7 +1103,7 @@
         "RECOVERY_DELAY()": "view",
         "RECOVERY_WINDOW()": "view",
         "cancelDigest(address,bytes32,uint64,uint64)": "view",
-        "cancelRecovery(address)": "nonpayable",
+        "cancelRecovery(address)": "pure",
         "cancelRecoveryWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "cancelRecoveryWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "executeRecovery(address,address[])": "nonpayable",
@@ -1254,7 +1254,7 @@
         "VALIDATOR_SET_ROOT_TYPEHASH()": "0xe8341d29",
         "appAccountLeaf(address)": "0x07966a0b",
         "cancelDigest(address,bytes32,uint64,uint64)": "0x18d480b2",
-        "cancelRecovery(address)": "0xc90db447",
+        "cancelSyncWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0xad5aeaa2",
         "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x9753e03c",
         "executeSync(address,address[],(uint256,address,bytes)[])": "0x6c249237",
         "isModuleType(uint256)": "0xecd05961",
@@ -1302,7 +1302,7 @@
         "cancelDigest(address,bytes32,uint64,uint64)": [
           "bytes32"
         ],
-        "cancelRecovery(address)": [],
+        "cancelSyncWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "executeSync(address,address[],(uint256,address,bytes)[])": [],
         "isModuleType(uint256)": [
@@ -1358,7 +1358,7 @@
         "VALIDATOR_SET_ROOT_TYPEHASH()": "view",
         "appAccountLeaf(address)": "view",
         "cancelDigest(address,bytes32,uint64,uint64)": "view",
-        "cancelRecovery(address)": "nonpayable",
+        "cancelSyncWithAccountAndGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "cancelSyncWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "executeSync(address,address[],(uint256,address,bytes)[])": "nonpayable",
         "isModuleType(uint256)": "pure",

@@ -102,7 +102,11 @@ contract P256RecoveryValidatorFactory {
     /// @dev Deploying and initializing together is what lets `executeRecovery`
     /// take no initializer (ADR-0025): nothing has to survive from the device
     /// that started the recovery. Repeat calls with identical input return the
-    /// existing validator.
+    /// existing validator. `recoveryNonce` is a deterministic-address namespace,
+    /// not factory authority: callers use the target manager's live nonce, while
+    /// guardians authorize the resulting validator address in that manager's
+    /// nonce-bound proposal digest. The ownerless factory deliberately calls no
+    /// manager and cannot decide which recovery module an account trusts.
     function deploy(
         address account,
         uint64 recoveryNonce,
@@ -131,7 +135,6 @@ contract P256RecoveryValidatorFactory {
         deployed.provisionRecoveryIntent(
             account, initDataHash, x, y, rpIdHash, originHash, policyHook, newGuardianRoot, newGuardianThreshold
         );
-        _requireReservation(validator, account, initDataHash, newGuardianRoot, newGuardianThreshold);
         emit RecoveryValidatorDeployed(
             account, recoveryNonce, initDataHash, validator, newGuardianRoot, newGuardianThreshold
         );
