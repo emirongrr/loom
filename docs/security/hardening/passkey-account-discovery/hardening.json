@@ -1,0 +1,78 @@
+{
+  "documentType": "security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "hardening_passkey_account_discovery_20260827",
+  "sourceEvidence": {
+    "kind": "document_collection",
+    "label": "Loom passkey account discovery working snapshot",
+    "targetRevision": "cf09f60cdce2009604acad24ca28e30f7cda699b",
+    "sourceDrift": "present",
+    "contextPath": "context.md"
+  },
+  "assessment": {
+    "outcome": "opportunity_identified",
+    "summary": "The WebAuthn user handle is already the correct stable account locator; rename it to accountHandle and model NOT_ACTIVATED, ACTIVE, STALE, and INVALID explicitly."
+  },
+  "opportunities": [
+    {
+      "opportunityId": "model-passkey-account-status",
+      "title": "Model passkey account status instead of replacing the account locator",
+      "proposalPath": "proposals/model-passkey-account-status.md",
+      "recommendedOptionId": "account-handle-status",
+      "options": [
+        {
+          "optionId": "account-handle-status",
+          "title": "Stable accountHandle plus explicit status",
+          "kind": "incremental",
+          "tradeoffs": [
+            {"dimension":"security","direction":"improves","basis":"source-derived","assessment":"Keeps locator non-authoritative and makes stale credentials fail closed."},
+            {"dimension":"performance","direction":"neutral","basis":"source-derived","assessment":"Retains one bounded account lookup."},
+            {"dimension":"memory","direction":"neutral","basis":"source-derived","assessment":"Adds no on-chain state."},
+            {"dimension":"reliability","direction":"improves","basis":"standard-derived","assessment":"Matches WebAuthn userHandle lifecycle across replacement credentials."},
+            {"dimension":"operability","direction":"improves","basis":"source-derived","assessment":"Explicit states make activation and stale-key incidents diagnosable."},
+            {"dimension":"migration","direction":"regresses","basis":"source-derived","assessment":"Requires a clean ABI and schema rename across the new deployment generation."}
+          ]
+        },
+        {
+          "optionId": "credential-id-hash",
+          "title": "Credential-ID hash locator",
+          "kind": "structural",
+          "tradeoffs": [
+            {"dimension":"security","direction":"unknown","basis":"source-derived","assessment":"Identifies one credential but retains first-write griefing and adds binding lifecycle."},
+            {"dimension":"performance","direction":"neutral","basis":"source-derived","assessment":"Lookup can remain constant."},
+            {"dimension":"memory","direction":"regresses","basis":"source-derived","assessment":"Each replacement credential needs another binding or cleanup."},
+            {"dimension":"reliability","direction":"regresses","basis":"standard-derived","assessment":"Recovery changes the authenticator-chosen credential ID."},
+            {"dimension":"operability","direction":"regresses","basis":"source-derived","assessment":"Requires stale-binding and revocation policy."},
+            {"dimension":"migration","direction":"regresses","basis":"source-derived","assessment":"Changes registry schema and recovery orchestration."}
+          ]
+        },
+        {
+          "optionId": "large-blob",
+          "title": "Credential largeBlob pointer",
+          "kind": "incremental",
+          "tradeoffs": [
+            {"dimension":"security","direction":"neutral","basis":"standard-derived","assessment":"Can only be a hint; live assertion remains required."},
+            {"dimension":"performance","direction":"improves","basis":"hypothetical","assessment":"A successful local read may avoid registry lookup."},
+            {"dimension":"memory","direction":"regresses","basis":"standard-derived","assessment":"Stores per-credential opaque data."},
+            {"dimension":"reliability","direction":"regresses","basis":"standard-derived","assessment":"Support is optional and writing requires a later authentication."},
+            {"dimension":"operability","direction":"regresses","basis":"source-derived","assessment":"Absence has several meanings and needs fallback."},
+            {"dimension":"migration","direction":"neutral","basis":"hypothetical","assessment":"Could be added only as an optional cache."}
+          ]
+        },
+        {
+          "optionId": "backend-index",
+          "title": "Backend credential index",
+          "kind": "structural",
+          "tradeoffs": [
+            {"dimension":"security","direction":"regresses","basis":"architecture-derived","assessment":"Adds a provider-controlled discovery dependency."},
+            {"dimension":"performance","direction":"improves","basis":"hypothetical","assessment":"A central indexed lookup is fast."},
+            {"dimension":"memory","direction":"regresses","basis":"architecture-derived","assessment":"Duplicates credential-account state off chain."},
+            {"dimension":"reliability","direction":"regresses","basis":"architecture-derived","assessment":"Clean-device discovery depends on service availability."},
+            {"dimension":"operability","direction":"regresses","basis":"architecture-derived","assessment":"Requires service, privacy, retention, backup, and incident ownership."},
+            {"dimension":"migration","direction":"regresses","basis":"architecture-derived","assessment":"Introduces a mandatory service and synchronization protocol."}
+          ]
+        }
+      ]
+    }
+  ]
+}

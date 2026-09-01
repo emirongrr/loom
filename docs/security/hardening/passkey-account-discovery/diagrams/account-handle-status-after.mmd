@@ -1,0 +1,8 @@
+flowchart LR
+  P[Discoverable passkey] -->|chain + accountHandle| R[Per-factory registry]
+  R -->|zero| U[NOT_ACTIVATED]
+  R -->|candidate account| V[Read live validators]
+  P -->|fresh assertion| V
+  V -->|valid for live key| A[ACTIVE signer]
+  V -->|no live key accepts| S[STALE, do not open]
+  P -->|bad format, RP, origin or chain| I[INVALID]
