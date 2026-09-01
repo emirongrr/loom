@@ -12,4 +12,9 @@ Evidence inventory:
 - `E006` — `examples/passkey-wallet-web/src/features/wallet/sponsoredActivation.ts` obtains paymaster authorization before the account passkey signs the final UserOperation.
 - `E007` — `tools/evidence/validate-passkey-lifecycle-rehearsal.mjs` requires second-device discovery, delayed recovery, recovery-key discovery, and stale-key rejection evidence.
 
-The worktree contains the broader v3 discovery and recovery change set, so source drift is present. This hardening record does not claim a clean release revision or completed Sepolia rehearsal.
+The evidence inventory was initially collected while the broader v3 discovery
+and recovery change set was still in flight. Every current source path above was
+revalidated on target-base commit
+`6122553890ad692826f1826cb1bb1f7df8182941`. This hardening record is not a
+clean-release claim, private-provider qualification, or completed Sepolia
+rehearsal.

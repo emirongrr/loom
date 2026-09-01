@@ -24,6 +24,7 @@ hooks, factory, and the official ERC-4337 v0.9 EntryPoint.
 - `src/validators/MultiP256Validator.sol`
 - `src/validators/ExactCallSessionValidator.sol`
 - `src/validators/GranularSessionValidator.sol`
+- `src/validators/ImplementationLockValidator.sol`
 - `src/adapters/ERC7579ModuleAdapter.sol`
 - `src/adapters/ERC7579ValidatorShim.sol`
 - `src/adapters/ERC7579HookShim.sol`
