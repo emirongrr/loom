@@ -121,6 +121,7 @@ npm run deployment:passkey-wallet:connect -- \
   --entrypoint "$SEPOLIA_ENTRYPOINT" \
   --onboarding sponsored \
   --sponsor-policy-id loom-sepolia-onboarding-v1 \
+  --sponsor-authorizer "$SEPOLIA_SPONSOR_AUTHORIZER" \
   --sponsor-max-cost-wei "$SEPOLIA_SPONSOR_MAX_COST_WEI"
 ```
 

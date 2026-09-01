@@ -6,7 +6,8 @@
 //     [--rpc $SEPOLIA_RPC_URL] \
 //     [--verification-rpc $SEPOLIA_VERIFICATION_RPC_URL] \
 //     [--entrypoint $SEPOLIA_ENTRYPOINT] \
-//     [--onboarding counterfactual|sponsored]
+//     [--onboarding counterfactual|sponsored] \
+//     [--sponsor-authorizer $SEPOLIA_SPONSOR_AUTHORIZER]
 //
 // `public/sepolia.deployment.json` is the only thing this wallet trusts: it
 // names the contracts and pins their runtime code hashes, and the app refuses
@@ -78,6 +79,7 @@ async function main() {
           activation,
           sponsorship: {
             policyId: arg("sponsor-policy-id", process.env.SPONSOR_POLICY_ID ?? "loom-sepolia-onboarding-v1"),
+            authorizer: arg("sponsor-authorizer", process.env.SEPOLIA_SPONSOR_AUTHORIZER),
             maxCostWei: arg("sponsor-max-cost-wei", process.env.SPONSOR_MAX_COST_WEI ?? "5000000000000000"),
             maxFactoryDataBytes: numberArg("sponsor-max-factory-data-bytes", process.env.SPONSOR_MAX_FACTORY_DATA_BYTES ?? "8192"),
             maxActivationsPerPrincipal: numberArg("sponsor-max-activations-per-principal", process.env.SPONSOR_MAX_ACTIVATIONS_PER_PRINCIPAL ?? "3"),
