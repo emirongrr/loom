@@ -6,6 +6,7 @@ import {ILoomModule} from "../interfaces/ILoomModule.sol";
 import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
+import {RecoveryIdLib} from "../libraries/RecoveryIdLib.sol";
 import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
 
 contract RecoveryManager is ILoomModule {
@@ -55,11 +56,7 @@ contract RecoveryManager is ILoomModule {
 
     /// @notice Retained only as a fail-closed wire-compatibility boundary.
     /// Existing clients must migrate to the guardian-supported overload.
-    function cancelRecovery(address account) external {
-        // Keep the historical nonpayable ABI without allowing its owner-only
-        // authority back in. The revert rolls this compatibility marker back,
-        // so it cannot be observed as a cancellation event.
-        emit RecoveryCancelled(account, bytes32(0));
+    function cancelRecovery(address) external pure {
         revert UnauthorizedCancellation();
     }
 
@@ -104,17 +101,15 @@ contract RecoveryManager is ILoomModule {
                 guardianApprovals
             )) revert InvalidRecovery();
 
-        recoveryId = keccak256(
-            abi.encode(
-                account,
-                oldValidatorsHash,
-                newValidator,
-                initDataHash,
-                newGuardianRoot,
-                newGuardianThreshold,
-                configVersion,
-                nonce
-            )
+        recoveryId = RecoveryIdLib.recoveryId(
+            account,
+            oldValidatorsHash,
+            newValidator,
+            initDataHash,
+            newGuardianRoot,
+            newGuardianThreshold,
+            configVersion,
+            nonce
         );
         // Timestamp drift is negligible relative to the multi-day recovery delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -197,17 +192,15 @@ contract RecoveryManager is ILoomModule {
     }
 
     function recoveryIdFor(address account, PendingRecovery memory pending) public pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                account,
-                pending.oldValidatorsHash,
-                pending.newValidator,
-                pending.initDataHash,
-                pending.newGuardianRoot,
-                pending.newGuardianThreshold,
-                pending.configVersion,
-                pending.nonce
-            )
+        return RecoveryIdLib.recoveryId(
+            account,
+            pending.oldValidatorsHash,
+            pending.newValidator,
+            pending.initDataHash,
+            pending.newGuardianRoot,
+            pending.newGuardianThreshold,
+            pending.configVersion,
+            pending.nonce
         );
     }
 

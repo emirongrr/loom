@@ -5,8 +5,21 @@ import {Test} from "forge-std/Test.sol";
 import {P256RecoveryValidatorFactory} from "../../src/validators/P256RecoveryValidatorFactory.sol";
 import {P256RecoveryValidator} from "../../src/validators/P256RecoveryValidator.sol";
 import {P256Validator} from "../../src/validators/P256Validator.sol";
+import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 import {OZP256Verifier} from "../mocks/OZP256Verifier.sol";
 import {P256TestKeys} from "../helpers/P256TestKeys.sol";
+
+contract RecoveryGuardianThresholdHarness is P256RecoveryValidator {
+    constructor() P256RecoveryValidator(address(0)) {}
+
+    function validatorMaximum() external pure returns (uint8) {
+        return MAX_RECOVERY_GUARDIAN_THRESHOLD;
+    }
+
+    function libraryMaximum() external pure returns (uint8) {
+        return GuardianVerificationLib.MAX_GUARDIAN_THRESHOLD;
+    }
+}
 
 /// @notice The factory provisions a validator that is finished when it is
 /// deployed (ADR-0025). Recovery therefore carries no initializer, so these
@@ -37,6 +50,11 @@ contract P256RecoveryValidatorFactoryTest is Test {
 
     function _deploy(P256RecoveryValidatorFactory factory, address account, uint64 nonce) internal returns (address) {
         return factory.deploy(account, nonce, _x(), _y(), RP_ID_HASH, ORIGIN_HASH, POLICY_HOOK, NEW_ROOT, NEW_THRESHOLD);
+    }
+
+    function testRecoveryGuardianThresholdMaximumMatchesSharedLibrary() public {
+        RecoveryGuardianThresholdHarness harness = new RecoveryGuardianThresholdHarness();
+        assertEq(harness.validatorMaximum(), harness.libraryMaximum());
     }
 
     function testDeploysThePredictedValidatorAndWritesItsKey() public {

@@ -4,6 +4,7 @@ pragma solidity 0.8.36;
 import {ILoomAccount} from "../interfaces/ILoomAccount.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
+import {RecoveryIdLib} from "../libraries/RecoveryIdLib.sol";
 
 /// @notice The narrow slice of a recovery manager this board reads. Deliberately
 /// not `RecoveryManager` itself: the board is a discovery channel, not a
@@ -366,10 +367,8 @@ contract RecoveryIntentBoard {
         );
     }
 
-    /// @dev Byte-identical to `RecoveryManager.recoveryIdFor`. Duplicated rather
-    /// than called because the manager exposes it only over a `PendingRecovery`
-    /// struct that does not exist until a proposal does, and the whole purpose of
-    /// this contract is to give an identity to approvals collected beforehand.
+    /// @dev Uses the same pure identity function as `RecoveryManager`, without
+    /// requiring a `PendingRecovery` to exist before approvals are collected.
     function _recoveryId(
         address account,
         bytes32 oldValidatorsHash,
@@ -380,17 +379,15 @@ contract RecoveryIntentBoard {
         uint64 configVersion,
         uint64 nonce
     ) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                account,
-                oldValidatorsHash,
-                newValidator,
-                initDataHash,
-                newGuardianRoot,
-                newGuardianThreshold,
-                configVersion,
-                nonce
-            )
+        return RecoveryIdLib.recoveryId(
+            account,
+            oldValidatorsHash,
+            newValidator,
+            initDataHash,
+            newGuardianRoot,
+            newGuardianThreshold,
+            configVersion,
+            nonce
         );
     }
 }

@@ -7,9 +7,14 @@ import {WebAuthnP256} from "../libraries/WebAuthnP256.sol";
 /// @notice Stateless guardian verifier for WebAuthn P-256 passkeys.
 /// @dev The commitment is WebAuthnP256.fingerprint(publicKey).
 contract P256GuardianVerifier is IGuardianVerifier {
+    error InvalidFallbackVerifier();
+
     address public immutable fallbackVerifier;
 
     constructor(address fallbackVerifier_) {
+        if (fallbackVerifier_ != address(0) && fallbackVerifier_.code.length == 0) {
+            revert InvalidFallbackVerifier();
+        }
         fallbackVerifier = fallbackVerifier_;
     }
 

@@ -54,6 +54,14 @@ Guardian-only cancellation remains unchanged and requires the full configured
 guardian threshold. No Loom service, administrator, registry, or privileged
 publisher is introduced.
 
+The same authority rule applies to L1 keystore sync. A sync replaces the live
+validator set and therefore presents the same compromised-validator veto risk.
+`KeystoreSyncRecoveryModule.cancelSyncWithAccountAndGuardians` requires the
+account plus `max(1, guardianThreshold - 1)` guardian approvals, while
+`cancelSyncWithGuardians` retains the full-threshold guardian-only path. The
+former account-only `cancelRecovery(address)` sync selector is removed rather
+than retained as a second legacy recovery-shaped surface.
+
 The legacy `cancelRecovery(address)` selector remains present but fails closed
 with `UnauthorizedCancellation`. New clients use
 `cancelRecoveryWithAccountAndGuardians(address, approvals)`. This preserves

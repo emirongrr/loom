@@ -9,6 +9,7 @@ import {EIP712Lib} from "../libraries/EIP712Lib.sol";
 import {GuardianVerificationLib} from "../libraries/GuardianVerificationLib.sol";
 import {MerkleProof} from "../libraries/MerkleProof.sol";
 import {ModuleType} from "../libraries/ModuleType.sol";
+import {RecoveryIdLib} from "../libraries/RecoveryIdLib.sol";
 import {ValidatorSetLib} from "../libraries/ValidatorSetLib.sol";
 
 contract KeystoreSyncRecoveryModule is ILoomModule {
@@ -135,10 +136,27 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
         );
     }
 
-    function cancelRecovery(address account) external {
+    /// @notice Cancels a pending sync with current account authority plus
+    /// guardian support. The full guardian-threshold path remains available
+    /// without the account through `cancelSyncWithGuardians`.
+    /// @dev A current validator may be the authority this sync is replacing, so
+    /// it must not retain a unilateral veto. The reduced threshold mirrors the
+    /// guardian recovery cancellation rule in ADR-0023.
+    function cancelSyncWithAccountAndGuardians(
+        address account,
+        GuardianVerificationLib.Approval[] calldata guardianApprovals
+    ) external {
         PendingSync memory pending = pendingSyncs[account];
         if (pending.readyAt == 0) revert SyncNotPending();
         if (msg.sender != account) revert UnauthorizedCancellation();
+        bytes32 syncId = syncIdFor(account, pending);
+        bytes32 digest = cancelDigest(account, syncId, pending.accountConfigVersion, pending.nonce);
+        ILoomAccount loom = ILoomAccount(account);
+        uint256 threshold = loom.guardianThreshold();
+        if (threshold > 1) --threshold;
+        if (!GuardianVerificationLib.approved(loom.guardianRoot(), threshold, digest, guardianApprovals)) {
+            revert UnauthorizedCancellation();
+        }
         _cancel(account, pending);
     }
 
@@ -186,22 +204,20 @@ contract KeystoreSyncRecoveryModule is ILoomModule {
     }
 
     function syncIdFor(address account, PendingSync memory pending) public view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                account,
-                pending.identityId,
-                pending.oldValidatorsHash,
-                pending.newValidatorRoot,
-                pending.newValidatorsHash,
-                pending.newGuardianRoot,
-                pending.newGuardianThreshold,
-                pending.l1Version,
-                pending.readyAt,
-                pending.expiresAt,
-                pending.accountConfigVersion,
-                pending.nonce,
-                block.chainid
-            )
+        return RecoveryIdLib.keystoreSyncId(
+            account,
+            pending.identityId,
+            pending.oldValidatorsHash,
+            pending.newValidatorRoot,
+            pending.newValidatorsHash,
+            pending.newGuardianRoot,
+            pending.newGuardianThreshold,
+            pending.l1Version,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.accountConfigVersion,
+            pending.nonce,
+            block.chainid
         );
     }
 

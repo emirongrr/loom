@@ -455,7 +455,7 @@ contract KeystoreSyncTest {
         require(!rejectedDuplicate, "duplicate pending sync accepted");
 
         (bool rejectedUnauthorizedCancel,) =
-            address(sync).call(abi.encodeCall(KeystoreSyncRecoveryModule.cancelRecovery, (address(account))));
+            address(sync).call(abi.encodeWithSignature("cancelRecovery(address)", address(account)));
         require(!rejectedUnauthorizedCancel, "non-account cancelled sync");
 
         vm.warp(block.timestamp + sync.SYNC_DELAY() + sync.SYNC_WINDOW() + 1);
@@ -493,6 +493,43 @@ contract KeystoreSyncTest {
         require(!rejectedDuplicate, "duplicate guardian accepted");
     }
 
+    /// @notice A compromised current validator must not be able to veto the
+    /// keystore recovery intended to replace it without guardian support.
+    function testAccountCannotCancelSyncWithoutGuardianApproval() public {
+        (LoomAccount account, KeystoreSyncRecoveryModule sync, LoomKeystore keystore, MockValidator oldValidator) =
+            _accountWithSync();
+        MockValidator newValidator = new MockValidator();
+        _registerConfig(keystore, sync, address(account), newValidator, "", 2);
+        _propose(sync, keystore, account, oldValidator, newValidator, "");
+
+        bytes memory legacyCancel = abi.encodeWithSignature("cancelRecovery(address)", address(account));
+        (bool cancelled,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(sync), 0, legacyCancel)))
+                )
+            );
+
+        require(!cancelled, "current validator cancelled keystore sync alone");
+        (,,,,,,, uint48 readyAt,,,) = sync.pendingSyncs(address(account));
+        require(readyAt != 0, "failed cancellation cleared pending sync");
+
+        GuardianVerificationLib.Approval[] memory noApprovals = new GuardianVerificationLib.Approval[](0);
+        bytes memory unsupported = abi.encodeCall(
+            KeystoreSyncRecoveryModule.cancelSyncWithAccountAndGuardians, (address(account), noApprovals)
+        );
+        (bool cancelledWithoutGuardian,) = address(account)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(sync), 0, unsupported)))
+                )
+            );
+        require(!cancelledWithoutGuardian, "account-assisted sync cancellation accepted no guardians");
+        (,,,,,,, readyAt,,,) = sync.pendingSyncs(address(account));
+        require(readyAt != 0, "missing guardian approvals cleared pending sync");
+    }
+
     function testSyncConstructorModuleTypeAccountCancelAndInvalidExecutionBranches() public {
         LoomKeystore keystore = new LoomKeystore();
         MockKeystoreProofVerifier verifier = new MockKeystoreProofVerifier();
@@ -514,7 +551,7 @@ contract KeystoreSyncTest {
         MockValidator newValidator = new MockValidator();
         bytes memory initData = "";
         _registerConfig(accountKeystore, accountSync, address(account), newValidator, initData, 2);
-        _propose(accountSync, accountKeystore, account, oldValidator, newValidator, initData);
+        bytes32 syncId = _propose(accountSync, accountKeystore, account, oldValidator, newValidator, initData);
 
         (bool rejectedWrongOldSet,) = address(accountSync)
             .call(
@@ -525,7 +562,13 @@ contract KeystoreSyncTest {
             );
         require(!rejectedWrongOldSet, "wrong old validator set accepted");
 
-        bytes memory cancel = abi.encodeCall(KeystoreSyncRecoveryModule.cancelRecovery, (address(account)));
+        bytes32 digest = accountSync.cancelDigest(address(account), syncId, account.configVersion(), 0);
+        GuardianVerificationLib.Approval[] memory fullApprovals = _guardianApprovals(digest);
+        GuardianVerificationLib.Approval[] memory reducedApprovals = new GuardianVerificationLib.Approval[](1);
+        reducedApprovals[0] = fullApprovals[0];
+        bytes memory cancel = abi.encodeCall(
+            KeystoreSyncRecoveryModule.cancelSyncWithAccountAndGuardians, (address(account), reducedApprovals)
+        );
         account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(accountSync), 0, cancel)));
         (,,,,,,, uint48 readyAt,,,) = accountSync.pendingSyncs(address(account));
         require(readyAt == 0, "account cancellation failed");
