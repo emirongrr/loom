@@ -1,0 +1,13 @@
+sequenceDiagram
+  participant U as Browser
+  participant A as Sponsor authorizer
+  participant P as OnboardingPaymaster
+  participant R as Private RPC
+  participant E as EntryPoint
+  U->>A: Bounded unsigned activation
+  A-->>U: Short-lived paymaster authorization
+  U->>U: Passkey signs final UserOperation
+  U->>R: Private submission
+  R->>E: handleOps
+  E->>P: validatePaymasterUserOp
+  E-->>U: Atomic activation receipt

@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant U as Browser
+  participant S as Sponsor EOA
+  participant E as EntryPoint
+  U->>S: Signed activation
+  S->>E: depositTo(prospective account)
+  Note over S,E: Deposit can land alone
+  S->>E: handleOps
+  Note over U,E: Failure/retry can strand or duplicate value
