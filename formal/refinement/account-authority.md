@@ -83,11 +83,11 @@ that the abstract model proves them.
 | `recoveryExpiresAt` | `RecoveryManager.pendingRecoveries(account).expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
 | `validatorSetIdentity` | `LoomAccount`'s installed validator-set commitment | Abstract complete-set identity; module addresses, ordering, and initialization data remain concrete. |
 | `recoveryValidatorSetIdentity` | `RecoveryManager.pendingRecoveries(account).newValidator` plus committed set payload | Abstract pending replacement identity; guardian approval and full set encoding remain concrete. |
-| `migrationPending` | `LoomAccount.pendingMigration().readyAt != 0` | Predicate mapped independently from the target commitments represented by `migrationTarget`. |
-| `migrationReadyAt` | `LoomAccount.pendingMigration().readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
-| `migrationExpiresAt` | `LoomAccount.pendingMigration().expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
+| `migrationPending` | `MigrationModule.pendingMigrations(account).readyAt != 0` | Predicate mapped independently from the target commitments represented by `migrationTarget`. |
+| `migrationReadyAt` | `MigrationModule.pendingMigrations(account).readyAt` | Direct timing value mapped; zero is cleared state and delay bounds remain concrete-only. |
+| `migrationExpiresAt` | `MigrationModule.pendingMigrations(account).expiresAt` | Direct timing value mapped; execution remains valid at the exact expiry timestamp. |
 | `migrationTarget` | `pendingMigration.destination`, `destinationCodeHash`, `destinationConfigHash` | Destination and code hash match exactly; zero config hash preserves Solidity's optional config-binding semantics. |
-| `migrationCallsHash` | `LoomAccount.pendingMigration().callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
+| `migrationCallsHash` | `MigrationModule.pendingMigrations(account).callsHash` | Abstract commitment mapped; Keccak collision resistance and `abi.encode(calls)` correctness remain concrete assumptions. |
 | `migrationConfigVersion` | scheduled migration's `configVersion` binding | Abstract version binding; concrete pending-operation layout and hash encoding remain implementation details. |
 | `directExecutionNonce` | `LoomAccount.directExecutionNonces(validator)` | Abstract single-validator nonce; concrete mapping keys and digest domain separation remain implementation details. |
 | `batchEffect` | effects produced by an abstract execution batch | Abstract aggregate effect counter used only to state atomicity; concrete target storage and token balances remain external. |
@@ -114,8 +114,8 @@ that the abstract model proves them.
 | `executeRecovery` | `RecoveryManager.executeRecovery` then account recovery functions | pending, `readyAt <= now <= expiresAt`, non-zero replacement | exact set replacement, proof/digest and config binding |
 | `advanceTime` | passage of chain time between transactions | adds a non-negative delta to `now` | block production, timestamp variance, reorgs, and liveness |
 | `configChange` | successful scheduled self-calls that mutate modules or guardian configuration | version increments abstractly and invalidates commitments bound to an older version | scheduling delay, operation hash, exact changed state, stale invalidation |
-| `scheduleMigration` | `scheduleMigration` | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
-| `executeMigration` | `executeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
+| `scheduleMigration` | `MigrationModule.scheduleMigration` through account execution | records target identity/code/config bindings, `readyAt`, `expiresAt`, and the call commitment | deployed-code checks, config read validity, delay/window bounds |
+| `executeMigration` | `LoomAccount.executeMigration` plus `MigrationModule.consumeMigration` | pending, not frozen, within the execution window, matching target, call, and config-version commitments | hook mediation and atomic external calls |
 | `executeDirectAttempt` | `executeDirect` | rejected authorization leaves the nonce unchanged | signature verification, validity window, validator installation, and nonce-map selection |
 | `executeBatch` | `_executeAuthorized`, `executeDirect`, and `executeMigration` batch loops | failed execution returns the original state; successful execution commits all abstract effects together | EVM revert propagation, external-call side effects, nonce rollback, and token semantics |
 | `executionModeAttempt` | `execute` | unsupported modes return the original account state without executing | ERC-7579 mode layout, decoder, target calls, and exact revert data |

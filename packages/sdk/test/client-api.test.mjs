@@ -13,6 +13,7 @@ const target = "0x3333333333333333333333333333333333333333";
 const sessionKey = "0x4444444444444444444444444444444444444444";
 const token = "0x5555555555555555555555555555555555555555";
 const recoveryModule = "0x6666666666666666666666666666666666666666";
+const migrationModule = "0x7777777777777777777777777777777777777777";
 const salt = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const configHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const zeroBytes32 = "0x" + "00".repeat(32);
@@ -59,6 +60,7 @@ function accountStateTransport({
   configVersion = 1n,
   frozenUntil = 0n,
   validatorCount = 1n,
+  migrationModuleAddress = migrationModule,
   pendingMigration = [
     addressWord("0x0000000000000000000000000000000000000000"),
     bytes32(zeroBytes32),
@@ -78,6 +80,7 @@ function accountStateTransport({
     abi(word(configVersion)),
     abi(word(frozenUntil)),
     abi(word(validatorCount)),
+    abi(addressWord(migrationModuleAddress)),
     abi(...pendingMigration)
   ];
   if (pendingRecovery !== undefined) responses.push(abi(...pendingRecovery));
@@ -294,7 +297,7 @@ test("client reads guardianless recovery onboarding safety state", async () => {
   assert.equal(state.config.validatorCount, 1n);
   assert.equal(state.pending.migration.active, false);
   assert.match(state.review.summary, /Guardian recovery is not configured/);
-  assert.equal(stateTransport.calls.length, 7);
+  assert.equal(stateTransport.calls.length, 8);
 });
 
 test("client reports pending recovery before ordinary protected state", async () => {
@@ -337,7 +340,7 @@ test("client reports pending recovery before ordinary protected state", async ()
   assert.equal(state.coverage.recovery, true);
   assert.equal(state.coverage.recoveryModule, recoveryModule);
   assert.match(state.warnings.join("\n"), /Recovery is pending/);
-  assert.equal(stateTransport.calls.length, 8);
+  assert.equal(stateTransport.calls.length, 9);
 });
 
 test("client safety reader marks recovery state coverage partial without recovery module", async () => {
@@ -364,6 +367,25 @@ test("client safety reader marks recovery state coverage partial without recover
   assert.equal(state.pending.recovery, undefined);
   assert.match(state.warnings.join("\n"), /pending recovery state was not read/);
   assert.equal(state.review.summary, "Recovery module was not provided; pending recovery state was not read.");
+  assert.equal(stateTransport.calls.length, 8);
+});
+
+test("client safety reader treats an uninstalled migration module as unavailable", async () => {
+  const stateTransport = accountStateTransport({
+    migrationModuleAddress: "0x0000000000000000000000000000000000000000"
+  });
+  const client = createLoomClient({
+    chainId: 1,
+    account,
+    kohaku: { host: createKohakuHost({ providerProfile, fetch: async () => new Response("{}") }) },
+    stateTransport
+  });
+
+  const state = await client.readSafetyState({ now: 500n });
+
+  assert.equal(state.coverage.migration, false);
+  assert.equal("migrationModule" in state.coverage, false);
+  assert.equal(state.pending.migration.active, false);
   assert.equal(stateTransport.calls.length, 7);
 });
 

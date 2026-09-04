@@ -10,10 +10,10 @@ import {
   assessRuntimeSize,
   baselineDifferences,
   hexByteLength
-} from "./sovereign-account-baseline.mjs";
+} from "./account-baseline.mjs";
 
 const evidencePath = fileURLToPath(
-  new URL("../../evidence/baselines/sovereign-account-phase0.json", import.meta.url)
+  new URL("../../evidence/baselines/account-phase0.json", import.meta.url)
 );
 
 test("hex byte length rejects malformed compiler output", () => {

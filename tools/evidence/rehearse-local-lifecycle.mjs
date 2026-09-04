@@ -20,9 +20,9 @@ const steps = [
     args: ["test", "--match-contract", "EntryPointIntegrationTest", "-vvv"]
   },
   {
-    name: "sovereign migration lifecycle",
+    name: "account migration lifecycle",
     command: forge,
-    args: ["test", "--match-contract", "SovereignMigrationTest", "-vvv"]
+    args: ["test", "--match-contract", "MigrationTest", "-vvv"]
   },
   {
     name: "vault withdrawal lifecycle",

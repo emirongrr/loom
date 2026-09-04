@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
@@ -19,12 +20,105 @@ interface VmMigration {
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
 }
 
-contract SovereignMigrationTest {
+contract MigrationTest {
     VmMigration internal constant vm = VmMigration(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     uint256 internal constant GUARDIAN_KEY = 0xA11CE;
     uint256 internal constant SECOND_GUARDIAN_KEY = 0xB0B;
     ECDSAGuardianVerifier internal guardianVerifier = new ECDSAGuardianVerifier();
+    MigrationModule internal migrationModule = new MigrationModule();
+
+    function testMigrationDelayMatchesAccountConfigurationDelay() public {
+        LoomAccount source = _account(false);
+        require(
+            migrationModule.MIN_MIGRATION_DELAY() == source.MIN_CONFIG_DELAY(), "migration and account delays diverged"
+        );
+        require(migrationModule.isModuleType(ModuleType.MIGRATION), "migration module type rejected");
+        require(!migrationModule.isModuleType(ModuleType.RECOVERY), "recovery module type accepted");
+    }
+
+    function testMigrationModuleRejectsCallsThatDoNotComeFromTheAccount() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        (bool accepted,) = address(migrationModule)
+            .call(
+                abi.encodeCall(
+                    MigrationModule.scheduleMigration,
+                    (
+                        address(destination),
+                        address(destination).codehash,
+                        destination.configHash(),
+                        keccak256("calls"),
+                        source.MIN_CONFIG_DELAY(),
+                        uint48(1 days)
+                    )
+                )
+            );
+        require(!accepted, "non-account caller scheduled a migration");
+        (,,, bytes32 callsHash,,,,) = migrationModule.pendingMigrations(address(source));
+        require(callsHash == bytes32(0), "rejected call created migration state");
+
+        (bool consumeAccepted,) = address(migrationModule)
+            .call(abi.encodeCall(MigrationModule.consumeMigration, (address(source), new ExecutionLib.Execution[](0))));
+        require(!consumeAccepted, "external caller consumed account migration state");
+    }
+
+    function testMigrationModuleLifecycleIsTimelockedAndSingleInstance() public {
+        LoomAccount source = _account(false);
+        MigrationModule replacement = new MigrationModule();
+
+        bytes memory install =
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.MIGRATION, address(replacement), bytes("")));
+        _schedule(source, address(source), install, source.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        (bool secondInstalled,) =
+            address(source).call(abi.encodeCall(LoomAccount.executeScheduled, (address(source), 0, install)));
+        require(!secondInstalled, "second migration module was installed");
+        require(source.migrationModule() == address(migrationModule), "active migration module changed");
+
+        bytes memory uninstall =
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.MIGRATION, address(migrationModule), bytes("")));
+        _schedule(source, address(source), uninstall, source.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeScheduled(address(source), 0, uninstall);
+        require(source.migrationModule() == address(0), "migration module address was not cleared");
+        require(
+            !source.isModuleInstalled(ModuleType.MIGRATION, address(migrationModule)),
+            "migration module remained installed"
+        );
+    }
+
+    function testPendingMigrationCannotBeOverwritten() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(destination), 0, bytes(""));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+
+        (,,, bytes32 committedCallsHash,,,,) = migrationModule.pendingMigrations(address(source));
+        bytes memory schedule = abi.encodeCall(
+            MigrationModule.scheduleMigration,
+            (
+                address(destination),
+                address(destination).codehash,
+                destination.configHash(),
+                keccak256(abi.encode(calls)),
+                source.MIN_CONFIG_DELAY(),
+                uint48(1 days)
+            )
+        );
+        (bool overwritten,) = address(source)
+            .call(
+                abi.encodeCall(
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(address(migrationModule), 0, schedule)))
+                )
+            );
+
+        require(!overwritten, "pending migration was overwritten");
+        (,,, bytes32 callsHashAfter,,,,) = migrationModule.pendingMigrations(address(source));
+        require(callsHashAfter == committedCallsHash, "pending migration commitment changed");
+    }
 
     function testMigrationIsDelayedPermissionlessAndDestinationBound() public {
         LoomAccount source = _account(false);
@@ -39,7 +133,8 @@ contract SovereignMigrationTest {
         payable(address(source)).transfer(1 ether);
 
         _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
-        (address pendingDestination,,, bytes32 callsHash, uint48 readyAt,,,) = source.pendingMigration();
+        (address pendingDestination,,, bytes32 callsHash, uint48 readyAt,,,) =
+            migrationModule.pendingMigrations(address(source));
         require(pendingDestination == address(destination), "destination not committed");
         require(callsHash == keccak256(abi.encode(calls)), "calls hash not committed");
 
@@ -51,8 +146,8 @@ contract SovereignMigrationTest {
 
         require(token.balanceOf(address(destination)) == 70, "token migration failed");
         require(address(destination).balance == 1 ether, "eth migration failed");
-        require(source.migrationNonce() == 1, "migration nonce did not advance");
-        (,,, bytes32 clearedHash,,,,) = source.pendingMigration();
+        require(migrationModule.migrationNonces(address(source)) == 1, "migration nonce did not advance");
+        (,,, bytes32 clearedHash,,,,) = migrationModule.pendingMigrations(address(source));
         require(clearedHash == bytes32(0), "pending migration not cleared");
     }
 
@@ -75,7 +170,7 @@ contract SovereignMigrationTest {
         calls[0] = ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (elsewhere, 100)));
 
         _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
-        (address pendingDestination,,,, uint48 readyAt,,,) = source.pendingMigration();
+        (address pendingDestination,,,, uint48 readyAt,,,) = migrationModule.pendingMigrations(address(source));
         require(pendingDestination == address(destination), "destination not committed");
 
         vm.warp(readyAt);
@@ -85,12 +180,12 @@ contract SovereignMigrationTest {
         // migration still completed.
         require(token.balanceOf(elsewhere) == 100, "assets did not move to the third party");
         require(token.balanceOf(address(destination)) == 0, "committed destination received assets");
-        require(source.migrationNonce() == 1, "migration nonce did not advance");
+        require(migrationModule.migrationNonces(address(source)) == 1, "migration nonce did not advance");
 
         // And the source account is still fully operational: migration is a delayed
         // exit batch, not a terminal state.
         require(source.validatorCount() != 0, "source account lost its validators");
-        (,,, bytes32 clearedHash,,,,) = source.pendingMigration();
+        (,,, bytes32 clearedHash,,,,) = migrationModule.pendingMigrations(address(source));
         require(clearedHash == bytes32(0), "pending migration not cleared");
     }
 
@@ -140,8 +235,9 @@ contract SovereignMigrationTest {
 
     function testMigrationBatchCannotUninstallTheLastValidator() public {
         MockValidator validator = new MockValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         LoomAccount source =
             new LoomAccount(address(this), _guardianLeaf(), 1, keccak256("config-last-validator"), modules);
         LoomAccount destination = _account(false);
@@ -214,10 +310,10 @@ contract SovereignMigrationTest {
                         bytes32(0),
                         abi.encode(
                             ExecutionLib.Execution(
-                                address(source),
+                                address(migrationModule),
                                 0,
                                 abi.encodeCall(
-                                    LoomAccount.scheduleMigration,
+                                    MigrationModule.scheduleMigration,
                                     (
                                         undeployed,
                                         keccak256("fake-codehash"),
@@ -242,10 +338,10 @@ contract SovereignMigrationTest {
                         bytes32(0),
                         abi.encode(
                             ExecutionLib.Execution(
-                                address(source),
+                                address(migrationModule),
                                 0,
                                 abi.encodeCall(
-                                    LoomAccount.scheduleMigration,
+                                    MigrationModule.scheduleMigration,
                                     (
                                         address(destination),
                                         keccak256("wrong-codehash"),
@@ -278,10 +374,10 @@ contract SovereignMigrationTest {
                         bytes32(0),
                         abi.encode(
                             ExecutionLib.Execution(
-                                address(source),
+                                address(migrationModule),
                                 0,
                                 abi.encodeCall(
-                                    LoomAccount.scheduleMigration,
+                                    MigrationModule.scheduleMigration,
                                     (
                                         address(destination),
                                         address(destination).codehash,
@@ -306,17 +402,17 @@ contract SovereignMigrationTest {
                         bytes32(0),
                         abi.encode(
                             ExecutionLib.Execution(
-                                address(source),
+                                address(migrationModule),
                                 0,
                                 abi.encodeCall(
-                                    LoomAccount.scheduleMigration,
+                                    MigrationModule.scheduleMigration,
                                     (
                                         address(destination),
                                         address(destination).codehash,
                                         destination.configHash(),
                                         keccak256(abi.encode(calls)),
                                         source.MIN_CONFIG_DELAY(),
-                                        source.MAX_MIGRATION_WINDOW() + 1
+                                        migrationModule.MAX_MIGRATION_WINDOW() + 1
                                     )
                                 )
                             )
@@ -335,10 +431,10 @@ contract SovereignMigrationTest {
                         bytes32(0),
                         abi.encode(
                             ExecutionLib.Execution(
-                                address(source),
+                                address(migrationModule),
                                 0,
                                 abi.encodeCall(
-                                    LoomAccount.scheduleMigration,
+                                    MigrationModule.scheduleMigration,
                                     (
                                         address(futureDestination),
                                         address(futureDestination).codehash,
@@ -417,19 +513,23 @@ contract SovereignMigrationTest {
                     (
                         bytes32(0),
                         abi.encode(
-                            ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ()))
+                            ExecutionLib.Execution(
+                                address(migrationModule), 0, abi.encodeCall(MigrationModule.cancelMigration, ())
+                            )
                         )
                     )
                 )
             );
         require(!cancelledWhileFrozen, "frozen primary cancelled migration");
-        require(source.migrationNonce() == 0, "failed frozen cancel advanced migration nonce");
+        require(migrationModule.migrationNonces(address(source)) == 0, "failed frozen cancel advanced migration nonce");
         require(target.value() == 0, "frozen migration executed");
 
         vm.warp(source.frozenUntil());
         source.execute(
             bytes32(0),
-            abi.encode(ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ())))
+            abi.encode(
+                ExecutionLib.Execution(address(migrationModule), 0, abi.encodeCall(MigrationModule.cancelMigration, ()))
+            )
         );
         vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
         (bool executedAfterCancel,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
@@ -444,13 +544,14 @@ contract SovereignMigrationTest {
         calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
         _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
 
-        LoomAccount.PendingMigration memory pending = _pending(source);
-        bytes32 migrationId = source.migrationIdFor(pending);
-        bytes32 digest = source.migrationCancelDigest(migrationId, pending.configVersion, pending.nonce);
-        source.cancelMigrationWithGuardians(_guardianApprovals(source, digest));
+        MigrationModule.PendingMigration memory pending = _pending(source);
+        bytes32 migrationId = migrationModule.migrationIdFor(address(source), pending);
+        bytes32 digest =
+            migrationModule.migrationCancelDigest(address(source), migrationId, pending.configVersion, pending.nonce);
+        migrationModule.cancelMigrationWithGuardians(address(source), _guardianApprovals(source, digest));
 
-        require(source.migrationNonce() == 1, "guardian cancel did not advance nonce");
-        (,,, bytes32 callsHash,,,,) = source.pendingMigration();
+        require(migrationModule.migrationNonces(address(source)) == 1, "guardian cancel did not advance nonce");
+        (,,, bytes32 callsHash,,,,) = migrationModule.pendingMigrations(address(source));
         require(callsHash == bytes32(0), "guardian cancel did not clear pending migration");
         vm.warp(pending.readyAt);
         (bool executed,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
@@ -466,32 +567,40 @@ contract SovereignMigrationTest {
         calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (1)));
         _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
 
-        LoomAccount.PendingMigration memory pending = _pending(source);
-        bytes32 migrationId = source.migrationIdFor(pending);
-        bytes32 digest = source.migrationCancelDigest(migrationId, pending.configVersion, pending.nonce);
+        MigrationModule.PendingMigration memory pending = _pending(source);
+        bytes32 migrationId = migrationModule.migrationIdFor(address(source), pending);
+        bytes32 digest =
+            migrationModule.migrationCancelDigest(address(source), migrationId, pending.configVersion, pending.nonce);
 
         GuardianVerificationLib.Approval[] memory missing = new GuardianVerificationLib.Approval[](1);
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(source, digest);
         missing[0] = approvals[0];
-        (bool acceptedMissing,) =
-            address(source).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (missing)));
+        (bool acceptedMissing,) = address(migrationModule)
+            .call(abi.encodeCall(MigrationModule.cancelMigrationWithGuardians, (address(source), missing)));
         require(!acceptedMissing, "missing guardian threshold accepted");
 
         GuardianVerificationLib.Approval[] memory duplicate = new GuardianVerificationLib.Approval[](2);
         duplicate[0] = approvals[0];
         duplicate[1] = approvals[0];
-        (bool acceptedDuplicate,) =
-            address(source).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (duplicate)));
+        (bool acceptedDuplicate,) = address(migrationModule)
+            .call(abi.encodeCall(MigrationModule.cancelMigrationWithGuardians, (address(source), duplicate)));
         require(!acceptedDuplicate, "duplicate guardian accepted");
 
-        bytes32 wrongDigest = source.migrationCancelDigest(migrationId, pending.configVersion + 1, pending.nonce);
-        (bool acceptedWrongDigest,) = address(source)
-            .call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (_guardianApprovals(source, wrongDigest))));
+        bytes32 wrongDigest = migrationModule.migrationCancelDigest(
+            address(source), migrationId, pending.configVersion + 1, pending.nonce
+        );
+        (bool acceptedWrongDigest,) = address(migrationModule)
+            .call(
+                abi.encodeCall(
+                    MigrationModule.cancelMigrationWithGuardians,
+                    (address(source), _guardianApprovals(source, wrongDigest))
+                )
+            );
         require(!acceptedWrongDigest, "wrong guardian digest accepted");
 
-        (,,, bytes32 callsHash,,,,) = source.pendingMigration();
+        (,,, bytes32 callsHash,,,,) = migrationModule.pendingMigrations(address(source));
         require(callsHash == keccak256(abi.encode(calls)), "failed guardian cancel mutated pending migration");
-        require(source.migrationNonce() == 0, "failed guardian cancel consumed nonce");
+        require(migrationModule.migrationNonces(address(source)) == 0, "failed guardian cancel consumed nonce");
     }
 
     function testMigrationIsAtomicAndPreservesPendingStateOnRevert() public {
@@ -508,8 +617,8 @@ contract SovereignMigrationTest {
 
         require(!executed, "reverting migration succeeded");
         require(target.value() == 0, "migration was not atomic");
-        require(source.migrationNonce() == 0, "reverting migration consumed nonce");
-        (,,, bytes32 callsHash,,,,) = source.pendingMigration();
+        require(migrationModule.migrationNonces(address(source)) == 0, "reverting migration consumed nonce");
+        (,,, bytes32 callsHash,,,,) = migrationModule.pendingMigrations(address(source));
         require(callsHash == keccak256(abi.encode(calls)), "reverting migration cleared pending state");
     }
 
@@ -537,7 +646,9 @@ contract SovereignMigrationTest {
             ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(destination), 10)));
         source.execute(
             bytes32(0),
-            abi.encode(ExecutionLib.Execution(address(source), 0, abi.encodeCall(LoomAccount.cancelMigration, ())))
+            abi.encode(
+                ExecutionLib.Execution(address(migrationModule), 0, abi.encodeCall(MigrationModule.cancelMigration, ()))
+            )
         );
         _scheduleMigration(source, destination, allowed, source.MIN_CONFIG_DELAY(), 1 days);
         vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
@@ -547,9 +658,10 @@ contract SovereignMigrationTest {
 
     function _account(bool withPolicyHook) internal returns (LoomAccount) {
         MockValidator validator = new MockValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](withPolicyHook ? 2 : 1);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](withPolicyHook ? 3 : 2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         if (withPolicyHook) modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(new PolicyHook()), "");
+        modules[modules.length - 1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         return new LoomAccount(
             address(this), _guardianLeaf(), 1, keccak256(abi.encode("config", address(validator))), modules
         );
@@ -557,8 +669,9 @@ contract SovereignMigrationTest {
 
     function _accountWithEntryPoint(address entryPoint) internal returns (LoomAccount) {
         MockValidator validator = new MockValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         return new LoomAccount(
             entryPoint, _guardianLeaf(), 1, keccak256(abi.encode("config", entryPoint, address(validator))), modules
         );
@@ -567,9 +680,10 @@ contract SovereignMigrationTest {
     function _accountWithPolicyHook() internal returns (LoomAccount account, PolicyHook hook) {
         MockValidator validator = new MockValidator();
         hook = new PolicyHook();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         modules[1] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
+        modules[2] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         account = new LoomAccount(
             address(this), _guardianLeaf(), 1, keccak256(abi.encode("config", address(validator))), modules
         );
@@ -577,8 +691,9 @@ contract SovereignMigrationTest {
 
     function _accountWithGuardianThreshold(uint8 threshold) internal returns (LoomAccount) {
         MockValidator validator = new MockValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         return new LoomAccount(
             address(this),
             _guardianRoot(),
@@ -610,10 +725,10 @@ contract SovereignMigrationTest {
         uint48 window
     ) internal {
         bytes memory schedule = abi.encodeCall(
-            LoomAccount.scheduleMigration,
+            MigrationModule.scheduleMigration,
             (destination, destinationCodeHash, destinationConfigHash, keccak256(abi.encode(calls)), delay, window)
         );
-        source.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(source), 0, schedule)));
+        source.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(migrationModule), 0, schedule)));
     }
 
     function _schedule(LoomAccount account, address target, bytes memory data, uint48 delay) internal {
@@ -701,7 +816,7 @@ contract SovereignMigrationTest {
         return abi.encodePacked(r, s, v);
     }
 
-    function _pending(LoomAccount account) internal view returns (LoomAccount.PendingMigration memory pending) {
+    function _pending(LoomAccount account) internal view returns (MigrationModule.PendingMigration memory pending) {
         (
             pending.destination,
             pending.destinationCodeHash,
@@ -711,7 +826,7 @@ contract SovereignMigrationTest {
             pending.expiresAt,
             pending.configVersion,
             pending.nonce
-        ) = account.pendingMigration();
+        ) = migrationModule.pendingMigrations(address(account));
     }
 
     receive() external payable {}

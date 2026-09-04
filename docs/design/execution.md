@@ -318,10 +318,15 @@ rejected for now:
   decision record if a concrete failure mode justifies it, rather than reusing
   this precedent informally.
 
-## Sovereign migration
+## Migration
 
-`scheduleMigration` creates a visible, delayed, cancellable exit intent. The
-intent commits to:
+`MigrationModule.scheduleMigration` creates a visible, delayed, cancellable
+exit intent. Scheduling and ordinary cancellation are account calls targeted
+directly at the installed module. Pending state, nonces, timing checks,
+destination checks, commitment helpers, and guardian cancellation verification
+live in that module. The module has no generic execution function, delegatecall,
+administrator, upgrade path, mutable implementation target, or callback into
+account execution. The intent commits to:
 
 - destination account;
 - destination runtime code hash;
@@ -333,13 +338,19 @@ intent commits to:
 - maximum 30-day execution window;
 - current chain ID through `migrationIdFor`.
 
-The account itself can schedule and cancel migrations through `execute`, so a
-normal validator cannot silently bypass graded access. The guardian threshold
-can also cancel the pending migration with `cancelMigrationWithGuardians`.
+The account itself can schedule and cancel migrations by targeting the module
+through `execute`, so a
+normal validator cannot silently bypass graded access. Session validators deny
+the installed migration module as an administrative target. The guardian
+threshold can also cancel the pending migration with
+`cancelMigrationWithGuardians`.
 Guardians cannot execute the migration, change its destination, change its
-calls, or move funds. Once ready, anyone can publish `executeMigration`; this
-supports the walkaway test when the original wallet client, bundler, or
-frontend is unavailable.
+calls, or move funds. Once ready, anyone can publish
+`LoomAccount.executeMigration`. The account asks the module to consume the exact
+committed record, then routes the batch through its existing shared execution
+engine. Transaction rollback restores the module record if any hook or target
+call fails. This supports the walkaway test when the original wallet client,
+bundler, or frontend is unavailable.
 
 Execution remains conservative:
 

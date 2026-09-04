@@ -2,6 +2,7 @@
 pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 
 interface VmSdkCalldata {
     function readFile(string calldata path) external view returns (string memory);
@@ -101,7 +102,7 @@ contract SdkCalldataDifferentialTest {
         _assertMatches(
             n,
             abi.encodeCall(
-                LoomAccount.scheduleMigration,
+                MigrationModule.scheduleMigration,
                 (
                     _addr(_args(n, "destination")),
                     _b32(_args(n, "destinationCodeHash")),
@@ -115,7 +116,7 @@ contract SdkCalldataDifferentialTest {
     }
 
     function testCancelMigrationMatches() public view {
-        _assertMatches("cancelMigration", abi.encodeCall(LoomAccount.cancelMigration, ()));
+        _assertMatches("cancelMigration", abi.encodeCall(MigrationModule.cancelMigration, ()));
     }
 
     function testRevokeTokenAllowanceMatches() public view {

@@ -7,4 +7,5 @@ library ModuleType {
     uint256 internal constant FALLBACK = 3;
     uint256 internal constant HOOK = 4;
     uint256 internal constant RECOVERY = 5;
+    uint256 internal constant MIGRATION = 6;
 }

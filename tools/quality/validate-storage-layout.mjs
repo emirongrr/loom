@@ -47,6 +47,7 @@ const snapshotPath = join(root, "storage-layout.json");
 // bytecode if it contains any storage-writing opcode.
 export const PINNED_CONTRACTS = Object.freeze([
   "src/LoomAccount.sol:LoomAccount",
+  "src/MigrationModule.sol:MigrationModule",
   "src/keystore/LoomKeystore.sol:LoomKeystore",
   "src/hooks/PolicyHook.sol:PolicyHook",
   "src/hooks/VaultHook.sol:VaultHook",

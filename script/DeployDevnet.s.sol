@@ -7,6 +7,7 @@ import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 
 import {LoomAccount} from "../src/LoomAccount.sol";
 import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
+import {MigrationModule} from "../src/MigrationModule.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../src/validators/P256Validator.sol";
@@ -48,6 +49,7 @@ contract DeployDevnet is Script {
         address ecdsaValidator,
         address exactCallSessionValidator,
         address granularSessionValidator,
+        address migrationModule,
         address recoveryManager,
         address recoveryIntentBoard,
         address target
@@ -74,6 +76,7 @@ contract DeployDevnet is Script {
         P256RecoveryValidatorFactory p256RecoveryValidatorFactory = new P256RecoveryValidatorFactory(address(0));
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
+        MigrationModule migrationModule = new MigrationModule();
         RecoveryManager recoveryManager = new RecoveryManager();
         // ADR-0024: without it guardian discovery has nothing to read.
         RecoveryIntentBoard recoveryIntentBoard = new RecoveryIntentBoard();
@@ -108,6 +111,7 @@ contract DeployDevnet is Script {
             address(ecdsaValidator),
             address(exactCallSessionValidator),
             address(granularSessionValidator),
+            address(migrationModule),
             address(recoveryManager),
             address(recoveryIntentBoard),
             address(target)

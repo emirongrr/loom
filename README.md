@@ -136,7 +136,7 @@ policies, spending policies, and paymaster restrictions.
 complete validator-set replacement; single-guardian emergency freeze without
 spending authority.
 
-**Migration** — delayed sovereign migration with destination code/config
+**Migration** — delayed account migration with destination code/config
 binding, cancellation, expiry, and atomic execution under hook enforcement.
 
 **SDK** — local account SDK (`@loom/account`), wallet engine SDK (`@loom/sdk`),

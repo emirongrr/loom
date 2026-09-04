@@ -326,6 +326,7 @@ export function resolveCreationConfig(
     modules: [
       { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
       ...(handle.creation.recoveryModule ? [{ moduleTypeId: 5n, module: handle.creation.recoveryModule, initData: "0x" as Hex }] : []),
+      ...(deployment.migrationModule ? [{ moduleTypeId: 6n, module: deployment.migrationModule, initData: "0x" as Hex }] : []),
       {
         moduleTypeId: 1n,
         module: deployment.validator,
@@ -405,6 +406,7 @@ function deriveAccountHandle(input: {
       modules: [
         { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
         ...(input.recoveryModule ? [{ moduleTypeId: 5n, module: input.recoveryModule, initData: "0x" as Hex }] : []),
+        ...(deployment.migrationModule ? [{ moduleTypeId: 6n, module: deployment.migrationModule, initData: "0x" as Hex }] : []),
         {
           moduleTypeId: 1n,
           module: deployment.validator,

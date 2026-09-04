@@ -363,7 +363,7 @@ test("lifecycle call encoder builds account timelock and migration calldata", ()
     data: "0x123456",
     delay: 259200
   });
-  const migration = encoder.account.scheduleMigration({
+  const migration = encoder.migration.scheduleMigration({
     destination: other,
     destinationCodeHash: codeHash,
     callsHash: salt,

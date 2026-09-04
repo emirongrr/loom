@@ -9,6 +9,7 @@ export interface WalletDeployment {
   readonly implementation: Address;
   readonly validator: Address;
   readonly policyHook: Address;
+  readonly migrationModule?: Address;
   readonly proxyCreationCode: Hex;
   readonly runtimeCodeHashes: {
     readonly entryPoint: Hex;
@@ -17,6 +18,7 @@ export interface WalletDeployment {
     readonly implementation: Hex;
     readonly validator: Hex;
     readonly policyHook: Hex;
+    readonly migrationModule?: Hex;
     readonly recoveryModule?: Hex;
     readonly recoveryIntentBoard?: Hex;
     readonly onboardingPaymaster?: Hex;
@@ -75,11 +77,13 @@ export function validateDeployment(value: unknown): WalletDeployment {
   }
   if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(String(record.proxyCreationCode))) throw new Error("deployment proxy creation code is invalid");
   if (record.recoveryModule !== undefined && !address(record.recoveryModule)) throw new Error("deployment recovery module is invalid");
+  if (record.migrationModule !== undefined && !address(record.migrationModule)) throw new Error("deployment migration module is invalid");
   if (record.recoveryIntentBoard !== undefined && !address(record.recoveryIntentBoard)) throw new Error("deployment recovery intent board is invalid");
   if (record.onboardingPaymaster !== undefined && !address(record.onboardingPaymaster)) throw new Error("deployment onboarding paymaster is invalid");
   const runtimeCodeHashes = parseRuntimeCodeHashes(record.runtimeCodeHashes);
   const verifiers = parseGuardianVerifiers(record.guardianVerifiers);
   requirePair("recoveryModule", record.recoveryModule, runtimeCodeHashes.recoveryModule);
+  requirePair("migrationModule", record.migrationModule, runtimeCodeHashes.migrationModule);
   requirePair("recoveryIntentBoard", record.recoveryIntentBoard, runtimeCodeHashes.recoveryIntentBoard);
   requirePair("onboardingPaymaster", record.onboardingPaymaster, runtimeCodeHashes.onboardingPaymaster);
   requirePair("ecdsa guardian verifier", verifiers?.ecdsa, runtimeCodeHashes.ecdsaGuardianVerifier);
@@ -101,6 +105,7 @@ export function validateDeployment(value: unknown): WalletDeployment {
     policyHook: record.policyHook as Address,
     proxyCreationCode: record.proxyCreationCode as Hex,
     runtimeCodeHashes,
+    ...(record.migrationModule === undefined ? {} : { migrationModule: record.migrationModule as Address }),
     ...(record.recoveryModule === undefined ? {} : { recoveryModule: record.recoveryModule as Address }),
     ...(record.recoveryIntentBoard === undefined ? {} : { recoveryIntentBoard: record.recoveryIntentBoard as Address }),
     ...(record.onboardingPaymaster === undefined ? {} : { onboardingPaymaster: record.onboardingPaymaster as Address }),
@@ -154,7 +159,7 @@ function parseRuntimeCodeHashes(value: unknown): WalletDeployment["runtimeCodeHa
   const record = value as Record<string, unknown>;
   const required = ["entryPoint", "factory", "appRegistry", "implementation", "validator", "policyHook"] as const;
   for (const field of required) if (!bytes32(record[field])) throw new Error(`deployment ${field} runtime code hash is invalid`);
-  const optional = ["recoveryModule", "recoveryIntentBoard", "onboardingPaymaster", "ecdsaGuardianVerifier", "p256GuardianVerifier", "erc1271GuardianVerifier"] as const;
+  const optional = ["migrationModule", "recoveryModule", "recoveryIntentBoard", "onboardingPaymaster", "ecdsaGuardianVerifier", "p256GuardianVerifier", "erc1271GuardianVerifier"] as const;
   for (const field of optional) if (record[field] !== undefined && !bytes32(record[field])) throw new Error(`deployment ${field} runtime code hash is invalid`);
   return Object.freeze({
     entryPoint: record.entryPoint as Hex,

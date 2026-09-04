@@ -13,8 +13,19 @@ interface ILoomExecutionSelectors {
     function executeScheduled(address target, uint256 value, bytes calldata data) external;
     function scheduleCall(address target, uint256 value, bytes calldata data, uint48 delay) external returns (bytes32);
     function cancelScheduled(bytes32 operationId) external;
-    function cancelMigration() external;
     function revokeTokenAllowance(address token, address spender) external;
+}
+
+interface IMigrationSelectors {
+    function scheduleMigration(
+        address destination,
+        bytes32 destinationCodeHash,
+        bytes32 destinationConfigHash,
+        bytes32 callsHash,
+        uint48 delay,
+        uint48 executionWindow
+    ) external returns (bytes32);
+    function cancelMigration() external;
 }
 
 contract PolicyHook is ILoomHook, IPolicyHook {
@@ -136,8 +147,12 @@ contract PolicyHook is ILoomHook, IPolicyHook {
             item.target == account
                 && (selector == ILoomExecutionSelectors.scheduleCall.selector
                     || selector == ILoomExecutionSelectors.cancelScheduled.selector
-                    || selector == ILoomExecutionSelectors.cancelMigration.selector
                     || selector == ILoomExecutionSelectors.revokeTokenAllowance.selector)
+        ) return true;
+        if (
+            item.value == 0 && ILoomAccount(account).isModuleInstalled(ModuleType.MIGRATION, item.target)
+                && (selector == IMigrationSelectors.scheduleMigration.selector
+                    || selector == IMigrationSelectors.cancelMigration.selector)
         ) return true;
         if (selector == REVOKE_PERMISSION && ILoomAccount(account).isModuleInstalled(ModuleType.VALIDATOR, item.target))
         {

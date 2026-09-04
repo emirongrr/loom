@@ -240,7 +240,8 @@ contract GranularSessionValidator is ILoomValidator {
     function _isAdministrativeTarget(address account, address target) internal view returns (bool) {
         return target == account || ILoomAccount(account).isModuleInstalled(ModuleType.VALIDATOR, target)
             || ILoomAccount(account).isModuleInstalled(ModuleType.HOOK, target)
-            || ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, target);
+            || ILoomAccount(account).isModuleInstalled(ModuleType.RECOVERY, target)
+            || ILoomAccount(account).isModuleInstalled(ModuleType.MIGRATION, target);
     }
 
     function _nonceKey(bytes32 permissionId) internal pure returns (uint192) {

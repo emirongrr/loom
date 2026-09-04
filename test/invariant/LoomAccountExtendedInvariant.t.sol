@@ -28,6 +28,7 @@ pragma solidity 0.8.36;
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
 import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
@@ -115,7 +116,7 @@ contract LoomAccountExtendedHandler {
         guardianLeaf = guardianLeaf_;
         keyCommitment = keyCommitment_;
         guardianSalt = guardianSalt_;
-        lastObservedMigrationNonce = account_.migrationNonce();
+        lastObservedMigrationNonce = _migrationModule().migrationNonces(address(account_));
         lastObservedConfigVersion = account_.configVersion();
     }
 
@@ -125,6 +126,23 @@ contract LoomAccountExtendedHandler {
 
     function _checkVersion(uint64 versionBefore) internal {
         if (account.configVersion() < versionBefore) violated = true;
+    }
+
+    function _migrationModule() internal view returns (MigrationModule) {
+        return MigrationModule(account.migrationModule());
+    }
+
+    function _pendingMigration() internal view returns (MigrationModule.PendingMigration memory pending) {
+        (
+            pending.destination,
+            pending.destinationCodeHash,
+            pending.destinationConfigHash,
+            pending.callsHash,
+            pending.readyAt,
+            pending.expiresAt,
+            pending.configVersion,
+            pending.nonce
+        ) = _migrationModule().pendingMigrations(address(account));
     }
 
     function _recordInvocation(bytes4 selector) internal {
@@ -261,7 +279,9 @@ contract LoomAccountExtendedHandler {
 
     function verifyFreezeBlocksMigration() external {
         uint64 versionBefore = account.configVersion();
-        (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) = account.pendingMigration();
+        MigrationModule.PendingMigration memory pending = _pendingMigration();
+        bytes32 pendingCallsHash = pending.callsHash;
+        uint48 readyAt = pending.readyAt;
         if (pendingCallsHash == bytes32(0) || readyAt == 0) {
             _checkVersion(versionBefore);
             return;
@@ -288,10 +308,11 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function cancelMigrationDirect() external {
-        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        bytes32 pendingCallsHash = _pendingMigration().callsHash;
         if (pendingCallsHash == bytes32(0)) return;
         uint64 versionBefore = account.configVersion();
-        uint64 nonceBefore = account.migrationNonce();
+        MigrationModule module = _migrationModule();
+        uint64 nonceBefore = module.migrationNonces(address(account));
         (bool ok,) = address(account)
             .call(
                 abi.encodeCall(
@@ -299,21 +320,23 @@ contract LoomAccountExtendedHandler {
                     (
                         bytes32(0),
                         abi.encode(
-                            ExecutionLib.Execution(address(account), 0, abi.encodeCall(LoomAccount.cancelMigration, ()))
+                            ExecutionLib.Execution(
+                                address(module), 0, abi.encodeCall(MigrationModule.cancelMigration, ())
+                            )
                         )
                     )
                 )
             );
         if (ok) {
             // migrationNonce must have incremented.
-            if (account.migrationNonce() <= nonceBefore) violated = true;
+            if (module.migrationNonces(address(account)) <= nonceBefore) violated = true;
             // pendingMigration must be cleared.
-            (,,, bytes32 cleared,,,,) = account.pendingMigration();
+            bytes32 cleared = _pendingMigration().callsHash;
             if (cleared != bytes32(0)) violated = true;
         }
         // migrationNonce must never decrease.
-        if (account.migrationNonce() < lastObservedMigrationNonce) violated = true;
-        lastObservedMigrationNonce = account.migrationNonce();
+        if (module.migrationNonces(address(account)) < lastObservedMigrationNonce) violated = true;
+        lastObservedMigrationNonce = module.migrationNonces(address(account));
         _checkVersion(versionBefore);
     }
 
@@ -328,43 +351,25 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function cancelMigrationWithGuardians() external {
-        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        MigrationModule module = _migrationModule();
+        MigrationModule.PendingMigration memory migration = _pendingMigration();
+        bytes32 pendingCallsHash = migration.callsHash;
         if (pendingCallsHash == bytes32(0)) return;
         uint64 versionBefore = account.configVersion();
-        uint64 nonceBefore = account.migrationNonce();
-
-        // Read the full pending migration to compute migrationId.
-        (
-            address destination,
-            bytes32 destinationCodeHash,
-            bytes32 destinationConfigHash,
-            bytes32 callsHash,
-            uint48 readyAt,
-            uint48 expiresAt,
-            uint64 configVer,
-            uint64 mNonce
-        ) = account.pendingMigration();
-        LoomAccount.PendingMigration memory migration = LoomAccount.PendingMigration({
-            destination: destination,
-            destinationCodeHash: destinationCodeHash,
-            destinationConfigHash: destinationConfigHash,
-            callsHash: callsHash,
-            readyAt: readyAt,
-            expiresAt: expiresAt,
-            configVersion: configVer,
-            nonce: mNonce
-        });
-        bytes32 migrationId = account.migrationIdFor(migration);
-        bytes32 digest = account.migrationCancelDigest(migrationId, configVer, mNonce);
+        uint64 nonceBefore = module.migrationNonces(address(account));
+        bytes32 migrationId = module.migrationIdFor(address(account), migration);
+        bytes32 digest =
+            module.migrationCancelDigest(address(account), migrationId, migration.configVersion, migration.nonce);
         GuardianVerificationLib.Approval[] memory approvals = _guardianApprovals(digest);
-        (bool ok,) = address(account).call(abi.encodeCall(LoomAccount.cancelMigrationWithGuardians, (approvals)));
+        (bool ok,) = address(module)
+            .call(abi.encodeCall(MigrationModule.cancelMigrationWithGuardians, (address(account), approvals)));
         if (ok) {
-            if (account.migrationNonce() <= nonceBefore) violated = true;
-            (,,, bytes32 cleared,,,,) = account.pendingMigration();
+            if (module.migrationNonces(address(account)) <= nonceBefore) violated = true;
+            bytes32 cleared = _pendingMigration().callsHash;
             if (cleared != bytes32(0)) violated = true;
         }
-        if (account.migrationNonce() < lastObservedMigrationNonce) violated = true;
-        lastObservedMigrationNonce = account.migrationNonce();
+        if (module.migrationNonces(address(account)) < lastObservedMigrationNonce) violated = true;
+        lastObservedMigrationNonce = module.migrationNonces(address(account));
         _checkVersion(versionBefore);
     }
 
@@ -581,7 +586,7 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function verifyMigrationNonceMonotonic() external {
-        uint64 current = account.migrationNonce();
+        uint64 current = _migrationModule().migrationNonces(address(account));
         if (current < lastObservedMigrationNonce) violated = true;
         lastObservedMigrationNonce = current;
     }
@@ -591,13 +596,13 @@ contract LoomAccountExtendedHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     function scheduleMigration(uint256 value) external {
-        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        bytes32 pendingCallsHash = _pendingMigration().callsHash;
         if (pendingCallsHash != bytes32(0)) return;
         uint64 versionBefore = account.configVersion();
         migrationValue = value;
         ExecutionLib.Execution[] memory calls = _migrationCalls();
         bytes memory schedule = abi.encodeCall(
-            LoomAccount.scheduleMigration,
+            MigrationModule.scheduleMigration,
             (
                 address(migrationDestination),
                 address(migrationDestination).codehash,
@@ -610,7 +615,8 @@ contract LoomAccountExtendedHandler {
         (bool ok,) = address(account)
             .call(
                 abi.encodeCall(
-                    LoomAccount.execute, (bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule)))
+                    LoomAccount.execute,
+                    (bytes32(0), abi.encode(ExecutionLib.Execution(account.migrationModule(), 0, schedule)))
                 )
             );
         ok;
@@ -624,7 +630,9 @@ contract LoomAccountExtendedHandler {
     function attemptExecuteMigration() external {
         bytes4 selector = this.attemptExecuteMigration.selector;
         _recordInvocation(selector);
-        (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) = account.pendingMigration();
+        MigrationModule.PendingMigration memory pending = _pendingMigration();
+        bytes32 pendingCallsHash = pending.callsHash;
+        uint48 readyAt = pending.readyAt;
         if (pendingCallsHash == bytes32(0)) return;
         // forge-lint: disable-next-line(block-timestamp)
         bool shouldBeBlocked = block.timestamp < readyAt;
@@ -634,8 +642,9 @@ contract LoomAccountExtendedHandler {
         _recordAttempt(selector, ok);
         if (shouldBeBlocked && ok) violated = true;
         if (shouldBeBlocked && migrationTarget.value() != valueBefore) violated = true;
-        if (account.migrationNonce() < lastObservedMigrationNonce) violated = true;
-        lastObservedMigrationNonce = account.migrationNonce();
+        uint64 currentNonce = _migrationModule().migrationNonces(address(account));
+        if (currentNonce < lastObservedMigrationNonce) violated = true;
+        lastObservedMigrationNonce = currentNonce;
         _checkVersion(versionBefore);
     }
 
@@ -930,9 +939,10 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
             keccak256(abi.encode(address(guardianVerifier), address(guardianVerifier).codehash, keyCommitment, salt));
 
         // Set up main account with guardian, validator, and recovery module.
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
         modules[1] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        modules[2] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(new MigrationModule()), "");
         account = new LoomAccount(address(handler), leaf, 1, keccak256("config"), modules);
 
         // Set up migration destination.
@@ -996,7 +1006,11 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
     ///         replay-protection binding for guardian migration cancel approvals.
     ///         A decreasing nonce would allow replaying old cancel approvals.
     function invariantMigrationNonceNeverDecreases() public view {
-        require(account.migrationNonce() >= handler.lastObservedMigrationNonce(), "migrationNonce must never decrease");
+        require(
+            MigrationModule(account.migrationModule()).migrationNonces(address(account))
+                >= handler.lastObservedMigrationNonce(),
+            "migrationNonce must never decrease"
+        );
     }
 
     /// @notice Hook count must never exceed MAX_HOOKS. WHY: _installModule
@@ -1118,7 +1132,7 @@ contract LoomAccountExtendedInvariantTest is StdInvariant {
         handler.scheduleMigration(77);
         handler.attemptExecuteMigration();
 
-        (,,,, uint48 readyAt,,,) = account.pendingMigration();
+        (,,,, uint48 readyAt,,,) = MigrationModule(account.migrationModule()).pendingMigrations(address(account));
         require(readyAt != 0, "blocked migration did not remain pending");
         VmExtInvariant(address(uint160(uint256(keccak256("hevm cheat code"))))).warp(readyAt);
         handler.attemptExecuteMigration();

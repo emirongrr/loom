@@ -10,7 +10,7 @@ const { keccak_256: keccak256 } = sha3;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const localForge = join(root, "node_modules", "@foundry-rs", "forge-win32-amd64", "bin", "forge.exe");
 const forge = existsSync(localForge) ? localForge : "forge";
-const evidencePath = join(root, "evidence", "baselines", "sovereign-account-phase0.json");
+const evidencePath = join(root, "evidence", "baselines", "account-phase0.json");
 
 export const EIP170_RUNTIME_LIMIT = 24_576;
 export const REQUIRED_RELEASE_MARGIN = 2_048;

@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationLib.sol";
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {RecoveryManager} from "../../src/recovery/RecoveryManager.sol";
 import {ECDSAGuardianVerifier} from "../../src/recovery/ECDSAGuardianVerifier.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
@@ -52,10 +53,11 @@ contract RecoveryManagerTest {
         );
 
         address[] memory validators = _sortedValidators();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](4);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[0], "");
         modules[1] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, validators[1], "");
         modules[2] = LoomAccount.ModuleInit(ModuleType.RECOVERY, address(recovery), "");
+        modules[3] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(new MigrationModule()), "");
         account = new LoomAccount(address(this), guardianLeaf, 1, keccak256("config"), modules);
     }
 
@@ -661,7 +663,7 @@ contract RecoveryManagerTest {
         ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
         calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(MockTarget.setValue, (9)));
         bytes memory scheduleMigration = abi.encodeCall(
-            LoomAccount.scheduleMigration,
+            MigrationModule.scheduleMigration,
             (
                 address(destination),
                 address(destination).codehash,
@@ -671,7 +673,7 @@ contract RecoveryManagerTest {
                 1 days
             )
         );
-        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, scheduleMigration)));
+        account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(account.migrationModule(), 0, scheduleMigration)));
         _propose(initData);
 
         (,,,,, uint48 readyAt,,,) = recovery.pendingRecoveries(address(account));

@@ -341,6 +341,7 @@ async function main() {
     DEVNET_FACTORY: need("LoomAccountFactory"),
     DEVNET_P256_VALIDATOR: need("P256Validator"),
     DEVNET_POLICY_HOOK: need("PolicyHook"),
+    DEVNET_MIGRATION_MODULE: need("MigrationModule"),
     DEVNET_TARGET: need("DevnetTarget"),
     DEVNET_P256_PRIVATE_KEY: key.privateKey,
     DEVNET_P256_X: key.x,

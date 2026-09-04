@@ -7,7 +7,7 @@ It executes:
 
 1. account SDK lifecycle intent builders;
 2. EntryPoint counterfactual account lifecycle tests;
-3. sovereign migration lifecycle tests;
+3. account migration lifecycle tests;
 4. vault withdrawal lifecycle tests.
 
 The command is intentionally local and deterministic. It uses Foundry tests and
