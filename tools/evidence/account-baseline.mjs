@@ -75,7 +75,7 @@ export function buildBaseline(target = DEFAULT_TARGET, run = spawnSync) {
 
   return {
     schemaVersion: 1,
-    purpose: "Behavior-preserving baseline for sovereign account core extraction",
+    purpose: "Behavior-preserving baseline for account core extraction",
     target,
     source: {
       baselineRevision: command("git", ["rev-parse", "HEAD"], run),
@@ -138,7 +138,7 @@ function main() {
   if (process.argv.includes("--write")) {
     mkdirSync(join(root, "evidence", "baselines"), { recursive: true });
     writeFileSync(evidencePath, `${JSON.stringify(baseline, undefined, 2)}\n`);
-    console.log(`sovereign account baseline written: ${baseline.bytecode.runtime.runtimeBytes} runtime bytes`);
+    console.log(`account baseline written: ${baseline.bytecode.runtime.runtimeBytes} runtime bytes`);
     return;
   }
 
@@ -146,7 +146,7 @@ function main() {
     if (!baseline.bytecode.runtime.releaseReady) {
       console.error(
         `${target} has ${baseline.bytecode.runtime.marginBytes} bytes of EIP-170 margin; ` +
-          `${REQUIRED_RELEASE_MARGIN} bytes are required for a new sovereign account generation`
+          `${REQUIRED_RELEASE_MARGIN} bytes are required for a new account generation`
       );
       process.exit(1);
     }
@@ -155,17 +155,17 @@ function main() {
   }
 
   if (!existsSync(evidencePath)) {
-    console.error("sovereign account baseline is missing; run npm run account:baseline:write");
+    console.error("account baseline is missing; run npm run account:baseline:write");
     process.exit(1);
   }
   const differences = baselineDifferences(JSON.parse(readFileSync(evidencePath, "utf8")), baseline);
   if (differences.length > 0) {
-    console.error("sovereign account baseline changed:\n");
+    console.error("account baseline changed:\n");
     for (const difference of differences) console.error(`  - ${difference}`);
     process.exit(1);
   }
   console.log(
-    `sovereign account baseline ok: ${baseline.bytecode.runtime.runtimeBytes} runtime bytes, ` +
+    `account baseline ok: ${baseline.bytecode.runtime.runtimeBytes} runtime bytes, ` +
       `${baseline.bytecode.runtime.marginBytes} bytes below EIP-170`
   );
 }

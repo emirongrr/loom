@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "purpose": "Behavior-preserving baseline for sovereign account core extraction",
+  "purpose": "Behavior-preserving baseline for account core extraction",
   "target": "src/LoomAccount.sol:LoomAccount",
   "source": {
     "baselineRevision": "cb6a46f6a2882b7155e1c7ae65bd3227d7ad71a8",
