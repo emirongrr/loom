@@ -62,6 +62,14 @@ destination code/configuration checks, commitment verification, guardian
 cancellation, and nonce advancement. Policy hooks classify calls to the
 installed migration module as configuration actions.
 
+Migration timing is intentionally a separate policy: the immutable
+`MigrationModule.MIN_MIGRATION_DELAY` is three days, matching the current
+`LoomAccount.MIN_CONFIG_DELAY` without sharing its source of truth. The former
+protects module-owned migration records; the latter protects account authority
+changes, including module replacement. Changing either policy in a future
+contract generation does not change the other or any already-deployed contract.
+This extraction changes neither current delay value.
+
 Companion replacement uses the account's existing module lifecycle and
 configuration delay. No administrator or factory can replace it. A production
 profile pins the reviewed module address in deployment evidence; an account may
