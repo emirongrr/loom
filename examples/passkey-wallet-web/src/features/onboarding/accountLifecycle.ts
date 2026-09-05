@@ -285,6 +285,7 @@ export function deriveCreatedAccountHandle(input: {
     guardianRoot,
     guardianThreshold,
     ...(recoveryModule ? { recoveryModule } : {}),
+    migrationModule: deployment.migrationModule ?? null,
     configHash
   });
 }
@@ -309,6 +310,8 @@ export function resolveCreationConfig(
   deployment: WalletDeployment
 ): AccountCreationConfig | null {
   if (handle.kind !== "derived") return null;
+  if (handle.creation.migrationModule !== null
+    && !/^0x[0-9a-fA-F]{40}$/.test(handle.creation.migrationModule ?? "")) return null;
   const rpIdHash = sha256(stringToHex(handle.rpId));
   const originHash = keccak256(stringToHex(handle.origin));
   const configHash = creationConfigHash({
@@ -326,7 +329,9 @@ export function resolveCreationConfig(
     modules: [
       { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
       ...(handle.creation.recoveryModule ? [{ moduleTypeId: 5n, module: handle.creation.recoveryModule, initData: "0x" as Hex }] : []),
-      ...(deployment.migrationModule ? [{ moduleTypeId: 6n, module: deployment.migrationModule, initData: "0x" as Hex }] : []),
+      ...(handle.creation.migrationModule
+        ? [{ moduleTypeId: 6n, module: handle.creation.migrationModule, initData: "0x" as Hex }]
+        : []),
       {
         moduleTypeId: 1n,
         module: deployment.validator,
@@ -387,6 +392,7 @@ function deriveAccountHandle(input: {
   readonly guardianRoot: Hex;
   readonly guardianThreshold: number;
   readonly recoveryModule?: Address;
+  readonly migrationModule: Address | null;
   readonly configHash: Hex;
 }): AccountHandle {
   const { deployment, passkey } = input;
@@ -406,7 +412,7 @@ function deriveAccountHandle(input: {
       modules: [
         { moduleTypeId: 4n, module: deployment.policyHook, initData: "0x" },
         ...(input.recoveryModule ? [{ moduleTypeId: 5n, module: input.recoveryModule, initData: "0x" as Hex }] : []),
-        ...(deployment.migrationModule ? [{ moduleTypeId: 6n, module: deployment.migrationModule, initData: "0x" as Hex }] : []),
+        ...(input.migrationModule ? [{ moduleTypeId: 6n, module: input.migrationModule, initData: "0x" as Hex }] : []),
         {
           moduleTypeId: 1n,
           module: deployment.validator,
@@ -435,7 +441,8 @@ function deriveAccountHandle(input: {
     creation: Object.freeze({
       guardianRoot: input.guardianRoot,
       guardianThreshold: input.guardianThreshold,
-      ...(input.recoveryModule ? { recoveryModule: input.recoveryModule } : {})
+      ...(input.recoveryModule ? { recoveryModule: input.recoveryModule } : {}),
+      migrationModule: input.migrationModule
     })
   });
 }

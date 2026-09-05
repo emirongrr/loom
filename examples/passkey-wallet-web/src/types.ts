@@ -24,7 +24,13 @@ export type AccountHandle =
       readonly origin: string;
       readonly passkeyBackup?: PasskeyBackupObservation;
       readonly accountHandle: Hex;
-      readonly creation: { readonly guardianRoot: Hex; readonly guardianThreshold: number; readonly recoveryModule?: Address };
+      readonly creation: {
+        readonly guardianRoot: Hex;
+        readonly guardianThreshold: number;
+        readonly recoveryModule?: Address;
+        /** Exact optional module bound into this account's CREATE2 configuration. */
+        readonly migrationModule: Address | null;
+      };
     }
   | {
       readonly version: 3;

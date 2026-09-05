@@ -21,7 +21,7 @@ const account = {
   rpId: "localhost",
   origin: "http://localhost:5174",
   accountHandle: `0x${"33".repeat(32)}`,
-  creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
+  creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0, migrationModule: null }
 } as AccountHandle;
 
 const services = { publicClients: {} } as AppServices;

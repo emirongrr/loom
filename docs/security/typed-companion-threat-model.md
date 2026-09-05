@@ -25,9 +25,12 @@ generic executor or move final asset execution out of the account.
 
 ## Trust boundaries
 
-The account is the sole execution authority. A companion is a passive typed
-ledger. External callers may invoke the account's permissionless execution
-entry point, but only the account calls the companion's consuming function.
+The account is the sole final execution engine. A companion is a passive typed
+authorization ledger: it cannot initiate execution, but the account trusts a
+successful consume decision before executing the supplied batch. Its runtime is
+therefore part of the account's authorization TCB and must be reviewed and
+pinned like a validator. External callers may invoke the account's permissionless
+execution entry point, but only the account calls the companion's consuming function.
 
 Scheduling and ordinary cancellation derive the state namespace from
 `msg.sender`. Consumption names an account but requires `msg.sender == account`.
@@ -40,6 +43,13 @@ The migration module independently enforces its three-day minimum delay and
 30-day maximum execution window. The account's hooks recognize only the exact
 schedule and ordinary-cancel selectors on the currently installed migration
 module as lifecycle calls.
+
+`MIN_MIGRATION_DELAY` and `MAX_MIGRATION_WINDOW` belong to the module because
+they define validity of module-owned records. `LoomAccount.MIN_CONFIG_DELAY`
+remains in the core because it protects changes to the account's authority
+surface, including installation or replacement of the migration module. The
+current module intentionally matches the configuration delay for behavioral
+compatibility; the two policies are not the same architectural constant.
 
 ## Required record bindings
 
@@ -84,7 +94,7 @@ reverts. Reentrancy protection remains active across the entire account path.
 | Replay across chains | Chain domain in the commitment | Approval or record is portable to another chain |
 | Execute after authority rotation | Source configuration version checked by the module | Stale authority survives recovery |
 | Execute while frozen | Account checks freeze before consumption and execution | Emergency response no longer blocks asset movement |
-| Malicious companion widens calls | No callback, generic executor, delegatecall, or asset custody | Controller defect becomes spending authority |
+| Defective companion widens calls | Reviewed immutable runtime, exact typed consume checks, delayed account-owned replacement, and deployment code-hash evidence | A false successful consume decision authorizes an arbitrary caller-supplied batch through the narrow account entry point |
 | Companion reentrancy | Account lock spans consume and final execution; recheck after consume | Nested execution observes partial lifecycle state |
 | Module replacement | Account-owned delayed module lifecycle and deployment evidence | Unreviewed lifecycle semantics become active without user delay |
 | Module outage or defect | Immutable source, reproducible deployment, retryable atomic failure | User action is denied until account-authorized module replacement |
@@ -101,9 +111,14 @@ interface must demonstrate all of the following:
 - consume recomputes the commitment from the stored record and supplied calls;
 - events include the account and commitment identifier, with schedule events
   also exposing readiness, expiry, and the committed fields;
-- no function transfers value, invokes an account, or accepts an execution
-  target plus arbitrary calldata;
+- no function transfers value or invokes account execution; read-only calls to
+  account configuration and module membership are allowed;
 - no owner, role, upgrade, pause, or mutable dependency exists.
+
+These interface constraints prevent a companion from initiating execution or
+bypassing the account's freeze, hook, reentrancy, and batch controls. They do
+not make a consume decision non-authoritative; correctness of that decision is
+a required security property of every installed implementation.
 
 ## Verification obligations
 
@@ -111,5 +126,5 @@ Concrete controllers require unit, fuzz, invariant, and multi-account tests for
 duplicate scheduling, early and expired consumption, mismatched commitments,
 configuration drift, cancellation replay, cross-account isolation, and atomic
 rollback. Account wiring additionally requires behavior-equivalence vectors,
-malicious-controller tests, hook and freeze regressions, runtime-size deltas,
+adversarial consumption tests, hook and freeze regressions, runtime-size deltas,
 and critical-path gas deltas against the canonical Phase 0 baseline.

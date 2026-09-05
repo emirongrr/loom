@@ -70,8 +70,12 @@ later replace it only through its own delayed authority path.
 ## Residual risks
 
 A controller bug can incorrectly admit, reject, consume, or retain a record.
-Exact commitments and account-scoped state prevent that bug from directly
-widening execution, but denial of service remains possible. Additional external
+The account trusts successful consumption as typed authorization. A defect in
+that decision can admit an arbitrary caller-supplied batch; the installed
+module is therefore part of the authorization TCB. The account still enforces
+freeze, hooks, reentrancy protection, and execution bounds. Passive operation
+prevents independent initiation, but does not reduce every defect to denial of
+service. Additional external
 calls increase gas and create a new deployment dependency. Each concrete
 controller therefore requires behavior-equivalence tests, adversarial
 multi-account tests, bytecode and gas measurements, and reproducible deployment

@@ -120,8 +120,9 @@ contract MigrationModule is ILoomModule {
     }
 
     /// @notice Consumes a ready migration before the account executes its committed batch.
-    /// @dev Only the account can consume its record. The module never calls back
-    /// into account execution and therefore holds no independent asset authority.
+    /// @dev Only the account can consume its record and the module never calls
+    /// back into account execution. The account treats successful consumption as
+    /// typed authorization, so the installed module remains security-critical.
     function consumeMigration(address account, ExecutionLib.Execution[] calldata calls)
         external
         returns (bytes32 migrationId, address destination)

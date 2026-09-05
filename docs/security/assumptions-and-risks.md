@@ -17,7 +17,7 @@ Security claims are valid only under the assumptions listed here and in
 | Recovery intent board | None. Publishes verified guardian approvals and unverified recovery announcements as logs | Client mistakes a board log for evidence; guardian deanonymised by an abandoned recovery; log endpoint unavailable or reorganised | Zero storage and no module installation, so no account state is reachable; `RecoveryManager` re-verifies every approval independently; empty storage enforced against the deployed bytecode, which the layout gate cannot do because it permits appending; private sharing kept as the client default; bounded log queries with explicit rollback reporting and unaffected manual paths |
 | Single guardian freeze | Blocks ordinary execution for 48 hours | Repeated temporary denial after configuration changes | Independent guardians, visible freeze, no transfer authority |
 | Scheduled execution | Executes an exact public commitment after delay | User signs a dangerous delayed call; public executor front-runs timing | Exact call commitment, config-version invalidation, installed hooks |
-| Sovereign migration | Executes an exact delayed exit batch to a committed destination | Wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Destination code hash, optional config binding, calls hash, config-version invalidation, non-frozen account cancellation or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
+| Migration module | Authorizes one exact delayed exit batch for account execution | Module implementation bug, wrong destination, stale source config, hook bypass, failed asset move, public timing metadata | Account-authorized delayed installation, reviewed immutable runtime, destination code hash, optional config binding, calls hash, config-version invalidation, non-frozen account cancellation or guardian-threshold cancellation, expiry, atomic batch, installed hooks |
 | Vault hook | Separates daily spending from delayed long-term storage withdrawals | Misconfigured policy, non-standard token semantics, public withdrawal metadata | Exact withdrawal commitments, account delay plus vault delay, guardian-threshold cancellation, config-version invalidation |
 | L1 keystore | Stores canonical cross-chain identity roots | L1 controller compromise, identity correlation, unsupported proof system | User-controlled L1 controller, monotonic versioning, app-account root, proof-gated delayed L2 sync |
 | Keystore proof verifier | Authenticates keystore state for same-chain L1 sync or future L2 proof-pull sync | Verifier bug, stale or forged state-root assumptions, chain-specific finality mismatch | Immutable verifier binding, independent verifier audit, per-network deployment gates, disabled-by-absence production posture |
@@ -147,7 +147,7 @@ Security claims are valid only under the assumptions listed here and in
 4. Formal proofs cover selected safety properties, not full functional
    correctness, liveness, cryptography, compiler correctness, or every
    external-contract behavior.
-5. Sovereign migration is implemented but unaudited and has no live migration
+5. Account migration is implemented but unaudited and has no live migration
    rehearsal across deployed accounts, token portfolios, independent
    publishers, alternative EntryPoints, and codehash-only future-standard
    destinations.

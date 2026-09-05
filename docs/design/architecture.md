@@ -17,7 +17,8 @@ single and atomic batch execution using the ERC-7579 mode-byte layout. Loom is
 not a conformant ERC-7579 account: its
 single-call encoding and module interfaces are intentionally narrower and are
 not plug-and-play compatible with standard ERC-7579 modules. Only validator
-and hook modules plus one narrowly scoped recovery module are supported.
+and hook modules plus one narrowly scoped recovery module and one typed
+migration module are supported.
 
 ERC-4337 is the account's transport, not its authority model. Every environment
 that can make the account act converges on one internal boundary,
