@@ -4,8 +4,8 @@
     {
       "target": "mobile privacy wallet example",
       "profile": "exact-advisory-graph-v1",
-      "expiresAt": "2026-09-02T00:00:00Z",
-      "reason": "The unpatched image-size parsers are reachable only through Metro's local build pipeline. Application-owned runtime modules do not import Metro or image-size, and remote wallet input cannot supply build assets.",
+      "expiresAt": "2026-10-04T00:00:00Z",
+      "reason": "No patched image-size release is published. The affected parsers are reachable only through Metro's local build pipeline; application runtime modules do not import Metro or image-size, and remote wallet input cannot supply build assets. The exact dependency graph and isolation test remain mandatory until the exception expires.",
       "isolationTest": "examples/mobile-privacy-wallet/test/dependency-audit-isolation.test.mjs",
       "advisories": [
         {
