@@ -16,6 +16,15 @@ library EIP712Lib {
         return keccak256(abi.encode(DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, address(this)));
     }
 
+    /// @dev Allows a companion to verify typed data bound to its account.
+    function domainSeparator(bytes32 nameHash, bytes32 versionHash, address verifyingContract)
+        internal
+        view
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, verifyingContract));
+    }
+
     function digest(bytes32 separator, bytes32 structHash) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked("\x19\x01", separator, structHash));
     }

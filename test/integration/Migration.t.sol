@@ -4,6 +4,7 @@ import {GuardianVerificationLib} from "../../src/libraries/GuardianVerificationL
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
 import {MigrationModule} from "../../src/MigrationModule.sol";
+import {EIP712Lib} from "../../src/libraries/EIP712Lib.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {PolicyHook} from "../../src/hooks/PolicyHook.sol";
@@ -27,6 +28,37 @@ contract MigrationTest {
     uint256 internal constant SECOND_GUARDIAN_KEY = 0xB0B;
     ECDSAGuardianVerifier internal guardianVerifier = new ECDSAGuardianVerifier();
     MigrationModule internal migrationModule = new MigrationModule();
+
+    function testFuzzMigrationCancellationDigestPreservesAccountDomain(
+        address account,
+        bytes32 migrationId,
+        uint64 version,
+        uint64 nonce
+    ) public view {
+        bytes32 typeHash = keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+        bytes32 separator =
+            keccak256(abi.encode(typeHash, keccak256("LoomAccount"), keccak256("1"), block.chainid, account));
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)"),
+                migrationId,
+                version,
+                nonce
+            )
+        );
+        require(
+            migrationModule.migrationCancelDigest(account, migrationId, version, nonce)
+                == keccak256(abi.encodePacked("\x19\x01", separator, structHash)),
+            "account-bound cancellation digest changed"
+        );
+        require(
+            EIP712Lib.domainSeparator(keccak256("LoomAccount"), keccak256("1"))
+                == EIP712Lib.domainSeparator(keccak256("LoomAccount"), keccak256("1"), address(this)),
+            "implicit domain overload changed"
+        );
+    }
 
     function testMigrationDelayMatchesAccountConfigurationDelay() public {
         LoomAccount source = _account(false);

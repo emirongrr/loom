@@ -16,19 +16,6 @@ export const MigrationModuleAbi = [
   },
   {
     "type": "function",
-    "name": "EIP712_DOMAIN_TYPEHASH",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "MAX_MIGRATION_WINDOW",
     "inputs": [],
     "outputs": [

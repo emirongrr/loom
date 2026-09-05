@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {ILoomAccount} from "./interfaces/ILoomAccount.sol";
 import {ILoomModule} from "./interfaces/ILoomModule.sol";
+import {EIP712Lib} from "./libraries/EIP712Lib.sol";
 import {ExecutionLib} from "./libraries/ExecutionLib.sol";
 import {GuardianVerificationLib} from "./libraries/GuardianVerificationLib.sol";
 import {ModuleType} from "./libraries/ModuleType.sol";
@@ -30,12 +31,8 @@ contract MigrationModule is ILoomModule {
 
     uint48 public constant MIN_MIGRATION_DELAY = 3 days;
     uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant CANCEL_MIGRATION_TYPEHASH =
         keccak256("CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)");
-    bytes32 private constant NAME_HASH = keccak256("LoomAccount");
-    bytes32 private constant VERSION_HASH = keccak256("1");
 
     mapping(address account => PendingMigration) public pendingMigrations;
     mapping(address account => uint64 nonce) public migrationNonces;
@@ -174,10 +171,9 @@ contract MigrationModule is ILoomModule {
         view
         returns (bytes32)
     {
-        bytes32 separator =
-            keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, block.chainid, account));
+        bytes32 separator = EIP712Lib.domainSeparator(keccak256("LoomAccount"), keccak256("1"), account);
         bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, configVersion, nonce));
-        return keccak256(abi.encodePacked("\x19\x01", separator, structHash));
+        return EIP712Lib.digest(separator, structHash);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
