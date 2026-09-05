@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Loom Wallet Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <div>
+          <p class="eyebrow">WALLET TEST LAB</p>
+          <h1>Wallet Lab</h1>
+        </div>
+      </div>
+      <div class="run-identity">
+        <p id="run-summary">Waiting for a run artifact...</p>
+        <div id="run-status" class="status waiting" role="status" aria-live="polite">Waiting</div>
+      </div>
+    </header>
+
+    <main>
+      <section id="deployment-gateway" class="deployment-gateway" aria-labelledby="gateway-title">
+        <div class="gateway-copy"><p class="eyebrow">INSPECTION TARGET</p><h2 id="gateway-title">Choose an inspection target</h2><p>Wallet Lab only makes claims supported by the selected deployment and its observed chain evidence.</p></div>
+        <div class="target-grid">
+          <button type="button" class="target-card" data-deployment-choice="local"><span class="target-icon local">L</span><span><strong>Local deterministic deployment</strong><small>Anvil + Loom + Alto with complete operation, RPC, and EVM trace evidence.</small></span><em>Full lab evidence</em></button>
+          <article class="target-card sepolia-connect-card"><span class="target-icon sepolia">S</span><span><strong>Connect Sepolia deployment</strong><small>The bundled manifest is checked against every contract's live runtime code before Wallet Lab opens it.</small></span><div class="sepolia-connect-controls"><label for="sepolia-provider">Public RPC preset</label><select id="sepolia-provider" aria-describedby="sepolia-choice-status"><option value="">Loading public RPCs...</option></select><button type="button" id="connect-sepolia">Connect and verify</button></div><em id="sepolia-choice-status" role="status" aria-live="polite">Checking availability</em></article>
+        </div>
+      </section>
+
+      <div id="lab-workspace" hidden>
+        <section class="deployment-source-bar">
+          <div class="active-deployment"><span>Connected deployment</span><strong id="active-deployment-name">Local deterministic deployment</strong></div>
+          <div id="deployment-verification" class="deployment-verification waiting" role="status" aria-live="polite"><strong>Local evidence</strong><span>Captured by the deterministic Wallet Lab run.</span></div>
+          <button type="button" id="change-deployment" class="secondary-action">Change target</button>
+        </section>
+
+        <section class="run-strip" aria-label="Run summary">
+          <div><span>Scenario outcome</span><strong id="metric-result">Waiting for evidence</strong><small id="metric-result-context">No scenario loaded yet.</small></div><div><span>Execution environment</span><strong id="metric-network">Not connected</strong><small id="metric-chain">Chain identity is unavailable.</small></div><div><span>Independent evidence</span><strong id="metric-checks">No checks yet</strong><small id="metric-checks-context">Receipt, state, and operation checks appear here.</small></div><div><span>End-to-end runtime</span><strong id="metric-duration">-</strong><small id="metric-duration-context">Measured from startup through final evidence.</small></div>
+        </section>
+
+        <nav class="workspace-tabs" role="tablist" aria-label="Wallet Lab panels">
+          <button type="button" role="tab" id="tab-architecture" aria-controls="panel-architecture" aria-selected="true" data-tab="architecture">Loom architecture <span id="contract-count">0</span></button>
+          <button type="button" role="tab" id="tab-recovery" aria-controls="panel-recovery" aria-selected="false" data-tab="recovery">Recovery &amp; freeze</button>
+          <button type="button" role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" data-tab="network">RPC &amp; SDK <span id="network-count">0</span></button>
+          <button type="button" role="tab" id="tab-authority" aria-controls="panel-authority" aria-selected="false" data-tab="authority">Authority</button>
+          <button type="button" role="tab" id="tab-evm" aria-controls="panel-evm" aria-selected="false" data-tab="evm">Effects &amp; EVM</button>
+          <button type="button" role="tab" id="tab-privacy" aria-controls="panel-privacy" aria-selected="false" data-tab="privacy">Privacy</button>
+          <button type="button" role="tab" id="tab-execution" aria-controls="panel-execution" aria-selected="false" data-tab="execution">Execution Studio</button>
+        </nav>
+
+        <div id="failure-panel" class="failure-banner" hidden><span>First failing boundary</span><strong id="failure"></strong></div>
+
+        <section id="panel-architecture" class="workspace-panel" role="tabpanel" aria-labelledby="tab-architecture">
+          <header class="architecture-topbar">
+            <button type="button" id="architecture-exit" class="architecture-exit">← Workspace</button>
+            <div class="architecture-deployment"><span>Deployment</span><strong id="architecture-deployment-name">Local deterministic deployment</strong></div>
+            <label class="architecture-search"><span class="sr-only">Find a contract</span><input id="architecture-search" type="search" placeholder="Find contract or module…" autocomplete="off" /></label>
+            <div class="graph-tools" aria-label="Graph view controls"><button type="button" id="architecture-transaction-toggle" hidden>Trace transaction</button><button type="button" id="trace-overlay-toggle" aria-pressed="false">Observed trace</button><button type="button" id="graph-zoom-out" aria-label="Zoom out">−</button><strong id="graph-zoom-level">100%</strong><button type="button" id="graph-zoom-in" aria-label="Zoom in">+</button><button type="button" id="graph-reset-view">Reset</button><details class="architecture-help"><summary aria-label="How to read this map">?</summary><p><strong>How to read this map</strong> Solid nodes are deployed contracts. Dashed group nodes reveal optional capabilities. Edge labels describe direction without assigning ownership. Select a node to expand it in place.</p></details></div>
+          </header>
+          <div class="architecture-canvas"><div id="architecture-expanded-groups" class="architecture-expanded-groups" aria-label="Expanded optional groups"></div><div id="deployment-graph" class="deployment-graph empty">No deployment evidence is available yet.</div><aside id="architecture-transaction-dock" class="architecture-transaction-dock" hidden></aside><div id="architecture-live" class="sr-only" aria-live="polite"></div></div>
+        </section>
+
+        <section id="panel-recovery" class="workspace-panel" role="tabpanel" aria-labelledby="tab-recovery" hidden>
+          <article class="surface recovery-intro"><div><p class="eyebrow">RECOVERY AUTHORITY</p><h2>Follow every authority-bearing transition</h2><p>This map separates signed intent, on-chain publication, delay, veto, and final execution. Select a node to inspect its exact contract boundary and safety invariant.</p></div><div class="recovery-mode-switch" role="group" aria-label="Recovery mechanism"><button type="button" data-recovery-mode="recovery" aria-pressed="true">Guardian recovery</button><button type="button" data-recovery-mode="freeze" aria-pressed="false">Emergency freeze</button></div></article>
+          <div class="recovery-layout"><div id="recovery-flow" class="recovery-flow"></div><aside id="recovery-step-detail" class="surface recovery-step-detail" aria-live="polite"></aside></div>
+          <p class="recovery-evidence-note">Contract behavior is derived from the compiler artifacts in this checkout. A local run proves deployment and observed execution only for contracts and call paths present in that run.</p>
+        </section>
+
+        <section id="panel-network" class="workspace-panel" role="tabpanel" aria-labelledby="tab-network" hidden>
+          <article class="surface network-intro"><p class="eyebrow">RPC &amp; SDK LAYER</p><h2>From wallet intent to immutable chain state</h2><p>The upper map connects Loom SDK stages to injected RPC infrastructure and the exact core contract boundary that consumes each artifact. Green stages were observed in this run; architectural stages remain clearly labeled when evidence is absent.</p></article>
+          <div id="sdk-boundary-flow" class="sdk-boundary-flow empty">Waiting for SDK and chain evidence.</div>
+          <div id="sdk-contract-matrix" class="sdk-contract-matrix empty">No SDK-to-contract mapping is available yet.</div>
+          <div class="network-evidence-heading"><div><p class="eyebrow">RAW TRANSPORT EVIDENCE</p><h2>Requests grouped by wallet operation</h2></div><p>“Required” means required by this observed client flow, not a universal Loom protocol dependency.</p></div>
+          <div id="network-operation-groups" class="network-operation-groups"></div><div class="toolbar network-toolbar"><label><span>Search requests</span><input id="network-search" type="search" placeholder="Method, stage, reason..." /></label><label><span>Transport</span><select id="network-transport"><option value="all">RPC and bundler</option><option value="rpc">RPC</option><option value="bundler">Bundler</option></select></label></div><div class="network-layout"><div class="table-scroll"><table><thead><tr><th>#</th><th>Operation stage</th><th>Transport</th><th>Method</th><th>Requirement</th><th>Result</th></tr></thead><tbody id="network-rows"></tbody></table></div><article id="network-inspector" class="surface inspector-detail empty">Select a request to see why it happened and inspect its JSON-RPC evidence.</article></div>
+        </section>
+
+        <section id="panel-authority" class="workspace-panel" role="tabpanel" aria-labelledby="tab-authority" hidden>
+          <article class="surface lens-intro"><div><p class="eyebrow">AUTHORITY &amp; TRUST</p><h2>Who allowed or constrained this operation?</h2><p>This view separates account authority from transport influence. Approve, veto, publish, delay, observe, move-funds, and configuration abilities remain distinct and each relationship names its evidence level.</p></div><div id="authority-context" class="lens-context">Waiting for an operation.</div></article>
+          <div class="authority-layout"><article id="authority-graph" class="surface authority-graph empty">No authority evidence is available.</article><aside id="authority-actors" class="surface authority-actors empty">Select a run with client or trace evidence.</aside></div>
+        </section>
+
+        <section id="panel-evm" class="workspace-panel" role="tabpanel" aria-labelledby="tab-evm" hidden><article class="surface evm-surface"><div class="section-title"><div><p class="eyebrow">EVM LAYER</p><h2>Function execution, gas, calls, and state access</h2><p>Every metric below is derived from the selected transaction trace. It distinguishes control flow, storage access, external calls, logs, and exits before exposing the instruction-level debugger.</p></div><span id="evm-trace-summary">No trace captured</span></div><div id="evm-behavior-summary" class="evm-behavior-summary empty">Local trace evidence is required for an EVM behavior profile.</div><div id="evm-trace" class="evm-trace empty">Local evidence is required to inspect a transaction trace.</div></article></section>
+
+        <section id="panel-privacy" class="workspace-panel" role="tabpanel" aria-labelledby="tab-privacy" hidden>
+          <article class="surface lens-intro"><div><p class="eyebrow">OBSERVER MODEL</p><h2>Who can see what?</h2><p>Visibility is classified per observer. “Off-chain” never automatically means hidden, and a public commitment is not described as anonymous without supporting evidence.</p></div><div id="privacy-context" class="lens-context">Waiting for an operation.</div></article>
+          <div id="privacy-observer-map" class="privacy-observer-map empty">No observer-specific evidence is available.</div>
+          <article id="privacy-evidence" class="surface privacy-evidence empty">Select a disclosure to inspect its provenance.</article>
+        </section>
+
+        <section id="panel-execution" class="workspace-panel" role="tabpanel" aria-labelledby="tab-execution" hidden>
+          <article class="surface execution-studio-intro"><div><p class="eyebrow">EXECUTION STUDIO</p><h2>Test wallet behavior in a controlled sandbox</h2><p>Choose a Loom contract function, start from realistic deployment-aware inputs, simulate safely, execute against the local devnet, or inspect an original mined Sepolia transaction. Inputs, output, call frames, state changes, gas, events, and opcodes stay bound to one evidence result.</p></div><div class="execution-studio-key"><span>Local devnet</span><strong>Simulate + broadcast + full trace</strong><span>Sepolia</span><strong>Inspect mined transaction evidence</strong></div></article>
+          <div class="execution-studio-layout">
+            <aside id="execution-contract-browser" class="surface execution-contract-browser">Loading deployment functions...</aside>
+            <article id="execution-workspace" class="surface execution-workspace empty">Select a function to model its inputs and inspect its execution evidence.</article>
+          </div>
+        </section>
+      </div>
+    </main>
+    <div id="copy-status" class="sr-only" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

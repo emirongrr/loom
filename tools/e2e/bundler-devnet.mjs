@@ -17,6 +17,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { down, up } from "../../packages/cli/src/devnet.mjs";
+import { createTraceRecorder, nativeTransferScenario } from "../wallet-lab/dist/index.js";
+import { writeWalletLabArtifact } from "../wallet-lab/node-artifact.mjs";
+import { deterministicTestPasskey } from "../wallet-lab/test-passkey.mjs";
+import { runBrowserWalletFlow } from "../wallet-lab/browser-wallet-flow.mjs";
+import { buildDeploymentEvidence, compactOpcodeTrace, normalizeCallTrace, summarizeCallTrace } from "../wallet-lab/deployment-evidence.mjs";
 import {
   deriveAccountAddress,
   getUserOpHash as coreGetUserOpHash,
@@ -32,11 +37,12 @@ import {
   createPasskeySigner,
   createRpcStateTransport
 } from "../../packages/sdk/dist/index.js";
-import { encodeAbiParameters, encodeFunctionData, keccak256, stringToHex } from "viem";
+import { encodeAbiParameters, encodeFunctionData, getAddress, keccak256, stringToHex } from "viem";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const RP_ID = "wallet.example";
 const ORIGIN = "https://wallet.example";
+const labArtifactPath = process.env.LOOM_WALLET_LAB_ARTIFACT;
 
 async function rpcCall(url, method, params) {
   const response = await fetch(url, {
@@ -50,24 +56,78 @@ async function rpcCall(url, method, params) {
 }
 
 let state;
+let labRecorder;
 try {
   console.log("==> loom devnet up (anvil + Loom + Alto)");
-  state = await up();
+  state = await up({ stepsTracing: Boolean(labArtifactPath) });
+  if (process.env.LOOM_WALLET_LAB_KEEP_DEVNET === "true") {
+    process.env.LOOM_WALLET_LAB_OWNED_DEVNET_STARTED_AT = state.startedAt;
+  }
   console.log(`    rpc ${state.rpcUrl} · bundler ${state.bundlerUrl} · alto ${state.alto}`);
 
-  const { rpcUrl, bundlerUrl, addresses } = state;
+  const { rpcUrl, bundlerUrl } = state;
+  const registryCall = encodeFunctionData({
+    abi: [{ type: "function", name: "registry", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] }],
+    functionName: "registry"
+  });
+  const registryResult = await rpcCall(rpcUrl, "eth_call", [{ to: state.addresses.LoomAccountFactory, data: registryCall }, "latest"]);
+  const addresses = { ...state.addresses, AppAccountRegistry: getAddress(`0x${registryResult.slice(-40)}`) };
   const entryPoint = addresses.EntryPoint;
   const factory = addresses.LoomAccountFactory;
   const validator = addresses.P256Validator;
   const policyHook = addresses.PolicyHook;
   const target = addresses.DevnetTarget;
   const deployer = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+  const versions = JSON.parse(readFileSync(join(repoRoot, "devnet", "versions.json"), "utf8"));
+  const runtimeCodeHash = async address => keccak256(await rpcCall(rpcUrl, "eth_getCode", [address, "latest"]));
+  let labCodeHashes = {};
+  let deploymentEvidence = null;
 
-  // A software P-256 passkey and the account configuration it controls.
-  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const jwk = publicKey.export({ format: "jwk" });
-  const pad = value => `0x${Buffer.from(value, "base64url").toString("hex").padStart(64, "0")}`;
-  const key = { x: pad(jwk.x), y: pad(jwk.y) };
+  if (labArtifactPath) {
+    labRecorder = createTraceRecorder({
+      runId: process.env.LOOM_WALLET_LAB_RUN_ID ?? "wallet-lab-run",
+      traceId: process.env.LOOM_WALLET_LAB_TRACE_ID ?? "00000000000000000000000000000000",
+      scenario: nativeTransferScenario,
+      onChange: artifact => writeWalletLabArtifact(labArtifactPath, artifact)
+    });
+    const environmentSpan = labRecorder.begin({
+      component: "orchestrator",
+      phase: "environment",
+      explanation: "Starting the repository-pinned Anvil, Loom deployment, EntryPoint, and Alto bundler.",
+      reproduction: "npm run wallet-lab:run",
+      payload: { chainId: state.chainId, addresses }
+    });
+    labCodeHashes = {};
+    for (const [name, address] of Object.entries(addresses)) labCodeHashes[name] = await runtimeCodeHash(address);
+    labRecorder.setEnvironment({
+      gitCommit: process.env.LOOM_WALLET_LAB_GIT_COMMIT ?? "unknown",
+      dirty: process.env.LOOM_WALLET_LAB_GIT_DIRTY === "true",
+      chainId: state.chainId,
+      seed: nativeTransferScenario.seed,
+      addresses,
+      codeHashes: labCodeHashes,
+      components: [
+        { name: "Anvil", version: versions.foundry, endpoint: rpcUrl, status: "healthy" },
+        { name: "Alto", version: versions.alto, endpoint: bundlerUrl, status: "healthy" },
+        { name: "EntryPoint", version: "0.9.0", digest: labCodeHashes.EntryPoint, status: "healthy" },
+        { name: "Loom contracts", version: process.env.LOOM_WALLET_LAB_GIT_COMMIT ?? "working-tree", digest: labCodeHashes.LoomAccount, status: "healthy" }
+      ]
+    });
+    labRecorder.finish(environmentSpan, {
+      status: "success",
+      explanation: "All pinned local components passed startup health checks and published their exact addresses and runtime code hashes.",
+      chainId: state.chainId,
+      entryPoint,
+      bundler: bundlerUrl,
+      payload: { versions, codeHashes: labCodeHashes }
+    });
+  }
+
+  // A deterministic software P-256 credential for this hermetic test only.
+  // Its private scalar never enters the run artifact or a production package.
+  const testPasskey = deterministicTestPasskey(nativeTransferScenario.seed);
+  const { privateKey } = testPasskey;
+  const key = testPasskey.publicKey;
   // Real WebAuthn authenticators put sha256(rpId) in authenticatorData[0:32],
   // and WebAuthnP256.verify compares those bytes against the registered
   // rpIdHash — so registration must use sha256, not keccak256. (originHash
@@ -101,6 +161,41 @@ try {
   const proxyArtifact = JSON.parse(
     readFileSync(join(repoRoot, "out", "LoomAccountProxy.sol", "LoomAccountProxy.json"), "utf8")
   );
+  let browserEvidence = null;
+  if (process.env.LOOM_WALLET_LAB_BROWSER_FLOW === "true") {
+    const browserDeployment = {
+      chainId: state.chainId,
+      entryPoint,
+      factory,
+      implementation,
+      validator,
+      policyHook,
+      proxyCreationCode: proxyArtifact.bytecode.object,
+      runtimeCodeHashes: {
+        entryPoint: await runtimeCodeHash(entryPoint),
+        factory: await runtimeCodeHash(factory),
+        implementation: await runtimeCodeHash(implementation),
+        validator: await runtimeCodeHash(validator),
+        policyHook: await runtimeCodeHash(policyHook)
+      }
+    };
+    browserEvidence = await runBrowserWalletFlow({
+      rpcUrl,
+      bundlerUrl,
+      deployment: browserDeployment,
+      recorder: labRecorder,
+      rpcCall,
+      deployer,
+      encodeNonce: sender => encodeFunctionData({ abi: EntryPointAbi, functionName: "getNonce", args: [sender, 0n] })
+    });
+  }
+  const accountResolutionSpan = labRecorder?.begin({
+    component: "sdk",
+    phase: "account-resolution",
+    explanation: "Deriving the counterfactual account from the factory, immutable implementation, proxy creation code, salt, and module configuration.",
+    source: { file: "tools/e2e/bundler-devnet.mjs", symbol: "deriveAccountAddress" },
+    payload: { factory, implementation, salt, config }
+  });
   const account = deriveAccountAddress({
     factory,
     implementation,
@@ -108,7 +203,32 @@ try {
     salt,
     config
   });
+  if (accountResolutionSpan) labRecorder.finish(accountResolutionSpan, {
+    status: "success",
+    explanation: "The SDK derived the exact account address used by the subsequent EntryPoint operation.",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    payload: { account, factory, implementation, salt }
+  });
   console.log(`==> account derived: ${account}`);
+  if (labRecorder) {
+    deploymentEvidence = buildDeploymentEvidence({ repoRoot, addresses, codeHashes: labCodeHashes, account });
+    const deploymentSpan = labRecorder.begin({
+      component: "orchestrator",
+      phase: "deployment",
+      explanation: "Cataloging the exact local deployment addresses, runtime code hashes, ABI functions, and architectural relationships.",
+      source: { file: "tools/wallet-lab/deployment-evidence.mjs", symbol: "buildDeploymentEvidence" },
+      payload: { deployment: deploymentEvidence }
+    });
+    labRecorder.finish(deploymentSpan, {
+      status: "success",
+      chainId: state.chainId,
+      account,
+      entryPoint,
+      payload: { deployment: deploymentEvidence }
+    });
+  }
 
   // Prefund the account's EntryPoint deposit from the unlocked dev account.
   await rpcCall(rpcUrl, "eth_sendTransaction", [
@@ -121,8 +241,9 @@ try {
   ]);
 
   // The full public client stack: bundler transport, state transport, passkey.
+  let lastPasskeyInspection = null;
   const signer = createPasskeySigner({
-    credentialId: "bundler-devnet-passkey",
+    credentialId: testPasskey.credentialId,
     rpId: RP_ID,
     origin: ORIGIN,
     validator,
@@ -135,6 +256,20 @@ try {
       );
       const preimage = Buffer.concat([authenticatorData, crypto.createHash("sha256").update(clientDataJSON).digest()]);
       const signature = crypto.sign("sha256", preimage, { key: privateKey, dsaEncoding: "ieee-p1363" });
+      lastPasskeyInspection = {
+        credentialId: testPasskey.credentialId,
+        rpId: RP_ID,
+        rpIdHash,
+        origin: ORIGIN,
+        challenge: challenge.challenge,
+        clientDataJSON: clientDataJSON.toString("utf8"),
+        authenticatorData: `0x${authenticatorData.toString("hex")}`,
+        flags: { up: true, uv: true },
+        signCount: 0,
+        signatureEncoding: "ieee-p1363-raw64",
+        r: `0x${signature.subarray(0, 32).toString("hex")}`,
+        s: `0x${signature.subarray(32).toString("hex")}`
+      };
       return {
         authenticatorData: `0x${authenticatorData.toString("hex")}`,
         clientDataJSON: `0x${clientDataJSON.toString("hex")}`,
@@ -142,13 +277,14 @@ try {
       };
     }
   });
+  const bundlerTransport = createBundlerTransport({ endpoint: bundlerUrl, entryPoint });
   const client = createLoomClient({
     chainId: state.chainId,
     account,
     signer,
     // No kohaku host: privacy is an optional layer and this smoke proves the
     // whole bundler pipeline needs none of it.
-    transport: createBundlerTransport({ endpoint: bundlerUrl, entryPoint }),
+    transport: bundlerTransport,
     stateTransport: createRpcStateTransport({ endpoint: rpcUrl })
   });
 
@@ -200,12 +336,238 @@ try {
   assert.equal(await readValue(), 777n, "deploy operation did not execute");
   console.log(`    ok  account deployed by direct EntryPoint publication (${deployTx})`);
 
-  console.log("==> op 2 through Alto: full pipeline (fees, gas estimation, validation, receipt from the bundler)");
-  const second = await client.sendTransaction({
-    calls: [{ target, value: 0n, data: encodeFunctionData({ abi: setValueAbi, functionName: "setValue", args: [4242n] }) }]
+  console.log("==> op 2 through Alto: observable native transfer (prepare, estimate, passkey, submit, include, finalize)");
+  await rpcCall(rpcUrl, "eth_sendTransaction", [{ from: deployer, to: account, value: "0x3e8" }]);
+  const snapshotId = await rpcCall(rpcUrl, "evm_snapshot", []);
+  if (labRecorder) {
+    const current = labRecorder.snapshot().environment;
+    if (current) labRecorder.setEnvironment({ ...current, snapshotId });
+  }
+  const readDeposit = async () => BigInt(await rpcCall(rpcUrl, "eth_call", [{
+    to: entryPoint,
+    data: encodeFunctionData({ abi: EntryPointAbi, functionName: "balanceOf", args: [account] })
+  }, "latest"]));
+  const before = {
+    targetBalance: BigInt(await rpcCall(rpcUrl, "eth_getBalance", [target, "latest"])),
+    targetValue: await readValue(),
+    accountNonce: await client.getEntryPointNonce(),
+    entryPointDeposit: await readDeposit(),
+    accountCodeHash: await runtimeCodeHash(account)
+  };
+  const stateBeforeSpan = labRecorder?.begin({
+    component: "rpc",
+    phase: "state-before",
+    explanation: "Reading the semantic account, target, nonce, and EntryPoint deposit state before signing.",
+    payload: before
   });
+  if (stateBeforeSpan) labRecorder.finish(stateBeforeSpan, { status: "success", chainId: state.chainId, account, entryPoint, payload: before });
+
+  const action = nativeTransferScenario.actions[0];
+  assert.ok(action, "wallet lab native transfer action missing");
+  const calls = [{ target, value: BigInt(action.valueWei), data: encodeFunctionData({ abi: setValueAbi, functionName: "setValue", args: [BigInt(action.targetCall.value)] }) }];
+  const intentSpan = labRecorder?.begin({
+    component: "wallet-ui",
+    phase: "intent",
+    explanation: "The user intends to send native value and invoke the deterministic devnet target in one atomic account call.",
+    payload: { action, account, chainId: state.chainId }
+  });
+  if (intentSpan) labRecorder.finish(intentSpan, { status: "success", chainId: state.chainId, account, payload: { calls } });
+
+  const constructionSpan = labRecorder?.begin({
+    component: "sdk",
+    phase: "call-construction",
+    explanation: "Encoding the reviewed Loom single-call execution intent.",
+    source: { file: "packages/sdk/src/index.ts", symbol: "prepareCalls" },
+    payload: { calls }
+  });
+  const preparedSecond = client.prepareCalls({ calls });
+  if (constructionSpan) labRecorder.finish(constructionSpan, {
+    status: "success",
+    account,
+    payload: { intentHash: preparedSecond.intentHash, review: preparedSecond.review, intent: preparedSecond.intent }
+  });
+
+  const estimationSpan = labRecorder?.begin({
+    component: "bundler",
+    phase: "gas-estimation",
+    status: "waiting-bundler",
+    explanation: "The SDK resolves the nonce and fees, then asks Alto to simulate gas with the signer's representative dummy signature.",
+    source: { file: "packages/sdk/src/index.ts", symbol: "fillUserOperation" },
+    payload: { methods: ["eth_call:getNonce", "pimlico_getUserOperationGasPrice", "eth_estimateUserOperationGas"] }
+  });
+  const filledSecond = await client.fillUserOperation(preparedSecond);
+  if (estimationSpan) labRecorder.finish(estimationSpan, {
+    status: "simulated",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    bundler: bundlerUrl,
+    payload: {
+      nonce: filledSecond.userOperation.nonce,
+      callGasLimit: filledSecond.userOperation.callGasLimit,
+      verificationGasLimit: filledSecond.userOperation.verificationGasLimit,
+      preVerificationGas: filledSecond.userOperation.preVerificationGas,
+      maxFeePerGas: filledSecond.userOperation.maxFeePerGas,
+      maxPriorityFeePerGas: filledSecond.userOperation.maxPriorityFeePerGas,
+      note: "Simulation is not inclusion or success."
+    }
+  });
+
+  lastPasskeyInspection = null;
+  const signingSpan = labRecorder?.begin({
+    component: "webauthn",
+    phase: "webauthn",
+    status: "waiting-user",
+    explanation: "Requesting a test-only P-256 assertion bound to the canonical UserOperation hash, RP ID, and origin.",
+    source: { file: "packages/sdk/src/index.ts", symbol: "createPasskeySigner" },
+    payload: { credentialId: testPasskey.credentialId, rpId: RP_ID, origin: ORIGIN, userVerification: "required" }
+  });
+  const secondSignature = await signer.signUserOperation(filledSecond);
+  const signedSecond = Object.freeze({ ...filledSecond, userOperation: Object.freeze({ ...filledSecond.userOperation, signature: secondSignature }) });
+  const packedSecond = corePackUserOperation(signedSecond.userOperation);
+  const independentlyComputedHash = coreGetUserOpHash(packedSecond, entryPoint, BigInt(state.chainId));
+  if (signingSpan) labRecorder.finish(signingSpan, {
+    status: "success",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    payload: { ...lastPasskeyInspection, userOpHash: independentlyComputedHash, unpacked: signedSecond.userOperation, packed: packedSecond }
+  });
+
+  const submissionSpan = labRecorder?.begin({
+    component: "bundler",
+    phase: "bundler-submission",
+    status: "waiting-bundler",
+    explanation: "Submitting the signed operation to Alto. Bundler acceptance is tracked separately from chain inclusion.",
+    payload: { method: "eth_sendUserOperation", entryPoint, userOperation: signedSecond.userOperation }
+  });
+  const sentSecond = await bundlerTransport.sendUserOperation(signedSecond);
+  assert.equal(sentSecond.userOpHash, independentlyComputedHash, "bundler and independent UserOperation hashes differ");
+  if (submissionSpan) labRecorder.finish(submissionSpan, {
+    status: "success",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    bundler: bundlerUrl,
+    userOpHash: sentSecond.userOpHash,
+    payload: {
+      method: "eth_sendUserOperation",
+      userOperation: signedSecond.userOperation,
+      packedUserOperation: packedSecond,
+      independentlyComputedHash,
+      bundlerHash: sentSecond.userOpHash
+    }
+  });
+
+  const inclusionSpan = labRecorder?.begin({
+    component: "tracker",
+    phase: "inclusion",
+    status: "pending-chain",
+    explanation: "Polling for an ERC-4337 receipt; submission and simulation are not treated as inclusion.",
+    payload: { method: "eth_getUserOperationReceipt", userOpHash: sentSecond.userOpHash }
+  });
+  const secondReceipt = await client.waitForUserOperationReceipt({ userOpHash: sentSecond.userOpHash });
+  const transactionReceipt = secondReceipt.receipt;
+  const transactionHash = transactionReceipt?.transactionHash;
+  const onChainReceipt = transactionHash ? await rpcCall(rpcUrl, "eth_getTransactionReceipt", [transactionHash]) : null;
+  assert.equal(secondReceipt.userOpHash, independentlyComputedHash, "receipt UserOperation hash provenance mismatch");
+  assert.equal(secondReceipt.sender?.toLowerCase(), account.toLowerCase(), "receipt sender provenance mismatch");
+  assert.equal(onChainReceipt?.status, "0x1", "on-chain transaction receipt was not successful");
+  if (inclusionSpan) labRecorder.finish(inclusionSpan, {
+    status: "included",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    bundler: bundlerUrl,
+    userOpHash: sentSecond.userOpHash,
+    transactionHash,
+    blockHash: onChainReceipt?.blockHash,
+    blockNumber: Number(BigInt(onChainReceipt?.blockNumber ?? "0x0")),
+    payload: { userOperationReceipt: secondReceipt, transactionReceipt: onChainReceipt }
+  });
+  if (labRecorder && deploymentEvidence) {
+    const traceSpan = labRecorder.begin({
+      component: "rpc",
+      phase: "evm-trace",
+      explanation: "Tracing the successful enclosing transaction with Anvil's call tracer and resolving observed selectors against the deployment ABI catalog.",
+      payload: { method: "debug_traceTransaction", transactionHash }
+    });
+    const rawTrace = await rpcCall(rpcUrl, "debug_traceTransaction", [transactionHash, { tracer: "callTracer" }]);
+    const rawOpcodeTrace = await rpcCall(rpcUrl, "debug_traceTransaction", [transactionHash, {
+      disableMemory: true,
+      disableStack: true,
+      disableStorage: true
+    }]);
+    const trace = normalizeCallTrace(rawTrace, deploymentEvidence);
+    const summary = summarizeCallTrace(trace);
+    const opcodeProfile = compactOpcodeTrace(rawOpcodeTrace);
+    assert.ok(trace && summary.calls > 0, "EVM call trace did not contain an observable call tree");
+    assert.ok(opcodeProfile.totalSteps > 0, "EVM opcode trace did not contain execution steps");
+    labRecorder.finish(traceSpan, {
+      status: "success",
+      chainId: state.chainId,
+      account,
+      entryPoint,
+      transactionHash,
+      userOpHash: sentSecond.userOpHash,
+      payload: { method: "debug_traceTransaction", transactionHash, summary, trace, opcodeProfile }
+    });
+  }
+
+  const includedBlock = Number(BigInt(onChainReceipt.blockNumber));
+  const finalitySpan = labRecorder?.begin({
+    component: "tracker",
+    phase: "finality",
+    status: "included",
+    explanation: "Mining a later local block and applying the scenario's explicit one-block finality policy.",
+    payload: { includedBlock, requiredConfirmations: 1 }
+  });
+  await rpcCall(rpcUrl, "evm_mine", []);
+  const finalHead = Number(BigInt(await rpcCall(rpcUrl, "eth_blockNumber", [])));
+  assert.ok(finalHead >= includedBlock + 1, "operation did not reach the local finality policy");
+  if (finalitySpan) labRecorder.finish(finalitySpan, {
+    status: "finalized",
+    chainId: state.chainId,
+    account,
+    entryPoint,
+    userOpHash: sentSecond.userOpHash,
+    transactionHash,
+    blockHash: onChainReceipt.blockHash,
+    blockNumber: includedBlock,
+    payload: { includedBlock, finalHead, confirmations: finalHead - includedBlock }
+  });
+
+  const second = Object.freeze({ userOpHash: sentSecond.userOpHash, userOperation: signedSecond.userOperation, receipt: secondReceipt });
   assert.equal(second.receipt?.success, true, "second user operation was not successful");
   assert.equal(await readValue(), 4242n, "second user operation did not execute");
+  const after = {
+    targetBalance: BigInt(await rpcCall(rpcUrl, "eth_getBalance", [target, "latest"])),
+    targetValue: await readValue(),
+    accountNonce: await client.getEntryPointNonce(),
+    entryPointDeposit: await readDeposit(),
+    accountCodeHash: await runtimeCodeHash(account)
+  };
+  assert.equal(after.targetBalance - before.targetBalance, BigInt(action.valueWei), "native transfer balance delta mismatch");
+  if (labRecorder) {
+    const stateAfterSpan = labRecorder.begin({ component: "rpc", phase: "state-after", explanation: "Reading semantic state after finalized execution.", payload: after });
+    labRecorder.finish(stateAfterSpan, { status: "success", chainId: state.chainId, account, entryPoint, userOpHash: second.userOpHash, transactionHash, payload: after });
+    labRecorder.setStateDiff([
+      ...(browserEvidence ? [
+        { name: "Browser recipient native balance", before: browserEvidence.before.recipientBalance.toString(), after: browserEvidence.after.recipientBalance.toString(), unit: "wei", explanation: "The actual wallet example transferred exactly 123 wei after a virtual WebAuthn assertion." },
+        { name: "Browser account EntryPoint nonce", before: browserEvidence.before.nonce.toString(), after: browserEvidence.after.nonce.toString(), explanation: "The browser-driven transfer advanced the deterministic test account nonce exactly once." }
+      ] : []),
+      { name: "Target native balance", before: before.targetBalance.toString(), after: after.targetBalance.toString(), unit: "wei", explanation: "The target received exactly the value authorized by the reviewed account call." },
+      { name: "Target value", before: before.targetValue.toString(), after: after.targetValue.toString(), explanation: "The target call executed through LoomAccount after validator and hook checks." },
+      { name: "EntryPoint nonce", before: before.accountNonce.toString(), after: after.accountNonce.toString(), explanation: "The canonical nonce advanced once for the included UserOperation." },
+      { name: "EntryPoint deposit", before: before.entryPointDeposit.toString(), after: after.entryPointDeposit.toString(), unit: "wei", explanation: "The account-funded EntryPoint deposit paid the operation's actual gas cost." },
+      { name: "Account runtime code hash", before: before.accountCodeHash, after: after.accountCodeHash, explanation: "Execution did not change the immutable account runtime binding." }
+    ]);
+    labRecorder.setInvariant("sdk-entrypoint-userop-hash-match", "pass", "The independently computed EntryPoint hash equals the bundler-returned hash.");
+    labRecorder.setInvariant("receipt-provenance-match", "pass", "The UserOperation receipt, sender, transaction hash, and successful chain receipt agree.");
+    labRecorder.setInvariant("native-balance-delta-match", "pass", `The target balance increased by exactly ${action.valueWei} wei.`);
+    labRecorder.setInvariant("target-state-transition-match", "pass", "The target value changed to the exact scenario value 4242.");
+    labRecorder.setInvariant("finality-not-inferred-from-simulation", "pass", "Finality was recorded only after inclusion and a later local block.");
+  }
   console.log(`    ok  executed via eth_sendUserOperation (${second.userOpHash})`);
 
   console.log("==> op 3 through Alto: repeat traffic (nonce advanced through the state transport)");
@@ -393,19 +755,18 @@ try {
   // the chain — a pass on the honest manifest, a fail on a tampered one.
   console.log("==> loom deploy verify + manifest validate against the live devnet");
   const { verifyDeployment, inspectManifest, validateManifest } = await import("../../packages/cli/src/deploy.mjs");
-  const codeHash = async address => keccak256(await rpcCall(rpcUrl, "eth_getCode", [address, "latest"]));
   const proxyHash = keccak256(proxyArtifact.bytecode.object);
   const canonicalManifest = {
     schemaVersion: "1",
     releaseChannel: "devnet",
     chainId: state.chainId,
-    entryPoint: { address: entryPoint, runtimeCodeHash: await codeHash(entryPoint) },
-    factory: { address: factory, runtimeCodeHash: await codeHash(factory) },
+    entryPoint: { address: entryPoint, runtimeCodeHash: await runtimeCodeHash(entryPoint) },
+    factory: { address: factory, runtimeCodeHash: await runtimeCodeHash(factory) },
     account: {
-      implementation: { address: implementation, runtimeCodeHash: await codeHash(implementation) },
+      implementation: { address: implementation, runtimeCodeHash: await runtimeCodeHash(implementation) },
       proxy: { creationCodeHash: proxyHash, runtimeCodeHash: proxyHash }
     },
-    modules: [{ type: "validator", address: validator, runtimeCodeHash: await codeHash(validator), version: "0.0.0", status: "beta" }],
+    modules: [{ type: "validator", address: validator, runtimeCodeHash: await runtimeCodeHash(validator), version: "0.0.0", status: "beta" }],
     compatibility: { contractRelease: "0.0.0", sdkRange: "^0.0" }
   };
   const deployRpc = (method, params) => rpcCall(rpcUrl, method, params);
@@ -421,10 +782,20 @@ try {
   await assert.rejects(verifyDeployment(tampered, deployRpc), e => e.exitCode === 6, "deploy verify fails on a tampered hash");
   console.log(`    ok  manifest ${verified.manifestHash} verified on chain; tampered hash rejected`);
 
+  if (labRecorder) {
+    const uiSpan = labRecorder.begin({ component: "wallet-ui", phase: "ui", explanation: "Publishing the correlated run artifact for the local laboratory UI.", payload: { artifactPath: labArtifactPath } });
+    labRecorder.finish(uiSpan, { status: "success", chainId: state.chainId, account, entryPoint, userOpHash: second.userOpHash, payload: { artifactPath: labArtifactPath, replay: labRecorder.snapshot().replay.command } });
+    labRecorder.complete("success");
+  }
+
   console.log("\nBundler devnet passed: sovereign deployment plus the full SDK send pipeline against the pinned Alto bundler.");
+} catch (error) {
+  labRecorder?.fail(error);
+  labRecorder?.complete("error");
+  throw error;
 } finally {
   try {
-    if (state) {
+    if (state && process.env.LOOM_WALLET_LAB_KEEP_DEVNET !== "true") {
       console.log("==> loom devnet down");
       down();
     }

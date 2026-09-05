@@ -10,6 +10,7 @@ import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../src/validators/P256Validator.sol";
+import {MultiP256Validator} from "../src/validators/MultiP256Validator.sol";
 import {P256RecoveryValidatorFactory} from "../src/validators/P256RecoveryValidatorFactory.sol";
 import {ExactCallSessionValidator} from "../src/validators/ExactCallSessionValidator.sol";
 import {GranularSessionValidator} from "../src/validators/GranularSessionValidator.sol";
@@ -17,6 +18,9 @@ import {PolicyHook} from "../src/hooks/PolicyHook.sol";
 import {VaultHook} from "../src/hooks/VaultHook.sol";
 import {RecoveryIntentBoard} from "../src/recovery/RecoveryIntentBoard.sol";
 import {RecoveryManager} from "../src/recovery/RecoveryManager.sol";
+import {ECDSAGuardianVerifier} from "../src/recovery/ECDSAGuardianVerifier.sol";
+import {P256GuardianVerifier} from "../src/recovery/P256GuardianVerifier.sol";
+import {ERC1271GuardianVerifier} from "../src/recovery/ERC1271GuardianVerifier.sol";
 
 /// A trivial call target for the lifecycle test to write to and read back,
 /// proving that an account-authorized UserOperation actually executed.
@@ -44,12 +48,16 @@ contract DeployDevnet is Script {
         address policyHook,
         address vaultHook,
         address p256Validator,
+        address multiP256Validator,
         address p256RecoveryValidatorFactory,
         address ecdsaValidator,
         address exactCallSessionValidator,
         address granularSessionValidator,
         address recoveryManager,
         address recoveryIntentBoard,
+        address ecdsaGuardianVerifier,
+        address p256GuardianVerifier,
+        address erc1271GuardianVerifier,
         address target
     );
 
@@ -71,12 +79,16 @@ contract DeployDevnet is Script {
         ECDSAValidator ecdsaValidator = new ECDSAValidator();
         // Native precompile mode: no fallback verifier contract.
         P256Validator p256Validator = new P256Validator(address(0));
+        MultiP256Validator multiP256Validator = new MultiP256Validator(address(0));
         P256RecoveryValidatorFactory p256RecoveryValidatorFactory = new P256RecoveryValidatorFactory(address(0));
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
         RecoveryManager recoveryManager = new RecoveryManager();
         // ADR-0024: without it guardian discovery has nothing to read.
         RecoveryIntentBoard recoveryIntentBoard = new RecoveryIntentBoard();
+        ECDSAGuardianVerifier ecdsaGuardianVerifier = new ECDSAGuardianVerifier();
+        P256GuardianVerifier p256GuardianVerifier = new P256GuardianVerifier(address(0));
+        ERC1271GuardianVerifier erc1271GuardianVerifier = new ERC1271GuardianVerifier();
         DevnetTarget target = new DevnetTarget();
 
         LoomAccount.ModuleInit[] memory implementationModules = new LoomAccount.ModuleInit[](2);
@@ -104,12 +116,16 @@ contract DeployDevnet is Script {
             address(policyHook),
             address(vaultHook),
             address(p256Validator),
+            address(multiP256Validator),
             address(p256RecoveryValidatorFactory),
             address(ecdsaValidator),
             address(exactCallSessionValidator),
             address(granularSessionValidator),
             address(recoveryManager),
             address(recoveryIntentBoard),
+            address(ecdsaGuardianVerifier),
+            address(p256GuardianVerifier),
+            address(erc1271GuardianVerifier),
             address(target)
         );
 

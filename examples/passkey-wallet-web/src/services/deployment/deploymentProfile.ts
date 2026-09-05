@@ -58,7 +58,7 @@ export interface WalletDeployment {
 
 export async function loadWalletDeployment(
   request: typeof fetch = fetch,
-  source = "/sepolia.deployment.json"
+  source = import.meta.env?.VITE_LOOM_DEPLOYMENT_PATH || "/sepolia.deployment.json"
 ): Promise<WalletDeployment> {
   const response = await request(source, { cache: "no-store", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`deployment configuration returned ${response.status}`);
