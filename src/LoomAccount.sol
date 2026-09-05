@@ -598,6 +598,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
     function _uninstallModule(uint256 moduleTypeId, address module, bytes memory deInitData) internal {
         if (!_modules[moduleTypeId][module]) revert InvalidModule();
         if (moduleTypeId == ModuleType.VALIDATOR && _validatorCount == 1) revert InvalidModule();
+        if (moduleTypeId == ModuleType.MIGRATION) {
+            (,,,, uint48 readyAt,,,) = MigrationModule(module).pendingMigrations(address(this));
+            if (readyAt != 0) revert InvalidModule();
+        }
         // Removing a hook an installed validator depends on used to leave the
         // account unable to authorize anything, with no repair path: the validator
         // fails closed, `setPolicyHook` needs a scheduled self-call that only a

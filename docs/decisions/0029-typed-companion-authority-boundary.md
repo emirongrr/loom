@@ -67,6 +67,13 @@ configuration delay. No administrator or factory can replace it. A production
 profile pins the reviewed module address in deployment evidence; an account may
 later replace it only through its own delayed authority path.
 
+Uninstalling a migration module requires an empty pending record. The caller
+must explicitly cancel any pending migration before uninstalling, including an
+expired or configuration-stale record. This is a deliberate lifecycle tightening:
+previously uninstall retained the record, while configuration-version advancement
+already prevented that record from executing after reinstallation. A failing
+pending-record getter also fails closed and blocks module removal.
+
 ## Residual risks
 
 A controller bug can incorrectly admit, reject, consume, or retain a record.

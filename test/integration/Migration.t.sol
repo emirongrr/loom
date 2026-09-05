@@ -152,6 +152,49 @@ contract MigrationTest {
         require(callsHashAfter == committedCallsHash, "pending migration commitment changed");
     }
 
+    function testMigrationModuleUninstallRequiresExplicitCancellation() public {
+        LoomAccount source = _account(false);
+        LoomAccount destination = _account(false);
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] = ExecutionLib.Execution(address(destination), 0, bytes(""));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        uint64 version = source.configVersion();
+        bytes memory uninstall =
+            abi.encodeCall(LoomAccount.uninstallModule, (ModuleType.MIGRATION, address(migrationModule), bytes("")));
+        _schedule(source, address(source), uninstall, source.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        (bool removed, bytes memory reason) =
+            address(source).call(abi.encodeCall(LoomAccount.executeScheduled, (address(source), 0, uninstall)));
+        require(!removed, "pending migration module was uninstalled");
+        require(
+            keccak256(reason) == keccak256(abi.encodeWithSelector(LoomAccount.InvalidModule.selector)),
+            "unexpected uninstall rejection"
+        );
+        require(source.configVersion() == version, "rejected uninstall changed configuration");
+        require(source.migrationModule() == address(migrationModule), "rejected uninstall cleared module");
+        require(_pending(source).callsHash == keccak256(abi.encode(calls)), "rejected uninstall changed pending record");
+
+        source.execute(
+            bytes32(0),
+            abi.encode(
+                ExecutionLib.Execution(address(migrationModule), 0, abi.encodeCall(MigrationModule.cancelMigration, ()))
+            )
+        );
+        source.executeScheduled(address(source), 0, uninstall);
+        require(source.migrationModule() == address(0), "cancelled module did not uninstall");
+        bytes memory install =
+            abi.encodeCall(LoomAccount.installModule, (ModuleType.MIGRATION, address(migrationModule), bytes("")));
+        _schedule(source, address(source), install, source.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeScheduled(address(source), 0, install);
+        require(_pending(source).readyAt == 0, "reinstall restored pending state");
+        require(migrationModule.migrationNonces(address(source)) == 1, "cancellation nonce did not persist");
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeMigration(calls);
+        require(migrationModule.migrationNonces(address(source)) == 2, "fresh migration failed after reinstall");
+    }
+
     function testMigrationIsDelayedPermissionlessAndDestinationBound() public {
         LoomAccount source = _account(false);
         LoomAccount destination = _account(false);
