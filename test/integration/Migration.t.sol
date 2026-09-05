@@ -731,6 +731,39 @@ contract MigrationTest {
         require(token.balanceOf(address(destination)) == 10, "allowed policy migration failed");
     }
 
+    function testMigrationNormalizesEquivalentOuterArrayEncoding() public {
+        (LoomAccount source, PolicyHook hook) = _accountWithPolicyHook();
+        LoomAccount destination = _account(false);
+        MockERC20 token = new MockERC20();
+        token.mint(address(source), 100);
+        bytes memory setPolicy = abi.encodeCall(
+            PolicyHook.setPolicy,
+            (address(token), token.transfer.selector, PolicyHook.Policy(10, 10, 1 days, address(destination), true))
+        );
+        _schedule(source, address(hook), setPolicy, source.MIN_CONFIG_DELAY());
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+        source.executeScheduled(address(hook), 0, setPolicy);
+        ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](1);
+        calls[0] =
+            ExecutionLib.Execution(address(token), 0, abi.encodeCall(MockERC20.transfer, (address(destination), 10)));
+        _scheduleMigration(source, destination, calls, source.MIN_CONFIG_DELAY(), 1 days);
+        vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
+
+        // Move the outer array from byte 32 to byte 64 with one padding word.
+        bytes memory arguments = abi.encodePacked(uint256(64), abi.encode(calls));
+        require(
+            keccak256(abi.encode(abi.decode(arguments, (ExecutionLib.Execution[])))) == keccak256(abi.encode(calls)),
+            "fixture changed decoded calls"
+        );
+        (bool executed,) = address(source).call(abi.encodePacked(LoomAccount.executeMigration.selector, arguments));
+        require(executed, "equivalent migration encoding rejected");
+        require(token.balanceOf(address(destination)) == 10, "normalized migration changed transfer");
+        require(_pending(source).readyAt == 0, "normalized migration did not consume record");
+        require(migrationModule.migrationNonces(address(source)) == 1, "normalized migration nonce changed");
+        (bool replayed,) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
+        require(!replayed, "canonical representation replayed consumed migration");
+    }
+
     function _account(bool withPolicyHook) internal returns (LoomAccount) {
         MockValidator validator = new MockValidator();
         LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](withPolicyHook ? 3 : 2);

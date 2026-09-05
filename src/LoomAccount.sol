@@ -442,12 +442,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
-    function _executeAuthorized(
-        bytes32 mode,
-        bytes calldata executionCalldata,
-        address caller,
-        bytes memory accountCall
-    ) internal {
+    function _executeAuthorized(bytes32 mode, bytes memory executionCalldata, address caller, bytes memory accountCall)
+        internal
+    {
         if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) {
             revert UnsupportedExecutionMode();
         }
@@ -949,7 +946,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < frozenUntil) revert AccountFrozen();
         MigrationModule(_migrationModule()).consumeMigration(address(this), calls);
-        bytes calldata executionCalldata = msg.data[4:];
+        // Preserve canonical batch encoding for validation and hook observations.
+        bytes memory executionCalldata = abi.encode(calls);
         bytes memory accountCall = abi.encodeCall(this.execute, (BATCH_EXECUTION_MODE, executionCalldata));
         _executeAuthorized(BATCH_EXECUTION_MODE, executionCalldata, msg.sender, accountCall);
     }
@@ -1149,20 +1147,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
-    function _validateBatchSize(bytes calldata executionCalldata) internal pure {
+    function _validateBatchSize(bytes memory executionCalldata) internal pure {
         if (executionCalldata.length < 64) revert InvalidBatch();
         uint256 arrayOffset;
         uint256 count;
         assembly ("memory-safe") {
-            arrayOffset := calldataload(executionCalldata.offset)
-            count := calldataload(add(executionCalldata.offset, 32))
+            arrayOffset := mload(add(executionCalldata, 32))
+            count := mload(add(executionCalldata, 64))
         }
         if (arrayOffset != 32) revert InvalidBatch();
         if (count == 0) revert EmptyBatch();
         if (count > MAX_BATCH_SIZE) revert BatchLimitExceeded();
     }
 
-    function _isFrozenSafe(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {
+    function _isFrozenSafe(bytes1 callType, bytes memory executionCalldata) internal view returns (bool) {
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             return _isRecoveryExecution(abi.decode(executionCalldata, (ExecutionLib.Execution)));
         }
@@ -1195,7 +1193,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return recoveryAccount == address(this);
     }
 
-    function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {
+    function _isHookRecoverySchedule(bytes1 callType, bytes memory executionCalldata) internal view returns (bool) {
         if (callType != ExecutionLib.CALLTYPE_SINGLE) return false;
         ExecutionLib.Execution memory execution = abi.decode(executionCalldata, (ExecutionLib.Execution));
         if (execution.target != address(this) || execution.callData.length < 4) return false;
