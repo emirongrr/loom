@@ -16,7 +16,7 @@ experience — both inherit the same guarantees.
 - **Immutable core** — no admin, no upgrade proxy, no developer or factory authority.
 - **Passkey-native** — WebAuthn / P-256 validation with multi-passkey MFA.
 - **Guardian recovery** — threshold guardians, visible delay, and freeze, with no guardian spending power.
-- **Sovereign migration** — move an account forward with no custodian in the loop.
+- **Migration** — move an account forward with no custodian in the loop.
 - **Walkaway guarantee** — the account stays usable and recoverable even if every Loom service disappears.
 - **SDK-first** — headless packages that choose no default RPC, bundler, or paymaster.
 
