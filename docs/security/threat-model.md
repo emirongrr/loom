@@ -152,7 +152,7 @@
   permanently veto a migration: each guardian leaf may freeze only once per
   configuration version, so the window cannot be renewed at will, and a migration
   stays executable until its own `expiresAt`. The freeze duration exceeds
-  `MIN_CONFIG_DELAY`, so a migration whose execution window is shorter than
+  `MigrationModule.MIN_MIGRATION_DELAY`, so a migration whose execution window is shorter than
   `FREEZE_DURATION` can be pushed past its expiry by a freeze taken at the wrong
   moment; choose an execution window longer than `FREEZE_DURATION`. Guardian
   cancellation also remains available while frozen.
