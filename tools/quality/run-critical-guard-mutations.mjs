@@ -75,21 +75,21 @@ const mutants = [
   {
     id: "migration-config-snapshot",
     category: "stale-authority",
-    source: "src/LoomAccount.sol",
-    search: "block.timestamp > migration.expiresAt || configVersion != migration.configVersion",
+    source: "src/MigrationModule.sol",
+    search: "block.timestamp > migration.expiresAt || ILoomAccount(account).configVersion() != migration.configVersion",
     replacement: "block.timestamp > migration.expiresAt",
-    testPath: "test/integration/SovereignMigration.t.sol",
+    testPath: "test/integration/Migration.t.sol",
     testName: "testMigrationRejectsWrongCallsDestinationConfigExpiryAndStaleConfig",
   },
   {
     id: "migration-state-consumption",
     category: "state-transition",
-    source: "src/LoomAccount.sol",
+    source: "src/MigrationModule.sol",
     search:
-      "bytes32 migrationId = migrationIdFor(migration);\n        delete pendingMigration;\n        ++migrationNonce;\n\n        bytes memory executionCalldata",
+      "migrationId = migrationIdFor(account, migration);\n        destination = migration.destination;\n        delete pendingMigrations[account];\n        migrationNonces[account] = migration.nonce + 1;",
     replacement:
-      "bytes32 migrationId = migrationIdFor(migration);\n        ++migrationNonce;\n\n        bytes memory executionCalldata",
-    testPath: "test/integration/SovereignMigration.t.sol",
+      "migrationId = migrationIdFor(account, migration);\n        destination = migration.destination;\n        migrationNonces[account] = migration.nonce + 1;",
+    testPath: "test/integration/Migration.t.sol",
     testName: "testMigrationIsDelayedPermissionlessAndDestinationBound",
   },
   {

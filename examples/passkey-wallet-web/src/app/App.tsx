@@ -273,6 +273,7 @@ export function App() {
       const deployment = await loadWalletDeployment();
       await services.runtime.verify(config, deployment);
       const client = services.publicClients.forEndpoint(config.rpcUrl);
+      const discoveryBlock = await client.getBlock({ blockTag: "latest" });
 
       const discovered = await discoverPasskeyAccount({
         chainId: deployment.chainId,
@@ -280,6 +281,7 @@ export function App() {
         rpId: window.location.hostname,
         origin: window.location.origin,
         challenge: assertion.challenge,
+        blockTag: discoveryBlock.number,
         assertion: {
           credentialId: assertion.credentialId,
           userHandle: assertion.userHandle,

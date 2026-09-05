@@ -13,6 +13,7 @@ const MIN_BRANCHES = 60;
 const CRITICAL_MODULES = [
   "src/LoomAccount.sol",
   "src/LoomAccountFactory.sol",
+  "src/MigrationModule.sol",
   "src/adapters/ERC7579ModuleAdapter.sol",
   "src/hooks/PolicyHook.sol",
   "src/hooks/VaultHook.sol",
@@ -34,6 +35,10 @@ const CRITICAL_GROUPS = [
   {
     name: "account-core",
     files: ["src/LoomAccount.sol", "src/LoomAccountFactory.sol"]
+  },
+  {
+    name: "migration",
+    files: ["src/MigrationModule.sol"]
   },
   {
     name: "recovery",

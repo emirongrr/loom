@@ -68,19 +68,6 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
-    "name": "CANCEL_MIGRATION_TYPEHASH",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "CANCEL_SCHEDULED_TYPEHASH",
     "inputs": [],
     "outputs": [
@@ -276,19 +263,6 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
-    "name": "MAX_MIGRATION_WINDOW",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint48",
-        "internalType": "uint48"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "MAX_RECOVERY_MODULES",
     "inputs": [],
     "outputs": [
@@ -403,53 +377,6 @@ export const LoomAccountAbi = [
       }
     ],
     "stateMutability": "pure"
-  },
-  {
-    "type": "function",
-    "name": "cancelMigration",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "cancelMigrationWithGuardians",
-    "inputs": [
-      {
-        "name": "guardianApprovals",
-        "type": "tuple[]",
-        "internalType": "struct GuardianVerificationLib.Approval[]",
-        "components": [
-          {
-            "name": "verifier",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "keyCommitment",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "salt",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "signature",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "proof",
-            "type": "bytes32[]",
-            "internalType": "bytes32[]"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -1254,103 +1181,13 @@ export const LoomAccountAbi = [
   },
   {
     "type": "function",
-    "name": "migrationCancelDigest",
-    "inputs": [
-      {
-        "name": "migrationId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "version",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "nonce",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "migrationIdFor",
-    "inputs": [
-      {
-        "name": "migration",
-        "type": "tuple",
-        "internalType": "struct LoomAccount.PendingMigration",
-        "components": [
-          {
-            "name": "destination",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "destinationCodeHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "destinationConfigHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "callsHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "readyAt",
-            "type": "uint48",
-            "internalType": "uint48"
-          },
-          {
-            "name": "expiresAt",
-            "type": "uint48",
-            "internalType": "uint48"
-          },
-          {
-            "name": "configVersion",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nonce",
-            "type": "uint64",
-            "internalType": "uint64"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "migrationNonce",
+    "name": "migrationModule",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -1479,54 +1316,6 @@ export const LoomAccountAbi = [
       }
     ],
     "stateMutability": "pure"
-  },
-  {
-    "type": "function",
-    "name": "pendingMigration",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "destination",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "destinationCodeHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "destinationConfigHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "callsHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "readyAt",
-        "type": "uint48",
-        "internalType": "uint48"
-      },
-      {
-        "name": "expiresAt",
-        "type": "uint48",
-        "internalType": "uint48"
-      },
-      {
-        "name": "configVersion",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "nonce",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1665,50 +1454,6 @@ export const LoomAccountAbi = [
     "outputs": [
       {
         "name": "operationId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "scheduleMigration",
-    "inputs": [
-      {
-        "name": "destination",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "destinationCodeHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "destinationConfigHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "callsHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "delay",
-        "type": "uint48",
-        "internalType": "uint48"
-      },
-      {
-        "name": "executionWindow",
-        "type": "uint48",
-        "internalType": "uint48"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "migrationId",
         "type": "bytes32",
         "internalType": "bytes32"
       }
@@ -2054,87 +1799,6 @@ export const LoomAccountAbi = [
   },
   {
     "type": "event",
-    "name": "MigrationCancelled",
-    "inputs": [
-      {
-        "name": "migrationId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "MigrationExecuted",
-    "inputs": [
-      {
-        "name": "migrationId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "destination",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "MigrationScheduled",
-    "inputs": [
-      {
-        "name": "migrationId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "destination",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "destinationCodeHash",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "destinationConfigHash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "callsHash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "readyAt",
-        "type": "uint48",
-        "indexed": false,
-        "internalType": "uint48"
-      },
-      {
-        "name": "expiresAt",
-        "type": "uint48",
-        "indexed": false,
-        "internalType": "uint48"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "ModuleInstalled",
     "inputs": [
       {
@@ -2291,27 +1955,12 @@ export const LoomAccountAbi = [
   },
   {
     "type": "error",
-    "name": "InvalidMigration",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "InvalidModule",
     "inputs": []
   },
   {
     "type": "error",
     "name": "InvalidTokenAllowance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "MigrationAlreadyPending",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "MigrationNotPending",
     "inputs": []
   },
   {

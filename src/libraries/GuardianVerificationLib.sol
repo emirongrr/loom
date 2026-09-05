@@ -5,8 +5,8 @@ import {IGuardianVerifier} from "../interfaces/IGuardianVerifier.sol";
 import {MerkleProof} from "./MerkleProof.sol";
 
 /// @notice Single source of truth for guardian-threshold verification, shared by
-/// the account (freeze/migration/hook eviction) and the recovery, keystore-sync,
-/// and vault modules. Centralizing the leaf definition and the approval loop
+/// the account (freeze/hook eviction) and the migration, recovery,
+/// keystore-sync, and vault modules. Centralizing the leaf definition and the approval loop
 /// keeps guardian semantics identical across every path: a guardian valid for one
 /// action is valid for all of them, and there is one implementation to audit.
 library GuardianVerificationLib {

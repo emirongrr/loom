@@ -60,7 +60,7 @@ const cases = {
     }
   },
   scheduleMigration: {
-    group: "account",
+    group: "migration",
     fn: "scheduleMigration",
     args: {
       destination: "0x6666666666666666666666666666666666666666",
@@ -72,7 +72,7 @@ const cases = {
     }
   },
   cancelMigration: {
-    group: "account",
+    group: "migration",
     fn: "cancelMigration",
     args: {}
   },

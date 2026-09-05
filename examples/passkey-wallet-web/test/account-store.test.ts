@@ -26,7 +26,7 @@ function handle(index: number): AccountHandle {
     rpId: "localhost",
     origin: "http://localhost:5173",
     accountHandle: `0x${"33".repeat(32)}`,
-    creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
+    creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0, migrationModule: null }
   };
 }
 
@@ -41,6 +41,13 @@ test("v3 storage never imports or rewrites an older saved-wallet namespace", asy
 
   assert.equal(storage.getItem("loom.wallet.accounts.v1"), previous);
   assert.deepEqual((await store.list()).map(item => item.id), ["wallet-2"]);
+});
+
+test("derived records require an explicit migration-module binding", async () => {
+  const withoutBinding = { ...handle(1), creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 } };
+  const store = createBrowserAccountStore(memoryStorage());
+
+  await assert.rejects(store.save(withoutBinding as never), /migration module binding/);
 });
 
 test("account store never evicts an older wallet when another wallet is saved", async () => {

@@ -40,6 +40,9 @@ const INITIAL_GUARDIANS = {
   threshold: 2
 } as const;
 
+const MIGRATION_MODULE_A = "0x1111111111111111111111111111111111111111" as const;
+const MIGRATION_MODULE_B = "0x2222222222222222222222222222222222222222" as const;
+
 function handle() {
   return deriveCreatedAccountHandle({
     label: "Test wallet",
@@ -106,6 +109,46 @@ test("a handle whose address does not match its configuration is refused", () =>
 test("a handle pointing at a different deployment is refused", () => {
   const other = { ...DEPLOYMENT, validator: "0x00000000000000000000000000000000000000ff" };
   assert.equal(resolveCreationConfig(handle(), other as never), null);
+});
+
+test("creation preserves the exact migration module across deployment-profile rotation", () => {
+  const originalDeployment = { ...DEPLOYMENT, migrationModule: MIGRATION_MODULE_A };
+  const account = deriveCreatedAccountHandle({
+    label: "Migration wallet",
+    deployment: originalDeployment as never,
+    passkey: PASSKEY as never,
+    rpId: "localhost",
+    origin: "http://localhost:5174"
+  });
+  const currentDeployment = { ...DEPLOYMENT, migrationModule: MIGRATION_MODULE_B };
+  const config = resolveCreationConfig(account, currentDeployment as never);
+
+  assert.ok(config, "profile rotation must not change a saved counterfactual address");
+  assert.equal(account.kind === "derived" ? account.creation.migrationModule : null, MIGRATION_MODULE_A);
+  assert.equal(config.modules.find(module => module.moduleTypeId === 6n)?.module, MIGRATION_MODULE_A);
+  const restored = JSON.parse(JSON.stringify(account));
+  assert.deepEqual(planActivation(restored, DEPLOYMENT as never), planActivation(account, originalDeployment as never),
+    "removing the module from the current profile must preserve the saved factory calldata");
+});
+
+test("creation preserves explicit migration-module absence when a profile later adds one", () => {
+  const account = handle();
+  const currentDeployment = { ...DEPLOYMENT, migrationModule: MIGRATION_MODULE_A };
+  const config = resolveCreationConfig(account, currentDeployment as never);
+
+  assert.ok(config, "adding a profile module must not change a saved counterfactual address");
+  assert.equal(account.kind === "derived" ? account.creation.migrationModule : undefined, null);
+  assert.equal(config.modules.some(module => module.moduleTypeId === 6n), false);
+});
+
+test("creation refuses missing or altered migration bindings", () => {
+  const account = handle();
+  assert.equal(account.kind, "derived");
+  if (account.kind !== "derived") throw new Error("expected derived account");
+  for (const migrationModule of [undefined, "invalid", MIGRATION_MODULE_A]) {
+    assert.equal(resolveCreationConfig({ ...account, creation: { ...account.creation, migrationModule } } as never,
+      DEPLOYMENT as never), null);
+  }
 });
 
 // Recovered accounts already exist on chain; there is nothing to create.

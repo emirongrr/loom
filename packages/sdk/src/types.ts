@@ -271,8 +271,9 @@ export interface AccountSafetyState {
   };
   readonly coverage: {
     readonly account: true;
-    readonly migration: true;
+    readonly migration: boolean;
     readonly recovery: boolean;
+    readonly migrationModule?: Hex;
     readonly recoveryModule?: Hex;
   };
   readonly warnings: readonly string[];

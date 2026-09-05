@@ -36,6 +36,7 @@ contract DevnetAccountLifecycle is Script {
         LoomAccountFactory factory;
         P256Validator validator;
         address policyHook;
+        address migrationModule;
         address account;
         uint256 p256Key;
         bytes32 p256X;
@@ -54,6 +55,7 @@ contract DevnetAccountLifecycle is Script {
         ctx.factory = LoomAccountFactory(vm.envAddress("DEVNET_FACTORY"));
         ctx.validator = P256Validator(vm.envAddress("DEVNET_P256_VALIDATOR"));
         ctx.policyHook = vm.envAddress("DEVNET_POLICY_HOOK");
+        ctx.migrationModule = vm.envAddress("DEVNET_MIGRATION_MODULE");
         address target = vm.envAddress("DEVNET_TARGET");
         ctx.p256Key = vm.envUint("DEVNET_P256_PRIVATE_KEY");
         ctx.p256X = vm.envBytes32("DEVNET_P256_X");
@@ -61,7 +63,7 @@ contract DevnetAccountLifecycle is Script {
         ctx.rpId = vm.envOr("DEVNET_RP_ID", string("wallet.example"));
         ctx.origin = vm.envOr("DEVNET_ORIGIN", string("https://wallet.example"));
 
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
         modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, ctx.policyHook, "");
         modules[1] = LoomAccount.ModuleInit(
             ModuleType.VALIDATOR,
@@ -75,6 +77,7 @@ contract DevnetAccountLifecycle is Script {
                 (ctx.p256X, ctx.p256Y, sha256(bytes(ctx.rpId)), keccak256(bytes(ctx.origin)), ctx.policyHook)
             )
         );
+        modules[2] = LoomAccount.ModuleInit(ModuleType.MIGRATION, ctx.migrationModule, "");
 
         bytes32 salt = keccak256(abi.encode("loom.devnet.lifecycle", ctx.p256X, ctx.p256Y));
         bytes32 guardianRoot = keccak256("loom.devnet.lifecycle.guardian-root");

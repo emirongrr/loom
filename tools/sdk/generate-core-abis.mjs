@@ -19,6 +19,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 // becomes public API surface of @loom/core.
 export const GENERATED_ABIS = Object.freeze([
   Object.freeze({ contract: "LoomAccount", exportName: "LoomAccountAbi", file: "loom-account.ts" }),
+  Object.freeze({ contract: "MigrationModule", exportName: "MigrationModuleAbi", file: "migration-module.ts" }),
   Object.freeze({ contract: "LoomAccountFactory", exportName: "LoomAccountFactoryAbi", file: "loom-account-factory.ts" }),
   Object.freeze({ contract: "P256Validator", exportName: "P256ValidatorAbi", file: "p256-validator.ts" }),
   Object.freeze({ contract: "P256RecoveryValidatorFactory", exportName: "P256RecoveryValidatorFactoryAbi", file: "p256-recovery-validator-factory.ts" }),

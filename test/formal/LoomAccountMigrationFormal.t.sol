@@ -2,8 +2,10 @@
 pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
+import {MockValidator} from "../mocks/MockValidator.sol";
 import {FormalAccountBase, FormalTarget} from "./FormalHelpers.sol";
 
 contract LoomAccountMigrationFormal is FormalAccountBase {
@@ -43,7 +45,7 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
     function _pendingMigration(LoomAccount account)
         internal
         view
-        returns (LoomAccount.PendingMigration memory pending)
+        returns (MigrationModule.PendingMigration memory pending)
     {
         (
             pending.destination,
@@ -54,14 +56,14 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
             pending.expiresAt,
             pending.configVersion,
             pending.nonce
-        ) = account.pendingMigration();
+        ) = MigrationModule(account.migrationModule()).pendingMigrations(address(account));
     }
 
-    function _assertPendingMigrationUnchanged(LoomAccount account, LoomAccount.PendingMigration memory expected)
+    function _assertPendingMigrationUnchanged(LoomAccount account, MigrationModule.PendingMigration memory expected)
         internal
         view
     {
-        LoomAccount.PendingMigration memory actual = _pendingMigration(account);
+        MigrationModule.PendingMigration memory actual = _pendingMigration(account);
         assert(actual.destination == expected.destination);
         assert(actual.destinationCodeHash == expected.destinationCodeHash);
         assert(actual.destinationConfigHash == expected.destinationConfigHash);
@@ -81,21 +83,22 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
     }
 
     function check_MigrationDelayIsEnforced(uint256 newValue) public {
-        (LoomAccount source,) = _account();
-        (LoomAccount destination,) = _account();
+        (LoomAccount source,) = _migrationAccount();
+        (LoomAccount destination,) = _migrationAccount();
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution[] memory calls = _singleCall(target, newValue);
         _scheduleMigration(source, destination, calls);
-        LoomAccount.PendingMigration memory pendingBefore = _pendingMigration(source);
+        MigrationModule.PendingMigration memory pendingBefore = _pendingMigration(source);
         AccountSnapshot memory accountBefore = _accountSnapshot(source);
-        uint64 migrationNonceBefore = source.migrationNonce();
+        MigrationModule module = MigrationModule(source.migrationModule());
+        uint64 migrationNonceBefore = module.migrationNonces(address(source));
 
         (bool ok, bytes memory revertData) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
 
         assert(!ok);
-        _assertRevert(revertData, abi.encodeWithSelector(LoomAccount.OperationNotReady.selector));
+        _assertRevert(revertData, abi.encodeWithSelector(MigrationModule.OperationNotReady.selector));
         _assertPendingMigrationUnchanged(source, pendingBefore);
-        assert(source.migrationNonce() == migrationNonceBefore);
+        assert(module.migrationNonces(address(source)) == migrationNonceBefore);
         _assertAccountUnchanged(source, accountBefore);
         assert(target.value() == 0);
     }
@@ -106,24 +109,25 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
 
     function check_MigrationHashBinding(uint256 scheduledValue, uint256 wrongValue) public {
         if (scheduledValue == wrongValue) return;
-        (LoomAccount source,) = _account();
-        (LoomAccount destination,) = _account();
+        (LoomAccount source,) = _migrationAccount();
+        (LoomAccount destination,) = _migrationAccount();
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution[] memory scheduledCalls = _singleCall(target, scheduledValue);
         ExecutionLib.Execution[] memory wrongCalls = _singleCall(target, wrongValue);
         _scheduleMigration(source, destination, scheduledCalls);
-        LoomAccount.PendingMigration memory pendingBefore = _pendingMigration(source);
+        MigrationModule.PendingMigration memory pendingBefore = _pendingMigration(source);
         AccountSnapshot memory accountBefore = _accountSnapshot(source);
-        uint64 migrationNonceBefore = source.migrationNonce();
+        MigrationModule module = MigrationModule(source.migrationModule());
+        uint64 migrationNonceBefore = module.migrationNonces(address(source));
         vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
 
         (bool ok, bytes memory revertData) =
             address(source).call(abi.encodeCall(LoomAccount.executeMigration, (wrongCalls)));
 
         assert(!ok);
-        _assertRevert(revertData, abi.encodeWithSelector(LoomAccount.InvalidMigration.selector));
+        _assertRevert(revertData, abi.encodeWithSelector(MigrationModule.InvalidMigration.selector));
         _assertPendingMigrationUnchanged(source, pendingBefore);
-        assert(source.migrationNonce() == migrationNonceBefore);
+        assert(module.migrationNonces(address(source)) == migrationNonceBefore);
         _assertAccountUnchanged(source, accountBefore);
         assert(target.value() == 0);
     }
@@ -133,16 +137,17 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
     }
 
     function check_MigrationBatchAtomicity(uint256 newValue) public {
-        (LoomAccount source,) = _account();
-        (LoomAccount destination,) = _account();
+        (LoomAccount source,) = _migrationAccount();
+        (LoomAccount destination,) = _migrationAccount();
         FormalTarget target = new FormalTarget();
         ExecutionLib.Execution[] memory calls = new ExecutionLib.Execution[](2);
         calls[0] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.setValue, (newValue)));
         calls[1] = ExecutionLib.Execution(address(target), 0, abi.encodeCall(FormalTarget.fail, ()));
         _scheduleMigration(source, destination, calls);
-        LoomAccount.PendingMigration memory pendingBefore = _pendingMigration(source);
+        MigrationModule.PendingMigration memory pendingBefore = _pendingMigration(source);
         AccountSnapshot memory accountBefore = _accountSnapshot(source);
-        uint64 migrationNonceBefore = source.migrationNonce();
+        MigrationModule module = MigrationModule(source.migrationModule());
+        uint64 migrationNonceBefore = module.migrationNonces(address(source));
         vm.warp(block.timestamp + source.MIN_CONFIG_DELAY());
 
         (bool ok, bytes memory revertData) = address(source).call(abi.encodeCall(LoomAccount.executeMigration, (calls)));
@@ -150,7 +155,7 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
         assert(!ok);
         _assertRevert(revertData, abi.encodeWithSignature("Error(string)", "FAIL"));
         _assertPendingMigrationUnchanged(source, pendingBefore);
-        assert(source.migrationNonce() == migrationNonceBefore);
+        assert(module.migrationNonces(address(source)) == migrationNonceBefore);
         _assertAccountUnchanged(source, accountBefore);
         assert(target.value() == 0);
     }
@@ -161,10 +166,10 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
         _executeFromEntryPoint(
             source,
             ExecutionLib.Execution(
-                address(source),
+                source.migrationModule(),
                 0,
                 abi.encodeCall(
-                    LoomAccount.scheduleMigration,
+                    MigrationModule.scheduleMigration,
                     (
                         address(destination),
                         address(destination).codehash,
@@ -176,6 +181,14 @@ contract LoomAccountMigrationFormal is FormalAccountBase {
                 )
             )
         );
+    }
+
+    function _migrationAccount() internal returns (LoomAccount account, MockValidator validator) {
+        validator = new MockValidator();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(new MigrationModule()), "");
+        account = new LoomAccount(_entryPointAddress(), keccak256("guardians"), 1, keccak256("config"), modules);
     }
 
     function _singleCall(FormalTarget target, uint256 newValue)

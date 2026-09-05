@@ -100,6 +100,7 @@ function deploymentFingerprint(deployment: WalletDeployment): string {
     implementation: deployment.implementation.toLowerCase(),
     validator: deployment.validator.toLowerCase(),
     policyHook: deployment.policyHook.toLowerCase(),
+    migrationModule: deployment.migrationModule?.toLowerCase(),
     recoveryModule: deployment.recoveryModule?.toLowerCase(),
     onboardingPaymaster: deployment.onboardingPaymaster?.toLowerCase(),
     guardianVerifiers: deployment.guardianVerifiers,
@@ -118,6 +119,9 @@ function runtimeCommitments(deployment: WalletDeployment): readonly [Address, He
     [deployment.policyHook, deployment.runtimeCodeHashes.policyHook, "Policy hook"]
   ];
   if (deployment.recoveryModule && deployment.runtimeCodeHashes.recoveryModule) values.push([deployment.recoveryModule, deployment.runtimeCodeHashes.recoveryModule, "Recovery module"]);
+  if (deployment.migrationModule && deployment.runtimeCodeHashes.migrationModule) {
+    values.push([deployment.migrationModule, deployment.runtimeCodeHashes.migrationModule, "Migration module"]);
+  }
   if (deployment.onboardingPaymaster && deployment.runtimeCodeHashes.onboardingPaymaster) {
     values.push([deployment.onboardingPaymaster, deployment.runtimeCodeHashes.onboardingPaymaster, "Onboarding paymaster"]);
   }

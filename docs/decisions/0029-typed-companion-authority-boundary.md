@@ -5,7 +5,7 @@ Date: 2026-09-02
 
 ## Problem
 
-`LoomAccount` currently stores and executes both scheduled calls and sovereign
+`LoomAccount` currently stores and executes both scheduled calls and explicit
 migrations. Moving their records into companion contracts can recover runtime
 margin, but a companion that can call arbitrary account execution would create
 a second authority boundary and contradict the account's walkaway guarantees.
@@ -16,12 +16,10 @@ controller, deployer, administrator, or off-chain service into asset authority.
 ## Evidence
 
 The Phase 0 baseline records a 24,454-byte runtime with only 122 bytes of
-EIP-170 margin. `LoomAccount.scheduleCall` and `LoomAccount.scheduleMigration`
-are account-only entry points. `LoomAccount.executeScheduled` and
-`LoomAccount.executeMigration` are permissionless only after the account checks
-the committed operation, timing, freeze state, configuration version, and
-execution-specific conditions. The account also owns hook execution and the
-final asset call.
+EIP-170 margin. Before extraction, migration scheduling, cancellation, record
+storage, commitment helpers, and validation all lived in `LoomAccount`.
+`LoomAccount.executeMigration` was already permissionless after validation,
+while the account owned freeze enforcement, hooks, and final asset execution.
 
 The detailed attack analysis is recorded in
 [`typed-companion-threat-model.md`](../security/typed-companion-threat-model.md).
@@ -45,11 +43,12 @@ calling account and exposes typed schedule, cancel, read, and consume functions.
 It has no generic target, calldata execution, delegatecall, account callback,
 administrator, upgrade path, or mutable implementation selector.
 
-Scheduling and ordinary cancellation are accepted only from `msg.sender`, which
-is the account whose namespace is mutated. A permissionless actor asks the
-account to execute; the account performs its checks and calls the companion
-itself. The companion therefore consumes only the calling account's record and
-never accepts an arbitrary account parameter for a state-changing operation.
+Scheduling and ordinary cancellation derive the account namespace from
+`msg.sender`. Consumption accepts an account parameter only when
+`msg.sender == account`; guardian cancellation accepts an explicit account only
+after verifying that the module is installed there and that the account's
+guardian threshold approved the exact cancellation digest. A permissionless
+actor asks the account to execute, and the account consumes its own record.
 
 Every record binds its complete typed action, source configuration version,
 chain domain, readiness, expiry, and monotonic instance nonce. Consumption
@@ -57,20 +56,41 @@ clears the active record and advances its nonce before control returns to the
 account. If later account execution reverts, transaction atomicity restores the
 record and permits a safe retry.
 
-The account retains risk classification, freeze checks, guardian policy, live
-configuration, destination code and configuration checks, hooks, reentrancy
-protection, and final asset execution. A companion may enforce global timing
-bounds but may not select a lower risk tier.
+The account retains freeze checks, hooks, reentrancy protection, and final asset
+execution. The migration module owns timing bounds, live configuration checks,
+destination code/configuration checks, commitment verification, guardian
+cancellation, and nonce advancement. Policy hooks classify calls to the
+installed migration module as configuration actions.
 
-Companion addresses are immutable properties of a reviewed account generation.
-Changing a companion requires a new implementation and factory profile, never
-a mutable storage slot or administrator action.
+Migration timing is intentionally a separate policy: the immutable
+`MigrationModule.MIN_MIGRATION_DELAY` is three days, matching the current
+`LoomAccount.MIN_CONFIG_DELAY` without sharing its source of truth. The former
+protects module-owned migration records; the latter protects account authority
+changes, including module replacement. Changing either policy in a future
+contract generation does not change the other or any already-deployed contract.
+This extraction changes neither current delay value.
+
+Companion replacement uses the account's existing module lifecycle and
+configuration delay. No administrator or factory can replace it. A production
+profile pins the reviewed module address in deployment evidence; an account may
+later replace it only through its own delayed authority path.
+
+Uninstalling a migration module requires an empty pending record. The caller
+must explicitly cancel any pending migration before uninstalling, including an
+expired or configuration-stale record. This is a deliberate lifecycle tightening:
+previously uninstall retained the record, while configuration-version advancement
+already prevented that record from executing after reinstallation. A failing
+pending-record getter also fails closed and blocks module removal.
 
 ## Residual risks
 
 A controller bug can incorrectly admit, reject, consume, or retain a record.
-Exact commitments and account-scoped state prevent that bug from directly
-widening execution, but denial of service remains possible. Additional external
+The account trusts successful consumption as typed authorization. A defect in
+that decision can admit an arbitrary caller-supplied batch; the installed
+module is therefore part of the authorization TCB. The account still enforces
+freeze, hooks, reentrancy protection, and execution bounds. Passive operation
+prevents independent initiation, but does not reduce every defect to denial of
+service. Additional external
 calls increase gas and create a new deployment dependency. Each concrete
 controller therefore requires behavior-equivalence tests, adversarial
 multi-account tests, bytecode and gas measurements, and reproducible deployment

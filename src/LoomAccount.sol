@@ -9,6 +9,7 @@ import {ILoomModule} from "./interfaces/ILoomModule.sol";
 import {ILoomValidator} from "./interfaces/ILoomValidator.sol";
 import {IGuardianVerifier} from "./interfaces/IGuardianVerifier.sol";
 import {ILoomPolicyBoundValidator} from "./interfaces/ILoomPolicyBoundValidator.sol";
+import {MigrationModule} from "./MigrationModule.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {EIP712Lib} from "./libraries/EIP712Lib.sol";
 import {ExecutionLib} from "./libraries/ExecutionLib.sol";
@@ -42,9 +43,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     error ReturnDataLimitExceeded(uint256 size);
     error FreezeActive();
     error InvalidDirectExecution();
-    error MigrationAlreadyPending();
-    error MigrationNotPending();
-    error InvalidMigration();
     error OperationAlreadyScheduled();
     error OperationExpired();
 
@@ -69,17 +67,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
         uint64 nonce;
     }
 
-    struct PendingMigration {
-        address destination;
-        bytes32 destinationCodeHash;
-        bytes32 destinationConfigHash;
-        bytes32 callsHash;
-        uint48 readyAt;
-        uint48 expiresAt;
-        uint64 configVersion;
-        uint64 nonce;
-    }
-
     // --- Constants ---
     /// @notice Minimum schedule delay for calls to external targets.
     /// @dev Configuration targets (the account itself or an installed module)
@@ -100,7 +87,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// gated on the recovery module, not on `frozenUntil`. Lengthening the freeze
     /// therefore delays nothing legitimate.
     uint48 public constant FREEZE_DURATION = 5 days;
-    uint48 public constant MAX_MIGRATION_WINDOW = 30 days;
     uint48 public constant MAX_SCHEDULE_DELAY = 90 days;
     /// @notice How long a scheduled call stays executable after it becomes ready.
     /// @dev Every other delayed mechanism here already bounds its window --
@@ -133,8 +119,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     bytes32 public constant EIP712_DOMAIN_TYPEHASH = EIP712Lib.DOMAIN_TYPEHASH;
     bytes32 public constant FREEZE_TYPEHASH =
         keccak256("Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)");
-    bytes32 public constant CANCEL_MIGRATION_TYPEHASH =
-        keccak256("CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)");
     bytes32 public constant DIRECT_EXECUTION_TYPEHASH = keccak256(
         "DirectExecution(address validator,bytes32 mode,bytes32 executionCalldataHash,uint256 nonce,uint64 configVersion,uint48 validUntil)"
     );
@@ -152,7 +136,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     uint256 private constant CANCEL_RECOVERY_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
     uint256 private constant UNINSTALL_MODULE_MIN_SELECTOR_AND_STATIC_ARGS_SIZE = 100;
 
-    // --- Storage (layout is append-only; order is consensus-critical) ---
+    // --- Storage (pinned for this deployment generation) ---
     address public entryPoint;
     bytes32 public configHash;
     uint64 public configVersion;
@@ -169,10 +153,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
     mapping(bytes32 operationId => ScheduledOperation) public scheduledOperations;
     mapping(bytes32 guardianLeaf => uint256) public freezeNonces;
     mapping(bytes32 guardianLeaf => uint64) public lastFreezeConfigVersion;
-    PendingMigration public pendingMigration;
-    uint64 public migrationNonce;
     bool private _executingScheduled;
     bool private _executionLocked;
+    address public migrationModule;
 
     // --- Events ---
     event ModuleInstalled(uint256 indexed moduleTypeId, address indexed module);
@@ -185,17 +168,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     event OperationExecuted(bytes32 indexed operationId);
     event AllowanceRevoked(address indexed token, address indexed spender);
     event DirectExecution(address indexed validator, uint256 indexed nonce, bytes32 indexed executionHash);
-    event MigrationScheduled(
-        bytes32 indexed migrationId,
-        address indexed destination,
-        bytes32 indexed destinationCodeHash,
-        bytes32 destinationConfigHash,
-        bytes32 callsHash,
-        uint48 readyAt,
-        uint48 expiresAt
-    );
-    event MigrationCancelled(bytes32 indexed migrationId);
-    event MigrationExecuted(bytes32 indexed migrationId, address indexed destination);
 
     // --- Initialization ---
     constructor(
@@ -470,12 +442,9 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
-    function _executeAuthorized(
-        bytes32 mode,
-        bytes calldata executionCalldata,
-        address caller,
-        bytes memory accountCall
-    ) internal {
+    function _executeAuthorized(bytes32 mode, bytes memory executionCalldata, address caller, bytes memory accountCall)
+        internal
+    {
         if (mode != SINGLE_EXECUTION_MODE && mode != BATCH_EXECUTION_MODE) {
             revert UnsupportedExecutionMode();
         }
@@ -532,9 +501,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     }
 
     function supportsModule(uint256 moduleTypeId) external pure returns (bool) {
-        return
-            moduleTypeId == ModuleType.VALIDATOR || moduleTypeId == ModuleType.HOOK
-                || moduleTypeId == ModuleType.RECOVERY;
+        return moduleTypeId == ModuleType.VALIDATOR || moduleTypeId == ModuleType.HOOK
+            || moduleTypeId == ModuleType.RECOVERY || moduleTypeId == ModuleType.MIGRATION;
     }
 
     function executeFromExecutor(bytes32, bytes calldata) external pure returns (bytes[] memory) {
@@ -627,6 +595,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
     function _uninstallModule(uint256 moduleTypeId, address module, bytes memory deInitData) internal {
         if (!_modules[moduleTypeId][module]) revert InvalidModule();
         if (moduleTypeId == ModuleType.VALIDATOR && _validatorCount == 1) revert InvalidModule();
+        if (moduleTypeId == ModuleType.MIGRATION) {
+            (,,,, uint48 readyAt,,,) = MigrationModule(module).pendingMigrations(address(this));
+            if (readyAt != 0) revert InvalidModule();
+        }
         // Removing a hook an installed validator depends on used to leave the
         // account unable to authorize anything, with no repair path: the validator
         // fails closed, `setPolicyHook` needs a scheduled self-call that only a
@@ -659,8 +631,10 @@ contract LoomAccount is IERC1271, ILoomAccount {
             _removeFromArray(_validators, module);
         } else if (moduleTypeId == ModuleType.HOOK) {
             _removeFromArray(_hooks, module);
-        } else {
+        } else if (moduleTypeId == ModuleType.RECOVERY) {
             --_recoveryModuleCount;
+        } else if (moduleTypeId == ModuleType.MIGRATION) {
+            migrationModule = address(0);
         }
     }
 
@@ -835,6 +809,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
     {
         uint48 minimum = target == address(this) || _modules[ModuleType.VALIDATOR][target]
             || _modules[ModuleType.HOOK][target] || _modules[ModuleType.RECOVERY][target]
+            || _modules[ModuleType.MIGRATION][target]
             ? MIN_CONFIG_DELAY
             : MIN_EXTERNAL_DELAY;
         if (delay < minimum || delay > MAX_SCHEDULE_DELAY) revert InvalidDelay();
@@ -896,64 +871,6 @@ contract LoomAccount is IERC1271, ILoomAccount {
     /// revealed on chain -- cannot authorize the next occupant.
     function _consumeScheduled(bytes32 operationId, uint64 nonce) internal {
         scheduledOperations[operationId] = ScheduledOperation({readyAt: 0, expiresAt: 0, nonce: nonce + 1});
-    }
-
-    // --- Sovereign migration ---
-    function scheduleMigration(
-        address destination,
-        bytes32 destinationCodeHash,
-        bytes32 destinationConfigHash,
-        bytes32 callsHash,
-        uint48 delay,
-        uint48 executionWindow
-    ) external onlySelf returns (bytes32 migrationId) {
-        if (pendingMigration.readyAt != 0) revert MigrationAlreadyPending();
-        if (
-            destination == address(0) || destination == address(this) || destinationCodeHash == bytes32(0)
-                || destination.code.length == 0 || destination.codehash != destinationCodeHash
-                || callsHash == bytes32(0) || delay < MIN_CONFIG_DELAY || executionWindow == 0
-                || executionWindow > MAX_MIGRATION_WINDOW
-        ) revert InvalidMigration();
-        if (destinationConfigHash != bytes32(0) && ILoomAccount(destination).configHash() != destinationConfigHash) {
-            revert InvalidMigration();
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint48 readyAt = uint48(block.timestamp) + delay;
-        uint48 expiresAt = readyAt + executionWindow;
-        pendingMigration = PendingMigration({
-            destination: destination,
-            destinationCodeHash: destinationCodeHash,
-            destinationConfigHash: destinationConfigHash,
-            callsHash: callsHash,
-            readyAt: readyAt,
-            expiresAt: expiresAt,
-            configVersion: configVersion,
-            nonce: migrationNonce
-        });
-        migrationId = migrationIdFor(pendingMigration);
-        emit MigrationScheduled(
-            migrationId, destination, destinationCodeHash, destinationConfigHash, callsHash, readyAt, expiresAt
-        );
-    }
-
-    function cancelMigration() external onlySelf {
-        PendingMigration memory migration = pendingMigration;
-        if (migration.readyAt == 0) revert MigrationNotPending();
-        _cancelMigration(migration);
-    }
-
-    function cancelMigrationWithGuardians(GuardianVerificationLib.Approval[] calldata guardianApprovals) external {
-        PendingMigration memory migration = pendingMigration;
-        if (migration.readyAt == 0) revert MigrationNotPending();
-        bytes32 migrationId = migrationIdFor(migration);
-        bytes32 digest = migrationCancelDigest(migrationId, migration.configVersion, migration.nonce);
-        _requireGuardianApproval(digest, guardianApprovals);
-        _cancelMigration(migration);
-    }
-
-    function migrationCancelDigest(bytes32 migrationId, uint64 version, uint64 nonce) public view returns (bytes32) {
-        bytes32 structHash = keccak256(abi.encode(CANCEL_MIGRATION_TYPEHASH, migrationId, version, nonce));
-        return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
     // Hooks gate every unscheduled execute()/executeDirect() call. A hook that
@@ -1024,65 +941,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return EIP712Lib.digest(_domainSeparator(), structHash);
     }
 
-    function _cancelMigration(PendingMigration memory migration) internal {
-        bytes32 migrationId = migrationIdFor(migration);
-        delete pendingMigration;
-        ++migrationNonce;
-        emit MigrationCancelled(migrationId);
-    }
-
     function executeMigration(ExecutionLib.Execution[] calldata calls) external nonReentrantExecution {
-        PendingMigration memory migration = pendingMigration;
-        if (migration.readyAt == 0 || keccak256(abi.encode(calls)) != migration.callsHash) {
-            revert InvalidMigration();
-        }
-        if (calls.length == 0) revert EmptyBatch();
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < frozenUntil) revert AccountFrozen();
-        // Timestamp drift is negligible relative to the multi-day security delay.
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp < migration.readyAt) revert OperationNotReady();
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp > migration.expiresAt || configVersion != migration.configVersion) {
-            revert InvalidMigration();
-        }
-        if (migration.destination.codehash != migration.destinationCodeHash) revert InvalidMigration();
-        if (
-            migration.destinationConfigHash != bytes32(0)
-                && ILoomAccount(migration.destination).configHash() != migration.destinationConfigHash
-        ) {
-            revert InvalidMigration();
-        }
-        bytes32 migrationId = migrationIdFor(migration);
-        delete pendingMigration;
-        ++migrationNonce;
-
+        MigrationModule(_migrationModule()).consumeMigration(address(this), calls);
+        // Preserve canonical batch encoding for validation and hook observations.
         bytes memory executionCalldata = abi.encode(calls);
         bytes memory accountCall = abi.encodeCall(this.execute, (BATCH_EXECUTION_MODE, executionCalldata));
-        (address[] memory checkedHooks, bytes[] memory hookData) = _preCheck(msg.sender, accountCall);
-        for (uint256 i; i < calls.length; ++i) {
-            _execute(calls[i]);
-        }
-        _postCheck(checkedHooks, hookData);
-        emit MigrationExecuted(migrationId, migration.destination);
+        _executeAuthorized(BATCH_EXECUTION_MODE, executionCalldata, msg.sender, accountCall);
     }
 
-    function migrationIdFor(PendingMigration memory migration) public view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                address(this),
-                migration.destination,
-                migration.destinationCodeHash,
-                migration.destinationConfigHash,
-                migration.callsHash,
-                migration.readyAt,
-                migration.expiresAt,
-                migration.configVersion,
-                migration.nonce,
-                block.chainid
-            )
-        );
+    function _migrationModule() internal view returns (address module) {
+        module = migrationModule;
+        if (module == address(0) || !_modules[ModuleType.MIGRATION][module]) revert InvalidModule();
     }
 
     // --- Scheduled execution and allowance revocation ---
@@ -1125,8 +997,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
     function _installModule(uint256 moduleTypeId, address module, bytes memory initData) internal {
         if (
             moduleTypeId != ModuleType.VALIDATOR && moduleTypeId != ModuleType.HOOK
-                && moduleTypeId != ModuleType.RECOVERY || module.code.length == 0
-                || !ILoomModule(module).isModuleType(moduleTypeId)
+                && moduleTypeId != ModuleType.RECOVERY && moduleTypeId != ModuleType.MIGRATION
+                || module.code.length == 0 || !ILoomModule(module).isModuleType(moduleTypeId)
         ) revert UnsupportedModuleType();
         if (_modules[moduleTypeId][module]) revert InvalidModule();
         if (moduleTypeId == ModuleType.VALIDATOR && _validatorCount >= MAX_VALIDATORS) revert ModuleLimitReached();
@@ -1134,6 +1006,8 @@ contract LoomAccount is IERC1271, ILoomAccount {
         if (moduleTypeId == ModuleType.RECOVERY && _recoveryModuleCount >= MAX_RECOVERY_MODULES) {
             revert ModuleLimitReached();
         }
+        if (moduleTypeId == ModuleType.MIGRATION && migrationModule != address(0)) revert ModuleLimitReached();
+        if (moduleTypeId == ModuleType.MIGRATION && initData.length != 0) revert InvalidModule();
         _modules[moduleTypeId][module] = true;
         if (moduleTypeId == ModuleType.VALIDATOR) {
             ++_validatorCount;
@@ -1141,6 +1015,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
         if (moduleTypeId == ModuleType.HOOK) _hooks.push(module);
         if (moduleTypeId == ModuleType.RECOVERY) ++_recoveryModuleCount;
+        if (moduleTypeId == ModuleType.MIGRATION) migrationModule = module;
         if (initData.length != 0) {
             (bool ok, bytes memory result) = module.call(initData);
             if (!ok) revert CallFailed(result);
@@ -1272,20 +1147,20 @@ contract LoomAccount is IERC1271, ILoomAccount {
         }
     }
 
-    function _validateBatchSize(bytes calldata executionCalldata) internal pure {
+    function _validateBatchSize(bytes memory executionCalldata) internal pure {
         if (executionCalldata.length < 64) revert InvalidBatch();
         uint256 arrayOffset;
         uint256 count;
         assembly ("memory-safe") {
-            arrayOffset := calldataload(executionCalldata.offset)
-            count := calldataload(add(executionCalldata.offset, 32))
+            arrayOffset := mload(add(executionCalldata, 32))
+            count := mload(add(executionCalldata, 64))
         }
         if (arrayOffset != 32) revert InvalidBatch();
         if (count == 0) revert EmptyBatch();
         if (count > MAX_BATCH_SIZE) revert BatchLimitExceeded();
     }
 
-    function _isFrozenSafe(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {
+    function _isFrozenSafe(bytes1 callType, bytes memory executionCalldata) internal view returns (bool) {
         if (callType == ExecutionLib.CALLTYPE_SINGLE) {
             return _isRecoveryExecution(abi.decode(executionCalldata, (ExecutionLib.Execution)));
         }
@@ -1318,7 +1193,7 @@ contract LoomAccount is IERC1271, ILoomAccount {
         return recoveryAccount == address(this);
     }
 
-    function _isHookRecoverySchedule(bytes1 callType, bytes calldata executionCalldata) internal view returns (bool) {
+    function _isHookRecoverySchedule(bytes1 callType, bytes memory executionCalldata) internal view returns (bool) {
         if (callType != ExecutionLib.CALLTYPE_SINGLE) return false;
         ExecutionLib.Execution memory execution = abi.decode(executionCalldata, (ExecutionLib.Execution));
         if (execution.target != address(this) || execution.callData.length < 4) return false;

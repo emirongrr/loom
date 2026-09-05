@@ -35,7 +35,7 @@ test("wallet entry verifies the selected passkey assertion and rejects a differe
     rpId: "localhost",
     origin: "http://localhost:5174",
     accountHandle: `0x${"22".repeat(32)}`,
-    creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0 }
+    creation: { guardianRoot: `0x${"00".repeat(32)}`, guardianThreshold: 0, migrationModule: null }
   } as AccountHandle;
   const assertion = { credentialId: new Uint8Array([0xca, 0xfe]), authenticatorData, clientDataJSON, signature: der(rawSignature) };
 

@@ -33,6 +33,7 @@ const snapshotPath = join(root, "protocol-surface.json");
 /** Contracts and interfaces a downstream consumer encodes against. */
 export const SURFACE_CONTRACTS = Object.freeze([
   "src/LoomAccount.sol:LoomAccount",
+  "src/MigrationModule.sol:MigrationModule",
   "src/LoomAccountFactory.sol:LoomAccountFactory",
   "src/LoomAccountProxy.sol:LoomAccountProxy",
   "src/AppAccountRegistry.sol:AppAccountRegistry",

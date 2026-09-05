@@ -74,11 +74,15 @@ const ACCOUNT_STATE_SELECTORS = Object.freeze({
   configVersion: selector("configVersion()"),
   frozenUntil: selector("frozenUntil()"),
   validatorCount: selector("validatorCount()"),
-  pendingMigration: selector("pendingMigration()")
+  migrationModule: selector("migrationModule()")
 });
 
 const RECOVERY_STATE_SELECTORS = Object.freeze({
   pendingRecoveries: selector("pendingRecoveries(address)")
+});
+
+const MIGRATION_STATE_SELECTORS = Object.freeze({
+  pendingMigrations: selector("pendingMigrations(address)")
 });
 
 const VAULT_STATE_SELECTORS = Object.freeze({
@@ -782,7 +786,7 @@ async function readAccountSafetyStateImpl(input: any = {}) {
     configVersionResult,
     frozenUntilResult,
     validatorCountResult,
-    pendingMigrationResult
+    migrationModuleResult
   ] = await Promise.all([
     callAccount(ACCOUNT_STATE_SELECTORS.recoveryConfigured),
     callAccount(ACCOUNT_STATE_SELECTORS.guardianRoot),
@@ -790,7 +794,7 @@ async function readAccountSafetyStateImpl(input: any = {}) {
     callAccount(ACCOUNT_STATE_SELECTORS.configVersion),
     callAccount(ACCOUNT_STATE_SELECTORS.frozenUntil),
     callAccount(ACCOUNT_STATE_SELECTORS.validatorCount),
-    callAccount(ACCOUNT_STATE_SELECTORS.pendingMigration)
+    callAccount(ACCOUNT_STATE_SELECTORS.migrationModule)
   ]);
 
   const recoveryConfigured = decodeBool(recoveryConfiguredResult, "recoveryConfigured");
@@ -799,7 +803,15 @@ async function readAccountSafetyStateImpl(input: any = {}) {
   const configVersion = decodeUint(configVersionResult, "configVersion");
   const frozenUntil = decodeUint(frozenUntilResult, "frozenUntil");
   const validatorCount = decodeUint(validatorCountResult, "validatorCount");
-  const pendingMigration = decodePendingMigration(pendingMigrationResult);
+  const migrationModule = decodeAddressResult(migrationModuleResult, "migrationModule");
+  const migrationStateReadable = migrationModule !== "0x0000000000000000000000000000000000000000";
+  const pendingMigration = migrationStateReadable
+    ? decodePendingMigration(await transport.ethCall({
+        to: migrationModule,
+        data: `${MIGRATION_STATE_SELECTORS.pendingMigrations}${encodeAddressArgument(account)}`,
+        blockTag
+      }))
+    : emptyPendingMigration();
 
   assertGuardianConfigConsistency({
     recoveryConfigured,
@@ -865,8 +877,9 @@ async function readAccountSafetyStateImpl(input: any = {}) {
     pending,
     coverage: {
       account: true,
-      migration: true,
+      migration: migrationStateReadable,
       recovery: recoveryStateReadable,
+      ...(migrationStateReadable ? { migrationModule } : {}),
       ...(recoveryModule === undefined ? {} : { recoveryModule })
     },
     warnings,
@@ -1487,6 +1500,14 @@ function decodeAddressWord(word, label) {
   const prefix = word.slice(0, 24);
   if (!/^0+$/.test(prefix)) throw new InvalidSdkRequestError(`${label} returned malformed address`);
   return normalizeAddress(`0x${word.slice(24)}`, label);
+}
+
+function decodeAddressResult(result, label) {
+  return decodeAddressWord(abiWords(result, label, 1)[0], label);
+}
+
+function emptyPendingMigration() {
+  return decodePendingMigration(`0x${"0".repeat(64 * 8)}`);
 }
 
 function decodePendingMigration(result) {

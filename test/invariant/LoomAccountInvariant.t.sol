@@ -2,6 +2,7 @@
 pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockTarget} from "../mocks/MockTarget.sol";
@@ -62,13 +63,14 @@ contract LoomAccountInvariantHandler {
     }
 
     function scheduleMigration(uint256 value) external {
-        (,,, bytes32 pendingCallsHash,,,,) = account.pendingMigration();
+        MigrationModule module = MigrationModule(account.migrationModule());
+        (,,, bytes32 pendingCallsHash,,,,) = module.pendingMigrations(address(account));
         if (pendingCallsHash != bytes32(0)) return;
         uint64 versionBefore = account.configVersion();
         migrationValue = value;
         ExecutionLib.Execution[] memory calls = _migrationCalls();
         bytes memory schedule = abi.encodeCall(
-            LoomAccount.scheduleMigration,
+            MigrationModule.scheduleMigration,
             (
                 address(migrationDestination),
                 address(migrationDestination).codehash,
@@ -78,12 +80,13 @@ contract LoomAccountInvariantHandler {
                 1 days
             )
         );
-        try account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(account), 0, schedule))) {} catch {}
+        try account.execute(bytes32(0), abi.encode(ExecutionLib.Execution(address(module), 0, schedule))) {} catch {}
         _checkVersion(versionBefore);
     }
 
     function attemptExecuteMigration() external {
-        (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) = account.pendingMigration();
+        (,,, bytes32 pendingCallsHash, uint48 readyAt,,,) =
+            MigrationModule(account.migrationModule()).pendingMigrations(address(account));
         if (pendingCallsHash == bytes32(0)) return;
         // Timestamp drift is negligible relative to the multi-day security delay.
         // forge-lint: disable-next-line(block-timestamp)
@@ -155,12 +158,15 @@ contract LoomAccountInvariantTest is StdInvariant {
     function setUp() public {
         handler = new LoomAccountInvariantHandler();
         validator = new MockValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        MigrationModule migrationModule = new MigrationModule();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         account = new LoomAccount(address(handler), keccak256("guardians"), 1, keccak256("config"), modules);
         MockValidator destinationValidator = new MockValidator();
-        LoomAccount.ModuleInit[] memory destinationModules = new LoomAccount.ModuleInit[](1);
+        LoomAccount.ModuleInit[] memory destinationModules = new LoomAccount.ModuleInit[](2);
         destinationModules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(destinationValidator), "");
+        destinationModules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         migrationDestination = new LoomAccount(
             address(handler), keccak256("guardians"), 1, keccak256("destination-config"), destinationModules
         );

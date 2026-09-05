@@ -2,6 +2,7 @@
 pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -35,6 +36,7 @@ contract MultiAccountMigrationHandler {
     LoomAccount public immutable bob;
     LoomAccount public immutable aliceDestination;
     LoomAccount public immutable bobDestination;
+    MigrationModule public immutable migrationModule;
 
     bool public violated;
     uint256 public successfulSchedules;
@@ -60,7 +62,7 @@ contract MultiAccountMigrationHandler {
         bytes32 guardianRoot;
         uint8 guardianThreshold;
         uint256 validatorCount;
-        LoomAccount.PendingMigration pending;
+        MigrationModule.PendingMigration pending;
     }
 
     struct SystemSnapshot {
@@ -76,6 +78,7 @@ contract MultiAccountMigrationHandler {
         aliceTarget = new MockTarget();
         bobTarget = new MockTarget();
         revertingTarget = new MockTarget();
+        migrationModule = new MigrationModule();
 
         alice = _newAccount(keccak256("multi-account-migration-alice"));
         bob = _newAccount(keccak256("multi-account-migration-bob"));
@@ -141,7 +144,7 @@ contract MultiAccountMigrationHandler {
         uint256 targetValue = target.value() + 1;
         ExecutionLib.Execution[] memory calls = _calls(destination, target, shouldRevert, targetValue);
         bytes memory schedule = abi.encodeCall(
-            LoomAccount.scheduleMigration,
+            MigrationModule.scheduleMigration,
             (
                 address(destination),
                 address(destination).codehash,
@@ -153,17 +156,21 @@ contract MultiAccountMigrationHandler {
         );
         bytes memory accountCall = abi.encodeCall(
             LoomAccount.execute,
-            (ExecutionLib.SINGLE_EXECUTION_MODE, abi.encode(ExecutionLib.Execution(address(account), 0, schedule)))
+            (
+                ExecutionLib.SINGLE_EXECUTION_MODE,
+                abi.encode(ExecutionLib.Execution(address(migrationModule), 0, schedule))
+            )
         );
         (bool ok,) = entryPoint.callAccount(account, accountCall);
-        LoomAccount.PendingMigration memory pending = _pending(account);
+        MigrationModule.PendingMigration memory pending = _pending(account);
         if (
             !ok || pending.destination != address(destination)
                 || pending.destinationCodeHash != address(destination).codehash
                 || pending.destinationConfigHash != destination.configHash()
                 || pending.callsHash != keccak256(abi.encode(calls)) || pending.readyAt == 0
                 || pending.expiresAt != pending.readyAt + EXECUTION_WINDOW
-                || pending.configVersion != account.configVersion() || pending.nonce != account.migrationNonce()
+                || pending.configVersion != account.configVersion()
+                || pending.nonce != migrationModule.migrationNonces(address(account))
         ) violated = true;
         if (!_sameAccountState(otherBefore, _snapshot(other))) violated = true;
         if (ok) {
@@ -174,7 +181,7 @@ contract MultiAccountMigrationHandler {
 
     function _execute(LoomAccount account, LoomAccount other, LoomAccount destination, MockTarget target) internal {
         Plan memory plan = plans[address(account)];
-        LoomAccount.PendingMigration memory pending = _pending(account);
+        MigrationModule.PendingMigration memory pending = _pending(account);
         if (!plan.active || pending.readyAt == 0) return;
         ExecutionLib.Execution[] memory calls = _calls(destination, target, plan.shouldRevert, plan.targetValue);
         SystemSnapshot memory beforeState = _systemSnapshot();
@@ -213,10 +220,13 @@ contract MultiAccountMigrationHandler {
         if (_pending(account).readyAt == 0) return;
         AccountSnapshot memory accountBefore = _snapshot(account);
         AccountSnapshot memory otherBefore = _snapshot(other);
-        bytes memory cancel = abi.encodeCall(LoomAccount.cancelMigration, ());
+        bytes memory cancel = abi.encodeCall(MigrationModule.cancelMigration, ());
         bytes memory accountCall = abi.encodeCall(
             LoomAccount.execute,
-            (ExecutionLib.SINGLE_EXECUTION_MODE, abi.encode(ExecutionLib.Execution(address(account), 0, cancel)))
+            (
+                ExecutionLib.SINGLE_EXECUTION_MODE,
+                abi.encode(ExecutionLib.Execution(address(migrationModule), 0, cancel))
+            )
         );
         (bool ok,) = entryPoint.callAccount(account, accountCall);
         AccountSnapshot memory accountAfter = _snapshot(account);
@@ -253,7 +263,7 @@ contract MultiAccountMigrationHandler {
         SystemSnapshot memory beforeState = _systemSnapshot();
         (bool ok, bytes memory revertData) =
             address(account).call(abi.encodeCall(LoomAccount.executeMigration, (wrongCalls)));
-        bytes memory expected = abi.encodeWithSelector(LoomAccount.InvalidMigration.selector);
+        bytes memory expected = abi.encodeWithSelector(MigrationModule.InvalidMigration.selector);
         if (ok || keccak256(revertData) != keccak256(expected)) violated = true;
         if (!_sameSystemState(beforeState, _systemSnapshot())) violated = true;
         if (!ok) ++exactCrossAccountRejections;
@@ -274,8 +284,9 @@ contract MultiAccountMigrationHandler {
     }
 
     function _newAccount(bytes32 configHash) internal returns (LoomAccount account) {
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(new MockValidator()), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         account = new LoomAccount(
             address(entryPoint), keccak256(abi.encode(configHash, "guardians")), 1, configHash, modules
         );
@@ -288,7 +299,7 @@ contract MultiAccountMigrationHandler {
             sourceTokens: token.balanceOf(address(account)),
             destinationTokens: token.balanceOf(address(destination)),
             targetValue: target.value(),
-            migrationNonce: account.migrationNonce(),
+            migrationNonce: migrationModule.migrationNonces(address(account)),
             configHash: account.configHash(),
             configVersion: account.configVersion(),
             guardianRoot: account.guardianRoot(),
@@ -298,7 +309,7 @@ contract MultiAccountMigrationHandler {
         });
     }
 
-    function _pending(LoomAccount account) internal view returns (LoomAccount.PendingMigration memory pending) {
+    function _pending(LoomAccount account) internal view returns (MigrationModule.PendingMigration memory pending) {
         (
             pending.destination,
             pending.destinationCodeHash,
@@ -308,7 +319,7 @@ contract MultiAccountMigrationHandler {
             pending.expiresAt,
             pending.configVersion,
             pending.nonce
-        ) = account.pendingMigration();
+        ) = migrationModule.pendingMigrations(address(account));
     }
 
     function _systemSnapshot() internal view returns (SystemSnapshot memory state) {
@@ -394,7 +405,7 @@ contract MultiAccountMigrationInvariantTest is StdInvariant {
     }
 
     function _assertPendingBound(LoomAccount account, LoomAccount destination) internal view {
-        LoomAccount.PendingMigration memory pending = _pending(account);
+        MigrationModule.PendingMigration memory pending = _pending(account);
         MultiAccountMigrationHandler.Plan memory plan = handler.planFor(account);
         require((pending.readyAt != 0) == plan.active, "migration model and pending state diverged");
         if (!plan.active) return;
@@ -403,10 +414,13 @@ contract MultiAccountMigrationInvariantTest is StdInvariant {
         require(pending.destinationConfigHash == destination.configHash(), "pending destination config drifted");
         require(pending.callsHash == plan.callsHash, "pending migration calls drifted");
         require(pending.configVersion == account.configVersion(), "pending migration version drifted");
-        require(pending.nonce == account.migrationNonce(), "pending migration nonce drifted");
+        require(
+            pending.nonce == handler.migrationModule().migrationNonces(address(account)),
+            "pending migration nonce drifted"
+        );
     }
 
-    function _pending(LoomAccount account) internal view returns (LoomAccount.PendingMigration memory pending) {
+    function _pending(LoomAccount account) internal view returns (MigrationModule.PendingMigration memory pending) {
         (
             pending.destination,
             pending.destinationCodeHash,
@@ -416,6 +430,6 @@ contract MultiAccountMigrationInvariantTest is StdInvariant {
             pending.expiresAt,
             pending.configVersion,
             pending.nonce
-        ) = account.pendingMigration();
+        ) = handler.migrationModule().pendingMigrations(address(account));
     }
 }

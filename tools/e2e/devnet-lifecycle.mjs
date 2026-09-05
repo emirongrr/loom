@@ -140,7 +140,7 @@ function packedTuple(op) {
 // the canonical hash locally (cross-checked against the live EntryPoint), sign
 // the exact hash the chain validates, encode the contract envelope, and submit
 // through EntryPoint.handleOps on the live devnet.
-async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyHook, target }, key) {
+async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyHook, migrationModule, target }, key) {
   const ethCall = async (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
 
   console.log("==> SDK-driven operation (@loom/core end to end)");
@@ -167,7 +167,8 @@ async function sdkDrivenOperation(rpc, { entryPoint, factory, validator, policyH
           functionName: "initialize",
           args: [key.x, key.y, rpIdHash, originHash, policyHook]
         })
-      }
+      },
+      { moduleTypeId: 6n, module: migrationModule, initData: "0x" }
     ]
   };
   const salt = keccak256(
@@ -341,6 +342,7 @@ async function main() {
     DEVNET_FACTORY: need("LoomAccountFactory"),
     DEVNET_P256_VALIDATOR: need("P256Validator"),
     DEVNET_POLICY_HOOK: need("PolicyHook"),
+    DEVNET_MIGRATION_MODULE: need("MigrationModule"),
     DEVNET_TARGET: need("DevnetTarget"),
     DEVNET_P256_PRIVATE_KEY: key.privateKey,
     DEVNET_P256_X: key.x,
@@ -354,6 +356,7 @@ async function main() {
       factory: need("LoomAccountFactory"),
       validator: need("P256Validator"),
       policyHook: need("PolicyHook"),
+      migrationModule: need("MigrationModule"),
       target: need("DevnetTarget")
     },
     key

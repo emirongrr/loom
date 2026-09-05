@@ -1,5 +1,6 @@
 // Generated — do not edit. Regenerate with `forge build && npm run abi:generate`.
 export { LoomAccountAbi } from "./loom-account.js";
+export { MigrationModuleAbi } from "./migration-module.js";
 export { LoomAccountFactoryAbi } from "./loom-account-factory.js";
 export { P256ValidatorAbi } from "./p256-validator.js";
 export { P256RecoveryValidatorFactoryAbi } from "./p256-recovery-validator-factory.js";

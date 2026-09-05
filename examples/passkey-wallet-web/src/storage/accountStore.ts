@@ -165,6 +165,7 @@ export function parseAccountHandle(value: unknown): AccountHandle {
     const creation = record.creation as Record<string, unknown>;
     if (!bytes32(creation.guardianRoot) || !Number.isInteger(creation.guardianThreshold) || Number(creation.guardianThreshold) < 0 || Number(creation.guardianThreshold) > 32) throw new Error("invalid account guardian binding");
     if (creation.recoveryModule !== undefined && !address(creation.recoveryModule)) throw new Error("invalid recovery module binding");
+    if (creation.migrationModule !== null && !address(creation.migrationModule)) throw new Error("invalid migration module binding");
   } else if (!address(record.validator)) {
     throw new Error("invalid recovered validator binding");
   }

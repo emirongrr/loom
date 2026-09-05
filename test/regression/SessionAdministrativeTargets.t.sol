@@ -2,6 +2,7 @@
 pragma solidity 0.8.36;
 
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {GranularSessionValidator} from "../../src/validators/GranularSessionValidator.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
@@ -30,12 +31,15 @@ contract SessionAdministrativeTargetsTest {
 
     GranularSessionValidator internal validator;
     LoomAccount internal account;
+    MigrationModule internal migrationModule;
     address internal signer;
 
     function setUp() public {
         validator = new GranularSessionValidator();
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](1);
+        migrationModule = new MigrationModule();
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
         modules[0] = LoomAccount.ModuleInit(ModuleType.VALIDATOR, address(validator), "");
+        modules[1] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(migrationModule), "");
         account = new LoomAccount(address(this), keccak256("guardians"), 1, keccak256("config"), modules);
         signer = vm.addr(SESSION_KEY);
     }
@@ -48,7 +52,7 @@ contract SessionAdministrativeTargetsTest {
     function testSessionPermissionCannotTargetTheAccountItself() public {
         bytes32 permissionId = keccak256("self-target");
         GranularSessionValidator.Permission memory permission =
-            _permission(address(account), LoomAccount.scheduleMigration.selector);
+            _permission(address(account), LoomAccount.scheduleCall.selector);
 
         bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
         _schedule(address(validator), grant);
@@ -58,6 +62,27 @@ contract SessionAdministrativeTargetsTest {
 
         require(!accepted, "session permission targeting the account was granted");
         require(validator.permissionCount(address(account)) == 0, "rejected grant mutated enumeration");
+    }
+
+    function testSessionPermissionCannotTargetTheMigrationModule() public {
+        bytes32 permissionId = keccak256("migration-module-target");
+        GranularSessionValidator.Permission memory permission =
+            _permission(address(migrationModule), MigrationModule.scheduleMigration.selector);
+
+        bytes memory grant = abi.encodeCall(GranularSessionValidator.grantPermission, (permissionId, permission));
+        _schedule(address(validator), grant);
+        vm.warp(block.timestamp + account.MIN_CONFIG_DELAY());
+        account.executeScheduled(address(validator), 0, grant);
+
+        bytes memory moduleCall = abi.encodeCall(
+            MigrationModule.scheduleMigration,
+            (address(1), bytes32(uint256(1)), bytes32(0), bytes32(uint256(1)), uint48(3 days), uint48(1 days))
+        );
+        bytes memory accountCall = _single(ExecutionLib.Execution(address(migrationModule), 0, moduleCall));
+        require(
+            _validate(permissionId, accountCall) == ValidationDataLib.SIG_VALIDATION_FAILED,
+            "session permission reached the installed migration module"
+        );
     }
 
     /// @dev The module check runs against the current module set rather than

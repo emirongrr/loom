@@ -91,7 +91,7 @@ Required controls:
 
 - Test coverage proving a below-threshold approval is rejected and a
   threshold approval evicts the hook and restores normal execution
-  immediately (`test/integration/SovereignMigration.t.sol:testGuardianThresholdCanEvictAStuckHookImmediately`).
+  immediately (`test/integration/Migration.t.sol:testGuardianThresholdCanEvictAStuckHookImmediately`).
 - **Amended:** that test uses `MockValidator`, which declares no policy hook, so
   it never exercised a validator bound to the evicted hook -- the configuration
   that made eviction dangerous. `test/regression/ValidatorHookDependency.t.sol`

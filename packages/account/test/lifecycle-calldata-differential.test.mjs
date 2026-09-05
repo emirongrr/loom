@@ -30,16 +30,15 @@ test("every committed case re-encodes to its stored calldata", () => {
   }
 });
 
-test("fixture covers the full account lifecycle encoder surface", () => {
-  const covered = new Set(Object.values(committed.cases).filter(c => c.group === "account").map(c => c.fn));
-  for (const fn of [
-    "scheduleCall",
-    "executeScheduled",
-    "cancelScheduled",
-    "scheduleMigration",
-    "cancelMigration",
-    "revokeTokenAllowance"
-  ]) {
-    assert.ok(covered.has(fn), `account.${fn} is not covered by the differential fixture`);
+test("fixture covers the account and migration lifecycle encoder surfaces", () => {
+  const expected = {
+    account: ["scheduleCall", "executeScheduled", "cancelScheduled", "revokeTokenAllowance"],
+    migration: ["scheduleMigration", "cancelMigration"]
+  };
+  for (const [group, functions] of Object.entries(expected)) {
+    const covered = new Set(Object.values(committed.cases).filter(c => c.group === group).map(c => c.fn));
+    for (const fn of functions) {
+      assert.ok(covered.has(fn), `${group}.${fn} is not covered by the differential fixture`);
+    }
   }
 });

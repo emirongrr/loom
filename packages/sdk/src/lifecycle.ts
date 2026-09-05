@@ -242,6 +242,9 @@ export interface LifecycleCallEncoder {
     scheduleCall(input: { target: Hex; value?: Numeric; data?: Hex; delay: Numeric }): Hex;
     executeScheduled(input: { target: Hex; value?: Numeric; data?: Hex }): Hex;
     cancelScheduled(input: { operationId: Hex }): Hex;
+    revokeTokenAllowance(input: { token: Hex; spender: Hex }): Hex;
+  };
+  readonly migration: {
     scheduleMigration(input: {
       destination: Hex;
       destinationCodeHash: Hex;
@@ -251,7 +254,6 @@ export interface LifecycleCallEncoder {
       executionWindow: Numeric;
     }): Hex;
     cancelMigration(): Hex;
-    revokeTokenAllowance(input: { token: Hex; spender: Hex }): Hex;
   };
   readonly session: {
     grantPermission(input: { permissionId: Hex; permission: GranularPermissionInput }): Hex;
@@ -586,6 +588,14 @@ export function createLifecycleCallEncoder(): LifecycleCallEncoder {
       cancelScheduled(input) {
         return hex(selector("14a8b2b1") + encodeBytes32(input?.operationId, "operation id"));
       },
+      revokeTokenAllowance(input) {
+        return hex(
+          selector("bc881467") +
+            encodeWords([encodeAddress(input?.token, "token"), encodeAddress(input?.spender, "spender")])
+        );
+      }
+    }),
+    migration: Object.freeze({
       scheduleMigration(input) {
         return hex(
           selector("528833ca") +
@@ -601,12 +611,6 @@ export function createLifecycleCallEncoder(): LifecycleCallEncoder {
       },
       cancelMigration() {
         return hex(selector("10639ea0"));
-      },
-      revokeTokenAllowance(input) {
-        return hex(
-          selector("bc881467") +
-            encodeWords([encodeAddress(input?.token, "token"), encodeAddress(input?.spender, "spender")])
-        );
       }
     }),
     session: Object.freeze({

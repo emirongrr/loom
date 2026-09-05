@@ -5,6 +5,7 @@ import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {LoomAccount} from "../../src/LoomAccount.sol";
+import {MigrationModule} from "../../src/MigrationModule.sol";
 import {ECDSAValidator} from "../../src/validators/ECDSAValidator.sol";
 import {ExecutionLib} from "../../src/libraries/ExecutionLib.sol";
 import {ModuleType} from "../../src/libraries/ModuleType.sol";
@@ -56,7 +57,6 @@ contract EIP7702IntegrationTest {
             address(validator),
             abi.encodeCall(ECDSAValidator.initialize, (delegated, address(hook)))
         );
-
         require(
             _tryInitialize(address(0xB0B), delegated, address(entryPoint), modules) == false,
             "external caller initialized 7702 account"
@@ -328,13 +328,14 @@ contract EIP7702IntegrationTest {
         address delegated = vm.addr(OWNER_KEY);
         _installSignedDelegation(delegated, address(entryPoint));
 
-        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](2);
+        LoomAccount.ModuleInit[] memory modules = new LoomAccount.ModuleInit[](3);
         modules[0] = LoomAccount.ModuleInit(ModuleType.HOOK, address(hook), "");
         modules[1] = LoomAccount.ModuleInit(
             ModuleType.VALIDATOR,
             address(validator),
             abi.encodeCall(ECDSAValidator.initialize, (delegated, address(hook)))
         );
+        modules[2] = LoomAccount.ModuleInit(ModuleType.MIGRATION, address(new MigrationModule()), "");
         require(_tryInitialize(delegated, delegated, address(entryPoint), modules), "self initialization failed");
 
         LoomAccount account = LoomAccount(payable(delegated));
@@ -370,9 +371,9 @@ contract EIP7702IntegrationTest {
         _runThroughEntryPoint(
             entryPoint,
             account,
-            address(account),
+            account.migrationModule(),
             abi.encodeCall(
-                LoomAccount.scheduleMigration,
+                MigrationModule.scheduleMigration,
                 (
                     address(destination),
                     address(destination).codehash,
@@ -420,7 +421,8 @@ contract EIP7702IntegrationTest {
         require(expiresAtAfter == expiresAtBefore, "scheduled call window changed");
         require(opNonceAfter == opNonceBefore, "scheduled call instance counter changed");
 
-        (address migrationDestination,,,,,, uint64 migrationVersion,) = account.pendingMigration();
+        (address migrationDestination,,,,,, uint64 migrationVersion,) =
+            MigrationModule(account.migrationModule()).pendingMigrations(address(account));
         require(migrationDestination == address(destination), "pending migration destination changed");
         require(migrationVersion == versionBefore, "pending migration configuration version changed");
 

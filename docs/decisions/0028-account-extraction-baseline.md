@@ -1,4 +1,4 @@
-# Pin the sovereign account extraction baseline
+# Pin the account extraction baseline
 
 Status: accepted
 Date: 2026-09-02
@@ -49,7 +49,7 @@ The baseline review also classifies three previously reported concerns:
 Commit compiler inputs, source and dependency identities, runtime and init-code
 hashes and sizes, ABI and storage counts, and compatibility snapshot hashes.
 The current generation remains deployable with its measured 122-byte margin.
-A new sovereign account generation is not release-ready unless it has at least
+A new account generation is not release-ready unless it has at least
 2,048 runtime bytes of EIP-170 margin; 4,096 bytes is the engineering target.
 
 H-1 is fixed in a separate behavior-changing pull request. No production source

@@ -93,28 +93,36 @@
         "type": "t_mapping(t_bytes32,t_uint64)"
       },
       {
-        "label": "pendingMigration",
+        "label": "_executingScheduled",
         "slot": 14,
         "offset": 0,
-        "type": "t_struct(PendingMigration)_storage"
-      },
-      {
-        "label": "migrationNonce",
-        "slot": 19,
-        "offset": 0,
-        "type": "t_uint64"
-      },
-      {
-        "label": "_executingScheduled",
-        "slot": 19,
-        "offset": 8,
         "type": "t_bool"
       },
       {
         "label": "_executionLocked",
-        "slot": 19,
-        "offset": 9,
+        "slot": 14,
+        "offset": 1,
         "type": "t_bool"
+      },
+      {
+        "label": "migrationModule",
+        "slot": 14,
+        "offset": 2,
+        "type": "t_address"
+      }
+    ],
+    "src/MigrationModule.sol:MigrationModule": [
+      {
+        "label": "pendingMigrations",
+        "slot": 0,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_struct(PendingMigration)_storage)"
+      },
+      {
+        "label": "migrationNonces",
+        "slot": 1,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_uint64)"
       }
     ],
     "src/keystore/LoomKeystore.sol:LoomKeystore": [
@@ -342,6 +350,18 @@
         "slot": 3,
         "offset": 0,
         "type": "t_bytes32"
+      },
+      {
+        "label": "recoveryGuardianRoot",
+        "slot": 4,
+        "offset": 0,
+        "type": "t_bytes32"
+      },
+      {
+        "label": "recoveryGuardianThreshold",
+        "slot": 5,
+        "offset": 0,
+        "type": "t_uint8"
       }
     ],
     "src/AppAccountRegistry.sol:AppAccountRegistry": [
@@ -356,6 +376,18 @@
         "slot": 1,
         "offset": 0,
         "type": "t_mapping(t_address,t_bool)"
+      },
+      {
+        "label": "accountForHandle",
+        "slot": 2,
+        "offset": 0,
+        "type": "t_mapping(t_bytes32,t_address)"
+      },
+      {
+        "label": "handleForAccount",
+        "slot": 3,
+        "offset": 0,
+        "type": "t_mapping(t_address,t_bytes32)"
       }
     ]
   }

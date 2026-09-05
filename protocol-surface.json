@@ -4,7 +4,6 @@
     "src/LoomAccount.sol:LoomAccount": {
       "functions": {
         "BATCH_EXECUTION_MODE()": "0x7371e283",
-        "CANCEL_MIGRATION_TYPEHASH()": "0x5c364be4",
         "CANCEL_SCHEDULED_TYPEHASH()": "0xc55f159d",
         "DIRECT_EXECUTION_TYPEHASH()": "0x6729dff9",
         "EIP712_DOMAIN_TYPEHASH()": "0xc7977be7",
@@ -20,7 +19,6 @@
         "MAX_GUARDIAN_PROOF_LENGTH()": "0x50c1995e",
         "MAX_GUARDIAN_THRESHOLD()": "0x78e07c58",
         "MAX_HOOKS()": "0x4fa4467c",
-        "MAX_MIGRATION_WINDOW()": "0x7ba37e63",
         "MAX_RECOVERY_MODULES()": "0x6cd511a1",
         "MAX_REVERT_DATA_LENGTH()": "0xf05d028c",
         "MAX_SCHEDULE_DELAY()": "0xb5b0b36e",
@@ -30,8 +28,6 @@
         "SCHEDULE_WINDOW()": "0x1eb0fb7f",
         "SINGLE_EXECUTION_MODE()": "0xa2efbfaf",
         "accountId()": "0x9cfd7cff",
-        "cancelMigration()": "0x10639ea0",
-        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": "0xeb23f0f9",
         "cancelScheduled(bytes32)": "0x14a8b2b1",
         "cancelScheduledDigest(bytes32,uint64,uint64)": "0x25da26fb",
         "cancelScheduledWithGuardians(bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "0xcd7b1ca4",
@@ -63,20 +59,16 @@
         "isModuleInstalled(uint256,address,bytes)": "0x112d3a7d",
         "isValidSignature(bytes32,bytes)": "0x1626ba7e",
         "lastFreezeConfigVersion(bytes32)": "0x603db088",
-        "migrationCancelDigest(bytes32,uint64,uint64)": "0xd96e8bfa",
-        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "0xbd9d3532",
-        "migrationNonce()": "0x18ea6fac",
+        "migrationModule()": "0x5853f5ad",
         "notifyConfigChange(bytes32)": "0x0dd06537",
         "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": "0xbc197c81",
         "onERC1155Received(address,address,uint256,uint256,bytes)": "0xf23a6e61",
         "onERC721Received(address,address,uint256,bytes)": "0x150b7a02",
-        "pendingMigration()": "0x61563c01",
         "recoverConfiguration(address[],address,bytes,bytes32,uint8)": "0xf6889248",
         "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": "0x89b28190",
         "recoveryConfigured()": "0xf8d0cebb",
         "revokeTokenAllowance(address,address)": "0xbc881467",
         "scheduleCall(address,uint256,bytes,uint48)": "0xdcfe7ea7",
-        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "0x528833ca",
         "scheduledOperations(bytes32)": "0xf4ee9bbb",
         "setGuardianConfig(bytes32,uint8)": "0xd4c87899",
         "supportsExecutionMode(bytes32)": "0xd03c7914",
@@ -90,9 +82,6 @@
       },
       "functionOutputs": {
         "BATCH_EXECUTION_MODE()": [
-          "bytes32"
-        ],
-        "CANCEL_MIGRATION_TYPEHASH()": [
           "bytes32"
         ],
         "CANCEL_SCHEDULED_TYPEHASH()": [
@@ -140,9 +129,6 @@
         "MAX_HOOKS()": [
           "uint256"
         ],
-        "MAX_MIGRATION_WINDOW()": [
-          "uint48"
-        ],
         "MAX_RECOVERY_MODULES()": [
           "uint256"
         ],
@@ -170,8 +156,6 @@
         "accountId()": [
           "string"
         ],
-        "cancelMigration()": [],
-        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": [],
         "cancelScheduled(bytes32)": [],
         "cancelScheduledDigest(bytes32,uint64,uint64)": [
           "bytes32"
@@ -247,14 +231,8 @@
         "lastFreezeConfigVersion(bytes32)": [
           "uint64"
         ],
-        "migrationCancelDigest(bytes32,uint64,uint64)": [
-          "bytes32"
-        ],
-        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": [
-          "bytes32"
-        ],
-        "migrationNonce()": [
-          "uint64"
+        "migrationModule()": [
+          "address"
         ],
         "notifyConfigChange(bytes32)": [],
         "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": [
@@ -266,16 +244,6 @@
         "onERC721Received(address,address,uint256,bytes)": [
           "bytes4"
         ],
-        "pendingMigration()": [
-          "address",
-          "bytes32",
-          "bytes32",
-          "bytes32",
-          "uint48",
-          "uint48",
-          "uint64",
-          "uint64"
-        ],
         "recoverConfiguration(address[],address,bytes,bytes32,uint8)": [],
         "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": [],
         "recoveryConfigured()": [
@@ -283,9 +251,6 @@
         ],
         "revokeTokenAllowance(address,address)": [],
         "scheduleCall(address,uint256,bytes,uint48)": [
-          "bytes32"
-        ],
-        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": [
           "bytes32"
         ],
         "scheduledOperations(bytes32)": [
@@ -317,7 +282,6 @@
       },
       "functionMutability": {
         "BATCH_EXECUTION_MODE()": "view",
-        "CANCEL_MIGRATION_TYPEHASH()": "view",
         "CANCEL_SCHEDULED_TYPEHASH()": "view",
         "DIRECT_EXECUTION_TYPEHASH()": "view",
         "EIP712_DOMAIN_TYPEHASH()": "view",
@@ -333,7 +297,6 @@
         "MAX_GUARDIAN_PROOF_LENGTH()": "view",
         "MAX_GUARDIAN_THRESHOLD()": "view",
         "MAX_HOOKS()": "view",
-        "MAX_MIGRATION_WINDOW()": "view",
         "MAX_RECOVERY_MODULES()": "view",
         "MAX_REVERT_DATA_LENGTH()": "view",
         "MAX_SCHEDULE_DELAY()": "view",
@@ -343,8 +306,6 @@
         "SCHEDULE_WINDOW()": "view",
         "SINGLE_EXECUTION_MODE()": "view",
         "accountId()": "pure",
-        "cancelMigration()": "nonpayable",
-        "cancelMigrationWithGuardians((address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
         "cancelScheduled(bytes32)": "nonpayable",
         "cancelScheduledDigest(bytes32,uint64,uint64)": "view",
         "cancelScheduledWithGuardians(bytes32,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
@@ -376,20 +337,16 @@
         "isModuleInstalled(uint256,address,bytes)": "view",
         "isValidSignature(bytes32,bytes)": "view",
         "lastFreezeConfigVersion(bytes32)": "view",
-        "migrationCancelDigest(bytes32,uint64,uint64)": "view",
-        "migrationIdFor((address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "view",
-        "migrationNonce()": "view",
+        "migrationModule()": "view",
         "notifyConfigChange(bytes32)": "nonpayable",
         "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": "pure",
         "onERC1155Received(address,address,uint256,uint256,bytes)": "pure",
         "onERC721Received(address,address,uint256,bytes)": "pure",
-        "pendingMigration()": "view",
         "recoverConfiguration(address[],address,bytes,bytes32,uint8)": "nonpayable",
         "recoverConfigurationSet(address[],(uint256,address,bytes)[],bytes32,uint8)": "nonpayable",
         "recoveryConfigured()": "view",
         "revokeTokenAllowance(address,address)": "nonpayable",
         "scheduleCall(address,uint256,bytes,uint48)": "nonpayable",
-        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "nonpayable",
         "scheduledOperations(bytes32)": "view",
         "setGuardianConfig(bytes32,uint8)": "nonpayable",
         "supportsExecutionMode(bytes32)": "pure",
@@ -407,9 +364,6 @@
         "DirectExecution(address,uint256,bytes32)": "0xb7c6727f2ac3bdfc2726006b11137debfcd288b98bdedcef92f5c2a79bee66d4",
         "Frozen(uint48)": "0xd4e7c6511834a2fe17999a3aaa203c18caa4c30f328fe5b12d90f66a03d445c8",
         "GuardianConfigUpdated(bytes32,uint8)": "0xbe94b5dbe0be339ed12077f37b7a848df5ddf153c4fc3458bdd33e6adb3a64e8",
-        "MigrationCancelled(bytes32)": "0xa4391902668b001cf56998d0fd274c08b6d1068095959fd6324c6e7ddd8b4cd0",
-        "MigrationExecuted(bytes32,address)": "0x8cbcf9892f8ed0744ab5dd8cd9148eceddd3cd48a3ccd63d529eca34f485f313",
-        "MigrationScheduled(bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": "0xe604f896c5c0b3941a44e32860ee38690f2b20d49577390f4966c5eddce77361",
         "ModuleInstalled(uint256,address)": "0xd21d0b289f126c4b473ea641963e766833c2f13866e4ff480abd787c100ef123",
         "ModuleUninstalled(uint256,address)": "0x341347516a9de374859dfda710fa4828b2d48cb57d4fbe4c1149612b8e02276e",
         "OperationCancelled(bytes32)": "0xcf0f63b97f3387253cbc0bde884f975df77e39184dc3280c2c81be495f58eef4",
@@ -449,31 +403,6 @@
           "anonymous": false,
           "indexed": [
             true,
-            false
-          ]
-        },
-        "MigrationCancelled(bytes32)": {
-          "anonymous": false,
-          "indexed": [
-            true
-          ]
-        },
-        "MigrationExecuted(bytes32,address)": {
-          "anonymous": false,
-          "indexed": [
-            true,
-            true
-          ]
-        },
-        "MigrationScheduled(bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": {
-          "anonymous": false,
-          "indexed": [
-            true,
-            true,
-            true,
-            false,
-            false,
-            false,
             false
           ]
         },
@@ -525,11 +454,8 @@
         "InvalidGuardianConfig()": "0x7623bd5d",
         "InvalidInitialization()": "0xf92ee8a9",
         "InvalidInitializationContext()": "0x0bda07c4",
-        "InvalidMigration()": "0xb57b5d7b",
         "InvalidModule()": "0xdd914b28",
         "InvalidTokenAllowance()": "0xae211175",
-        "MigrationAlreadyPending()": "0xff3dab9f",
-        "MigrationNotPending()": "0xf135abf8",
         "ModuleLimitReached()": "0x5737ae04",
         "OnlyEntryPoint()": "0xbd07c551",
         "OnlySelf()": "0x14d4a4e8",
@@ -541,6 +467,119 @@
         "ReturnDataLimitExceeded(uint256)": "0x1ab47c35",
         "UnsupportedExecutionMode()": "0x7f181275",
         "UnsupportedModuleType()": "0xcf747b87"
+      }
+    },
+    "src/MigrationModule.sol:MigrationModule": {
+      "functions": {
+        "CANCEL_MIGRATION_TYPEHASH()": "0x5c364be4",
+        "MAX_MIGRATION_WINDOW()": "0x7ba37e63",
+        "MIN_MIGRATION_DELAY()": "0xd56ad7ac",
+        "cancelMigration()": "0x10639ea0",
+        "cancelMigrationWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "0x1979fc92",
+        "consumeMigration(address,(address,uint256,bytes)[])": "0x939c9a01",
+        "isModuleType(uint256)": "0xecd05961",
+        "migrationCancelDigest(address,bytes32,uint64,uint64)": "0x3dea046e",
+        "migrationIdFor(address,(address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "0x847e3ece",
+        "migrationNonces(address)": "0xd3cd8861",
+        "pendingMigrations(address)": "0xa104a1ee",
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "0x528833ca"
+      },
+      "functionOutputs": {
+        "CANCEL_MIGRATION_TYPEHASH()": [
+          "bytes32"
+        ],
+        "MAX_MIGRATION_WINDOW()": [
+          "uint48"
+        ],
+        "MIN_MIGRATION_DELAY()": [
+          "uint48"
+        ],
+        "cancelMigration()": [],
+        "cancelMigrationWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": [],
+        "consumeMigration(address,(address,uint256,bytes)[])": [
+          "bytes32",
+          "address"
+        ],
+        "isModuleType(uint256)": [
+          "bool"
+        ],
+        "migrationCancelDigest(address,bytes32,uint64,uint64)": [
+          "bytes32"
+        ],
+        "migrationIdFor(address,(address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": [
+          "bytes32"
+        ],
+        "migrationNonces(address)": [
+          "uint64"
+        ],
+        "pendingMigrations(address)": [
+          "address",
+          "bytes32",
+          "bytes32",
+          "bytes32",
+          "uint48",
+          "uint48",
+          "uint64",
+          "uint64"
+        ],
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": [
+          "bytes32"
+        ]
+      },
+      "functionMutability": {
+        "CANCEL_MIGRATION_TYPEHASH()": "view",
+        "MAX_MIGRATION_WINDOW()": "view",
+        "MIN_MIGRATION_DELAY()": "view",
+        "cancelMigration()": "nonpayable",
+        "cancelMigrationWithGuardians(address,(address,bytes32,bytes32,bytes,bytes32[])[])": "nonpayable",
+        "consumeMigration(address,(address,uint256,bytes)[])": "nonpayable",
+        "isModuleType(uint256)": "pure",
+        "migrationCancelDigest(address,bytes32,uint64,uint64)": "view",
+        "migrationIdFor(address,(address,bytes32,bytes32,bytes32,uint48,uint48,uint64,uint64))": "view",
+        "migrationNonces(address)": "view",
+        "pendingMigrations(address)": "view",
+        "scheduleMigration(address,bytes32,bytes32,bytes32,uint48,uint48)": "nonpayable"
+      },
+      "events": {
+        "MigrationCancelled(address,bytes32)": "0xe06b7ca4398f33600340f4c84a23e355c86d4d19f5c1546d4d6ca4bef9c0deb9",
+        "MigrationExecuted(address,bytes32,address)": "0x5cecfc8b865c3e1aea398f34648a1ecb403de85904a6f43bcd63bbd45dc9b13d",
+        "MigrationScheduled(address,bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": "0x6174110ceb0ecd8aae1c3fd041b8f70ba1c0510316137e37ace8849d6119dd4a"
+      },
+      "eventLayouts": {
+        "MigrationCancelled(address,bytes32)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true
+          ]
+        },
+        "MigrationExecuted(address,bytes32,address)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true
+          ]
+        },
+        "MigrationScheduled(address,bytes32,address,bytes32,bytes32,bytes32,uint48,uint48)": {
+          "anonymous": false,
+          "indexed": [
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      },
+      "errors": {
+        "InvalidMigration()": "0xb57b5d7b",
+        "MigrationAlreadyPending()": "0xff3dab9f",
+        "MigrationNotPending()": "0xf135abf8",
+        "OperationNotReady()": "0xf800799b"
       }
     },
     "src/LoomAccountFactory.sol:LoomAccountFactory": {
@@ -2010,10 +2049,6 @@
   },
   "typedData": {
     "src/LoomAccount.sol": {
-      "CANCEL_MIGRATION_TYPEHASH": {
-        "schema": "CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)",
-        "hash": "0x52f90a7822bb36f1d21771a488483f833754deecd2c07c22f35286ce0bf1eb07"
-      },
       "CANCEL_SCHEDULED_TYPEHASH": {
         "schema": "CancelScheduled(bytes32 operationId,uint64 configVersion,uint64 nonce)",
         "hash": "0x9e9060e8d409a8900bf609c710261e1f73434ce363c1ac77a624b40c14136d5c"
@@ -2029,6 +2064,12 @@
       "FREEZE_TYPEHASH": {
         "schema": "Freeze(bytes32 guardianLeaf,uint256 nonce,uint64 configVersion)",
         "hash": "0x5a15538edb63284274c9128917d92df4f51c883f00c7852565b3196ba4508fc6"
+      }
+    },
+    "src/MigrationModule.sol": {
+      "CANCEL_MIGRATION_TYPEHASH": {
+        "schema": "CancelMigration(bytes32 migrationId,uint64 configVersion,uint64 nonce)",
+        "hash": "0x52f90a7822bb36f1d21771a488483f833754deecd2c07c22f35286ce0bf1eb07"
       }
     },
     "src/hooks/VaultHook.sol": {

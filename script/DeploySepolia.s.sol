@@ -8,6 +8,7 @@ import {AppAccountRegistry} from "../src/AppAccountRegistry.sol";
 import {OnboardingPaymaster} from "../src/OnboardingPaymaster.sol";
 import {LoomAccount} from "../src/LoomAccount.sol";
 import {LoomAccountFactory} from "../src/LoomAccountFactory.sol";
+import {MigrationModule} from "../src/MigrationModule.sol";
 import {ModuleType} from "../src/libraries/ModuleType.sol";
 import {ECDSAValidator} from "../src/validators/ECDSAValidator.sol";
 import {P256Validator} from "../src/validators/P256Validator.sol";
@@ -74,6 +75,7 @@ contract DeploySepolia is Script {
         address ecdsaValidator,
         address exactCallSessionValidator,
         address granularSessionValidator,
+        address migrationModule,
         address recoveryManager,
         address recoveryIntentBoard,
         address ecdsaGuardianVerifier,
@@ -116,6 +118,7 @@ contract DeploySepolia is Script {
         );
         ExactCallSessionValidator exactCallSessionValidator = new ExactCallSessionValidator();
         GranularSessionValidator granularSessionValidator = new GranularSessionValidator();
+        MigrationModule migrationModule = new MigrationModule();
         RecoveryManager recoveryManager = new RecoveryManager();
         // ADR-0024. Optional per deployment and never installed as a module, but a
         // deployment that omits it leaves guardian discovery permanently inert.
@@ -203,6 +206,7 @@ contract DeploySepolia is Script {
             address(ecdsaValidator),
             address(exactCallSessionValidator),
             address(granularSessionValidator),
+            address(migrationModule),
             address(recoveryManager),
             address(recoveryIntentBoard),
             address(ecdsaGuardianVerifier),
