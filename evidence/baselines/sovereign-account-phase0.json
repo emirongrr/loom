@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Behavior-preserving baseline for sovereign account core extraction",
+  "target": "src/LoomAccount.sol:LoomAccount",
+  "source": {
+    "baselineRevision": "cb6a46f6a2882b7155e1c7ae65bd3227d7ad71a8",
+    "sourceTree": "d681f48ea5b24a79c6f7746349df4e47194ae16b",
+    "packageLockSha256": "0xaec6ac23452a51704b03016f2ddcc4d8fc726f19ecd9f7a2ab174752416d7ed8",
+    "submodules": []
+  },
+  "compiler": {
+    "solidity": "0.8.36",
+    "optimizer": true,
+    "optimizerRuns": 200,
+    "viaIR": true,
+    "evmVersion": "osaka",
+    "bytecodeHash": "ipfs",
+    "profile": "ci"
+  },
+  "bytecode": {
+    "runtime": {
+      "bytes": 24454,
+      "keccak256": "0xc92163554c50ea9f81646bfb1ead82b0b560d7bc1a7f9097b2dbd111f3f80404",
+      "runtimeBytes": 24454,
+      "limitBytes": 24576,
+      "marginBytes": 122,
+      "requiredReleaseMarginBytes": 2048,
+      "targetReleaseMarginBytes": 4096,
+      "deployable": true,
+      "releaseReady": false,
+      "targetReached": false
+    },
+    "initCode": {
+      "bytes": 26469,
+      "keccak256": "0x7f7a1918720aaf7dd3bbd04be45a494f269832cceb96e8ba57c1b914ae32852f"
+    }
+  },
+  "compatibility": {
+    "abiEntries": 126,
+    "storageEntries": 19,
+    "protocolSurfaceSha256": "0x4fd7fd63780bf5d4b47e846e603aaf27bcb948dd95bdc8980bc0a62705dc82e9",
+    "storageLayoutSha256": "0x384feb9fb39bf509c3cd4be26500be923b8869f2a3a4a96c3d7d6a1c2949df6f",
+    "gasSnapshotSha256": "0x2eccf5209409acf47bb0bc4898a941fd336c037807b85c26e3bf08c09abef06d"
+  }
+}

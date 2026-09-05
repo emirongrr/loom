@@ -129,6 +129,8 @@ jobs:
         run: forge lint --deny warnings
       - name: Check production bytecode sizes
         run: forge build --sizes --skip "test/**" "script/**"
+      - name: Validate sovereign account extraction policy
+        run: npm run account:baseline:test
       - name: Check generated ABI freshness
         run: npm run abi:check
       - name: Check gas snapshot
