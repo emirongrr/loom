@@ -33,6 +33,8 @@ dist-release/
 
 # package build output
 packages/*/dist/
+tools/wallet-lab/dist/
+examples/passkey-wallet-web/public/wallet-lab.deployment.json
 
 # example test build output
 examples/mobile-privacy-wallet/dist-tests/

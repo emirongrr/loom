@@ -1,0 +1,86 @@
+{
+  "schema": "loom.wallet-lab.run",
+  "version": 1,
+  "runId": "example-gas-estimation-failure",
+  "scenarioId": "passkey-native-transfer.v1",
+  "scenario": {
+    "schema": "loom.wallet-lab.scenario",
+    "version": 1,
+    "id": "passkey-native-transfer.v1",
+    "title": "Passkey-signed ERC-4337 native transfer",
+    "seed": "loom-wallet-lab-phase-1",
+    "initialSnapshot": "clean-devnet",
+    "actions": [{
+      "id": "transfer-1",
+      "kind": "native-transfer",
+      "target": "devnet-target",
+      "valueWei": "123",
+      "targetCall": { "function": "setValue", "value": "4242" }
+    }],
+    "expectedInvariants": [
+      "sdk-entrypoint-userop-hash-match",
+      "receipt-provenance-match",
+      "native-balance-delta-match",
+      "target-state-transition-match",
+      "finality-not-inferred-from-simulation"
+    ]
+  },
+  "traceId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "status": "error",
+  "startedAt": "2026-08-14T00:00:00.000Z",
+  "finishedAt": "2026-08-14T00:00:00.125Z",
+  "firstFailingBoundary": "bundler",
+  "environment": {
+    "gitCommit": "example",
+    "dirty": false,
+    "chainId": 31337,
+    "seed": "loom-wallet-lab-phase-1",
+    "snapshotId": "0x1",
+    "addresses": {
+      "EntryPoint": "0x43370948ada4bee98369c7a50209b283d6aac061"
+    },
+    "codeHashes": {
+      "EntryPoint": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "components": [
+      { "name": "Anvil", "version": "1.7.1", "status": "healthy" },
+      { "name": "Alto", "version": "0.0.20", "status": "healthy" }
+    ]
+  },
+  "events": [{
+    "runId": "example-gas-estimation-failure",
+    "scenarioId": "passkey-native-transfer.v1",
+    "traceId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "spanId": "0000000000000001",
+    "timestamp": "2026-08-14T00:00:00.000Z",
+    "monotonicSequence": 1,
+    "chainId": 31337,
+    "component": "bundler",
+    "phase": "gas-estimation",
+    "status": "error",
+    "durationMs": 125,
+    "errorCode": "InvalidSdkRequestError",
+    "errorSource": "bundler",
+    "redactionLevel": "public-test-only",
+    "explanation": "The bundler boundary failed before the lifecycle could advance.",
+    "reproduction": "npm run wallet-lab:replay -- tools/wallet-lab/test/fixtures/failing-gas-estimation.v1.json",
+    "payload": {
+      "method": "eth_estimateUserOperationGas",
+      "error": { "name": "InvalidSdkRequestError", "message": "UserOperation reverted during simulation", "stack": "" }
+    }
+  }],
+  "stateDiff": [],
+  "invariants": [
+    { "id": "sdk-entrypoint-userop-hash-match", "status": "not-run", "explanation": "The invariant has not been evaluated yet." },
+    { "id": "receipt-provenance-match", "status": "not-run", "explanation": "The invariant has not been evaluated yet." },
+    { "id": "native-balance-delta-match", "status": "not-run", "explanation": "The invariant has not been evaluated yet." },
+    { "id": "target-state-transition-match", "status": "not-run", "explanation": "The invariant has not been evaluated yet." },
+    { "id": "finality-not-inferred-from-simulation", "status": "not-run", "explanation": "The invariant has not been evaluated yet." }
+  ],
+  "replay": {
+    "command": "npm run wallet-lab:replay -- tools/wallet-lab/test/fixtures/failing-gas-estimation.v1.json",
+    "scenarioVersion": 1,
+    "seed": "loom-wallet-lab-phase-1"
+  },
+  "redaction": { "level": "public-test-only", "removedFields": [] }
+}
