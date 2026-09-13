@@ -173,7 +173,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
       - name: Run formal property mutations
@@ -208,7 +208,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - name: Install Halmos
         run: uv tool install --python 3.12 halmos==0.3.3
       - name: Prepare Halmos evidence
