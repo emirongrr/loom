@@ -128,7 +128,7 @@ jobs:
             npm publish "$tarball" --dry-run --access public --tag "$DIST_TAG"
           done
       - name: Upload package artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: loom-packages-${{ github.ref_name }}
           path: |
@@ -170,7 +170,7 @@ jobs:
           sha256sum "loom-${GITHUB_REF_NAME}.tar.gz" > SHA256SUMS
           (cd dist-release && sha256sum loom-*.tgz) >> SHA256SUMS
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: loom-${{ github.ref_name }}
           path: |
