@@ -148,7 +148,7 @@
   },
   "devDependencies": {
     "js-sha3": "0.13.0",
-    "solc": "0.8.36",
+    "solc": "0.8.38",
     "typescript": "7.0.2"
   },
   "optionalDependencies": {
