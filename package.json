@@ -147,7 +147,7 @@
     "e2e:vault-limits": "npm run core:build && node tools/e2e/devnet-vault-limits.mjs"
   },
   "devDependencies": {
-    "js-sha3": "0.13.0",
+    "js-sha3": "0.16.0",
     "solc": "0.8.36",
     "typescript": "7.0.2"
   },
